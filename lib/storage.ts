@@ -39,6 +39,7 @@ export interface HuddleBindings {
   SPEECH_API_KEY?: string;
   /** Optional: answers /ask with Claude, falling back to Gemini when that is set too. */
   ANTHROPIC_API_KEY?: string;
+  OPERATOR_ALERT_TOKEN?: string;
   /** Claude model for /ask. Default claude-haiku-5-5. */
   ANTHROPIC_MODEL?: string;
   /** Optional: enables /ask (Gemini free tier). */

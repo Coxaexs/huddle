@@ -1220,7 +1220,7 @@ function MessageRowImpl({
                                 <Pin size={16} />
                               </button>
                             )}
-                            {!inDmHome && activeServer && message.userId !== user.id && !message.bot && (
+                            {(inDmHome || activeServer) && message.userId !== user.id && !message.bot && (
                               <button
                                 type="button"
                                 title={t("message.report")}
@@ -1229,7 +1229,7 @@ function MessageRowImpl({
                                   setMobileActionsMoreId(null);
                                   showCustomConfirm({
                                     title: t("menu.reportMessage"),
-                                    message: "Report this message to the server moderators?",
+                                    message: inDmHome ? t("report.dmConfirm") : "Report this message to the server moderators?",
                                     isDanger: true,
                                     confirmText: t("menu.reportMessage"),
                                     cancelText: t("common.cancel"),
@@ -1237,13 +1237,13 @@ function MessageRowImpl({
                                       void apiFetch("/api/reports", {
                                         method: "POST",
                                         body: JSON.stringify({
-                                          serverId: activeServer.id,
+                                          serverId: activeServer?.id,
                                           channelId: activeChannelId,
                                           messageId: message.id,
                                           reason: "Reported from chat",
                                         }),
                                       })
-                                        .then(() => setNotice("Message reported to moderators."))
+                                        .then(() => setNotice(inDmHome ? t("report.dmSent") : "Message reported to moderators."))
                                         .catch((err) =>
                                           setNotice(err instanceof Error ? err.message : "Could not report message."),
                                         );
@@ -1455,7 +1455,7 @@ function MessageRowImpl({
                           closeCtxMenu();
                           showCustomConfirm({
                             title: "Report Message",
-                            message: "Report this message to the server moderators?",
+                            message: inDmHome ? t("report.dmConfirm") : "Report this message to the server moderators?",
                             isDanger: true,
                             confirmText: "Report",
                             cancelText: "Cancel",
@@ -1469,7 +1469,7 @@ function MessageRowImpl({
                                   reason: "Reported from chat",
                                 }),
                               })
-                                .then(() => setNotice("Message reported to moderators."))
+                                .then(() => setNotice(inDmHome ? t("report.dmSent") : "Message reported to moderators."))
                                 .catch((err) =>
                                   setNotice(err instanceof Error ? err.message : "Could not report message."),
                                 );

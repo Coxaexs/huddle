@@ -15,8 +15,8 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 import { sendPushNotifications } from "@/lib/push";
-import { currentUser } from "@/lib/auth";
-import { POST } from "@/app/api/reports/route";
+import { currentUser, isInstanceAdmin } from "@/lib/auth";
+import { GET, PATCH, POST } from "@/app/api/reports/route";
 
 function realDb(): D1Database {
   const sqlite = new DatabaseSync(":memory:");
@@ -55,6 +55,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.exec("DELETE FROM message_reports");
+  await db.exec("DELETE FROM dm_members");
   await db.exec("DELETE FROM messages");
   await db.exec("DELETE FROM server_members");
   await db.exec("DELETE FROM channels");
@@ -95,6 +96,28 @@ async function seed() {
     .prepare("INSERT INTO server_members (server_id, user_id, joined_at) VALUES ('s1','reporter',?),('s1','mod',?)")
     .bind(NOW, NOW)
     .run();
+}
+
+async function seedDm() {
+  await seed();
+  await db.prepare("UPDATE users SET is_admin = 1 WHERE id = 'owner'").run();
+  await db
+    .prepare("INSERT INTO channels (id, server_id, name, kind, created_at) VALUES ('d1','dm','dm','dm',?)")
+    .bind(NOW)
+    .run();
+  await db.prepare("INSERT INTO dm_members (channel_id, user_id) VALUES ('d1','reporter')").run();
+  await db
+    .prepare(
+      `INSERT INTO messages (id, channel, channel_id, author, avatar, color, content, is_bot, created_at)
+       VALUES ('m2','dm','d1','author','a','#000','hi there',0,?)`,
+    )
+    .bind(NOW)
+    .run();
+}
+
+function signIn(id: string) {
+  (isInstanceAdmin as ReturnType<typeof vi.fn>).mockReturnValue(false);
+  (currentUser as ReturnType<typeof vi.fn>).mockResolvedValue({ id, username: id, display_name: id } as never);
 }
 
 function post(body: { messageId: string; reason: string }) {
@@ -180,5 +203,89 @@ describe("POST /api/reports", () => {
     expect(res.status).toBe(404);
     expect(await db.prepare("SELECT COUNT(*) AS n FROM message_reports").first()).toEqual({ n: 0 });
     expect(sendPushNotifications).not.toHaveBeenCalled();
+  });
+
+  it("rings the instance admin urgently and moderators normally", async () => {
+    await seed();
+    await db.prepare("UPDATE users SET is_admin = 1 WHERE id = 'owner'").run();
+    signIn("reporter");
+
+    const res = await post({ messageId: "m1", reason: "spam" });
+    expect(res.status).toBe(200);
+    const calls = (sendPushNotifications as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1]).toEqual(["owner"]);
+    expect(calls[0][2].urgent).toBe(true);
+  });
+
+  it("counts the same message reported twice as one report and one alert", async () => {
+    await seedDm();
+    signIn("reporter");
+
+    const first = (await (await post({ messageId: "m2", reason: "spam" })).json()) as { id: string };
+    const second = (await (await post({ messageId: "m2", reason: "spam" })).json()) as { id: string };
+    expect(second.id).toBe(first.id);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM message_reports").first()).toEqual({ n: 1 });
+    expect(sendPushNotifications).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("DM reports", () => {
+  it("files the report and alerts only the instance admin", async () => {
+    await seedDm();
+    signIn("reporter");
+
+    const res = await post({ messageId: "m2", reason: "He keeps asking my age" });
+    expect(res.status).toBe(200);
+    const { id } = (await res.json()) as { id: string };
+    expect(await db.prepare("SELECT server_id, channel_id FROM message_reports WHERE id = ?").bind(id).first()).toEqual({
+      server_id: "dm",
+      channel_id: "d1",
+    });
+
+    const calls = (sendPushNotifications as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1]).toEqual(["owner"]);
+    expect(calls[0][2].urgent).toBe(true);
+    expect(calls[0][2].body).toContain("a direct message");
+    expect(calls[0][2].body).not.toContain("hi there");
+  });
+
+  it("refuses someone who is not in the conversation", async () => {
+    await seedDm();
+    signIn("mod");
+
+    const res = await post({ messageId: "m2", reason: "spam" });
+    expect(res.status).toBe(403);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM message_reports").first()).toEqual({ n: 0 });
+  });
+
+  it("only shows DM reports to instance admins", async () => {
+    await seedDm();
+    signIn("reporter");
+    await post({ messageId: "m2", reason: "spam" });
+
+    signIn("mod");
+    const refused = await GET(new Request("http://x/api/reports?serverId=dm"));
+    expect(refused.status).toBe(403);
+
+    (isInstanceAdmin as ReturnType<typeof vi.fn>).mockReturnValue(true);
+    const shown = (await (await GET(new Request("http://x/api/reports"))).json()) as {
+      reports: Array<{ channelName: string; messageContent: string }>;
+    };
+    expect(shown.reports[0]).toMatchObject({ channelName: "Direct message", messageContent: "hi there" });
+  });
+
+  it("only lets instance admins resolve DM reports", async () => {
+    await seedDm();
+    signIn("reporter");
+    const { id } = (await (await post({ messageId: "m2", reason: "spam" })).json()) as { id: string };
+
+    signIn("mod");
+    const res = await PATCH(
+      new Request("http://x/api/reports", { method: "PATCH", body: JSON.stringify({ reportId: id, status: "dismissed" }) }),
+    );
+    expect(res.status).toBe(403);
+    expect(await db.prepare("SELECT status FROM message_reports WHERE id = ?").bind(id).first()).toEqual({ status: "open" });
   });
 });

@@ -131,6 +131,8 @@ export const chat = {
   "message.quickVote": "Quick vote",
   "message.edit": "Edit",
   "message.report": "Report message",
+  "report.dmConfirm": "Report this message to the Hoffle team? They will be able to read it.",
+  "report.dmSent": "Message reported to the Hoffle team.",
   "message.delete": "Delete (Hold Shift to skip confirmation)",
   "message.edited": "(edited)",
   "message.blocked": "Blocked message",

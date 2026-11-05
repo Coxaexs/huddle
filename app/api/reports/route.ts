@@ -2,12 +2,17 @@ import { messageAccess } from "@/lib/access";
 import { currentUser, isInstanceAdmin, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { publishMessageEvent } from "@/lib/hub-client";
+import { alertOperators, operatorIds } from "@/lib/operator-alerts";
 import { can, Permission, reportNotifierIds } from "@/lib/permissions";
-import { ensureSchema } from "@/lib/schema";
+import { limitUser } from "@/lib/rate-limit";
+import { DM_SERVER_ID, ensureSchema } from "@/lib/schema";
 import { sendPushNotifications } from "@/lib/push";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
+
+/** Every report rings a phone, so one person cannot ring it all night. */
+const REPORT_LIMIT = { action: "message-report", limit: 20, windowSeconds: 3600 };
 
 export interface ModerationReport {
   id: string;
@@ -39,10 +44,12 @@ export async function GET(request: Request) {
   if (serverId) {
     where = "WHERE r.server_id = ?";
     params.push(serverId);
+    // DMs have no moderators: their reports are for instance admins alone.
     const allowed =
       isInstanceAdmin(user) ||
-      (await can(db, user.id, serverId, Permission.MANAGE_MESSAGES)) ||
-      (await can(db, user.id, serverId, Permission.MANAGE_SERVER));
+      (serverId !== DM_SERVER_ID &&
+        ((await can(db, user.id, serverId, Permission.MANAGE_MESSAGES)) ||
+          (await can(db, user.id, serverId, Permission.MANAGE_SERVER))));
     if (!allowed) {
       return Response.json({ error: "Moderators only." }, { status: 403 });
     }
@@ -85,7 +92,7 @@ export async function GET(request: Request) {
     id: r.id,
     serverId: r.server_id,
     channelId: r.channel_id,
-    channelName: r.channel_name || "deleted-channel",
+    channelName: r.server_id === DM_SERVER_ID ? "Direct message" : r.channel_name || "deleted-channel",
     messageId: r.message_id,
     messageContent: r.message_content || "(message deleted)",
     messageAuthor: r.message_author || "Unknown",
@@ -106,6 +113,8 @@ export async function POST(request: Request) {
   const user = await currentUser(request);
   if (!user) return unauthorized();
   await ensureSchema(db);
+  const limited = await limitUser(db, REPORT_LIMIT, user.id);
+  if (limited) return limited;
 
   const body = (await request.json().catch(() => ({}))) as {
     messageId?: string;
@@ -125,9 +134,14 @@ export async function POST(request: Request) {
   if (!channel.id) {
     return Response.json({ error: "That message could not be found." }, { status: 404 });
   }
-  if (channel.isDm) {
-    return Response.json({ error: "Only server messages can be reported to server moderators." }, { status: 400 });
-  }
+  const reportServerId = channel.isDm ? DM_SERVER_ID : channel.serverId;
+
+  // Reporting the same message twice is one report, and one alert.
+  const already = await db
+    .prepare("SELECT id FROM message_reports WHERE message_id = ? AND reporter_id = ? AND status = 'open'")
+    .bind(messageId, user.id)
+    .first<{ id: string }>();
+  if (already) return Response.json({ ok: true, id: already.id });
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -136,26 +150,34 @@ export async function POST(request: Request) {
       `INSERT INTO message_reports (id, server_id, channel_id, message_id, reporter_id, reason, status, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 'open', ?)`,
     )
-    .bind(id, channel.serverId, channel.id, messageId, user.id, reason, now)
+    .bind(id, reportServerId, channel.id, messageId, user.id, reason, now)
     .run();
 
   // Tell the server's moderators a report was filed so they don't have to keep
-  // checking the Safety tab or /kivi. Errors here must never fail a report.
-  const server = await db
-    .prepare("SELECT name FROM servers WHERE id = ?")
-    .bind(channel.serverId)
-    .first<{ name: string }>();
-  const notifierIds = await reportNotifierIds(db, channel.serverId, user.id);
-  if (notifierIds.length) {
-    await sendPushNotifications(db, notifierIds, {
-      title: "New message report",
-      body: `${user.display_name} reported a message in #${channel.name}${
-        server ? ` (${server.name})` : ""
-      }: “${reason}”`,
-      url: "/kivi",
-      tag: "message-report",
-    }).catch(() => undefined);
-  }
+  // checking the Safety tab or /kivi, and ring the instance admins' phones: they
+  // answer for every report, and a DM report reaches nobody else. Errors here
+  // must never fail a report.
+  const server = channel.isDm
+    ? null
+    : await db
+        .prepare("SELECT name FROM servers WHERE id = ?")
+        .bind(channel.serverId)
+        .first<{ name: string }>();
+  const where = channel.isDm
+    ? "a direct message"
+    : `a message in #${channel.name}${server ? ` (${server.name})` : ""}`;
+  const notice = {
+    title: "New message report",
+    body: `${user.display_name} reported ${where}: “${reason}”`,
+    url: "/kivi",
+    tag: "message-report",
+  };
+  const operators = await operatorIds(db);
+  const moderators = channel.isDm
+    ? []
+    : (await reportNotifierIds(db, channel.serverId, user.id)).filter((id) => !operators.includes(id));
+  if (moderators.length) await sendPushNotifications(db, moderators, notice).catch(() => undefined);
+  await alertOperators(db, notice, user.id).catch(() => undefined);
 
   return Response.json({ ok: true, id });
 }
@@ -189,8 +211,9 @@ export async function PATCH(request: Request) {
 
   const allowed =
     isInstanceAdmin(user) ||
-    (await can(db, user.id, report.server_id, Permission.MANAGE_MESSAGES)) ||
-    (await can(db, user.id, report.server_id, Permission.MANAGE_SERVER));
+    (report.server_id !== DM_SERVER_ID &&
+      ((await can(db, user.id, report.server_id, Permission.MANAGE_MESSAGES)) ||
+        (await can(db, user.id, report.server_id, Permission.MANAGE_SERVER))));
   if (!allowed) return Response.json({ error: "Moderators only." }, { status: 403 });
 
   const now = new Date().toISOString();

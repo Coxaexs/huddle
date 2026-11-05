@@ -132,6 +132,8 @@ export const chat: Record<keyof typeof en, string> = {
   "message.quickVote": "Hızlı oylama",
   "message.edit": "Düzenle",
   "message.report": "Mesajı bildir",
+  "report.dmConfirm": "Bu mesaj Hoffle ekibine bildirilsin mi? Ekip mesajı okuyabilecek.",
+  "report.dmSent": "Mesaj Hoffle ekibine bildirildi.",
   "message.delete": "Sil (Onayı atlamak için Shift'e basılı tut)",
   "message.edited": "(düzenlendi)",
   "message.blocked": "Engellenen mesaj",

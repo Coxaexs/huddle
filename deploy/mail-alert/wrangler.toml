@@ -1,0 +1,8 @@
+name = "hoffle-mail-alert"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+HOFFLE_URL = "https://chat.hoffle.online"
+# FORWARD_TO: the address your mail goes to now. It must be verified in Email Routing.
+FORWARD_TO = ""
