@@ -124,7 +124,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
         }),
       });
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Couldn't send the wink.");
+      setNotice(err instanceof Error ? err.message : "Couldn't send the winkie.");
     }
   }
 

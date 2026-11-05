@@ -4,13 +4,13 @@ export const features = {
   "msn.nudge": "Send a Nudge!",
   "msn.nudged": "You just sent a Nudge!",
   "msn.receivedNudge": "{name} just sent you a Nudge!",
-  "msn.wink": "Winks",
-  "msn.winkSent": "You have just sent a wink: {name}.",
-  "msn.winkReceived": "{name} has just sent you a wink: {wink}.",
+  "msn.wink": "Winkies",
+  "msn.winkSent": "You have just sent a winkie: {name}.",
+  "msn.winkReceived": "{name} has just sent you a winkie: {wink}.",
   "msn.winkPlay": "Play",
   "msn.emoticons": "Emoticons",
   "msn.handwriting": "Handwriting",
-  "msn.today": "MSN Today",
+  "msn.today": "Y2K Today",
   "msn.voiceClip": "Send a Voice Clip",
 
 

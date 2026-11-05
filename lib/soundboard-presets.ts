@@ -20,7 +20,7 @@ export const SOUNDBOARD_PRESETS: SoundPreset[] = [
   { id: "ding", name: "Bell Ding", emoji: "🛎️", category: "effects", description: "Crystal-clear elevator notification bell" },
   { id: "win_error", name: "Windows Error", emoji: "🛑", category: "memes", description: "Iconic Windows Critical Stop error chord" },
   { id: "win_tada", name: "Windows Ta-Da", emoji: "🎺", category: "reactions", description: "Classic Windows 2000 victory fanfare" },
-  { id: "msn_nudge", name: "MSN Nudge", emoji: "📳", category: "reactions", description: "MSN Messenger window shake and rattle" },
+  { id: "msn_nudge", name: "Y2K Nudge", emoji: "📳", category: "reactions", description: "Y2K Chat window shake and rattle" },
   { id: "applause", name: "Applause", emoji: "👏", category: "reactions", description: "Enthusiastic audience clapping" },
   { id: "crickets", name: "Crickets", emoji: "🦗", category: "memes", description: "Awkward silence cricket chirps" },
   { id: "nat20", name: "Nat 20 Chime", emoji: "✨", category: "reactions", description: "Celebratory critical hit victory chime" },

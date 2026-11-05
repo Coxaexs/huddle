@@ -201,18 +201,18 @@ const en: LandingCopy = {
   tour: {
     controls: { label: "Theme tour", counter: "Theme tour · {i} of {n}", prev: "Previous theme", next: "Next: {name}", show: "Show {name}" },
     msn: {
-      title: "The MSN Messenger theme",
+      title: "The Y2K Chat theme",
       intro:
         "A full second interface for Hoffle, modelled on Windows Live Messenger. It changes the layout and behaviour, not only the colours: messages read “Mira says:”, friends signing in show a toast, and a nudge shakes the other person's window.",
       points: [
         "A contact list with your own groups, and a quiet list",
-        "Display pictures, personal emoticons, winks and handwriting",
+        "Display pictures, personal emoticons, winkies and handwriting",
         "Statuses like Be Right Back and Out to Lunch",
         "A sound for each event, picked in its Sounds settings",
-        "MSN Today: who's around, unread conversations and what's playing",
+        "Y2K Today: who's around, unread conversations and what's playing",
       ],
       emoticons: "Emoticons that turn into pictures when you send them",
-      alt: "A Hoffle channel in the MSN Messenger theme, with “says:” before each message and a Winks, Voice Clip, Handwriting, Backgrounds and Nudge toolbar",
+      alt: "A Hoffle channel in the Y2K Chat theme, with “says:” before each message and a Winkies, Voice Clip, Handwriting, Backgrounds and Nudge toolbar",
       toast: "has just signed in.",
     },
     vampire: {
@@ -408,8 +408,8 @@ const en: LandingCopy = {
         a: "You'd get at least three months' notice, you can download your data at any time, and because the code is open your group can keep going on its own server. There's more about this under “Is this going to stick around?” above.",
       },
       {
-        q: "What does the MSN Messenger theme change?",
-        a: "The whole layout, not only the colours: a contact list with groups, “says:” before each message, display pictures, personal emoticons, nudges, winks, handwriting, chat backgrounds, sign-in toasts with their own sounds, and an MSN Today window. Pick it in Settings → Appearance.",
+        q: "What does the Y2K Chat theme change?",
+        a: "The whole layout, not only the colours: a contact list with groups, “says:” before each message, display pictures, personal emoticons, nudges, winkies, handwriting, chat backgrounds, sign-in toasts with their own sounds, and an Y2K Today window. Pick it in Settings → Appearance.",
       },
     ],
   },
@@ -556,7 +556,7 @@ const tr: LandingCopy = {
   tour: {
     controls: { label: "Tema turu", counter: "Tema turu · {i} / {n}", prev: "Önceki tema", next: "Sıradaki: {name}", show: "{name} temasını göster" },
     msn: {
-      title: "MSN Messenger teması",
+      title: "Y2K Sohbet teması",
       intro:
         "Windows Live Messenger'ı örnek alan, Hoffle için baştan sona ikinci bir arayüz. Yalnızca renkleri değil, düzeni ve davranışı da değiştirir: mesajlar “Mira diyor ki:” diye başlar, arkadaşın bağlanınca köşede bildirim çıkar, titreşim gönderince karşı tarafın penceresi sallanır.",
       points: [
@@ -564,10 +564,10 @@ const tr: LandingCopy = {
         "Profil resimleri, kişisel ifadeler, göz kırpmalar ve el yazısı",
         "Hemen Dönerim ve Yemekteyim gibi durumlar",
         "Her olay için Sesler ayarından seçilen bir ses",
-        "MSN Bugün: kim çevrimiçi, okunmamış konuşmalar ve ne çalıyor",
+        "Y2K Bugün: kim çevrimiçi, okunmamış konuşmalar ve ne çalıyor",
       ],
       emoticons: "Gönderince resme dönüşen ifadeler",
-      alt: "MSN Messenger temasında bir Hoffle kanalı: her mesajın başında “diyor ki:” ve Göz kırp, Ses klibi, El yazısı, Arka plan, Titreşim düğmeleri",
+      alt: "Y2K Sohbet temasında bir Hoffle kanalı: her mesajın başında “diyor ki:” ve Göz kırp, Ses klibi, El yazısı, Arka plan, Titreşim düğmeleri",
       toast: "oturum açtı.",
     },
     vampire: {
@@ -763,8 +763,8 @@ const tr: LandingCopy = {
         a: "En az üç ay önceden haber alırsın, verini istediğin an indirebilirsin ve kod açık olduğu için grubun kendi sunucusunda devam edebilir. Ayrıntısı yukarıda, “Bu iş kalıcı mı?” bölümünde.",
       },
       {
-        q: "MSN Messenger teması neyi değiştiriyor?",
-        a: "Yalnızca renkleri değil, bütün düzeni: gruplu kişi listesi, her mesajın başında “diyor ki:”, profil resimleri, kişisel ifadeler, titreşimler, göz kırpmalar, el yazısı, sohbet arka planları, kendi sesleriyle oturum açma bildirimleri ve bir MSN Bugün penceresi. Ayarlar → Görünüm'den seçebilirsin.",
+        q: "Y2K Sohbet teması neyi değiştiriyor?",
+        a: "Yalnızca renkleri değil, bütün düzeni: gruplu kişi listesi, her mesajın başında “diyor ki:”, profil resimleri, kişisel ifadeler, titreşimler, göz kırpmalar, el yazısı, sohbet arka planları, kendi sesleriyle oturum açma bildirimleri ve bir Y2K Bugün penceresi. Ayarlar → Görünüm'den seçebilirsin.",
       },
     ],
   },

@@ -11,7 +11,7 @@ export const features: Record<keyof typeof en, string> = {
   "msn.winkPlay": "Oynat",
   "msn.emoticons": "İfadeler",
   "msn.handwriting": "El Yazısı",
-  "msn.today": "MSN Bugün",
+  "msn.today": "Y2K Bugün",
   "msn.voiceClip": "Ses Klibi Gönder",
 
 

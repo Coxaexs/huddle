@@ -47,7 +47,7 @@ export const SIDE_FEATURES = {
   guestbook: "Landing page guestbook",
   integrations: "Music bot, D&D and Spotify integrations",
   media: "Living Room covers",
-  msn: "MSN mode",
+  msn: "Y2K mode",
   music: "Music commands",
   polls: "Polls",
   qa: "Q&A",

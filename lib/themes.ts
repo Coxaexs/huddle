@@ -199,7 +199,7 @@ export const BUILTIN_THEMES: Theme[] = [
   },
   {
     id: "msn",
-    name: "MSN Messenger",
+    name: "Y2K Chat",
     description: "Windows Live Messenger, circa 2006: Luna blue, glossy gradients and \"says:\".",
     baseTheme: "light",
     isBuiltin: true,
@@ -222,7 +222,7 @@ export const BUILTIN_THEMES: Theme[] = [
   },
   {
     id: "msn-dark",
-    name: "MSN Messenger Dark",
+    name: "Y2K Chat Dark",
     description: "The same Messenger, after dark: midnight glass, glowing blue and \"says:\".",
     baseTheme: "legacy",
     isBuiltin: true,
@@ -434,7 +434,7 @@ export const BUILTIN_THEMES: Theme[] = [
   },
   {
     id: "minecraft",
-    name: "Minecraft",
+    name: "Blocks",
     description: "Blocky overworld: grass and dirt sidebars, stone buttons with bevels, pixel type and yellow menu text.",
     baseTheme: "cozy",
     isBuiltin: true,

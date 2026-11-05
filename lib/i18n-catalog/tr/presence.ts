@@ -15,7 +15,7 @@ export const presence: Record<keyof typeof en, string> = {
   "status.autoReply.message": "Uzakta ya da Meşgulken, her DM'de sana ilk yazan kişi bu yanıtı alır. Kapatmak için boş bırak.",
   "status.autoReply.default": "Şu an bilgisayarımın başında değilim. Birazdan dönerim!",
   "status.picture": "Görüntü resmini değiştir…",
-  "status.today": "MSN Bugün'ü aç",
+  "status.today": "Y2K Bugün'ü aç",
   "status.custom.title": "Özel durum ayarla",
   "status.custom.message": "Aklında ne var?",
   "status.custom.placeholder": "ör. Toplantıdayım / Kod yazıyorum...",

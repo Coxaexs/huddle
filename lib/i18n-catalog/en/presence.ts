@@ -14,7 +14,7 @@ export const presence = {
   "status.autoReply.message": "While you're Away or Busy, the first person to message you in each DM gets this reply. Leave it empty to turn it off.",
   "status.autoReply.default": "I'm away from my computer right now. I'll get back to you soon!",
   "status.picture": "Change display picture…",
-  "status.today": "Open MSN Today",
+  "status.today": "Open Y2K Today",
   "status.custom.title": "Set Custom Status",
   "status.custom.message": "What's on your mind?",
   "status.custom.placeholder": "e.g. In a meeting / Coding...",

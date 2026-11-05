@@ -660,7 +660,7 @@ function MsnChrome(p: RetroChromeProps) {
   const menus: Record<string, MenuItem[]> = {
     File: [
       { label: "My Display Picture...", onClick: p.onOpenPicture },
-      { label: "MSN Today", onClick: p.onOpenToday },
+      { label: "Y2K Today", onClick: p.onOpenToday },
       "sep",
       { label: "Sign Out", onClick: p.onSignOut },
     ],
@@ -682,7 +682,7 @@ function MsnChrome(p: RetroChromeProps) {
   };
   return (
     <>
-      <TitleBar className="msn-titlebar" icon="msn-app-icon" title="MSN Messenger" />
+      <TitleBar className="msn-titlebar" icon="msn-app-icon" title="Y2K Chat" />
       <MenuBar className="msn-menubar" menus={menus} />
     </>
   );

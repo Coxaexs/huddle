@@ -61,7 +61,7 @@ export const userSettings: Record<keyof typeof en, string> = {
   "appearanceSettings.themeDark": "Koyu",
   "appearanceSettings.themeLight": "Açık",
   "appearanceSettings.themeMidnight": "Gece Yarısı",
-  "appearanceSettings.themeMsn": "MSN Messenger",
+  "appearanceSettings.themeMsn": "Y2K Sohbet",
   "appearanceSettings.density": "Mesaj Görünümü",
   "appearanceSettings.densityCozy": "Rahat",
   "appearanceSettings.densityCompact": "Kompakt",

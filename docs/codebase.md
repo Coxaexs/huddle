@@ -71,10 +71,10 @@ huddle/
 │   │   ├── widgets/              # Customizable toolbar & pinnable bot/music widgets
 │   │   ├── battlemap.tsx         # Shared tabletop canvas with tokens & fog
 │   │   ├── club-scene.ts         # Beat-synced 3D nightclub venue & lighting rig
-│   │   ├── club-skins.ts         # Theme-specific 3D club skins (Winamp, Star Wars, Matrix, Minecraft)
+│   │   ├── club-skins.ts         # Theme-specific 3D club skins (Winamp, Star Wars, Matrix, Blocks)
 │   │   ├── dice-overlay.tsx      # 3D Three.js + Cannon-es physics dice roller
 │   │   ├── living-room.tsx       # Shared 3D Living Room (Library, Cinema, Tabletop, Club)
-│   │   ├── msn-chrome.tsx        # Retro MSN Messenger window chrome & controls
+│   │   ├── msn-chrome.tsx        # Y2K Chat window chrome & controls
 │   │   └── retro-chrome.tsx      # Winamp & retro desktop skin chrome + 10-band EQ
 │   ├── hooks/                    # Reusable React hooks
 │   │   ├── chat-shell/           # 9-stage modular hook pipeline powering ChatShell
@@ -363,13 +363,13 @@ Hoffle implements Discord's v10 API so bots written in `discord.js` or `discord.
 
 ---
 
-## Retro & MSN Subsystems
+## Retro & Y2K Chat Subsystems
 
-Hoffle includes an authentic reproduction of MSN Messenger (Windows Live Messenger 7.5):
+Hoffle includes Y2K Chat, a theme with a 2000s messenger look:
 
 - **Window Chrome (`app/components/msn-chrome.tsx`)**: Recreates the classic blue gradient frame, status selectors, sound toggles, and contact lists.
 - **Nudges & Shakes**: Triggers window shake animations (`globals.css` keyframes) and plays the classic `nudge.mp3` audio cue.
-- **Winks (`app/lib/msn-winks.ts`)**: Canvas-rendered full-screen vector animations:
+- **Winkies (`app/lib/msn-winks.ts`)**: Canvas-rendered full-screen vector animations:
   - Knocking on screen (`knock`)
   - Water balloon splash (`water-balloon`)
   - Kiss lips imprint (`kiss`)
@@ -389,7 +389,7 @@ Conversation games run entirely inside message cards with pure state machines:
 1. **Tic-Tac-Toe (`tictactoe`)**: 3x3 grid with win-line validation.
 2. **Connect 4 (`connect4`)**: 7-column x 6-row grid with gravity simulation and 4-in-a-row diagonal/orthogonal checkers.
 3. **Rock Paper Scissors (`rps`)**: Simultaneous hidden move submissions revealed simultaneously when both players throw.
-4. **Minesweeper Flags (`mines`)**: MSN Messenger classic. 16x16 grid with 51 hidden mines. Uncovering safe cells passes the turn; uncovering a mine awards a point and another turn. First to 26 wins.
+4. **Minesweeper Flags (`mines`)**: 16x16 grid with 51 hidden mines. Uncovering safe cells passes the turn; uncovering a mine awards a point and another turn. First to 26 wins.
 5. **Rota (`rota`)**: Geography route connection game. Players take turns naming bordering countries to link a start country to an end country. Evaluated against a shortest-path BFS graph (`ROTA_COUNTRIES`). Supports English and Turkish aliases.
 
 ---

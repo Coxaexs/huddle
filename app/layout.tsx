@@ -109,7 +109,7 @@ export async function generateMetadata(): Promise<Metadata> {
           url: "/og.png",
           width: 1200,
           height: 630,
-          alt: "Hoffle in its Cozy and MSN Messenger themes",
+          alt: "Hoffle in its Cozy and Y2K Chat themes",
         },
       ],
     },

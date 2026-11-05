@@ -60,7 +60,7 @@ export const userSettings = {
   "appearanceSettings.themeDark": "Dark",
   "appearanceSettings.themeLight": "Light",
   "appearanceSettings.themeMidnight": "Midnight",
-  "appearanceSettings.themeMsn": "MSN Messenger",
+  "appearanceSettings.themeMsn": "Y2K Chat",
   "appearanceSettings.density": "Message Display",
   "appearanceSettings.densityCozy": "Cozy",
   "appearanceSettings.densityCompact": "Compact",

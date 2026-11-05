@@ -2305,7 +2305,7 @@ export function buildRoom(theme: RoomTheme): BuiltRoom {
       const bar = ctx.createLinearGradient(0, 14, 0, 30);
       bar.addColorStop(0, "#0997ff"); bar.addColorStop(1, "#0053ee");
       ctx.fillStyle = bar; ctx.fillRect(40, 14, 176, 16);
-      ctx.fillStyle = "#fff"; ctx.font = "bold 10px Tahoma, Verdana, sans-serif"; ctx.fillText("MSN Messenger", 46, 26);
+      ctx.fillStyle = "#fff"; ctx.font = "bold 10px Tahoma, Verdana, sans-serif"; ctx.fillText("Y2K Chat", 46, 26);
       ctx.fillStyle = "#dbe8fb"; ctx.fillRect(40, 30, 176, 26);
       ctx.fillStyle = "#000"; ctx.font = "bold 10px Tahoma, Verdana, sans-serif"; ctx.fillText(nudge ? "You have just sent a nudge!" : "~*~ me ~*~ (Online)", 46, 46);
       ctx.fillStyle = "#1f4fa8"; ctx.fillText("Online (4)", 46, 72);

@@ -82,7 +82,7 @@ function jsonLd(lang: LandingLang, copy: LandingCopy) {
         name: "Hoffle",
         url: `${SITE}/`,
         description:
-          "A free, open-source chat app for friend groups: voice chat through LiveKit, 1080p60 screen sharing with sound, a shared music bot, D&D tools, and themes including MSN Messenger. Use it in the browser, on the desktop, or self-host it.",
+          "A free, open-source chat app for friend groups: voice chat through LiveKit, 1080p60 screen sharing with sound, a shared music bot, D&D tools, and themes including Y2K Chat. Use it in the browser, on the desktop, or self-host it.",
         applicationCategory: "CommunicationApplication",
         operatingSystem: "Web, Windows, macOS, Linux, Android, iOS",
         isAccessibleForFree: true,
@@ -172,7 +172,7 @@ function tourSlides(t: LandingCopy["tour"]) {
   return [
     {
       id: "msn",
-      label: "MSN Messenger",
+      label: "Y2K Chat",
       background: "linear-gradient(180deg,#1f5fcf 0%,#4a8fe8 45%,#a9d0f5 78%,#d9ecfb 100%)",
       content: (
         <>

@@ -20,7 +20,7 @@ const TODAY_OFF_KEY = "huddle-msn-today-off";
 const TIPS = [
   "Type [c=red]words[/c] to colour them, or [c=pink]words[/c=blue] for a gradient, just like Messenger Plus!.",
   "The A button above the typing box picks the font and colour every message goes out in.",
-  "Winks play a full-window animation for everyone in the conversation. Try the Kiss.",
+  "Winkies play a full-window animation for everyone in the conversation. Try the Kiss.",
   "Send a nudge to shake your friend's window. You can only nudge every few seconds!",
   "Type (Y) for 👍, (L) for ❤️ or (co) for 💻. Hover the ☺ menu to learn the rest.",
   "Bored? The Games button invites the conversation to Minesweeper Flags, Tic-Tac-Toe and more.",
@@ -150,7 +150,7 @@ export function MsnToday({
       <div
         className="msn-today"
         role="dialog"
-        aria-label="MSN Today"
+        aria-label="Y2K Today"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="msn-today-titlebar">
@@ -159,7 +159,7 @@ export function MsnToday({
               <i />
               <i />
             </span>
-            MSN Today
+            Y2K Today
           </span>
           <button type="button" onClick={onClose} aria-label="Close">
             ×
@@ -299,7 +299,7 @@ export function MsnToday({
         <div className="msn-today-footer">
           <label>
             <input type="checkbox" checked={showAtStart} onChange={(e) => toggleAtStart(e.target.checked)} />
-            Show MSN Today when I sign in
+            Show Y2K Today when I sign in
           </label>
           <button type="button" onClick={onClose}>
             Close

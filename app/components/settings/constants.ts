@@ -59,9 +59,9 @@ export const AVATAR_FRAMES: CosmeticItem[] = [
   { id: "gamer", name: "RGB Headset", desc: "A gaming headset with colour-cycling lights", group: "Tech" },
   { id: "live", name: "Live!", desc: "A pulsing red ring and a LIVE badge", group: "Tech" },
   { id: "pixel-hearts", name: "Pixel Hearts", desc: "8-bit hearts beating as they orbit", group: "Tech" },
-  { id: "creeper-peek", name: "Creeper Peek", desc: "A creeper peeking over your shoulder. It hisses and flashes", group: "Minecraft" },
-  { id: "block-head", name: "Block Head", desc: "A grass block worn as a hat, with a poppy on top", group: "Minecraft" },
-  { id: "enchanted-blade", name: "Enchanted Blade", desc: "A glinting diamond sword with XP orbs circling you", group: "Minecraft" },
+  { id: "creeper-peek", name: "Creeper Peek", desc: "A creeper peeking over your shoulder. It hisses and flashes", group: "Blocks" },
+  { id: "block-head", name: "Block Head", desc: "A grass block worn as a hat, with a poppy on top", group: "Blocks" },
+  { id: "enchanted-blade", name: "Enchanted Blade", desc: "A glinting diamond sword with XP orbs circling you", group: "Blocks" },
   { id: "zombie-hands", name: "Grabbed", desc: "Rotting hands clawing up at you from below", group: "Zombie" },
   { id: "infected", name: "Infected", desc: "Toxic slime dripping off your ring and a biohazard badge", group: "Zombie" },
 ];
@@ -71,11 +71,11 @@ export const PROFILE_EFFECTS: CosmeticItem[] = [
   // Discord-inspired Anime & Dark marquee effects
   { id: "always-watching", name: "Always Watching", desc: "Blinking demon eyes peering from shadows and a sinister grin", group: "Anime & Dark" },
   { id: "manga-hand", name: "Cursed Grasp", desc: "A giant manga ink hand clutching your card with cursed spirit aura", group: "Anime & Dark" },
-  { id: "symbiote", name: "Venom", desc: "A glossy black symbiote rises from the goo, roars with a lashing tongue and lunges to bite", group: "Anime & Dark" },
+  { id: "symbiote", name: "Ooze Beast", desc: "A glossy black symbiote rises from the goo, roars with a lashing tongue and lunges to bite", group: "Anime & Dark" },
   { id: "carnage", name: "Carnage", desc: "The blood-red symbiote: veined, grinning and hungry", group: "Anime & Dark" },
   { id: "bloodfall", name: "Bloodfall", desc: "Glossy blood seeps over your card, drips down and splashes into a pool", group: "Anime & Dark" },
   { id: "nightwing", name: "Nightwing", desc: "Bats swarm a blood moon, sweep your card and gather where a vampire's red eyes open", group: "Anime & Dark" },
-  { id: "anti-venom", name: "Anti-Venom", desc: "A pearl-white symbiote with black markings and void eyes", group: "Anime & Dark" },
+  { id: "anti-venom", name: "Pale Ooze Beast", desc: "A pearl-white symbiote with black markings and void eyes", group: "Anime & Dark" },
   { id: "oni-mask", name: "Oni Spirit", desc: "A fierce Japanese demon mask with flaming horns and spirit smoke", group: "Anime & Dark" },
   { id: "soul-flame", name: "Soul Inferno", desc: "Roaring violet and cyan demonic flames with rising embers", group: "Anime & Dark" },
 
@@ -149,9 +149,9 @@ export const PROFILE_EFFECTS: CosmeticItem[] = [
   { id: "signal-lost", name: "Signal Lost", desc: "Scanlines and bursts of RGB glitch", group: "Cyber & Retro" },
 
   // Minecraft
-  { id: "creeper", name: "Aw Man", desc: "A creeper wanders onto your card, hisses, flashes and blows up", group: "Minecraft" },
-  { id: "enchanted", name: "Enchanted", desc: "The purple enchantment glint rolling over your card, with table glyphs drifting up", group: "Minecraft" },
-  { id: "xp-orbs", name: "XP Orbs", desc: "Glowing experience orbs bobbing around", group: "Minecraft" },
+  { id: "creeper", name: "Aw Man", desc: "A creeper wanders onto your card, hisses, flashes and blows up", group: "Blocks" },
+  { id: "enchanted", name: "Enchanted", desc: "The purple enchantment glint rolling over your card, with table glyphs drifting up", group: "Blocks" },
+  { id: "xp-orbs", name: "XP Orbs", desc: "Glowing experience orbs bobbing around", group: "Blocks" },
 
   // Zombie
   { id: "horde", name: "The Horde", desc: "Shamblers drift past a sick moon while hands claw out of the dirt", group: "Zombie" },
@@ -192,8 +192,8 @@ export const PROFILE_FRAMES: CosmeticItem[] = [
   { id: "tide", name: "Tide Pool", desc: "Rolling waves, a shell, a starfish and gulls", group: "Elements" },
   { id: "autumn", name: "Autumn Leaves", desc: "Maple leaves on the branch, a few drifting down", group: "Blooms" },
   { id: "mushrooms", name: "Mushroom Grove", desc: "Toadstools, glowing caps and fireflies on the moss", group: "Blooms" },
-  { id: "grass-block", name: "Grass Block", desc: "Grass and flowers on top, stone and ores along the bottom", group: "Minecraft" },
-  { id: "tnt", name: "TNT", desc: "A lit stack of TNT and a creeper waiting below", group: "Minecraft" },
+  { id: "grass-block", name: "Grass Block", desc: "Grass and flowers on top, stone and ores along the bottom", group: "Blocks" },
+  { id: "tnt", name: "TNT", desc: "A lit stack of TNT and a creeper waiting below", group: "Blocks" },
   { id: "zombie-hands", name: "Dead Hands", desc: "Hands gripping the top of your card and a grave below", group: "Zombie" },
   { id: "quarantine", name: "Quarantine", desc: "Caution tape across the corners and a biohazard sign", group: "Zombie" },
   { id: "cobwebs", name: "Cobwebs", desc: "Webs in the corners and a little spider dangling", group: "Spooky" },
@@ -238,9 +238,9 @@ export const NAMEPLATES: CosmeticItem[] = [
   { id: "pride", name: "Pride", desc: "A rainbow flag waving in the breeze", group: "Pride" },
   { id: "trans-pride", name: "Trans Pride", desc: "The trans flag waving in the breeze", group: "Pride" },
   { id: "bi-pride", name: "Bi Pride", desc: "The bi flag waving in the breeze", group: "Pride" },
-  { id: "overworld", name: "Overworld", desc: "Blocky clouds, an oak tree and a creeper on the grass", group: "Minecraft" },
-  { id: "diamond-mine", name: "Diamond Mine", desc: "A torchlit stone wall glinting with ores", group: "Minecraft" },
-  { id: "nether", name: "The Nether", desc: "Lavafalls, netherrack and a drifting ghast", group: "Minecraft" },
+  { id: "overworld", name: "Overworld", desc: "Blocky clouds, an oak tree and a creeper on the grass", group: "Blocks" },
+  { id: "diamond-mine", name: "Diamond Mine", desc: "A torchlit stone wall glinting with ores", group: "Blocks" },
+  { id: "nether", name: "The Nether", desc: "Lavafalls, netherrack and a drifting ghast", group: "Blocks" },
   { id: "dead-city", name: "Dead City", desc: "A ruined skyline, a sick moon and shamblers in the fog", group: "Zombie" },
   { id: "quarantine", name: "Quarantine", desc: "Caution tape and a biohazard sign under a red beacon", group: "Zombie" },
 ];

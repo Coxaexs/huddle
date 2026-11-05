@@ -905,9 +905,9 @@ function WinksMenu({
   // Fetch the Flash player while they choose, so the wink starts right away.
   useEffect(() => preloadWinkPlayer(), []);
   return (
-    <div className="msn-popover msn-winks" role="dialog" aria-label="Winks">
+    <div className="msn-popover msn-winks" role="dialog" aria-label="Winkies">
       <div className="msn-popover-title">
-        Winks
+        Winkies
         <button type="button" onClick={onClose} aria-label="Close">×</button>
       </div>
       <div className="msn-winks-grid">
@@ -917,7 +917,7 @@ function WinksMenu({
             type="button"
             className="msn-wink-tile"
             onClick={() => onSend(wink.id)}
-            title={`Send the ${wink.name} wink`}
+            title={`Send the ${wink.name} winkie`}
           >
             <img className="msn-wink-thumb" src={winkThumbUrl(wink.id)} alt="" width={40} height={40} loading="lazy" />
             <span>{wink.name}</span>

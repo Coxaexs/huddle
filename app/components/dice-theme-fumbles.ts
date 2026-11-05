@@ -351,7 +351,7 @@ type Popup = { title: string; text: string; icon: "error" | "warn" | "info"; but
 const XP_POPUPS: Popup[] = [
   { title: "d20.exe", text: "d20.exe has encountered a problem and needs to close. We are sorry for the inconvenience.", icon: "error", buttons: ["Send Error Report", "Don't Send"] },
   { title: "Virus Alert!", text: "W32.NatOne.worm was found in d20.exe. Your luck could not be repaired.", icon: "warn", buttons: ["OK"] },
-  { title: "MSN Messenger", text: "Your contact Lady Luck has signed out.", icon: "info", buttons: ["OK"] },
+  { title: "Y2K Chat", text: "Your contact Lady Luck has signed out.", icon: "info", buttons: ["OK"] },
   { title: "Low on Luck", text: "Your system is low on luck. To free some up, close a few dice.", icon: "warn", buttons: ["OK"] },
   { title: "CONGRATULATIONS!!!", text: "You are the 1,000,000th visitor! Click here to claim your FREE iPod!", icon: "info", buttons: ["Claim!", "Close"] },
   { title: "dice.dll", text: "The procedure entry point RollHigh could not be located in the dynamic link library dice.dll.", icon: "error", buttons: ["OK"] },

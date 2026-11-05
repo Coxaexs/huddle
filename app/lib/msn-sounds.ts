@@ -8,14 +8,14 @@
 export type SoundEvent = "message" | "send" | "signin" | "nudge" | "error" | "mute" | "unmute" | "wink" | "game";
 
 export const SOUND_EVENTS: Array<{ id: SoundEvent; label: string; hint: string }> = [
-  { id: "message", label: "New message", hint: "Someone messages you (MSN classic ba-dum chime)" },
+  { id: "message", label: "New message", hint: "Someone messages you (Y2K classic ba-dum chime)" },
   { id: "send", label: "Message sent", hint: "Subtle pop when your message sends" },
-  { id: "signin", label: "Contact signs in", hint: "A contact comes online (MSN guitar strum)" },
+  { id: "signin", label: "Contact signs in", hint: "A contact comes online (Y2K guitar strum)" },
   { id: "nudge", label: "Nudge", hint: "Someone shakes your window (heavy rattle)" },
   { id: "error", label: "Error / Alert", hint: "Windows error chord / critical stop" },
   { id: "mute", label: "Mute microphone", hint: "Windows hardware disconnect / switch off" },
   { id: "unmute", label: "Unmute microphone", hint: "Windows hardware connect / switch on" },
-  { id: "wink", label: "Winks", hint: "The sound track of each wink" },
+  { id: "wink", label: "Winkies", hint: "The sound track of each winkie" },
   { id: "game", label: "Games", hint: "Your turn, mines found, wins" },
 ];
 
@@ -33,7 +33,7 @@ export type SoundPreset =
   | "none";
 
 export const SOUND_PRESETS: Array<{ id: SoundPreset; name: string }> = [
-  { id: "classic", name: "MSN Messenger (Classic)" },
+  { id: "classic", name: "Y2K Chat (Classic)" },
   { id: "win_error", name: "Windows Error (Critical Stop)" },
   { id: "win_ding", name: "Windows Ding" },
   { id: "win_tada", name: "Windows Ta-Da! (Win)" },

@@ -567,7 +567,7 @@ export function AppearanceTab({
               <label className="appearance-switch">
                 <span>
                   <strong>Retro 2000s sound effects</strong>
-                  <small>MSN-style chimes, nudges and old Windows sounds</small>
+                  <small>Y2K-style chimes, nudges and old Windows sounds</small>
                 </span>
                 <input
                   type="checkbox"

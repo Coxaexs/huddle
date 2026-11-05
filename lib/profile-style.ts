@@ -94,7 +94,7 @@ export const NAME_EFFECTS = [
   { id: "liquid", name: "Liquid", group: "Wild", colors: [2, 2], defaults: ["#38bdf8", "#1e3a8a"], desc: "Filled with sloshing liquid." },
   { id: "wave", name: "Wave", group: "Wild", colors: [1, 2], defaults: ["#5eead4", "#818cf8"], letters: true, desc: "Letters riding a wave." },
   { id: "jelly", name: "Jelly", group: "Wild", colors: [1, 2], defaults: ["#86efac", "#22d3ee"], letters: true, desc: "Bouncy, squishy letters." },
-  { id: "enchanted", name: "Enchanted", group: "Shine", colors: [1, 1], defaults: ["#5ce1e6"], desc: "Minecraft's purple enchantment glint rolling over your name." },
+  { id: "enchanted", name: "Enchanted", group: "Shine", colors: [1, 1], defaults: ["#5ce1e6"], desc: "A purple enchantment glint rolling over your name." },
   { id: "infected", name: "Infected", group: "Wild", colors: [1, 1], defaults: ["#9be15d"], desc: "Sickly and rotting, with a pulse and the odd drip." },
 ] as const satisfies readonly NameEffectSpec[];
 

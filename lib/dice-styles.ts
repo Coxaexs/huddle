@@ -106,7 +106,7 @@ export const DICE_STYLES: DiceStyle[] = [
   {
     // MSN buddy green and Messenger blue, TeamSpeak navy: glossy like a 2005 window.
     id: "msn",
-    label: "MSN · TeamSpeak 💬",
+    label: "Y2K · TeamSpeak 💬",
     body: ["#2f6fd6", "#4fae35", "#2580c3", "#1c3b6e", "#78c043"],
     ink: "#ffffff",
     outline: ["#123a7a", "#1f5c12", "#0f3f66", "#0a1a33", "#2f5c12"],
@@ -134,7 +134,7 @@ export const DICE_STYLES: DiceStyle[] = [
   {
     // Every die a block: grass, dirt, stone, planks, diamond ore, gold ore, netherrack, obsidian.
     id: "minecraft",
-    label: "Minecraft ⛏️",
+    label: "Blocks ⛏️",
     body: ["#5d9c3a", "#866043", "#7d7d7d", "#a5834f", "#7d7d7d", "#7d7d7d", "#6f2b2b", "#140f1f"],
     ink: "#ffffff",
     outline: "#2b2b2b",
