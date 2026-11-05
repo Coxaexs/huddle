@@ -18,7 +18,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 27;
+export const SCHEMA_VERSION = 28;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -1509,6 +1509,14 @@ async function migrate(db: D1Database): Promise<void> {
   if (!webhookColumns.has("source")) {
     await db.prepare("ALTER TABLE channel_webhooks ADD COLUMN source TEXT").run();
   }
+
+  // Serving a file checks whether the messages carrying it were deleted.
+  await db.batch([
+    db.prepare("CREATE INDEX IF NOT EXISTS messages_attachment_key_idx ON messages(attachment_key)"),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS messages_extra_files_idx ON messages(id) WHERE attachments IS NOT NULL OR audio_url IS NOT NULL",
+    ),
+  ]);
 
   const botColumns = await columnNames(db, "server_bots");
   if (!botColumns.has("application_id")) {

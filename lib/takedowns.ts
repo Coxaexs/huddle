@@ -226,6 +226,35 @@ export async function uploadBlocked(db: D1Database, key: string): Promise<boolea
   return row?.hit === 1;
 }
 
+/**
+ * True when a file was only ever carried by messages that are now deleted, so
+ * deleting a message takes its file with it. This is checked where files are
+ * served rather than in the many places that delete messages. A file no message
+ * mentions (an avatar, a banner) is false.
+ */
+export async function fileOfDeletedMessage(db: D1Database, key: string): Promise<boolean> {
+  const direct = await db
+    .prepare(
+      `SELECT COUNT(*) AS total, COUNT(CASE WHEN deleted_at IS NULL THEN 1 END) AS live
+         FROM messages WHERE attachment_key = ?`,
+    )
+    .bind(key)
+    .first<{ total: number; live: number }>();
+  if (direct?.live) return false;
+  const like = `%${key.replace(/[\\%_]/g, "\\$&")}%`;
+  const extra = await db
+    .prepare(
+      `SELECT COUNT(*) AS total, COUNT(CASE WHEN deleted_at IS NULL THEN 1 END) AS live
+         FROM messages
+        WHERE (attachments IS NOT NULL OR audio_url IS NOT NULL)
+          AND (attachments LIKE ? ESCAPE '\\' OR audio_url LIKE ? ESCAPE '\\')`,
+    )
+    .bind(like, like)
+    .first<{ total: number; live: number }>();
+  if (extra?.live) return false;
+  return Boolean(direct?.total || extra?.total);
+}
+
 function fileName(key: string): string {
   return key.split("--").slice(1).join("--") || key;
 }

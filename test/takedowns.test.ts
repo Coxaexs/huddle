@@ -321,3 +321,46 @@ describe("telling a real order from a fake one", async () => {
     ]);
   });
 });
+
+describe("deleting a message takes its file with it", () => {
+  const remove = (id: string) => db.prepare("UPDATE messages SET deleted_at = ? WHERE id = ?").bind(NOW, id).run();
+
+  it("stops serving a file once every message carrying it is deleted", async () => {
+    signIn(false);
+    await remove("m1");
+    expect((await fetchFile(KEY)).status).toBe(200);
+    await remove("m2");
+    expect((await fetchFile(KEY)).status).toBe(404);
+  });
+
+  it("still shows it to the instance admin for review", async () => {
+    await remove("m1");
+    await remove("m2");
+    signIn(true);
+    expect((await fetchFile(KEY)).status).toBe(200);
+  });
+
+  it("covers extra attachments and voice messages", async () => {
+    signIn(false);
+    files.set("xx--second.png", "b");
+    files.set("yy--voice.ogg", "c");
+    await db
+      .prepare(
+        `INSERT INTO messages (id, channel, channel_id, author, avatar, color, content, attachments, audio_url, is_bot, created_at)
+         VALUES ('m4', 'general', 'c1', 'sam', 'a', '#000', 'x', '["xx--second.png"]', '/hangout/api/uploads/yy--voice.ogg', 0, ?)`,
+      )
+      .bind(NOW)
+      .run();
+    expect((await fetchFile("xx--second.png")).status).toBe(200);
+    await remove("m4");
+    expect((await fetchFile("xx--second.png")).status).toBe(404);
+    expect((await fetchFile("yy--voice.ogg")).status).toBe(404);
+  });
+
+  it("leaves files no message carries alone", async () => {
+    signIn(false);
+    files.set("avatar--me.png", "d");
+    expect((await fetchFile("avatar--me.png")).status).toBe(200);
+  });
+});
+

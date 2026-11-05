@@ -2,7 +2,8 @@ import { isBigUploadKey } from "@/lib/big-upload-key";
 import { servableBigUpload } from "@/lib/big-uploads";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
-import { uploadBlocked } from "@/lib/takedowns";
+import { currentUser, isInstanceAdmin } from "@/lib/auth";
+import { fileOfDeletedMessage, uploadBlocked } from "@/lib/takedowns";
 import { isInlineSafe } from "@/lib/upload-sniff";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,13 @@ export async function GET(
     await ensureSchema(db);
     if (await uploadBlocked(db, key)) {
       return new Response("This file was removed.", { status: 451, headers: { "Cache-Control": "no-store" } });
+    }
+    // Deleting a message takes its file with it, except for the admin's review.
+    if (await fileOfDeletedMessage(db, key)) {
+      const user = await currentUser(request);
+      if (!user || !isInstanceAdmin(user)) {
+        return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
+      }
     }
   }
 

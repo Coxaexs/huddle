@@ -99,6 +99,7 @@ Commands:
   promote <username>                     Grant admin and invite rights
   create-invite [uses] [expiry_hours]    Create a new server invite code
   backup [destination_path]              Safely backup the SQLite database via VACUUM INTO
+  reset-bot-token <bot name>             Give a Developer Portal bot a new token and print it
 
 Environment Variables:
   PERSIST_DIR  Path to state directory (default: ./state)
@@ -196,6 +197,19 @@ Environment Variables:
       }
       runSql(dbPath, `VACUUM INTO '${absDest.replace(/'/g, "''")}';`);
       console.log(`✓ Safe database backup created at: ${absDest}`);
+      break;
+    }
+
+    case "reset-bot-token": {
+      const name = args.join(" ").trim();
+      if (!name) throw new Error("Which bot? reset-bot-token <bot name>");
+      const quoted = name.replace(/'/g, "''");
+      const bots = runSql(dbPath, `SELECT id, name FROM applications WHERE name = '${quoted}' OR id = '${quoted}';`, true);
+      if (bots.length !== 1) throw new Error(`Found ${bots.length} bots called '${name}'.`);
+      const token = `hfl_app_${crypto.randomBytes(32).toString("hex")}`;
+      const hash = crypto.createHash("sha256").update(token).digest("hex");
+      runSql(dbPath, `UPDATE applications SET token_hash = '${hash}' WHERE id = '${bots[0].id}';`);
+      console.log(token);
       break;
     }
 
