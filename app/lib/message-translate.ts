@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { apiFetch } from "./client";
+import { aiFetch } from "./ai-fetch";
 
 /**
  * "Translate" on a message: the answer is shown under the original until the
@@ -32,7 +32,7 @@ export async function translateMessage(messageId: string, to: string): Promise<v
   states.set(messageId, { status: "loading" });
   emit();
   try {
-    const result = await apiFetch<{ text: string; to: string }>(
+    const result = await aiFetch<{ text: string; to: string }>(
       `/api/messages/${encodeURIComponent(messageId)}/translate`,
       { method: "POST", body: JSON.stringify({ to }) },
     );

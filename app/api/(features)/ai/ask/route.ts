@@ -1,3 +1,4 @@
+import { requireAiAge } from "@/lib/ai-age";
 import {
   AI_AUTHOR,
   AI_AVATAR,
@@ -109,6 +110,9 @@ export async function POST(request: Request): Promise<Response> {
       { status: 503 },
     );
   }
+
+  const tooYoung = await requireAiAge(db, user.id);
+  if (tooYoung) return tooYoung;
 
   const body = (await request.json().catch(() => ({}))) as AskBody;
   const rawQuestion = cleanQuestion(body.question);

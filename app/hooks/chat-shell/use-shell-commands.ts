@@ -11,6 +11,7 @@ import { runRecordCommand } from "../../lib/chat/commands/record";
 import { ROLL_COMMANDS, runRollCommand } from "../../lib/chat/commands/roll";
 import { FUN_COMMANDS, funCommandReply } from "@/lib/fun-commands";
 import { type TtsLanguage } from "../../lib/tts/client";
+import { aiFetch } from "../../lib/ai-fetch";
 import { apiFetch } from "../../lib/client";
 import { openMusicPlayer, type MusicPlayerTab } from "../../components/music-player";
 import { COMMAND_ALIASES, DISCORD_ONLY_COMMANDS, DND_LINK_COMMANDS, LOOKUP_COMMANDS, MUSIC_COMMANDS } from "../../lib/commands";
@@ -149,7 +150,7 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
       if (!activeChannelId) return;
       setNotice("✦ Hoffle AI is thinking…");
       try {
-        await apiFetch("/api/ai/ask", {
+        await aiFetch("/api/ai/ask", {
           method: "POST",
           body: JSON.stringify({
             channelId: activeChannelId,
@@ -168,7 +169,7 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
       if (!activeChannelId) return;
       setNotice("✦ Reading the channel…");
       try {
-        const data = await apiFetch<{ summary: string; count: number }>("/api/ai/summarize", {
+        const data = await aiFetch<{ summary: string; count: number }>("/api/ai/summarize", {
           method: "POST",
           body: JSON.stringify({ channelId: activeChannelId }),
         });
@@ -212,7 +213,7 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
       pendingCommandRef.current = null;
       const start = /^start\b/i.test(value.trim());
       try {
-        await apiFetch("/api/recap", {
+        await aiFetch("/api/recap", {
           method: "POST",
           body: JSON.stringify({ channelId: activeChannelId, voiceChannelId: voice.channelId, action: start ? "start" : "stop" }),
         });

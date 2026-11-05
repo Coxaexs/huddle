@@ -885,6 +885,8 @@ async function migrate(db: D1Database): Promise<void> {
     // Where the panels sit and which widgets are pinned (lib/layout-prefs.ts).
     // NULL is the default layout.
     ["layout_prefs", "ALTER TABLE users ADD COLUMN layout_prefs TEXT"],
+    // When this person said they are 18 or older, for AI features (lib/ai-age.ts).
+    ["ai_adult_at", "ALTER TABLE users ADD COLUMN ai_adult_at TEXT"],
   ] as const) {
     if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }

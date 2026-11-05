@@ -1,3 +1,4 @@
+import { requireAiAge } from "@/lib/ai-age";
 import { currentUser, unauthorized } from "@/lib/auth";
 import { messageAccess } from "@/lib/access";
 import { aiConfigured, askAi, AiError } from "@/lib/ai";
@@ -57,6 +58,9 @@ export async function POST(
   if (!aiConfigured(keys)) {
     return Response.json({ error: "Translation is not set up on this server." }, { status: 503 });
   }
+
+  const tooYoung = await requireAiAge(db, user.id);
+  if (tooYoung) return tooYoung;
 
   const { id } = await context.params;
   const body = (await request.json().catch(() => ({}))) as { to?: string };

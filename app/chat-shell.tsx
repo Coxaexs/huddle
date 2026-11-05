@@ -11,6 +11,7 @@ import { useShellCommands } from "./hooks/chat-shell/use-shell-commands";
 import { useShellMessaging } from "./hooks/chat-shell/use-shell-messaging";
 import { useShellComposer } from "./hooks/chat-shell/use-shell-composer";
 import { renderChatShell } from "./components/chat/shell/chat-shell-view";
+import { AiAgeGate } from "./components/ai-age-gate";
 import { TermsConsent } from "./components/terms-consent";
 import { Hoffy } from "./components/hoffy";
 import { GuestBanner } from "./components/guest-banner";
@@ -68,6 +69,7 @@ export function ChatShell() {
     <>
       {renderChatShell({ ...shell, user })}
       <TermsConsent />
+      <AiAgeGate />
       <GuestBanner user={user} onSaved={setUser} />
     </>
   );

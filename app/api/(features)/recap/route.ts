@@ -1,3 +1,4 @@
+import { requireAiAge } from "@/lib/ai-age";
 import { channelAccess } from "@/lib/access";
 import { currentUser, unauthorized } from "@/lib/auth";
 import { publishEventsChanged, sessionNotesCommand } from "@/lib/hub-client";
@@ -49,6 +50,10 @@ export async function POST(request: Request) {
     }
     if (body.action === "start" && !channelKindInfo(access.channel.kind).text) {
       return Response.json({ error: "Start the notes from a text channel; the recap is posted there." }, { status: 400 });
+    }
+    if (body.action === "start") {
+      const tooYoung = await requireAiAge(db, user.id);
+      if (tooYoung) return tooYoung;
     }
     const result = await sessionNotesCommand({
       channelId: room.id,

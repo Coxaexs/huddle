@@ -11,6 +11,7 @@ import { announceUnlocked } from "../../lib/achievement-client";
 import { type Message } from "../../lib/chat/types";
 import { applyReaction } from "../../lib/chat/reactions";
 import { replaceEmojiShortcodes, parseQuickReaction } from "@/lib/emoji-shortcodes";
+import { aiFetch } from "../../lib/ai-fetch";
 import { apiFetch } from "../../lib/client";
 import { uploadBigFile } from "../../lib/big-upload";
 import { NORMAL_UPLOAD_MAX_BYTES } from "@/lib/big-upload-key";
@@ -150,7 +151,7 @@ export function useShellMessaging(s: ReturnType<typeof useShellCommands>) {
     // question and the answer arrive over the socket like any thread reply.
     if (threadRoot.kind === "ai") {
       try {
-        await apiFetch("/api/ai/ask", {
+        await aiFetch("/api/ai/ask", {
           method: "POST",
           body: JSON.stringify({
             channelId: activeChannelId,

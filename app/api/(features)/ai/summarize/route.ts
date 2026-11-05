@@ -1,3 +1,4 @@
+import { requireAiAge } from "@/lib/ai-age";
 import { channelAccess } from "@/lib/access";
 import { AI_LIMITS, AiError, aiConfigured, askAi, checkAiQuota } from "@/lib/ai";
 import { currentUser, unauthorized } from "@/lib/auth";
@@ -36,6 +37,9 @@ export async function POST(request: Request): Promise<Response> {
       { status: 503 },
     );
   }
+
+  const tooYoung = await requireAiAge(db, user.id);
+  if (tooYoung) return tooYoung;
 
   const body = (await request.json().catch(() => ({}))) as { channelId?: string; sinceRead?: boolean };
   const channelId = body.channelId?.slice(0, 64);

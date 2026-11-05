@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Globe, MessageSquare, Send, Sparkles } from "lucide-react";
+import { aiFetch } from "../lib/ai-fetch";
 import { apiFetch } from "../lib/client";
 import { MessageBody } from "./message-body";
 
@@ -104,7 +105,7 @@ export function AiAnswerCard({
     setBusy(true);
     setDraft("");
     try {
-      const data = await apiFetch<{ message: ThreadMessage; userMessage: ThreadMessage | null }>(
+      const data = await aiFetch<{ message: ThreadMessage; userMessage: ThreadMessage | null }>(
         "/api/ai/ask",
         {
           method: "POST",

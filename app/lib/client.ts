@@ -60,7 +60,9 @@ export async function apiFetch<T>(
         "That file is too large to upload. Try a smaller one.",
       );
     }
-    throw new Error(data?.error || `Request failed (${response.status}).`);
+    const failure: Error & { code?: string } = new Error(data?.error || `Request failed (${response.status}).`);
+    failure.code = (data as { code?: string })?.code;
+    throw failure;
   }
   return data;
 }
