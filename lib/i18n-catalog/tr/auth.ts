@@ -43,6 +43,7 @@ export const auth: Record<keyof typeof en, string> = {
   "gate.robotFailed": "Robot kontrolü yüklenemedi. Bağlantını kontrol et ya da bunun yerine bir davet kodu kullan.",
   "gate.agree":
     "{terms} ve {privacy} metinlerini kabul ediyorum. Hoffle, taciz eden kullanıcılara ve uygunsuz içeriğe karşı sıfır tolerans gösterir.",
+  "gate.age": "16 yaşında veya daha büyüğüm",
   "gate.terms": "Kullanım Koşulları",
   "gate.privacy": "Gizlilik Politikası",
   "gate.busy": "Bir saniye…",

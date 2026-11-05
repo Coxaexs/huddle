@@ -110,6 +110,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
   const [displayName, setDisplayName] = useState("");
   const [invite, setInvite] = useState("");
   const [agreed, setAgreed] = useState(false);
+  const [oldEnough, setOldEnough] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   // Set once the password was right on an account with two-factor on.
@@ -216,6 +217,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
           displayName,
           invite: serverInvite,
           agreed,
+          oldEnough,
           ...(needsChallenge ? { turnstileToken: challengeToken } : {}),
         }),
       });
@@ -302,7 +304,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
         joined?: { id: string; name: string } | null;
       }>(path, {
         method: "POST",
-        body: JSON.stringify(body),
+        body: JSON.stringify(mode === "signup" ? { ...body, oldEnough } : body),
       });
       if (data.twoFactor) {
         setTwoFactor(data.twoFactor);
@@ -525,8 +527,12 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               })}
             </span>
           </label>
+          <label className="auth-agree">
+            <input type="checkbox" checked={oldEnough} onChange={(event) => setOldEnough(event.target.checked)} />
+            <span>{t("gate.age")}</span>
+          </label>
           {error && <p className="auth-error">{error}</p>}
-          <button type="submit" disabled={busy || !displayName.trim() || !agreed || (needsChallenge && !challengeToken)}>
+          <button type="submit" disabled={busy || !displayName.trim() || !agreed || !oldEnough || (needsChallenge && !challengeToken)}>
             {busy ? t("gate.busy") : t("guest.join", { server: serverInviteName })}
           </button>
           <button type="button" className="auth-switch guest-switch" onClick={() => { setQuick(false); setError(""); }}>
@@ -690,6 +696,13 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
 
         {mode === "signup" && (
           <label className="auth-agree">
+            <input type="checkbox" checked={oldEnough} onChange={(event) => setOldEnough(event.target.checked)} />
+            <span>{t("gate.age")}</span>
+          </label>
+        )}
+
+        {mode === "signup" && (
+          <label className="auth-agree">
             <input type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} />
             <span>
               {tRich(t, "gate.agree", {
@@ -721,7 +734,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               ? !username
               : mode === "reset"
                 ? !password
-                : !username || !password || (needsChallenge && !challengeToken) || (mode === "signup" && !agreed))
+                : !username || !password || (needsChallenge && !challengeToken) || (mode === "signup" && (!agreed || !oldEnough)))
           }
         >
           {busy

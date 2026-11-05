@@ -79,7 +79,7 @@ describe("open signup and its guardrails", () => {
     for (const table of ["users", "sessions", "rate_limits", "invites", "meta", "servers", "server_members", "upload_usage", "dm_members", "friendships"]) {
       await db.prepare(`DELETE FROM ${table}`).run().catch(() => undefined);
     }
-    const first = await signup(post("/auth/signup", { username: "owner", password: "owner-password" }, { ip: freshIp() }));
+    const first = await signup(post("/auth/signup", { oldEnough: true, username: "owner", password: "owner-password" }, { ip: freshIp() }));
     expect(first.status).toBe(201);
     ownerCookie = cookieOf(first);
   });
@@ -88,7 +88,7 @@ describe("open signup and its guardrails", () => {
     adminSignup(post("/admin/signup", { open, ...(serverId !== undefined ? { serverId } : {}) }, { cookie: ownerCookie }));
 
   const open = (username: string, extra: Record<string, unknown> = {}, ip = freshIp()) =>
-    signup(post("/auth/signup", { username, password: "long-enough-pw", ...extra }, { ip }));
+    signup(post("/auth/signup", { oldEnough: true, username, password: "long-enough-pw", ...extra }, { ip }));
 
   it("stays invite-only until an admin turns it on", async () => {
     const refused = await open("guest");

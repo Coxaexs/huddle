@@ -35,11 +35,13 @@ export async function POST(request: Request) {
     displayName?: string;
     invite?: string;
     agreed?: boolean;
+    oldEnough?: boolean;
     turnstileToken?: string;
   };
   const displayName = cleanName(body.displayName);
   if (!displayName) return denied(400, "Pick the name your friends will see.");
   if (body.agreed !== true) return denied(400, "Agree to the Terms of Use and Privacy Policy first.");
+  if (body.oldEnough !== true) return denied(400, "You need to be 16 or older to use Hoffle.");
 
   const settings = await getSignupSettings(db);
   if (!settings.open) return denied(403, "Quick join isn't on here. Ask your friend for an account invite.");

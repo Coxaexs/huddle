@@ -41,6 +41,8 @@ interface SignupBody {
   invite?: string;
   /** Turnstile response token, for open signup. */
   turnstileToken?: string;
+  /** The person ticked "I'm 16 or older". Hoffle asks and does not check further. */
+  oldEnough?: boolean;
 }
 
 export async function POST(request: Request) {
@@ -64,6 +66,10 @@ export async function POST(request: Request) {
     ...SIGNUP_RATE_LIMIT,
   });
   if (!limited.allowed) return new RateLimitError(limited.retryAfter).response();
+
+  if (body.oldEnough !== true) {
+    return Response.json({ error: "You need to be 16 or older to use Hoffle." }, { status: 400 });
+  }
 
   const username = (body.username || "").trim();
   const password = body.password || "";

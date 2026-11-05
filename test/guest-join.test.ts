@@ -31,7 +31,7 @@ const { POST: guest } = await import("@/app/api/auth/guest/route");
 const { POST: claim } = await import("@/app/api/auth/claim/route");
 
 const join = (body: Record<string, unknown>) =>
-  guest(new Request("http://x/api/auth/guest", { method: "POST", body: JSON.stringify({ agreed: true, ...body }) }));
+  guest(new Request("http://x/api/auth/guest", { method: "POST", body: JSON.stringify({ agreed: true, oldEnough: true, ...body }) }));
 
 describe.skipIf(!sqliteAvailable)("quick join as a guest", () => {
   beforeEach(async () => {

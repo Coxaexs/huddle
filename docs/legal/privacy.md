@@ -70,7 +70,7 @@ Depending on where you live (for example under the GDPR in the EU), you can ask 
 
 ## Children
 
-Hoffle is not for children under 13. If you think a child under 13 has an account, email us and we'll delete it. AI features are for people 18 and over. We ask before your first use, and we don't check the answer.
+Hoffle is not for children under 16. If you think a child under 16 has an account, email us and we'll delete it. AI features are for people 18 and over. We ask before your first use, and we don't check the answer.
 
 ## Changes
 

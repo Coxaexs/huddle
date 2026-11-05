@@ -42,6 +42,7 @@ export const auth = {
   "gate.robotFailed": "The robot check could not load. Check your connection, or use an invite code instead.",
   "gate.agree":
     "I agree to the {terms} and {privacy}. Hoffle has zero tolerance for abusive users and objectionable content.",
+  "gate.age": "I'm 16 or older",
   "gate.terms": "Terms of Use",
   "gate.privacy": "Privacy Policy",
   "gate.busy": "One moment…",

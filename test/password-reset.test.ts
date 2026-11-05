@@ -89,7 +89,7 @@ describe("email and password reset", () => {
   /** Signs the owner up with an email and verifies it via the mailed code. */
   async function owner(email = "Owner@Example.com") {
     const response = await signup(
-      post("/auth/signup", { username: "owner", password: "first-password", email }),
+      post("/auth/signup", { oldEnough: true, username: "owner", password: "first-password", email }),
     );
     expect(response.status).toBe(201);
     const verified = await verifyEmail(post("/settings/email/verify", { code: mailedCode() }, cookieOf(response)));
@@ -101,14 +101,14 @@ describe("email and password reset", () => {
   it("lets one address verify on several accounts and resets each separately", async () => {
     await owner("shared@example.com");
     const second = await signup(
-      post("/auth/signup", { username: "alt", password: "alt-password", email: "shared@example.com", invite: "X" }),
+      post("/auth/signup", { oldEnough: true, username: "alt", password: "alt-password", email: "shared@example.com", invite: "X" }),
     );
     // Only the first signup is invite-free; fake one for the second account.
     if (second.status === 403) {
       await db.prepare("INSERT INTO invites (code, max_uses, uses, revoked, created_at) VALUES ('ALT', 0, 0, 0, '')").run();
     }
     const alt = second.status === 201 ? second : await signup(
-      post("/auth/signup", { username: "alt", password: "alt-password", email: "shared@example.com", invite: "ALT" }),
+      post("/auth/signup", { oldEnough: true, username: "alt", password: "alt-password", email: "shared@example.com", invite: "ALT" }),
     );
     expect(alt.status).toBe(201);
     const ok = await verifyEmail(post("/settings/email/verify", { code: mailedCode() }, cookieOf(alt)));
@@ -125,7 +125,7 @@ describe("email and password reset", () => {
   });
 
   it("mails at most 5 codes per IP an hour", async () => {
-    const response = await signup(post("/auth/signup", { username: "owner", password: "first-password" }));
+    const response = await signup(post("/auth/signup", { oldEnough: true, username: "owner", password: "first-password" }));
     const session = cookieOf(response);
     const fixedIp = (body: unknown) => {
       const request = post("/settings/email", body, session);
@@ -141,7 +141,7 @@ describe("email and password reset", () => {
   });
 
   it("mails at most 5 codes to one address an hour, whatever the IP", async () => {
-    const session = cookieOf(await signup(post("/auth/signup", { username: "owner", password: "first-password" })));
+    const session = cookieOf(await signup(post("/auth/signup", { oldEnough: true, username: "owner", password: "first-password" })));
     const statuses = [];
     for (let i = 0; i < 6; i++) {
       statuses.push((await setEmail(post("/settings/email", { email: "victim@example.com", password: "first-password" }, session))).status);
@@ -152,7 +152,7 @@ describe("email and password reset", () => {
   });
 
   it("signs up without an email", async () => {
-    const response = await signup(post("/auth/signup", { username: "owner", password: "first-password" }));
+    const response = await signup(post("/auth/signup", { oldEnough: true, username: "owner", password: "first-password" }));
     expect(response.status).toBe(201);
     expect(((await response.json()) as { user: { email: string | null } }).user.email).toBeNull();
     expect(sent).toHaveLength(0);
@@ -160,7 +160,7 @@ describe("email and password reset", () => {
 
   it("only saves a signup email once the mailed code comes back", async () => {
     const response = await signup(
-      post("/auth/signup", { username: "owner", password: "first-password", email: "Owner@Example.com" }),
+      post("/auth/signup", { oldEnough: true, username: "owner", password: "first-password", email: "Owner@Example.com" }),
     );
     const data = (await response.json()) as { user: { email: string | null }; pendingEmail: string };
     expect(data.user.email).toBeNull();
@@ -177,7 +177,7 @@ describe("email and password reset", () => {
 
   it("locks a code after too many wrong guesses", async () => {
     const response = await signup(
-      post("/auth/signup", { username: "owner", password: "first-password", email: "a@example.com" }),
+      post("/auth/signup", { oldEnough: true, username: "owner", password: "first-password", email: "a@example.com" }),
     );
     const session = cookieOf(response);
     const code = mailedCode();

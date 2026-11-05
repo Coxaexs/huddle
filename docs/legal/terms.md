@@ -8,7 +8,7 @@ Hoffle is also open-source software. If you run your own copy on your own server
 
 ## Who can use Hoffle
 
-- You must be at least **13 years old**. If your country sets a higher age for using online services without a parent's consent (for example 16 in the Netherlands), you need to be that age, or have your parent's or guardian's permission.
+- You must be at least **16 years old**.
 - You can have one account for yourself. Bots have to be set up through the bot tools, not as fake people.
 - You are responsible for what happens on your account. Keep your password safe and tell us if someone else gets into it.
 
