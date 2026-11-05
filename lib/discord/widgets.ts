@@ -12,6 +12,7 @@
  * widget to one room.
  */
 
+import { botCanSeeServer } from "./guild-data";
 import {
   deleteWidget,
   listBotWidgets,
@@ -54,7 +55,7 @@ export async function handleWidgetRoutes(context: RestContext, segments: string[
     const guildNative = segments[2] ? await nativeFor("guild", segments[2]) : null;
     if (!guildNative) return discordError(404, ErrorCode.UnknownGuild, "Unknown Guild");
     // A server's own bot may only touch its own server.
-    if (bot.serverId && bot.serverId !== guildNative) {
+    if (!botCanSeeServer(bot, guildNative)) {
       return discordError(403, ErrorCode.MissingAccess, "Missing Access");
     }
     serverId = guildNative;

@@ -1,7 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { generateBotToken } from "@/lib/bot-auth";
-import { publishStructureChange } from "@/lib/hub-client";
 import { MUSIC_BOT_KIND } from "@/lib/music-bot";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
@@ -33,7 +32,7 @@ export async function GET(
 
   const rows = await db
     .prepare(
-      `SELECT id, server_id, name, avatar, token, description, kind, enabled, created_at
+      `SELECT id, server_id, name, avatar, token, description, kind, enabled, created_at, application_id, permissions
        FROM server_bots
        WHERE server_id = ?
        ORDER BY created_at ASC`
@@ -49,9 +48,18 @@ export async function GET(
       kind: string;
       enabled: number;
       created_at: string;
+      application_id: string | null;
+      permissions: number;
     }>();
 
-  return Response.json(rows.results || []);
+  // An invited bot's real token belongs to its maker. This row's is a placeholder.
+  return Response.json(
+    (rows.results || []).map(({ application_id, ...bot }) => ({
+      ...bot,
+      token: application_id ? "" : bot.token,
+      applicationId: application_id,
+    })),
+  );
 }
 
 export async function POST(
@@ -85,30 +93,9 @@ export async function POST(
   const description = body.description?.trim().slice(0, 200) || "";
   const kind = body.kind?.trim() || "custom";
 
-  // A server has one music bot: adding it again turns the one it has back on.
+  // The music bot is a bot like any other: servers add it with its invite link.
   if (kind === MUSIC_BOT_KIND) {
-    const existing = await db
-      .prepare(
-        `SELECT id, server_id, name, avatar, token, description, kind, created_at
-           FROM server_bots WHERE server_id = ? AND kind = ? LIMIT 1`,
-      )
-      .bind(id, MUSIC_BOT_KIND)
-      .first<{ id: string; server_id: string; name: string; avatar: string; token: string; description: string; kind: string; created_at: string }>();
-    if (existing) {
-      await db.prepare("UPDATE server_bots SET enabled = 1 WHERE id = ?").bind(existing.id).run();
-      await publishStructureChange(id);
-      return Response.json({
-        id: existing.id,
-        serverId: existing.server_id,
-        name: existing.name,
-        avatar: existing.avatar,
-        token: existing.token,
-        description: existing.description,
-        kind: existing.kind,
-        enabled: 1,
-        createdAt: existing.created_at,
-      });
-    }
+    return Response.json({ error: "Add this bot with its invite link." }, { status: 400 });
   }
 
   const botId = crypto.randomUUID();
@@ -131,8 +118,6 @@ export async function POST(
     targetName: name,
     detail: `Added ${kind} bot`,
   });
-  // Members' open tabs pick up the music bot's commands and widget.
-  if (kind === MUSIC_BOT_KIND) await publishStructureChange(id);
 
   return Response.json(
     {

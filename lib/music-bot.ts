@@ -1,9 +1,9 @@
 /**
- * The Music + Watch bot is in a server only when that server added it, the way
- * a Discord bot is: Server Settings → Integrations → Music Bot → Add, which
- * stores a `server_bots` row of kind "music". Turning that row off or removing
- * it takes the bot out again. Servers that existed before this rule got the
- * bot once (backfillMusicBot in lib/schema.ts), so nobody lost it.
+ * The Music + Watch bot is a bot like any other (lib/applications.ts): a server
+ * has it once someone added it with its invite link, which stores a
+ * `server_bots` row of kind "music". Turning that row off or removing it takes
+ * the bot out again. Servers that existed before this rule got the bot once
+ * (backfillMusicBot in lib/schema.ts), so nobody lost it.
  */
 import { DM_SERVER_ID } from "./schema";
 
@@ -17,7 +17,7 @@ export const MUSIC_BOT_DEFAULTS = {
 } as const;
 
 export const MUSIC_BOT_MISSING =
-  "The Music Bot isn't in this server yet. Someone who can manage the server can add it in Server Settings → Integrations.";
+  "The Music Bot isn't in this server yet. Someone who can manage the server can add it with its invite link.";
 
 /** True when the server has the music bot added and turned on. */
 export async function musicBotInServer(db: D1Database, serverId: string | null | undefined): Promise<boolean> {

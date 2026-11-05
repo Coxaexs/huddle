@@ -3,6 +3,8 @@
 
 
 export interface ServerBot {
+  /** Set when it was added with an invite link; it then has no token here. */
+  applicationId?: string | null;
   id: string;
   server_id: string;
   name: string;

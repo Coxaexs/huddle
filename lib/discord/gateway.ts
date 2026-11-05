@@ -14,6 +14,9 @@
  * (POST /dispatch) because serialization needs D1 joins that belong in the
  * request that caused the event, not in the fan-out path.
  */
+import { PRIVILEGED_INTENTS } from "../applications";
+import { Permission } from "../permissions";
+import { channelsHiddenFromBot } from "./guild-data";
 import { DurableObject } from "cloudflare:workers";
 import { ensureSchema } from "../schema";
 import {
@@ -48,6 +51,10 @@ interface Session {
   botKind: string;
   botServerId: string | null;
   botIsMaster: boolean;
+  /** Developer Portal bots: server id -> what it granted. Null for other bots. */
+  botGrants: Record<string, number> | null;
+  botApplicationId: string | null;
+  botPrivileged: number;
   intents: number;
   sequence: number;
   identified: boolean;
@@ -69,6 +76,8 @@ interface DispatchRequest {
   targetBotId?: string | null;
   /** Bot id to exclude, so a bot never receives the echo of its own post. */
   excludeBotId?: string | null;
+  /** The event is in a channel @everyone cannot see. */
+  privateChannel?: boolean;
 }
 
 export class DiscordGateway extends DurableObject {
@@ -90,6 +99,20 @@ export class DiscordGateway extends DurableObject {
       const body = (await request.json()) as DispatchRequest;
       const delivered = this.dispatch(body);
       return Response.json({ ok: true, delivered });
+    }
+
+    // A bot joined or left a server, or lost its token: its sockets identify
+    // again, which sends the new server list or closes them.
+    if (url.pathname === "/refresh-bot" && request.method === "POST") {
+      const { botId } = (await request.json()) as { botId?: string };
+      for (const socket of this.ctx.getWebSockets()) {
+        const session = socket.deserializeAttachment() as Session | null;
+        if (!session?.identified || session.botId !== botId) continue;
+        session.identified = false;
+        socket.serializeAttachment(session);
+        this.send(socket, session, { op: GatewayOpcode.InvalidSession, d: false });
+      }
+      return Response.json({ ok: true });
     }
 
     if (url.pathname === "/sessions") {
@@ -133,6 +156,9 @@ export class DiscordGateway extends DurableObject {
       botKind: "",
       botServerId: null,
       botIsMaster: false,
+      botGrants: null,
+      botApplicationId: null,
+      botPrivileged: 0,
       intents: 0,
       sequence: 0,
       identified: false,
@@ -269,6 +295,12 @@ export class DiscordGateway extends DurableObject {
       return;
     }
 
+    // As on Discord: a privileged intent has to be switched on in the portal.
+    if (bot.applicationId && intents & PRIVILEGED_INTENTS & ~(bot.privilegedIntents ?? 0)) {
+      socket.close(GatewayCloseCode.DisallowedIntents, "Disallowed intent(s)");
+      return;
+    }
+
     session.identified = true;
     session.botId = bot.id;
     session.botName = bot.name;
@@ -276,6 +308,9 @@ export class DiscordGateway extends DurableObject {
     session.botKind = bot.kind;
     session.botServerId = bot.serverId;
     session.botIsMaster = bot.isMaster;
+    session.botGrants = bot.grants ?? null;
+    session.botApplicationId = bot.applicationId ?? null;
+    session.botPrivileged = bot.privilegedIntents ?? 0;
     session.intents = intents;
     session.lastHeartbeatAt = Date.now();
     socket.serializeAttachment(session);
@@ -313,6 +348,9 @@ export class DiscordGateway extends DurableObject {
     session.botAvatar = bot.avatar;
     session.botServerId = bot.serverId;
     session.botIsMaster = bot.isMaster;
+    session.botGrants = bot.grants ?? null;
+    session.botApplicationId = bot.applicationId ?? null;
+    session.botPrivileged = bot.privilegedIntents ?? 0;
     session.lastHeartbeatAt = Date.now();
 
     for (const entry of buffered) {
@@ -392,6 +430,7 @@ export class DiscordGateway extends DurableObject {
       const guild = await loadGuild(db, server, {
         includeMembers: wantsMembers,
         includePresences: wantsPresences,
+        hideChannels: await channelsHiddenFromBot(db, bot, server.id),
       });
       this.sendDispatch(socket, session, "GUILD_CREATE", guild);
     }
@@ -404,6 +443,7 @@ export class DiscordGateway extends DurableObject {
   ): Promise<void> {
     const db = (this.env as { DB?: D1Database }).DB;
     if (!db || !session.identified) return;
+    if (session.botGrants && !(session.intents & GatewayIntent.GuildMembers)) return;
 
     const guildId = typeof data?.guild_id === "string" ? data.guild_id : "";
     if (!guildId) return;
@@ -447,6 +487,13 @@ export class DiscordGateway extends DurableObject {
       serverId: session.botServerId,
       isMaster: session.botIsMaster,
       kind: session.botKind,
+      ...(session.botGrants
+        ? {
+            grants: session.botGrants,
+            applicationId: session.botApplicationId ?? undefined,
+            privilegedIntents: session.botPrivileged,
+          }
+        : {}),
     };
   }
 
@@ -474,6 +521,19 @@ export class DiscordGateway extends DurableObject {
 
       if (request.targetBotId && session.botId !== request.targetBotId) continue;
       if (request.excludeBotId && session.botId === request.excludeBotId) continue;
+
+      // A Developer Portal bot hears only servers that added it, and only what
+      // it was granted. An event aimed at it (an interaction) is already scoped.
+      if (session.botGrants && request.targetBotId !== session.botId) {
+        const grant =
+          request.serverId && Object.hasOwn(session.botGrants, request.serverId)
+            ? session.botGrants[request.serverId]
+            : null;
+        if (grant === null) continue;
+        if (!(grant & Permission.ADMINISTRATOR)) {
+          if (!(grant & Permission.VIEW_CHANNEL) || request.privateChannel) continue;
+        }
+      }
 
       // Server scoping: a bot added to one server never sees another's traffic.
       if (

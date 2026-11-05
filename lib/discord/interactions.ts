@@ -21,7 +21,7 @@ import {
 import { dispatchToBots } from "./dispatch";
 import { bindings, type StoredMessage } from "../storage";
 import { publishMessage, publishMessageEvent } from "../hub-client";
-import { channelWithGuild, loadUser } from "./guild-data";
+import { botCanSeeServer, channelWithGuild, loadUser } from "./guild-data";
 import {
   serializeMessage,
   serializeMember,
@@ -147,6 +147,10 @@ export async function handleCommandRoutes(
     return discordError(404, ErrorCode.GeneralError, "404: Not Found");
   }
   const commandId = segments[index + 1];
+
+  if (guildNative && !botCanSeeServer(bot, guildNative)) {
+    return discordError(403, ErrorCode.MissingAccess, "Missing Access");
+  }
 
   // Server-scoped bots may only ever register against their own server, and a
   // global registration from one is stored as a registration on that server.
@@ -984,11 +988,14 @@ export async function runBotCommand(
     ? null
     : await db
         .prepare(
-          `SELECT * FROM discord_commands
-           WHERE name = ? AND (server_id IS ? OR server_id IS NULL)
-           ORDER BY server_id IS NULL LIMIT 1`,
+          `SELECT c.* FROM discord_commands c
+           LEFT JOIN applications a ON a.id = c.bot_id
+           WHERE c.name = ? AND (c.server_id IS ? OR c.server_id IS NULL)
+             AND (a.id IS NULL OR EXISTS (
+               SELECT 1 FROM server_bots i WHERE i.application_id = a.id AND i.server_id IS ? AND i.enabled = 1))
+           ORDER BY c.server_id IS NULL LIMIT 1`,
         )
-        .bind(input.commandName.toLowerCase(), serverId)
+        .bind(input.commandName.toLowerCase(), serverId, serverId)
         .first<CommandRow>();
   const botId = isComponent ? input.botId : command?.bot_id;
   if (!botId || (isComponent && (!input.messageId || !input.customId))) {
@@ -1165,10 +1172,13 @@ export async function listCommandsForServer(
     .prepare(
       `SELECT c.* FROM discord_commands c
        LEFT JOIN server_bots b ON b.id = c.bot_id
+       LEFT JOIN applications a ON a.id = c.bot_id
        WHERE (c.server_id IS ? OR c.server_id IS NULL)
-         AND (b.id IS NULL OR b.enabled = 1)`,
+         AND (b.id IS NULL OR b.enabled = 1)
+         AND (a.id IS NULL OR EXISTS (
+           SELECT 1 FROM server_bots i WHERE i.application_id = a.id AND i.server_id IS ? AND i.enabled = 1))`,
     )
-    .bind(serverId)
+    .bind(serverId, serverId)
     .all<CommandRow>();
   return (rows.results || []).map((row) => ({
     name: row.name,

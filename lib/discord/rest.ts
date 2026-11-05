@@ -11,6 +11,9 @@
  * 10003 to UnknownChannel and 50013 to MissingPermissions, and a bot's retry
  * logic depends on telling those apart.
  */
+import { cleanPermissions } from "../applications";
+import { isPrivateChannel, loadOverwrites } from "../channel-permissions";
+import { memberPatchFlags, requiredFor, withinGrant } from "./app-permissions";
 import { authenticateBot, botById, type BotIdentity } from "../bot-auth";
 import { hasSuppressNotifications } from "../silent-messages";
 import { ensureSchema, DM_SERVER_ID } from "../schema";
@@ -19,6 +22,7 @@ import { publishMessage, publishMessageEvent } from "../hub-client";
 import { dispatchMessage, dispatchMessageDelete, dispatchReaction } from "./dispatch";
 import {
   botCanSeeServer,
+  channelsHiddenFromBot,
   botServers,
   channelWithGuild,
   loadGuild,
@@ -63,7 +67,7 @@ import { botPayload, mergeBotPayload, payloadOwner, publishBotEdit } from "./bot
 import { snapshotBeforeEdit } from "../message-edits";
 import { publicOrigin } from "../public-origin";
 import { linkedActor } from "../discord-accounts";
-import { Permission } from "../permissions";
+import { hasPermission, Permission } from "../permissions";
 import { attachmentColumns, BotUploadError, filesInForm, storeBotFiles } from "../bot-uploads";
 import { cleanAvatarUrl } from "../webhooks";
 import {
@@ -241,7 +245,94 @@ export async function handleDiscordRest(
   }
 }
 
+/**
+ * Holds a Developer Portal bot to what the server granted it. Everything that
+ * reaches a route after this has been allowed; anything unlisted is refused.
+ */
+async function enforceGrant(context: RestContext, segments: string[]): Promise<Response | null> {
+  const { bot, db, request } = context;
+  const need = requiredFor(request.method, segments);
+  if (need.kind === "open") return null;
+  const missing = () => discordError(403, ErrorCode.MissingPermissions, "Missing Permissions");
+  const noAccess = () => discordError(403, ErrorCode.MissingAccess, "Missing Access");
+  if (need.kind === "deny") return missing();
+
+  let serverId: string;
+  let channelId: string | null = null;
+  if (need.kind === "guild") {
+    const native = await nativeFor("guild", need.id);
+    if (!native) return discordError(404, ErrorCode.UnknownGuild, "Unknown Guild");
+    serverId = native;
+  } else {
+    const resolved = await resolveChannel(context, need.id);
+    if (resolved instanceof Response) return resolved;
+    serverId = resolved.channel.server_id;
+    channelId = resolved.channel.id;
+  }
+  if (!botCanSeeServer(bot, serverId)) return noAccess();
+  const grant = bot.grants![serverId];
+  if (need.intent && !((bot.privilegedIntents ?? 0) & need.intent)) return missing();
+
+  // guilds/{id}/{sub}/{target}/{leaf}/{leafId}
+  const [, , sub, target, leaf, leafId] = segments;
+  const write = request.method !== "GET";
+
+  // Nothing removes or changes the server's owner, whatever it was granted.
+  if (need.kind === "guild" && write && target && target !== "search" && (sub === "members" || sub === "bans")) {
+    const person = await nativeFor("user", target);
+    const server = await db
+      .prepare("SELECT created_by FROM servers WHERE id = ?")
+      .bind(serverId)
+      .first<{ created_by: string | null }>();
+    if (person && person === server?.created_by) return missing();
+  }
+
+  if (grant & Permission.ADMINISTRATOR) return null;
+
+  if (channelId) {
+    const overwrites = await loadOverwrites(db, [channelId]);
+    if (isPrivateChannel(overwrites.get(channelId) || [])) return noAccess();
+  }
+
+  let flags = need.flags;
+  if (need.unlessOwnMessage) {
+    const native = await nativeFor("message", need.unlessOwnMessage.messageId);
+    const row = native ? await loadMessageRow(db, native, channelId!) : null;
+    if (!row || !botOwnsMessage(bot, row)) flags = [...flags, ...need.unlessOwnMessage.flags];
+  }
+
+  if (need.kind === "guild" && write) {
+    const body = (await request.clone().json().catch(() => ({}))) as Record<string, unknown>;
+    let roles: string[] = [];
+    if (sub === "members" && target && !leaf && request.method === "PATCH") {
+      flags = memberPatchFlags(body);
+      if (Array.isArray(body.roles)) roles = body.roles.map(String);
+    }
+    if (sub === "members" && leaf === "roles" && leafId) roles = [leafId];
+    if (sub === "roles" && body.permissions !== undefined && !withinGrant(grant, cleanPermissions(body.permissions))) {
+      return missing();
+    }
+    // A bot cannot hand anyone more than it holds itself.
+    for (const role of roles) {
+      const native = await nativeFor("role", role);
+      const row = native
+        ? await db
+            .prepare("SELECT permissions FROM roles WHERE id = ? AND server_id = ?")
+            .bind(native, serverId)
+            .first<{ permissions: number }>()
+        : null;
+      if (row && !withinGrant(grant, Number(row.permissions))) return missing();
+    }
+  }
+
+  return flags.every((flag) => grant & flag) ? null : missing();
+}
+
 async function route(context: RestContext, segments: string[]): Promise<Response> {
+  if (context.bot.grants) {
+    const refused = await enforceGrant(context, segments);
+    if (refused) return refused;
+  }
   const [head, ...rest] = segments;
 
   switch (head) {
@@ -257,7 +348,10 @@ async function route(context: RestContext, segments: string[]): Promise<Response
     case "webhooks":
       // /webhooks/{id} with the bot's own token: manage a webhook.
       if (rest.length === 1) {
-        return webhookByIdRoutes(context, rest[0], (serverId) => botCanSeeServer(context.bot, serverId));
+        return webhookByIdRoutes(context, rest[0], (serverId) =>
+          botCanSeeServer(context.bot, serverId) &&
+          (!context.bot.grants || hasPermission(context.bot.grants[serverId], Permission.MANAGE_SERVER)),
+        );
       }
       return handleInteractionRoutes(context, head, rest);
     case "interactions":
@@ -435,9 +529,12 @@ async function guildRoutes(context: RestContext, segments: string[]): Promise<Re
       )
       .bind(nativeGuildId)
       .all<HoffleChannelRow>();
+    const hidden = await channelsHiddenFromBot(context.db, context.bot, nativeGuildId);
     return json(
       await Promise.all(
-        (rows.results || []).map((channel) => serializeChannel(channel, guildSnowflake)),
+        (rows.results || [])
+          .filter((channel) => !hidden?.has(channel.id))
+          .map((channel) => serializeChannel(channel, guildSnowflake)),
       ),
     );
   }
@@ -1426,7 +1523,7 @@ async function patchThread(
 
   const payload = await serializeThreadResponse(context, updated, guildSnowflake);
   const { dispatchToBots } = await import("./dispatch");
-  await dispatchToBots("THREAD_UPDATE", payload, { serverId: updated.server_id });
+  await dispatchToBots("THREAD_UPDATE", payload, { serverId: updated.server_id, channelId: updated.channel_id });
   return json(payload);
 }
 
@@ -1529,7 +1626,7 @@ async function startThread(
     viewerBotId: context.bot.id,
   });
   const { dispatchToBots } = await import("./dispatch");
-  await dispatchToBots("THREAD_CREATE", payload, { serverId: channel.server_id });
+  await dispatchToBots("THREAD_CREATE", payload, { serverId: channel.server_id, channelId: channel.id });
   return json(payload, 201);
 }
 
@@ -2106,6 +2203,8 @@ function botOwnsMessage(bot: BotIdentity, row: StoredMessage): boolean {
   if (row.user_id) return false;
   const owner = payloadOwner(row.payload);
   if (owner) return owner === bot.id;
+  // A Developer Portal bot picks its own name, so a name proves nothing.
+  if (bot.applicationId) return false;
   // Bot posts from before payloads always named their bot, and not a webhook's.
   if (!row.is_bot) return false;
   try {

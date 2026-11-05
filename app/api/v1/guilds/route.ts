@@ -1,4 +1,4 @@
-import { authenticateBot } from "@/lib/bot-auth";
+import { authenticateServerBot } from "@/lib/bot-auth";
 import { ensureSchema } from "@/lib/schema";
 import { listServers } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
@@ -6,7 +6,7 @@ import { bindings } from "@/lib/storage";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const bot = await authenticateBot(request);
+  const bot = await authenticateServerBot(request);
   if (!bot) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }

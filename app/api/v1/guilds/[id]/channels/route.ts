@@ -1,4 +1,4 @@
-import { authenticateBot } from "@/lib/bot-auth";
+import { authenticateServerBot } from "@/lib/bot-auth";
 import { ensureSchema } from "@/lib/schema";
 import type { ChannelRow } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
@@ -9,7 +9,7 @@ export async function GET(
   request: Request,
   props: { params: Promise<{ id: string }> },
 ) {
-  const bot = await authenticateBot(request);
+  const bot = await authenticateServerBot(request);
   if (!bot) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }

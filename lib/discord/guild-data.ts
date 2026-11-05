@@ -7,6 +7,8 @@
  * this assembles the whole thing in a handful of queries rather than letting
  * the serializers fan out into per-row lookups.
  */
+import { isPrivateChannel, loadServerOverwrites } from "../channel-permissions";
+import { Permission } from "../permissions";
 import { DM_SERVER_ID } from "../schema";
 import type { BotIdentity } from "../bot-auth";
 import {
@@ -30,6 +32,8 @@ export interface GuildLoadOptions {
   includePresences?: boolean;
   /** User ids the hub reports as connected right now. */
   online?: Set<string>;
+  /** Channels to leave out, for a bot that may not see them. */
+  hideChannels?: Set<string> | null;
 }
 
 /** Every server this bot may see: its own, or all of them when it is master. */
@@ -37,6 +41,22 @@ export async function botServers(
   db: D1Database,
   bot: BotIdentity,
 ): Promise<HoffleServerRow[]> {
+  if (bot.grants) {
+    const ids = Object.keys(bot.grants);
+    const servers: HoffleServerRow[] = [];
+    for (let i = 0; i < ids.length; i += 50) {
+      const chunk = ids.slice(i, i + 50);
+      const rows = await db
+        .prepare(
+          `SELECT id, name, icon, color, created_by, created_at, banner_url
+           FROM servers WHERE id IN (${chunk.map(() => "?").join(",")}) ORDER BY position, created_at`,
+        )
+        .bind(...chunk)
+        .all<HoffleServerRow>();
+      servers.push(...(rows.results || []));
+    }
+    return servers;
+  }
   if (bot.serverId) {
     const row = await db
       .prepare(
@@ -58,8 +78,33 @@ export async function botServers(
 
 /** True when the bot is allowed to act on this native server id. */
 export function botCanSeeServer(bot: BotIdentity, serverId: string): boolean {
+  if (bot.grants) return serverId !== DM_SERVER_ID && Object.hasOwn(bot.grants, serverId);
   if (serverId === DM_SERVER_ID) return bot.isMaster;
   return bot.isMaster || bot.serverId === serverId;
+}
+
+/**
+ * The channels a Developer Portal bot may not see in a server: all of them
+ * without View Channels, otherwise the private ones unless it is an
+ * administrator. Null for other bots, which see every channel.
+ */
+export async function channelsHiddenFromBot(
+  db: D1Database,
+  bot: BotIdentity,
+  serverId: string,
+): Promise<Set<string> | null> {
+  if (!bot.grants) return null;
+  const grant = Object.hasOwn(bot.grants, serverId) ? bot.grants[serverId] : 0;
+  if (grant & Permission.ADMINISTRATOR) return new Set();
+  if (!(grant & Permission.VIEW_CHANNEL)) {
+    const { results } = await db
+      .prepare("SELECT id FROM channels WHERE server_id = ?")
+      .bind(serverId)
+      .all<{ id: string }>();
+    return new Set((results || []).map((row) => row.id));
+  }
+  const overwrites = await loadServerOverwrites(db, [serverId]);
+  return new Set([...overwrites].filter(([, list]) => isPrivateChannel(list)).map(([id]) => id));
 }
 
 export async function loadGuild(
@@ -113,9 +158,9 @@ export async function loadGuild(
   );
 
   const channels = await Promise.all(
-    [...categoryChannels, ...(channelRows.results || [])].map((channel) =>
-      serializeChannel(channel, guildSnowflake),
-    ),
+    [...categoryChannels, ...(channelRows.results || [])]
+      .filter((channel) => !options.hideChannels?.has(channel.id))
+      .map((channel) => serializeChannel(channel, guildSnowflake)),
   );
 
   const roles = [

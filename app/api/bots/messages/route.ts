@@ -1,3 +1,5 @@
+import { authenticateMusicBot } from "@/lib/bot-auth";
+import { botCanSeeServer } from "@/lib/discord/guild-data";
 import { dispatchMessage } from "@/lib/discord/dispatch";
 import { publishMessage } from "@/lib/hub-client";
 import { publicMessage } from "@/app/api/messages/route";
@@ -27,14 +29,11 @@ interface BotMessageBody {
 /** Lets an external bot (music, D&D, …) post into a Huddle channel. */
 export async function POST(request: Request) {
   const runtime = bindings();
-  if (!runtime.BOT_TOKEN) {
-    return Response.json(
-      { error: "Bot access has not been configured." },
-      { status: 503 },
-    );
-  }
-  if (request.headers.get("authorization") !== `Bearer ${runtime.BOT_TOKEN}`) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const bot = await authenticateMusicBot(request);
+  if (!bot) {
+    return runtime.BOT_TOKEN
+      ? Response.json({ error: "Unauthorized" }, { status: 401 })
+      : Response.json({ error: "Bot access has not been configured." }, { status: 503 });
   }
   if (!runtime.DB) {
     return Response.json(
@@ -52,6 +51,16 @@ export async function POST(request: Request) {
 
   let channelId = body.channelId?.trim().slice(0, 64) || null;
   let channelName = body.channel?.trim().slice(0, 64) || "general";
+  if (bot.grants) {
+    const target = channelId
+      ? await runtime.DB.prepare("SELECT server_id FROM channels WHERE id = ?")
+          .bind(channelId)
+          .first<{ server_id: string }>()
+      : null;
+    if (!target || !botCanSeeServer(bot, target.server_id)) {
+      return Response.json({ error: "This server has not added the bot." }, { status: 403 });
+    }
+  }
   if (channelId) {
     const channel = await runtime.DB.prepare(
       "SELECT name FROM channels WHERE id = ?",

@@ -1,3 +1,5 @@
+import { authenticateMusicBot, type BotIdentity } from "@/lib/bot-auth";
+import { botCanSeeServer } from "@/lib/discord/guild-data";
 import { playerCommand, playerState } from "@/lib/hub-client";
 import { resolveTrack } from "@/lib/music";
 import type { PlayerAction, Track } from "@/lib/protocol";
@@ -7,20 +9,25 @@ import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
-function authorized(request: Request): boolean {
-  const token = bindings().BOT_TOKEN;
-  return Boolean(
-    token && request.headers.get("authorization") === `Bearer ${token}`,
-  );
+/** The room's server has to have added this bot. */
+async function mayUseRoom(db: D1Database, bot: BotIdentity, channelId: string): Promise<boolean> {
+  if (!bot.grants) return true;
+  const channel = await findChannel(db, channelId);
+  return Boolean(channel?.server_id && botCanSeeServer(bot, channel.server_id));
 }
 
 export async function GET(request: Request) {
-  if (!authorized(request)) {
+  const bot = await authenticateMusicBot(request);
+  if (!bot) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
   const channelId = new URL(request.url).searchParams.get("channelId") || "";
   if (!channelId) {
     return Response.json({ error: "Which voice channel?" }, { status: 400 });
+  }
+  const db = bindings().DB;
+  if (bot.grants && (!db || !(await mayUseRoom(db, bot, channelId)))) {
+    return Response.json({ error: "This server has not added the bot." }, { status: 403 });
   }
   return Response.json({ state: await playerState(channelId) });
 }
@@ -30,7 +37,8 @@ export async function GET(request: Request) {
  * the music bot dashboard calls when you press play on a Huddle room.
  */
 export async function POST(request: Request) {
-  if (!authorized(request)) {
+  const bot = await authenticateMusicBot(request);
+  if (!bot) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
   const db = bindings().DB;
@@ -68,6 +76,9 @@ export async function POST(request: Request) {
       { error: "That is not a Hoffle voice channel." },
       { status: 404 },
     );
+  }
+  if (!(await mayUseRoom(db, bot, channelId))) {
+    return Response.json({ error: "This server has not added the bot." }, { status: 403 });
   }
 
   if (body.tracks?.length) {

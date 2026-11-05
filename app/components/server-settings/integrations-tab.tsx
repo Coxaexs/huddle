@@ -2,6 +2,7 @@
 
 import { Check, Copy, Eye, EyeOff, Power, Terminal, Trash2 } from "lucide-react";
 import type { PublicServer } from "@/lib/servers";
+import { basePath } from "../../lib/client";
 import { ServerBot, Tab } from "./types";
 import { DndSettingsPanel } from "./dnd-settings";
 import { FeedsPanel } from "./feeds-settings";
@@ -51,17 +52,6 @@ export function ServerIntegrationsTab({
   if (tab !== "integrations") return null;
 
   const has = (kind: string) => bots.some((bot) => bot.kind === kind);
-  const createCustomBot = () =>
-    onRequestPrompt({
-      title: "Create a bot",
-      message: "Give your bot a name. It gets a Discord-compatible token, so discord.py and discord.js bots run here as they are.",
-      placeholder: "e.g. Trivia Bot",
-      confirmText: "Create bot",
-      onConfirm: (val) => {
-        if (val?.trim()) void addBot(val.trim(), "custom", "🤖");
-      },
-    });
-
   const apps: Array<{
     icon: string;
     name: string;
@@ -72,10 +62,9 @@ export function ServerIntegrationsTab({
   }> = [
     { icon: "📰", name: "Feeds", blurb: "YouTube channels, subreddits, Bluesky, blogs and GitHub releases, posted as they come out.", action: "Follow a feed", onClick: () => goTo("integration-feeds") },
     { icon: "🪝", name: "Webhooks", blurb: "GitHub, GitLab, CI, uptime monitors, Home Assistant: anything that posts to Discord.", action: "Make a webhook", onClick: () => goTo("integration-webhooks") },
-    { icon: "🎵", name: "Music Bot", blurb: "Plays songs in voice for everyone at once, with a queue, lyrics and autoplay.", action: "Add", added: has("music"), onClick: () => void addBot("Hoffle Music", "music", "🎵", "Synchronized voice audio & playback") },
     { icon: "⚔️", name: "D&D Companion", blurb: "5e spells, monsters and items in chat, and fair dice for the table.", action: "Add", added: has("dnd"), onClick: () => void addBot("D&D Companion", "dnd", "⚔️", "5e compendium and dice roller") },
     { icon: "🌉", name: "Discord Bridge", blurb: "Mirror channels with a Discord server both ways: names, pictures, replies, edits, reactions, files and threads.", action: "Set up", onClick: () => goTo("integration-discord-bridge") },
-    { icon: "🤖", name: "Your own bot", blurb: "Run discord.py or discord.js bots against Hoffle with a bot token.", action: "Create", onClick: createCustomBot },
+    { icon: "🤖", name: "Your own bot", blurb: "Make a bot in the Developer Portal and share its invite link. discord.py and discord.js bots run here.", action: "Open", onClick: () => window.open(`${basePath}/developers`, "_blank", "noopener") },
   ];
 
   const origin = typeof window !== "undefined" ? window.location.origin : "https://hoffle.online";
@@ -129,7 +118,7 @@ export function ServerIntegrationsTab({
         {loadingBots ? (
           <p className="integration-empty">Loading bots…</p>
         ) : !bots.length ? (
-          <p className="integration-empty">No bots yet. Add one from the top of this page.</p>
+          <p className="integration-empty">No bots yet. Add one with its invite link.</p>
         ) : (
           <ul className="integration-list">
             {bots.map((bot) => (
@@ -142,6 +131,9 @@ export function ServerIntegrationsTab({
                     {bot.name}{" "}
                     <span className={`integration-badge ${bot.enabled ? "on" : "off"}`}>{bot.enabled ? "On" : "Off"}</span>
                   </strong>
+                  {bot.applicationId ? (
+                    <p className="integration-token">Added with an invite link</p>
+                  ) : (
                   <p className="integration-token">
                     <code>{revealedTokens[bot.id] ? bot.token : `${bot.token.slice(0, 10)}••••••••••••`}</code>
                     <button
@@ -165,6 +157,7 @@ export function ServerIntegrationsTab({
                       <Copy size={14} />
                     </button>
                   </p>
+                  )}
                 </div>
                 <div className="integration-row-actions">
                   <button type="button" className="discord-btn secondary-gray" onClick={() => void toggleBot(bot)}>
@@ -194,13 +187,12 @@ export function ServerIntegrationsTab({
           <Terminal size={16} /> For developers: the Discord-compatible API
         </summary>
         <p>Bots and scripts talk to Hoffle the way they talk to Discord. Send a message:</p>
-        <pre>{`curl -X POST "${origin}/hangout/api/v1/channels/<CHANNEL_ID>/messages" \\
+        <pre>{`curl -X POST "${origin}/hangout/api/v10/channels/<CHANNEL_ID>/messages" \\
   -H "Authorization: Bot <YOUR_BOT_TOKEN>" \\
   -H "Content-Type: application/json" \\
   -d '{"content": "Hello from my bot!"}'`}</pre>
         <p>
-          Live events: a WebSocket at <code>/hangout/api/realtime</code>, or server-sent events at{" "}
-          <code>/hangout/api/v1/gateway/events?token=&lt;YOUR_BOT_TOKEN&gt;</code>.
+          Live events come over the gateway at <code>/hangout/api/gateway</code>, the same as on Discord.
         </p>
       </details>
     </div>

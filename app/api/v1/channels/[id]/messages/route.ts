@@ -1,4 +1,4 @@
-import { authenticateBot } from "@/lib/bot-auth";
+import { authenticateServerBot } from "@/lib/bot-auth";
 import { dispatchMessage } from "@/lib/discord/dispatch";
 import { publishMessage } from "@/lib/hub-client";
 import { publicMessage } from "@/app/api/messages/route";
@@ -44,7 +44,7 @@ export async function GET(
   request: Request,
   props: { params: Promise<{ id: string }> },
 ) {
-  const bot = await authenticateBot(request);
+  const bot = await authenticateServerBot(request);
   if (!bot) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -114,7 +114,7 @@ export async function POST(
   request: Request,
   props: { params: Promise<{ id: string }> },
 ) {
-  const bot = await authenticateBot(request);
+  const bot = await authenticateServerBot(request);
   if (!bot) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }

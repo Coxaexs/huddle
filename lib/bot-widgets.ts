@@ -160,8 +160,10 @@ export function widgetChanges(body: Record<string, unknown>): WidgetChanges | { 
   return changes;
 }
 
-const SELECT = `SELECT w.*, b.name AS bot_name, b.avatar AS bot_avatar
-  FROM bot_widgets w LEFT JOIN server_bots b ON b.id = w.bot_id`;
+const SELECT = `SELECT w.*, COALESCE(b.name, a.name) AS bot_name, COALESCE(b.avatar, a.avatar) AS bot_avatar
+  FROM bot_widgets w
+  LEFT JOIN server_bots b ON b.id = w.bot_id
+  LEFT JOIN applications a ON a.id = w.bot_id`;
 
 export async function getWidget(
   db: D1Database,

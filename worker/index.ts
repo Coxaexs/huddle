@@ -7,6 +7,7 @@
  */
 import handler from "vinext/server/app-router-entry";
 import { extractInviteCodeFromUrl } from "../app/lib/chat/invites";
+import { APP_TOKEN_PREFIX, applicationByToken } from "../lib/applications";
 import { currentUser } from "../lib/auth";
 import { discordBridgeToken, dndBotToken } from "../lib/bot-auth";
 import { bridgeSeatIdentity } from "../lib/discord-voice-seat";
@@ -144,8 +145,13 @@ async function handleRequest(
       // Browsers use their session cookie. The server-side music publisher has
       // a separate bearer token and a fixed identity it cannot override.
       const authorization = request.headers.get("authorization");
+      // The music bot's application token works too, in servers that added it.
+      const musicApp =
+        env.DB && authorization?.startsWith(`Bearer ${APP_TOKEN_PREFIX}`)
+          ? await applicationByToken(env.DB, authorization.slice(7)).catch(() => null)
+          : null;
       const isMusicBot = Boolean(
-        env.BOT_TOKEN && authorization === `Bearer ${env.BOT_TOKEN}`,
+        (env.BOT_TOKEN && authorization === `Bearer ${env.BOT_TOKEN}`) || musicApp?.kind === "music",
       );
       // The recorder participant is refused entirely while the feature is off,
       // so a stale recorder-service cannot connect or record anything.
@@ -215,6 +221,15 @@ async function handleRequest(
       }
 
       const roomParam = url.searchParams.get("room")?.trim().slice(0, 64) || "";
+      if (musicApp?.kind === "music" && roomParam) {
+        const added = await env.DB!.prepare(
+          `SELECT 1 AS ok FROM channels c JOIN server_bots b ON b.server_id = c.server_id
+            WHERE c.id = ? AND b.application_id = ? AND b.enabled = 1 LIMIT 1`,
+        )
+          .bind(roomParam, musicApp.id)
+          .first<{ ok: number }>();
+        if (!added) return new Response("This server has not added the bot.", { status: 403 });
+      }
       const stub = roomParam ? roomHub(roomParam) : hub();
       if (!stub) {
         return new Response("Realtime is not configured.", { status: 503 });

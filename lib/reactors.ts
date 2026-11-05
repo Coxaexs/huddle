@@ -140,6 +140,13 @@ export async function reactorUsers(db: D1Database, ids: string[]): Promise<Map<s
     for (const row of rows.results || []) {
       out.set(`bot:${row.id}`, botReactorUser({ id: row.id, name: row.name, avatar: row.avatar }));
     }
+    const apps = await db
+      .prepare(`SELECT id, name, avatar FROM applications WHERE id IN (${chunk.map(() => "?").join(",")})`)
+      .bind(...chunk)
+      .all<{ id: string; name: string; avatar: string }>();
+    for (const row of apps.results || []) {
+      out.set(`bot:${row.id}`, botReactorUser({ id: row.id, name: row.name, avatar: row.avatar }));
+    }
   }
   for (const id of bots) {
     const known = BUILT_IN_BOTS[id];

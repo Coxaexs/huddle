@@ -9,6 +9,7 @@
  * Every function here is best-effort: a bot that is not listening must never be
  * able to fail a user's message send.
  */
+import { isPrivateChannel, loadOverwrites } from "../channel-permissions";
 import { bindings } from "../storage";
 import { DM_SERVER_ID } from "../schema";
 import type { StoredMessage } from "../storage";
@@ -29,6 +30,30 @@ export interface DispatchOptions {
   isDm?: boolean;
   targetBotId?: string | null;
   excludeBotId?: string | null;
+  /** The channel the event is in, so private ones stay away from invited bots. */
+  channelId?: string | null;
+}
+
+async function channelIsPrivate(channelId: string): Promise<boolean> {
+  const db = bindings().DB;
+  if (!db) return true;
+  const overwrites = await loadOverwrites(db, [channelId]);
+  return isPrivateChannel(overwrites.get(channelId) || []);
+}
+
+/** Tells the gateway a bot's servers or token changed. Best effort. */
+export async function refreshBotSessions(botId: string): Promise<void> {
+  const stub = gateway();
+  if (!stub) return;
+  try {
+    await stub.fetch(`${INTERNAL}/refresh-bot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ botId }),
+    });
+  } catch {
+    // The bot catches up when it next connects.
+  }
 }
 
 /**
@@ -45,10 +70,12 @@ export async function dispatchToBots(
   const stub = gateway();
   if (!stub) return 0;
   try {
+    const { channelId, ...scope } = options;
+    const privateChannel = channelId ? await channelIsPrivate(channelId) : false;
     const response = await stub.fetch(`${INTERNAL}/dispatch`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event, data, ...options }),
+      body: JSON.stringify({ event, data, ...scope, privateChannel }),
     });
     if (!response.ok) return 0;
     const body = (await response.json()) as { delivered?: number };
@@ -108,7 +135,7 @@ export async function dispatchMessage(
 
     await dispatchToBots(event, payload, {
       serverId: located.server?.id ?? DM_SERVER_ID,
-      isDm: located.isDm,
+      isDm: located.isDm, channelId: located.channel.id,
       excludeBotId: options.excludeBotId ?? null,
     });
   } catch {
@@ -144,7 +171,7 @@ export async function dispatchMessageDelete(
     await dispatchToBots(
       "MESSAGE_DELETE",
       { id, channel_id: channelSnowflake, guild_id: guildSnowflake },
-      { serverId: located.server?.id ?? DM_SERVER_ID, isDm: located.isDm },
+      { serverId: located.server?.id ?? DM_SERVER_ID, isDm: located.isDm, channelId: located.channel.id },
     );
   } catch {
     // Best effort.
@@ -203,7 +230,7 @@ export async function dispatchReaction(
       },
       {
         serverId: located.server?.id ?? DM_SERVER_ID,
-        isDm: located.isDm,
+        isDm: located.isDm, channelId: located.channel.id,
         excludeBotId: options.excludeBotId ?? null,
       },
     );
@@ -236,7 +263,7 @@ export async function dispatchTyping(
         user_id: user,
         timestamp: Math.floor(Date.now() / 1000),
       },
-      { serverId: located.server?.id ?? DM_SERVER_ID, isDm: located.isDm },
+      { serverId: located.server?.id ?? DM_SERVER_ID, isDm: located.isDm, channelId: located.channel.id },
     );
   } catch {
     // Best effort.

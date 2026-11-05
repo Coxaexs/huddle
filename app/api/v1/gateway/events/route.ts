@@ -1,4 +1,4 @@
-import { authenticateBot } from "@/lib/bot-auth";
+import { authenticateServerBot } from "@/lib/bot-auth";
 import type { PublicMessage } from "@/app/api/messages/route";
 import { listenToServer } from "@/lib/hub-client";
 
@@ -14,9 +14,9 @@ export async function GET(request: Request) {
     const customReq = new Request(request.url, {
       headers: { Authorization: `Bot ${queryToken}` },
     });
-    bot = await authenticateBot(customReq);
+    bot = await authenticateServerBot(customReq);
   } else {
-    bot = await authenticateBot(request);
+    bot = await authenticateServerBot(request);
   }
 
   if (!bot) {

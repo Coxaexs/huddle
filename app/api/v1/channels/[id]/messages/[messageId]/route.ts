@@ -1,4 +1,4 @@
-import { authenticateBot } from "@/lib/bot-auth";
+import { authenticateServerBot } from "@/lib/bot-auth";
 import { publishMessageEvent } from "@/lib/hub-client";
 import { ensureSchema } from "@/lib/schema";
 import { findChannel } from "@/lib/servers";
@@ -10,7 +10,7 @@ export async function DELETE(
   request: Request,
   props: { params: Promise<{ id: string; messageId: string }> },
 ) {
-  const bot = await authenticateBot(request);
+  const bot = await authenticateServerBot(request);
   if (!bot) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -1,3 +1,4 @@
+import { APP_TOKEN_PREFIX, applicationById, applicationByToken, applicationIdentity } from "./applications";
 import { bindings } from "./storage";
 import { ensureSchema } from "./schema";
 
@@ -8,6 +9,12 @@ export interface BotIdentity {
   serverId: string | null;
   isMaster: boolean;
   kind: string;
+  /** Set on bots made in the Developer Portal (lib/applications.ts). */
+  applicationId?: string;
+  /** Server id -> what it granted. Set means the bot is limited to exactly this. */
+  grants?: Record<string, number>;
+  /** The privileged gateway intents switched on in the portal. */
+  privilegedIntents?: number;
 }
 
 export { generateBotToken } from "./bot-token";
@@ -120,11 +127,17 @@ export async function authenticateBot(
     return null;
   }
 
-  // 4. Check server-specific bot in DB
+  // 5. Check server-specific bot in DB
   const db = runtime.DB;
   if (!db) return null;
 
   await ensureSchema(db);
+
+  // 4. A bot made in the Developer Portal
+  if (token.startsWith(APP_TOKEN_PREFIX)) {
+    const app = await applicationByToken(db, token);
+    return app ? applicationIdentity(db, app) : null;
+  }
 
   interface BotRow {
     id: string;
@@ -137,7 +150,7 @@ export async function authenticateBot(
 
   const row = await db
     .prepare(
-      "SELECT id, server_id, name, avatar, kind, enabled FROM server_bots WHERE token = ? AND enabled = 1 LIMIT 1",
+      "SELECT id, server_id, name, avatar, kind, enabled FROM server_bots WHERE token = ? AND enabled = 1 AND application_id IS NULL LIMIT 1",
     )
     .bind(token)
     .first<BotRow>();
@@ -190,7 +203,10 @@ export async function botById(
       avatar: string;
       kind: string;
     }>();
-  if (!row) return null;
+  if (!row) {
+    const app = await applicationById(db, botId);
+    return app && !app.disabled_at ? applicationIdentity(db, app) : null;
+  }
 
   return {
     id: row.id,
@@ -200,4 +216,21 @@ export async function botById(
     isMaster: false,
     kind: row.kind || "custom",
   };
+}
+
+/**
+ * For Hoffle's own simple bot API (/api/v1), which has no permission checks of
+ * its own. Developer Portal bots use the Discord-compatible API, where what a
+ * server granted them is enforced.
+ */
+export async function authenticateServerBot(request: Request): Promise<BotIdentity | null> {
+  const bot = await authenticateBot(request);
+  return bot?.applicationId ? null : bot;
+}
+
+/** The music bot: its own application token, or the instance's master token. */
+export async function authenticateMusicBot(request: Request): Promise<BotIdentity | null> {
+  const bot = await authenticateBot(request).catch(() => null);
+  if (!bot) return null;
+  return bot.kind === "system" || (bot.applicationId && bot.kind === "music") ? bot : null;
 }

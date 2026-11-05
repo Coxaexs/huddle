@@ -1,3 +1,4 @@
+import { refreshBotSessions } from "@/lib/discord/dispatch";
 import { currentUser, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
@@ -31,9 +32,9 @@ export async function PATCH(
   if (!(await can(db, user.id, id, Permission.MANAGE_SERVER))) return forbidden();
 
   const bot = await db
-    .prepare("SELECT id, name, enabled, kind FROM server_bots WHERE id = ? AND server_id = ?")
+    .prepare("SELECT id, name, enabled, kind, application_id FROM server_bots WHERE id = ? AND server_id = ?")
     .bind(botId, id)
-    .first<{ id: string; name: string; enabled: number; kind: string }>();
+    .first<{ id: string; name: string; enabled: number; kind: string; application_id: string | null }>();
 
   if (!bot) {
     return Response.json({ error: "Bot not found on this server." }, { status: 404 });
@@ -63,6 +64,7 @@ export async function PATCH(
   });
   // Members' open tabs show or hide the music bot's commands and widget.
   if (bot.kind === MUSIC_BOT_KIND) await publishStructureChange(id);
+  if (bot.application_id) await refreshBotSessions(bot.application_id);
 
   return Response.json({ ok: true, enabled: newEnabled, name: newName });
 }
@@ -83,9 +85,9 @@ export async function DELETE(
   if (!(await can(db, user.id, id, Permission.MANAGE_SERVER))) return forbidden();
 
   const bot = await db
-    .prepare("SELECT id, name, kind FROM server_bots WHERE id = ? AND server_id = ?")
+    .prepare("SELECT id, name, kind, application_id FROM server_bots WHERE id = ? AND server_id = ?")
     .bind(botId, id)
-    .first<{ id: string; name: string; kind: string }>();
+    .first<{ id: string; name: string; kind: string; application_id: string | null }>();
 
   if (!bot) {
     return Response.json({ error: "Bot not found." }, { status: 404 });
@@ -105,6 +107,7 @@ export async function DELETE(
     detail: "Removed bot from server",
   });
   if (bot.kind === MUSIC_BOT_KIND) await publishStructureChange(id);
+  if (bot.application_id) await refreshBotSessions(bot.application_id);
 
   return Response.json({ ok: true });
 }

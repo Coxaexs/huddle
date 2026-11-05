@@ -1,3 +1,5 @@
+import { authenticateMusicBot } from "@/lib/bot-auth";
+import { botCanSeeServer } from "@/lib/discord/guild-data";
 import { hubState } from "@/lib/hub-client";
 import { ensureSchema } from "@/lib/schema";
 import { listServers, type PublicServer } from "@/lib/servers";
@@ -38,14 +40,11 @@ export function resetBotServerCache() {
  */
 export async function GET(request: Request) {
   const runtime = bindings();
-  if (!runtime.BOT_TOKEN) {
-    return Response.json(
-      { error: "Bot access has not been configured." },
-      { status: 503 },
-    );
-  }
-  if (request.headers.get("authorization") !== `Bearer ${runtime.BOT_TOKEN}`) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const bot = await authenticateMusicBot(request);
+  if (!bot) {
+    return runtime.BOT_TOKEN
+      ? Response.json({ error: "Unauthorized" }, { status: 401 })
+      : Response.json({ error: "Bot access has not been configured." }, { status: 503 });
   }
   if (!runtime.DB) {
     return Response.json(
@@ -64,7 +63,7 @@ export async function GET(request: Request) {
     platform: "huddle",
     serverNow: state?.serverNow ?? Date.now(),
     online: state?.online || [],
-    servers: servers.map((server) => ({
+    servers: servers.filter((server) => botCanSeeServer(bot, server.id)).map((server) => ({
       id: server.id,
       name: server.name,
       icon: server.icon,

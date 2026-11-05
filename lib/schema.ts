@@ -18,7 +18,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 26;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -675,6 +675,22 @@ async function migrate(db: D1Database): Promise<void> {
       "CREATE INDEX IF NOT EXISTS recorder_diagnostics_session_idx ON recorder_diagnostics(session_id, created_at)",
     ),
     // Bots and integrations added to servers
+    // Bots made in the Developer Portal (lib/applications.ts). Each server one
+    // joined is a server_bots row with application_id set.
+    db.prepare(`CREATE TABLE IF NOT EXISTS applications (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        avatar TEXT NOT NULL DEFAULT '🤖',
+        token_hash TEXT NOT NULL UNIQUE,
+        public INTEGER NOT NULL DEFAULT 1,
+        intents INTEGER NOT NULL DEFAULT 0,
+        kind TEXT NOT NULL DEFAULT 'custom',
+        disabled_at TEXT,
+        created_at TEXT NOT NULL
+      )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS applications_owner_idx ON applications(owner_id)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS server_bots (
         id TEXT PRIMARY KEY,
         server_id TEXT NOT NULL,
@@ -1471,9 +1487,19 @@ async function migrate(db: D1Database): Promise<void> {
     await db.prepare("ALTER TABLE channel_webhooks ADD COLUMN source TEXT").run();
   }
 
+  const botColumns = await columnNames(db, "server_bots");
+  if (!botColumns.has("application_id")) {
+    await db.batch([
+      db.prepare("ALTER TABLE server_bots ADD COLUMN application_id TEXT"),
+      db.prepare("ALTER TABLE server_bots ADD COLUMN permissions INTEGER NOT NULL DEFAULT 0"),
+      db.prepare("CREATE INDEX IF NOT EXISTS server_bots_application_idx ON server_bots(application_id)"),
+    ]);
+  }
+
   await seedDefaultServer(db);
   await backfillServerMembers(db);
   await backfillMusicBot(db);
+  await backfillMusicApplication(db);
   await backfillActiveDays(db);
   await migrateProfileImages(db);
   await ensureFts(db);
@@ -1525,6 +1551,41 @@ async function backfillServerMembers(db: D1Database): Promise<void> {
  * after this start without it. The `meta` flag stops it coming back to a
  * server that later removes it.
  */
+export async function backfillMusicApplication(db: D1Database): Promise<void> {
+  const done = await db
+    .prepare("SELECT value FROM meta WHERE key = 'music_application_backfilled'")
+    .first<{ value: string }>();
+  if (done) return;
+  const owner = await db
+    .prepare("SELECT id FROM users WHERE is_admin = 1 ORDER BY created_at LIMIT 1")
+    .first<{ id: string }>();
+  if (!owner) return;
+
+  // Nobody holds this token: the owner gets a real one with Reset Token.
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(crypto.randomUUID()));
+  const unusable = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO applications (id, owner_id, name, description, avatar, token_hash, public, intents, kind, created_at)
+         VALUES (?, ?, 'Hoffle Music', 'Synchronized voice audio & playback', '🎵', ?, 1, 0, 'music', ?)`,
+      )
+      .bind(id, owner.id, unusable, now),
+    db
+      .prepare("UPDATE server_bots SET application_id = ?, permissions = ? WHERE kind = 'music'")
+      .bind(id, MUSIC_BOT_PERMISSIONS),
+    db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('music_application_backfilled', ?)").bind(now),
+  ]);
+}
+
+/** See channels, talk in them and read back, join voice and speak. */
+export const MUSIC_BOT_PERMISSIONS =
+  (1 << 30) | (1 << 13) | (1 << 16) | (1 << 22) | (1 << 23) | (1 << 24);
+
 export async function backfillMusicBot(db: D1Database): Promise<void> {
   const done = await db
     .prepare("SELECT value FROM meta WHERE key = 'music_bot_backfilled'")

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // GET /api/bot/servers keeps the server list for 10 s; voice state stays live.
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
-vi.mock("@/lib/schema", () => ({ ensureSchema: vi.fn(async () => {}) }));
+vi.mock("@/lib/schema", () => ({ DM_SERVER_ID: "dm", ensureSchema: vi.fn(async () => {}) }));
 vi.mock("@/lib/storage", () => ({ bindings: () => ({ BOT_TOKEN: "t", DB: {} }) }));
 
 const listServers = vi.fn();
