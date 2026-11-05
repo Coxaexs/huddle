@@ -3,6 +3,7 @@
 import type { ScreenShareQuality } from "../hooks/use-voice";
 import { whisperPermissions } from "@/lib/whisper";
 import {
+  CriticalTimers,
   Room,
   RoomEvent,
   Track,
@@ -15,6 +16,7 @@ import {
   type RemoteTrackPublication,
   type TrackPublishOptions,
 } from "livekit-client";
+import { keepCallTimersAwake } from "./worker-timers";
 
 // Silence verbose LiveKit websocket connection and signaling logs in console by default
 try {
@@ -137,6 +139,9 @@ export class SfuVoice {
     } catch {
       // ignore
     }
+    // The call's heartbeat keeps time in a worker, so a background tab's
+    // slowed-down timers cannot make LiveKit drop and reconnect the call.
+    keepCallTimersAwake(CriticalTimers);
     this.room = new Room({
       // Adaptive stream watches elements LiveKit attached itself; ours are
       // plain <video>/<audio> fed a MediaStream, so it would see nothing on
