@@ -49,6 +49,7 @@ import {
 import { isFullscreen, onFullscreenChange, toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
 import { DEFAULT_SQUARES, LOUNGE_SWITCHES, TABLE_MOODS, addInitiative, clampPawnSpot, currentEntry, watchPosition, type AreaOp, type PawnKind, type PawnOp, type LoungeSwitches, type SpellFxEvent, type TableArea, type TableCard, type TableCharacter, type TablePawn, type WatchState } from "@/lib/lounge-shared";
 import { attachWatchSource } from "../lib/watch-source";
+import { createRoomFollower, roomMoment } from "../lib/watch-sync";
 import { partyPlayerOn } from "../lib/tune-in";
 import { SubtitleOverlay } from "./watch-subtitles";
 import { apiFetch } from "../lib/client";
@@ -637,7 +638,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const [hiddenLog, setHiddenLog] = useState<string[]>([]);
   const [myRolls, setMyRolls] = useState<string[]>([]);
   const [watchVolume, setWatchVolume] = useState(0.8);
-  const [watchInfo, setWatchInfo] = useState<WatchInfo>({ duration: 0, current: 0, blocked: false, error: null });
+  const [watchInfo, setWatchInfo] = useState<WatchInfo>({ duration: 0, current: 0, blocked: false, error: null, buffering: false });
   /** Lets the panel's button start a film the browser would not start by itself. */
   const watchApi = useRef<{ start: () => void; time: () => number | null }>({ start: () => undefined, time: () => null });
   const [hoverSeat, setHoverSeat] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -1453,7 +1454,9 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     let watchShowing = false;
     let watchBlocked = false;
     let watchError: string | null = null;
-    let watchSeekAt = 0;
+    let watchFollower = createRoomFollower();
+    /** Since when the film has had too little to play on (a moment's wait is not worth a message). */
+    let watchLoadingSince: number | null = null;
     let watchInfoAt = 0;
     /** The film and queue head this tab last asked the hub to move on from. */
     let advancedFor = "";
@@ -1475,20 +1478,22 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     watchApi.current = {
       start: () => { watchBlocked = false; tryPlay(); },
       // For this viewer's subtitles: the film's position while it is on the screen.
-      time: () => (watchVideo && watchShowing ? watchVideo.currentTime : null),
+      time: () => (watchVideo && watchShowing && watchVideo.readyState >= 2 ? watchVideo.currentTime : null),
     };
     const syncWatch = () => {
       const w = live.current.room.shared.watch;
       if (!w) {
         if (watchVideo || watchShowing) {
           dropWatch();
-          setWatchInfo({ duration: 0, current: 0, blocked: false, error: null });
+          setWatchInfo({ duration: 0, current: 0, blocked: false, error: null, buffering: false });
         }
         return;
       }
       // A new film, or the room's conversion of it changed (another quality).
       if (watchUrl !== `${w.url}|${w.session ?? ""}`) {
         dropWatch();
+        watchFollower = createRoomFollower();
+        watchLoadingSince = null;
         const element = document.createElement("video");
         // A link has to allow this site to read it, or the browser will not hand its picture to the screen.
         element.crossOrigin = "anonymous";
@@ -1530,10 +1535,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         }
       }
       const now = performance.now();
-      if (element.readyState >= 1 && Math.abs(element.currentTime - expected) > (paused ? 0.3 : 1.2) && now - watchSeekAt > 1500) {
-        element.currentTime = expected;
-        watchSeekAt = now;
+      const loading = element.readyState < 3;
+      if (element.readyState >= 1) {
+        const step = watchFollower.next({ current: element.currentTime, expected, paused, loading, seeking: element.seeking, moment: roomMoment(w), now });
+        if (step.seekTo !== null) element.currentTime = step.seekTo;
+        element.playbackRate = step.rate;
       }
+      watchLoadingSince = loading && !paused ? watchLoadingSince ?? now : null;
       if (paused && !element.paused) element.pause();
       else if (!paused && element.paused && !watchBlocked) tryPlay();
       if (parts.screenMaterial.map !== watchTexture) {
@@ -1546,8 +1554,9 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       parts.cinemaLights?.setScreenActive(!paused);
       if (now - watchInfoAt > 500) {
         watchInfoAt = now;
-        setWatchInfo((old) => (old.duration === duration && Math.abs(old.current - element.currentTime) < 0.4 && old.blocked === watchBlocked && old.error === watchError
-          ? old : { duration, current: element.currentTime, blocked: watchBlocked, error: watchError }));
+        const buffering = watchLoadingSince !== null && now - watchLoadingSince > 2000;
+        setWatchInfo((old) => (old.duration === duration && Math.abs(old.current - element.currentTime) < 0.4 && old.blocked === watchBlocked && old.error === watchError && old.buffering === buffering
+          ? old : { duration, current: element.currentTime, blocked: watchBlocked, error: watchError, buffering }));
       }
     };
 
@@ -2500,6 +2509,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         </div>
       </div>}
       {room.shared.watch?.url && <SubtitleOverlay url={room.shared.watch.url} time={() => watchApi.current.time()} className="watch-subtitles-room" />}
+      {watchInfo.error && <div className="watch-surface-problem watch-room-note">{watchInfo.error}</div>}
+      {watchInfo.buffering && !watchInfo.error && <div className="watch-surface-note watch-room-note">Loading the film…</div>}
       {!controlsHidden && venueId === "meadow" && (canFish || fishing.phase !== "idle" || lastCatch) && (
         <FishingPanel
           phase={fishing} canFish={canFish} lastCatch={lastCatch} tackle={tackle}

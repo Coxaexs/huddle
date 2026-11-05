@@ -6,6 +6,7 @@ import { EyeOff, Eye, Film, Monitor, Play } from "lucide-react";
 import type { WatchState } from "@/lib/lounge-shared";
 import { watchPosition } from "@/lib/lounge-shared";
 import { attachWatchSource } from "../../lib/watch-source";
+import { createRoomFollower, roomMoment } from "../../lib/watch-sync";
 import { partyPlayerOn } from "../../lib/tune-in";
 import { SubtitleOverlay } from "../watch-subtitles";
 
@@ -179,12 +180,16 @@ export function WatchSurface({
   live.current = { state, hubNow, volume, audible, onEnded };
   const [problem, setProblem] = useState<string | null>(null);
   const [blocked, setBlocked] = useState(false);
+  const [buffering, setBuffering] = useState(false);
+  const follower = useRef(createRoomFollower());
+  const loadingFor = useRef(0);
 
   // A new film: a new source (and, for Jellyfin, maybe a new conversion).
   useEffect(() => {
     const element = videoRef.current;
     if (!element) return;
     setProblem(null);
+    follower.current = createRoomFollower();
     // Asking for CORS lets a frame be read for previews; watch-source asks
     // plainly instead when a site does not allow it.
     element.crossOrigin = "anonymous";
@@ -219,9 +224,17 @@ export function WatchSurface({
         paused = true;
         ended?.();
       }
-      if (element.readyState >= 1 && Math.abs(element.currentTime - expected) > (paused ? 0.3 : 2)) {
-        element.currentTime = expected;
+      const loading = element.readyState < 3;
+      if (element.readyState >= 1) {
+        const step = follower.current.next({
+          current: element.currentTime, expected, paused, loading, seeking: element.seeking, moment: roomMoment(w), now: Date.now(),
+        });
+        if (step.seekTo !== null) element.currentTime = step.seekTo;
+        element.playbackRate = step.rate;
       }
+      // A moment's wait is not worth a message; a longer one is.
+      loadingFor.current = loading && !paused ? loadingFor.current + 1 : 0;
+      setBuffering(loadingFor.current >= 2);
       if (paused && !element.paused) element.pause();
       else if (!paused && element.paused) {
         void element.play().then(() => setBlocked(false)).catch((error: unknown) => {
@@ -249,7 +262,8 @@ export function WatchSurface({
           <Play size={18} /> Click to play
         </button>
       )}
-      <SubtitleOverlay url={url} time={() => videoRef.current?.currentTime ?? null} />
+      <SubtitleOverlay url={url} time={() => { const video = videoRef.current; return video && video.readyState >= 2 ? video.currentTime : null; }} />
+      {buffering && !problem && !blocked && <div className="watch-surface-note">Loading the film…</div>}
       {problem && <div className="watch-surface-problem">{problem}</div>}
     </div>
   );
