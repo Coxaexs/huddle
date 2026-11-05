@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { playbackPosition, type PlayerState } from "@/lib/protocol";
+import { isLibraryAudio, playbackPosition, type PlayerState } from "@/lib/protocol";
 import { registerMedia, unregisterMedia } from "../lib/devices";
 
 interface UsePlayerOptions {
@@ -110,8 +110,9 @@ export function usePlayer({
       return;
     }
 
-    // A queued placeholder has no audio until the bot resolves it.
-    if (!track.audioUrl) return;
+    // A queued placeholder has no audio until the bot resolves it, and only the
+    // bot can play a song from its own downloads.
+    if (!track.audioUrl || isLibraryAudio(track.audioUrl)) return;
     const audio = ensureAudio();
     if (trackIdRef.current !== track.id) {
       trackIdRef.current = track.id;

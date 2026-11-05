@@ -1,4 +1,4 @@
-import type { Track } from "./protocol";
+import { LIBRARY_AUDIO, type Track } from "./protocol";
 import { botFetch, botSession } from "./musicbot";
 import { bindings } from "./storage";
 
@@ -22,6 +22,8 @@ interface BotResolvedTrack extends ResolvedTrack {
   resolve_query?: string;
   /** Camelot, from the bot's mix analysis (see Track.key). */
   key?: string | null;
+  /** The YouTube id, when the bot already has this song on disk. */
+  library?: string | null;
 }
 
 async function playableTrack(
@@ -29,6 +31,22 @@ async function playableTrack(
   requestedBy: string,
 ): Promise<Track> {
   const query = resolved.resolve_query || resolved.page_url || resolved.title || "";
+  if (resolved.library) {
+    // The bot plays its own file, so YouTube has nothing to do here. `query` lets
+    // it ask for a stream after all if the file has gone by the time it plays.
+    return {
+      id: crypto.randomUUID(),
+      title: resolved.title || query,
+      artist: resolved.artist || "",
+      thumbnail: resolved.thumbnail || null,
+      duration: resolved.duration ?? null,
+      audioUrl: `${LIBRARY_AUDIO}${resolved.library}`,
+      pageUrl: resolved.page_url || null,
+      query,
+      requestedBy,
+      key: resolved.key || null,
+    };
+  }
   const response = await fetch(new URL("/resolve", helperBaseUrl()), {
     method: "POST",
     headers: { "Content-Type": "application/json" },

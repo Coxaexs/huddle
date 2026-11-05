@@ -67,4 +67,11 @@ describe("usePlayer local fallback", () => {
     act(() => { vi.advanceTimersByTime(2000); });
     expect(songPlays()).toBeGreaterThan(0);
   });
+
+  it("leaves a song on the bot's own disk alone, because a browser cannot fetch it", () => {
+    const library = { ...state, track: { ...state.track!, audioUrl: "library:lyn2QKgM7tI" } };
+    renderHook(() => usePlayer({ state: library, serverNow: () => 0, deafened: false, onEnded: () => undefined, streamed: false }));
+    act(() => { vi.advanceTimersByTime(9000); });
+    expect(played.filter((src) => src.includes("library:"))).toEqual([]);
+  });
 });

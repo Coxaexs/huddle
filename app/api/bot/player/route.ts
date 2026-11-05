@@ -3,7 +3,7 @@ import { authenticatePlayerBot, type BotIdentity } from "@/lib/bot-auth";
 import { botCanSeeServer } from "@/lib/discord/guild-data";
 import { playerCommand, playerState } from "@/lib/hub-client";
 import { resolveTrack } from "@/lib/music";
-import type { PlayerAction, Track } from "@/lib/protocol";
+import { isLibraryAudio, type PlayerAction, type Track } from "@/lib/protocol";
 import { ensureSchema } from "@/lib/schema";
 import { findChannel } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
@@ -170,7 +170,8 @@ export async function POST(request: Request) {
     if (!pending) {
       return Response.json({ error: "That track is no longer queued." }, { status: 404 });
     }
-    if (pending.audioUrl || !pending.query) {
+    // A library song is only asked about again when the bot has lost its file.
+    if ((pending.audioUrl && !isLibraryAudio(pending.audioUrl)) || !pending.query) {
       return Response.json({ state });
     }
     const resolved = await resolveTrack(pending.query, pending.requestedBy).catch(

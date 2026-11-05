@@ -200,6 +200,16 @@ export interface CharacterReveal {
   durationMs: number;
 }
 
+/**
+ * The audioUrl of a song the music bot already has on disk: it plays its own
+ * file, so no YouTube stream is looked up. A browser cannot fetch one of these.
+ */
+export const LIBRARY_AUDIO = "library:";
+
+export function isLibraryAudio(url: string | null | undefined): boolean {
+  return Boolean(url?.startsWith(LIBRARY_AUDIO));
+}
+
 export interface Track {
   id: string;
   title: string;

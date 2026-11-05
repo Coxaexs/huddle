@@ -21,7 +21,7 @@ vi.mock("@/lib/auth", async (original) => ({
 }));
 
 import { currentUser } from "@/lib/auth";
-import { playerCommand } from "@/lib/hub-client";
+import { playerCommand, playerState } from "@/lib/hub-client";
 import { resolveTrack } from "@/lib/music";
 import { POST as createApp } from "@/app/api/applications/route";
 import { PATCH as patchApp } from "@/app/api/applications/[id]/route";
@@ -284,10 +284,27 @@ describe("the room player", () => {
 
   it("refuses audio that is not https", async () => {
     const bot = await playerBot();
-    for (const audioUrl of ["http://bot.example/a.mp3", "javascript:alert(1)", "", undefined]) {
+    for (const audioUrl of ["http://bot.example/a.mp3", "javascript:alert(1)", "library:lyn2QKgM7tI", "", undefined]) {
       expect((await drive(bot.token, { channelId: "v1", tracks: [{ title: "x", audioUrl }] })).status).toBe(400);
     }
     expect(playerCommand).not.toHaveBeenCalled();
+  });
+
+  it("finds a stream for a library song whose file has gone", async () => {
+    const song = { id: "t1", audioUrl: "library:lyn2QKgM7tI", query: "https://youtu.be/lyn2QKgM7tI", requestedBy: "kiwi" };
+    vi.mocked(playerState).mockResolvedValueOnce({ track: song, queue: [] } as never);
+    vi.mocked(resolveTrack).mockResolvedValueOnce({ audioUrl: "https://stream.example/a", pageUrl: song.query } as never);
+    expect((await drive("master", { channelId: "v1", resolveTrackId: "t1" })).status).toBe(200);
+    expect(playerCommand).toHaveBeenCalledWith("v1", expect.objectContaining({
+      name: "resolve", trackId: "t1", track: expect.objectContaining({ audioUrl: "https://stream.example/a" }),
+    }));
+  });
+
+  it("leaves a song that already has a stream alone", async () => {
+    const song = { id: "t1", audioUrl: "https://stream.example/a", query: "song", requestedBy: "kiwi" };
+    vi.mocked(playerState).mockResolvedValueOnce({ track: song, queue: [] } as never);
+    expect((await drive("master", { channelId: "v1", resolveTrackId: "t1" })).status).toBe(200);
+    expect(resolveTrack).not.toHaveBeenCalled();
   });
 
   it("does not lend out the music bot's lookups", async () => {
