@@ -31,7 +31,11 @@ export interface WidgetHostValue {
   /** Runs a slash command as if typed in the open channel. */
   runCommand: (raw: string) => Promise<void>;
   /** The D&D table of the voice room you are in. */
-  table: { initiative: Initiative | null; characters: Record<string, TableCharacter> };
+  table: {
+    initiative: Initiative | null;
+    characters: Record<string, TableCharacter>;
+    setInitiative: (next: Initiative) => void;
+  };
 }
 
 const WidgetHost = createContext<WidgetHostValue | null>(null);

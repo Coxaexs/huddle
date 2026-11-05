@@ -31,7 +31,7 @@ function host(over: Partial<WidgetHostValue> = {}): WidgetHostValue {
   return {
     serverId: "s1", activeChannelId: "general", voiceChannelId: "room", players: { room: playing as never },
     voiceRooms: [{ id: "room", name: "Lounge" }, { id: "other", name: "Other" }], joinVoice: vi.fn(), membersOpen: true, musicBot: true, playerBot: true,
-    userId: "me", runCommand: vi.fn(async () => undefined), table: { initiative, characters }, ...over,
+    userId: "me", runCommand: vi.fn(async () => undefined), table: { initiative, characters, setInitiative: vi.fn() }, ...over,
   };
 }
 function show(id: string, size: WidgetSize, value = host()) {
@@ -61,7 +61,7 @@ describe("every built-in widget", () => {
   });
 
   it.each(BUILTIN_WIDGETS.map((entry) => entry.id))("%s copes with being out of a call", async (id) => {
-    const { container } = show(id, "medium", host({ voiceChannelId: null, players: {}, table: { initiative: null, characters: {} } }));
+    const { container } = show(id, "medium", host({ voiceChannelId: null, players: {}, table: { initiative: null, characters: {}, setInitiative: vi.fn() } }));
     await act(async () => undefined);
     expect(container).toBeTruthy();
   });
@@ -129,7 +129,7 @@ describe("D&D widgets", () => {
 
   it("shows whose turn it is", () => {
     show("dnd-initiative", "medium");
-    expect(screen.getByText("Goblin").closest("li")?.className).toContain("xw-current");
+    expect(screen.getByText("Goblin").closest("li")?.className).toContain("is-current");
     expect(screen.getByText(/round.*3/)).toBeTruthy();
   });
 
@@ -146,7 +146,7 @@ describe("D&D widgets", () => {
     api.mockResolvedValue({ text: "A bright streak flashes." } as never);
     show("dnd-spell", "medium");
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "fireball" } });
-    fireEvent.click(screen.getByRole("button", { name: "widget.musicSearch.go" }));
+    fireEvent.submit(screen.getByRole("textbox").closest("form")!);
     expect(await screen.findByText("A bright streak flashes.")).toBeTruthy();
     expect(JSON.parse(String((api.mock.calls[0][1] as { body: string }).body))).toMatchObject({ kind: "spell", query: "fireball", channelId: "general" });
   });
@@ -155,14 +155,14 @@ describe("D&D widgets", () => {
     const value = host();
     show("dnd-spell", "small", value);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "fireball" } });
-    fireEvent.click(screen.getByRole("button", { name: "widget.musicSearch.go" }));
+    fireEvent.submit(screen.getByRole("textbox").closest("form")!);
     expect(value.runCommand).toHaveBeenCalledWith("/spell fireball");
     cleanup();
     api.mockResolvedValue({ text: "You can't move." } as never);
     const other = host();
     show("dnd-condition", "small", other);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "grappled" } });
-    fireEvent.click(screen.getByRole("button", { name: "widget.musicSearch.go" }));
+    fireEvent.submit(screen.getByRole("textbox").closest("form")!);
     expect(await screen.findByText("You can't move.")).toBeTruthy();
     expect(other.runCommand).not.toHaveBeenCalled();
   });
@@ -173,5 +173,63 @@ describe("D&D widgets", () => {
       window.dispatchEvent(new CustomEvent("huddle-dice-roll", { detail: { expression: "1d20", total: 17, roller: { id: "a", displayName: "Sam" }, animationSeed: "s1" } }));
     });
     expect(await screen.findByText("17")).toBeTruthy();
+  });
+});
+
+describe("what the rebuilt widgets can do", () => {
+  const commands = () => api.mock.calls.filter(([url]) => url === "/api/music/command").map(([, init]) => JSON.parse(String(init?.body)).command);
+
+  it("jumps to a queued song, and removes one, by its place in the queue", async () => {
+    const two = { ...playing, queue: [track("t2", "Song Two"), track("t3", "Song Three")] };
+    show("music-queue", "medium", host({ players: { room: two as never } }));
+    fireEvent.click(screen.getByText("Song Three"));
+    await waitFor(() => expect(commands()).toContain("/skipto 2"));
+    fireEvent.click(screen.getAllByRole("button", { name: "widget.musicQueue.remove" })[0]);
+    await waitFor(() => expect(commands()).toContain("/remove 1"));
+  });
+
+  it("does not offer to change a queue you are not in the room for", async () => {
+    show("music-queue", "medium", host({ voiceChannelId: null }));
+    expect(screen.getByText("Song Two")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "widget.musicQueue.remove" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "widget.musicQueue.jump" })).toBeNull();
+  });
+
+  it("moves initiative on to the next turn", () => {
+    const value = host();
+    show("dnd-initiative", "medium", value);
+    fireEvent.click(screen.getByRole("button", { name: "widget.dndInitiative.next" }));
+    expect(value.table.setInitiative).toHaveBeenCalledWith(expect.objectContaining({ turn: 0, round: 4 }));
+  });
+
+  it("shows a lookup as the same card chat shows", async () => {
+    api.mockResolvedValue({ text: "plain", payload: { type: "spell", name: "Fireball", subtitle: "3rd-level evocation", facts: [{ label: "Range", value: "150 feet" }] } });
+    const { container } = show("dnd-spell", "medium");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "fireball" } });
+    fireEvent.submit(screen.getByRole("textbox").closest("form")!);
+    await screen.findByText("Fireball");
+    expect(container.querySelector(".dnd-card")).toBeTruthy();
+    expect(screen.queryByText("plain")).toBeNull();
+  });
+
+  it("lets you roll from a card, like the one in chat", async () => {
+    api.mockResolvedValue({ text: "plain", payload: { type: "monster", name: "Goblin", abilities: [{ label: "DEX", score: 14, mod: "+2" }] } });
+    const value = host();
+    show("dnd-monster", "medium", value);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "goblin" } });
+    fireEvent.submit(screen.getByRole("textbox").closest("form")!);
+    fireEvent.click(await screen.findByTitle(/Roll a DEX check/));
+    expect(value.runCommand).toHaveBeenCalledWith("/roll d20+2 Goblin DEX check");
+  });
+
+  it("shows a V5 roll's successes, and marks a natural 20", async () => {
+    const { container } = show("dnd-rolls", "medium");
+    const roll = (seed: string, total: number, value: number, summary?: string) =>
+      window.dispatchEvent(new CustomEvent("huddle-dice-roll", { detail: { expression: "1d20", dice: [{ sides: 20, sign: 1, rolls: [{ value, kept: true }] }], modifier: 0, total, summary, roller: { id: "me", displayName: "Thorin" }, rollType: "normal", animationSeed: seed } }));
+    act(() => { roll("a", 3, 7, "3 SUCCESSES"); });
+    act(() => { roll("b", 20, 20); });
+    const badges = [...container.querySelectorAll(".xw-badge")];
+    expect(badges.map((badge) => badge.textContent)).toEqual(["20", "3"]);
+    expect(badges[0].className).toContain("crit");
   });
 });

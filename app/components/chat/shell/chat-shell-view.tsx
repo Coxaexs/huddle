@@ -65,7 +65,11 @@ export function renderChatShell(s: ChatShellViewState) {
     playerBot: inDmHome || activeServer?.playerBot !== false,
     userId: user.id,
     runCommand: v.runCommand,
-    table: { initiative: v.livingRoom.shared.initiative, characters: v.livingRoom.shared.characters },
+    table: {
+      initiative: v.livingRoom.shared.initiative,
+      characters: v.livingRoom.shared.characters,
+      setInitiative: (next) => v.livingRoom.setShared("initiative", next),
+    },
   };
 
   // The member list hides itself on the Friends page (DM home, nothing open);

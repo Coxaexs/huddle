@@ -1,13 +1,35 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Pause, Play, Plus, Repeat, RotateCcw, Shuffle, SkipForward, Square } from "lucide-react";
+import {
+  Check,
+  History,
+  Library,
+  ListMusic,
+  Maximize2,
+  MicVocal,
+  Music2,
+  Pause,
+  Play,
+  Plus,
+  Radio,
+  Repeat,
+  Repeat1,
+  RotateCcw,
+  Search,
+  Shuffle,
+  SkipForward,
+  Square,
+  X,
+} from "lucide-react";
 import { apiFetch } from "@/app/lib/client";
 import { useI18n } from "@/app/lib/i18n-context";
 import { proxiedImage } from "@/app/lib/image-proxy";
 import type { WidgetSize } from "@/lib/layout-prefs";
-import { heard, playbackPosition, type Track } from "@/lib/protocol";
+import { heard, playbackPosition } from "@/lib/protocol";
+import { openMusicPlayer } from "../music-player";
 import { useWidgetHost } from "./widget-host";
+import { clock, Progress, Row, Shell, Thumb, Tile, useTicking } from "./widget-parts";
 
 type Props = { size: WidgetSize };
 
@@ -22,7 +44,7 @@ function useRoomMusic() {
   const roomId = room ?? elsewhere?.id ?? null;
   const state = heard(host.players[roomId ?? ""] ?? null);
   const track = state?.track ?? null;
-  return { room, roomId, state, track, playing: Boolean(track && !state?.paused) };
+  return { room, elsewhere, roomId, state, track, playing: Boolean(track && !state?.paused) };
 }
 
 /** Runs a music command the way the slash commands do, so the DJ booth gets it too. */
@@ -53,117 +75,159 @@ function useMusicCommand() {
   return { run, busy, note, canRun: Boolean(room) };
 }
 
-function Idle() {
+/** The line under a title when there is nothing to show. */
+function useIdleLine() {
   const { t } = useI18n();
   const { room } = useRoomMusic();
-  return <p className="xw-muted xw-pad">{t(room ? "widget.music.idle" : "widget.music.joinFirst")}</p>;
-}
-
-function TrackLine({ track }: { track: Pick<Track, "title" | "artist"> }) {
-  return (
-    <span className="xw-grow xw-line" title={track.title}>
-      {track.title}
-      {track.artist ? <span className="xw-muted"> · {track.artist}</span> : null}
-    </span>
-  );
+  return t(room ? "widget.music.idle" : "widget.music.joinFirst");
 }
 
 export function MusicControlsWidget({ size }: Props) {
   const { t } = useI18n();
   const { track, playing, state } = useRoomMusic();
   const { run, busy, note, canRun } = useMusicCommand();
-  if (!canRun) return <Idle />;
-  const off = busy || !track;
-  const small = size === "small";
+  const idle = useIdleLine();
+  useTicking(playing && size !== "small");
+
+  const off = busy || !track || !canRun;
+  const loop = state?.loop ?? "off";
+  const main = (
+    <button type="button" className="mw-btn mw-btn-main" disabled={off} title={t(playing ? "widget.music.pause" : "widget.music.play")} aria-label={t(playing ? "widget.music.pause" : "widget.music.play")} onClick={() => void run(playing ? "/pause" : "/resume")}>
+      {playing ? <Pause size={size === "small" ? 14 : 16} /> : <Play size={size === "small" ? 14 : 16} />}
+    </button>
+  );
+  const skip = (
+    <button type="button" className="mw-btn" disabled={off} title={t("widget.music.skip")} aria-label={t("widget.music.skip")} onClick={() => void run("/skip")}><SkipForward size={14} /></button>
+  );
+  const tile = <Tile image={track?.thumbnail}><Music2 size={size === "small" ? 13 : 18} /></Tile>;
+  const title = track?.title || t("widget.musicControls");
+  const subtitle = track ? track.artist : idle;
+  if (size === "small") {
+    return <Shell size={size} tile={tile} title={title} note={note} right={<span className="mw-controls">{main}{skip}</span>} />;
+  }
+  const duration = track?.duration ? track.duration * 1000 : 0;
   return (
-    <div className="xw">
-      <div className="xw-row">
-        <button type="button" className="xw-btn" disabled={off} title={t("widget.musicControls.replay")} aria-label={t("widget.musicControls.replay")} onClick={() => void run("/replay")}><RotateCcw size={14} /></button>
-        <button type="button" className="xw-btn on" disabled={off} title={t(playing ? "widget.music.pause" : "widget.music.play")} aria-label={t(playing ? "widget.music.pause" : "widget.music.play")} onClick={() => void run(playing ? "/pause" : "/resume")}>{playing ? <Pause size={14} /> : <Play size={14} />}</button>
-        <button type="button" className="xw-btn" disabled={off} title={t("widget.music.skip")} aria-label={t("widget.music.skip")} onClick={() => void run("/skip")}><SkipForward size={14} /></button>
-        {!small && (
-          <>
-            <button type="button" className="xw-btn" disabled={busy || !state?.queue.length} title={t("widget.musicControls.shuffle")} aria-label={t("widget.musicControls.shuffle")} onClick={() => void run("/shuffle")}><Shuffle size={14} /></button>
-            <button type="button" className={`xw-btn ${state?.loop && state.loop !== "off" ? "on" : ""}`} disabled={off} title={t("widget.musicControls.loop")} aria-label={t("widget.musicControls.loop")} onClick={() => void run(`/loop ${NEXT_LOOP[state?.loop ?? "off"]}`)}><Repeat size={14} /></button>
-            <button type="button" className="xw-btn" disabled={off} title={t("widget.musicControls.stop")} aria-label={t("widget.musicControls.stop")} onClick={() => void run("/stop")}><Square size={14} /></button>
-          </>
-        )}
+    <Shell size={size} bigTile tile={tile} title={title} subtitle={subtitle} note={note}>
+      {track && duration > 0 && state && <Progress position={Math.min(playbackPosition(state), duration)} duration={duration} />}
+      <div className="xw-transport">
+        <button type="button" className={`mw-btn ${loop !== "off" ? "xw-on" : ""}`} disabled={off} title={t("widget.musicControls.loop")} aria-label={t("widget.musicControls.loop")} onClick={() => void run(`/loop ${NEXT_LOOP[loop]}`)}>
+          {loop === "track" ? <Repeat1 size={14} /> : <Repeat size={14} />}
+        </button>
+        <button type="button" className="mw-btn" disabled={off} title={t("widget.musicControls.replay")} aria-label={t("widget.musicControls.replay")} onClick={() => void run("/replay")}><RotateCcw size={14} /></button>
+        {main}
+        {skip}
+        <button type="button" className="mw-btn" disabled={busy || !state?.queue.length || !canRun} title={t("widget.musicControls.shuffle")} aria-label={t("widget.musicControls.shuffle")} onClick={() => void run("/shuffle")}><Shuffle size={14} /></button>
+        <button type="button" className="mw-btn" disabled={off} title={t("widget.musicControls.stop")} aria-label={t("widget.musicControls.stop")} onClick={() => void run("/stop")}><Square size={13} /></button>
       </div>
-      {note && <p className="xw-muted xw-pad">{note}</p>}
-    </div>
+    </Shell>
   );
 }
 
 export function MusicQueueWidget({ size }: Props) {
   const { t } = useI18n();
   const { state } = useRoomMusic();
+  const { run, busy, note, canRun } = useMusicCommand();
   const queue = state?.queue ?? [];
+  const next = queue[0];
+  const tile = <Tile image={next?.thumbnail}><ListMusic size={size === "small" ? 13 : 18} /></Tile>;
   if (size === "small") {
-    return <div className="xw-row xw-line xw-pad">{queue[0] ? <TrackLine track={queue[0]} /> : <span className="xw-muted">{t("widget.musicQueue.empty")}</span>}</div>;
+    return <Shell size={size} tile={tile} title={next?.title || t("widget.musicQueue")} subtitle={next ? t("widget.music.upNext") : t("widget.musicQueue.empty")} note={note} />;
   }
-  const shown = queue.slice(0, size === "large" ? 12 : 5);
+  const seconds = queue.reduce((sum, item) => sum + (item.duration ?? 0), 0);
+  const count = t("widget.musicQueue.count", { count: queue.length });
+  const shown = queue.slice(0, size === "large" ? 12 : 4);
   return (
-    <div className="xw">
-      <span className="xw-head">{t("widget.music.upNext")}</span>
-      {!shown.length ? <p className="xw-muted xw-pad">{t("widget.musicQueue.empty")}</p> : (
-        <ol className="xw-list">{shown.map((item) => <li key={item.id}><TrackLine track={item} /></li>)}</ol>
+    <Shell size={size} tile={tile} title={t("widget.musicQueue")} subtitle={queue.length ? (seconds ? `${count} · ${clock(seconds * 1000)}` : count) : t("widget.musicQueue.empty")} note={note}>
+      {shown.length > 0 && (
+        <ol className="xw-list">
+          {shown.map((item, index) => (
+            <Row
+              key={item.id}
+              thumb={<Thumb image={item.thumbnail}>{index + 1}</Thumb>}
+              title={item.title}
+              subtitle={item.artist}
+              label={t("widget.musicQueue.jump")}
+              onClick={canRun && !busy ? () => void run(`/skipto ${index + 1}`) : undefined}
+              end={
+                canRun ? (
+                  <button type="button" className="mw-btn xw-on-hover" disabled={busy} title={t("widget.musicQueue.remove")} aria-label={t("widget.musicQueue.remove")} onClick={() => void run(`/remove ${index + 1}`)}><X size={13} /></button>
+                ) : null
+              }
+            />
+          ))}
+        </ol>
       )}
-      {queue.length > shown.length && <span className="xw-muted">{t("widget.music.more", { count: queue.length - shown.length })}</span>}
-    </div>
+      {queue.length > shown.length && <small className="mw-more">{t("widget.music.more", { count: queue.length - shown.length })}</small>}
+    </Shell>
   );
 }
 
 export function MusicHistoryWidget({ size }: Props) {
   const { t } = useI18n();
   const { state } = useRoomMusic();
-  const { run, busy, canRun } = useMusicCommand();
+  const { run, busy, note, canRun } = useMusicCommand();
   const history = state?.history ?? [];
+  const last = history[0];
+  const tile = <Tile image={last?.thumbnail}><History size={size === "small" ? 13 : 18} /></Tile>;
   if (size === "small") {
-    return <div className="xw-row xw-line xw-pad">{history[0] ? <TrackLine track={history[0]} /> : <span className="xw-muted">{t("widget.musicHistory.empty")}</span>}</div>;
+    return <Shell size={size} tile={tile} title={last?.title || t("widget.musicHistory")} subtitle={last ? t("widget.musicHistory") : t("widget.musicHistory.empty")} note={note} />;
   }
-  const shown = history.slice(0, size === "large" ? 12 : 5);
+  const shown = history.slice(0, size === "large" ? 12 : 4);
   return (
-    <div className="xw">
-      <span className="xw-head">{t("widget.musicHistory")}</span>
-      {!shown.length ? <p className="xw-muted xw-pad">{t("widget.musicHistory.empty")}</p> : (
+    <Shell size={size} tile={tile} title={t("widget.musicHistory")} subtitle={history.length ? t("widget.musicQueue.count", { count: history.length }) : t("widget.musicHistory.empty")} note={note}>
+      {shown.length > 0 && (
         <ul className="xw-list">
           {shown.map((item) => (
-            <li key={item.id}>
-              <TrackLine track={item} />
-              {canRun && (
-                <button type="button" className="xw-btn" disabled={busy} title={t("widget.musicHistory.again")} aria-label={t("widget.musicHistory.again")} onClick={() => void run(`/playnext ${item.pageUrl || item.title}`)}>
-                  <Plus size={12} />
-                </button>
-              )}
-            </li>
+            <Row
+              key={item.id}
+              thumb={<Thumb image={item.thumbnail}><Music2 size={13} /></Thumb>}
+              title={item.title}
+              subtitle={item.artist}
+              end={
+                canRun ? (
+                  <button type="button" className="mw-btn xw-on-hover" disabled={busy} title={t("widget.musicHistory.again")} aria-label={t("widget.musicHistory.again")} onClick={() => void run(`/playnext ${item.pageUrl || item.title}`)}><Plus size={13} /></button>
+                ) : null
+              }
+            />
           ))}
         </ul>
       )}
-    </div>
+    </Shell>
   );
 }
 
 export function MusicCoverWidget({ size }: Props) {
-  const { track } = useRoomMusic();
-  if (!track) return <Idle />;
-  const cover = track.thumbnail ? proxiedImage(track.thumbnail) : null;
+  const { t } = useI18n();
+  const { track, state, playing, roomId } = useRoomMusic();
+  const idle = useIdleLine();
+  useTicking(playing && size !== "small");
+  if (size === "small" || !track) {
+    return <Shell size={size} tile={<Tile image={track?.thumbnail}><Music2 size={size === "small" ? 13 : 18} /></Tile>} title={track?.title || t("widget.musicCover")} subtitle={track ? track.artist : idle} />;
+  }
+  const duration = track.duration ? track.duration * 1000 : 0;
+  const percent = duration && state ? Math.min(100, (playbackPosition(state) / duration) * 100) : 0;
   return (
-    <div className={size === "small" ? "xw-row xw-pad" : "xw"}>
-      {cover && <img className="xw-cover" src={cover} alt="" />}
-      <TrackLine track={track} />
-    </div>
+    <button type="button" className={`xw-cover xw-cover-${size}`} title={t("widget.musicCover.open")} aria-label={t("widget.musicCover.open")} onClick={() => openMusicPlayer({ channelId: roomId })}>
+      {track.thumbnail ? <img src={proxiedImage(track.thumbnail)} alt="" loading="lazy" /> : <span className="xw-cover-none"><Music2 size={36} /></span>}
+      <span className="xw-cover-text">
+        <strong>{track.title}</strong>
+        {track.artist ? <small>{track.artist}</small> : null}
+      </span>
+      {percent > 0 && <span className="xw-cover-bar" style={{ width: `${percent}%` }} />}
+    </button>
   );
 }
 
 type LyricsAnswer = { trackId: string | null; lines?: Array<[number, string]>; lyrics?: string | null };
 
-/** Saved lyrics only: asking for a lookup here would spend the small Musixmatch plan. */
+/** Saved lyrics only: a lookup from here would spend the small Musixmatch plan. */
 export function MusicLyricsWidget({ size }: Props) {
   const { t } = useI18n();
   const { roomId, track, state, playing } = useRoomMusic();
+  const idle = useIdleLine();
   const [answer, setAnswer] = useState<LyricsAnswer | null>(null);
-  const [, setTick] = useState(0);
   const trackId = track?.id ?? null;
+  useTicking(playing, 500);
 
   useEffect(() => {
     setAnswer(null);
@@ -175,45 +239,58 @@ export function MusicLyricsWidget({ size }: Props) {
     return () => { stale = true; };
   }, [roomId, trackId]);
 
-  useEffect(() => {
-    if (!playing) return;
-    const timer = setInterval(() => setTick((n) => n + 1), 500);
-    return () => clearInterval(timer);
-  }, [playing]);
-
-  if (!track) return <Idle />;
   const lines = answer?.lines ?? [];
-  if (!lines.length) {
-    const plain = answer?.lyrics;
-    if (plain && size === "large") return <div className="xw xw-text">{plain}</div>;
-    return <p className="xw-muted xw-pad">{t("widget.musicLyrics.none")}</p>;
-  }
   const seconds = state ? playbackPosition(state) / 1000 : 0;
   let index = 0;
   lines.forEach(([at], position) => { if (at <= seconds) index = position; });
   const now = lines[index]?.[1] || "♪";
-  if (size === "small") return <div className="xw-line xw-pad">{now}</div>;
-  const after = lines.slice(index + 1, index + (size === "large" ? 5 : 2));
+  const tile = <Tile image={track?.thumbnail}><MicVocal size={size === "small" ? 13 : 18} /></Tile>;
+  const full = roomId ? (
+    <button type="button" className="mw-btn" title={t("widget.musicLyrics.open")} aria-label={t("widget.musicLyrics.open")} onClick={() => openMusicPlayer({ channelId: roomId, tab: "lyrics" })}><Maximize2 size={14} /></button>
+  ) : null;
+
+  if (size === "small") {
+    return <Shell size={size} tile={tile} title={lines.length ? now : track?.title || t("widget.musicLyrics")} subtitle={lines.length ? undefined : track ? t("widget.musicLyrics.none") : idle} />;
+  }
+  if (!track) return <Shell size={size} tile={tile} title={t("widget.musicLyrics")} subtitle={idle} />;
+  if (!lines.length) {
+    const plain = answer?.lyrics;
+    return (
+      <Shell size={size} tile={tile} title={track.title} subtitle={plain ? track.artist : t("widget.musicLyrics.none")} right={full}>
+        {plain && size === "large" && <div className="xw-text">{plain}</div>}
+      </Shell>
+    );
+  }
+  const around = size === "large" ? 2 : 1;
+  const before = lines.slice(Math.max(0, index - around), index);
+  const after = lines.slice(index + 1, index + 1 + around);
   return (
-    <div className="xw">
-      <span className="xw-lyric-now">{now}</span>
-      {after.map(([at, line]) => <span key={at} className="xw-muted">{line || "♪"}</span>)}
-    </div>
+    <Shell size={size} tile={tile} title={track.title} subtitle={track.artist} right={full}>
+      <div className="xw-lyrics">
+        {before.map(([at, line]) => <span key={at}>{line || "♪"}</span>)}
+        <strong>{now}</strong>
+        {after.map(([at, line]) => <span key={at}>{line || "♪"}</span>)}
+      </div>
+    </Shell>
   );
 }
 
-type Result = { title: string; artist: string; url: string };
+type Result = { title: string; artist: string; url: string; thumbnail?: string | null; duration?: number | null };
 
 export function MusicSearchWidget({ size }: Props) {
   const { t } = useI18n();
   const { track } = useRoomMusic();
   const { run, busy, note, canRun } = useMusicCommand();
+  const idle = useIdleLine();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Result[]>([]);
+  const [added, setAdded] = useState<string[]>([]);
   const [searching, setSearching] = useState(false);
 
-  if (!canRun) return <Idle />;
-  const add = (what: string) => void run(`${track ? "/playnext" : "/play"} ${what}`);
+  const add = (what: string) => {
+    setAdded((list) => [...list, what]);
+    void run(`${track ? "/playnext" : "/play"} ${what}`);
+  };
   const search = async (event: FormEvent) => {
     event.preventDefault();
     const text = query.trim();
@@ -227,38 +304,54 @@ export function MusicSearchWidget({ size }: Props) {
     try {
       const body = await apiFetch<{ results?: Result[] }>(`/api/music/search?${new URLSearchParams({ q: text })}`);
       setResults(body.results ?? []);
+      setAdded([]);
     } catch {
       setResults([]);
     } finally {
       setSearching(false);
     }
   };
+  const box = (
+    <form className="mw-queue" onSubmit={(event) => void search(event)}>
+      {size === "small" ? <Plus size={13} aria-hidden="true" /> : <Search size={13} aria-hidden="true" />}
+      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("widget.music.queueAdd")} aria-label={t("widget.musicSearch")} maxLength={300} />
+    </form>
+  );
+  const tile = <Tile><Search size={size === "small" ? 13 : 18} /></Tile>;
+  if (!canRun) return <Shell size={size} tile={tile} title={t("widget.musicSearch")} subtitle={idle} />;
+  if (size === "small") {
+    return <div className="mw mw-small">{tile}{note ? <span className="mw-line"><small role="status">{note}</small></span> : box}</div>;
+  }
   return (
-    <div className="xw">
-      <form className="xw-row" onSubmit={(event) => void search(event)}>
-        <input className="xw-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("widget.music.queueAdd")} aria-label={t("widget.musicSearch")} />
-        <button type="submit" className="xw-btn" disabled={busy || searching || !query.trim()}>{size === "small" ? <Plus size={12} /> : t("widget.musicSearch.go")}</button>
-      </form>
+    <Shell size={size} tile={tile} title={t("widget.musicSearch")} subtitle={searching ? "…" : t("widget.musicSearch.hint")} note={note}>
+      {box}
       {results.length > 0 && (
         <ul className="xw-list">
           {results.slice(0, size === "large" ? 8 : 4).map((item) => (
-            <li key={item.url}>
-              <TrackLine track={item} />
-              <button type="button" className="xw-btn" disabled={busy} aria-label={t("widget.music.queueAdd")} onClick={() => add(item.url)}><Plus size={12} /></button>
-            </li>
+            <Row
+              key={item.url}
+              thumb={<Thumb image={item.thumbnail}><Music2 size={13} /></Thumb>}
+              title={item.title}
+              subtitle={item.artist}
+              end={
+                <button type="button" className="mw-btn" disabled={busy || added.includes(item.url)} title={t("widget.music.queueAdd")} aria-label={t("widget.music.queueAdd")} onClick={() => add(item.url)}>
+                  {added.includes(item.url) ? <Check size={13} /> : <Plus size={13} />}
+                </button>
+              }
+            />
           ))}
         </ul>
       )}
-      {note && <p className="xw-muted xw-pad">{note}</p>}
-    </div>
+    </Shell>
   );
 }
 
-type Playlist = { name: string; count: number };
+type Playlist = { name: string; count: number; cover?: string | null };
 
 export function MusicPlaylistsWidget({ size }: Props) {
   const { t } = useI18n();
   const { room } = useRoomMusic();
+  const idle = useIdleLine();
   const [lists, setLists] = useState<Playlist[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
@@ -283,22 +376,26 @@ export function MusicPlaylistsWidget({ size }: Props) {
     }
   };
 
-  if (!room) return <Idle />;
-  if (!lists) return <p className="xw-muted xw-pad">…</p>;
-  if (!lists.length) return <p className="xw-muted xw-pad">{t("widget.musicPlaylists.empty")}</p>;
-  const shown = lists.slice(0, size === "small" ? 1 : size === "large" ? 12 : 5);
+  const playButton = (name: string, main = false) => (
+    <button type="button" className={`mw-btn ${main ? "mw-btn-main" : ""}`} title={t("widget.music.play")} aria-label={t("widget.music.play")} onClick={() => void play(name)}><Play size={13} /></button>
+  );
+  const first = lists?.[0];
+  const tile = <Tile image={first?.cover}><Library size={size === "small" ? 13 : 18} /></Tile>;
+  if (!room) return <Shell size={size} tile={tile} title={t("widget.musicPlaylists")} subtitle={idle} />;
+  if (size === "small") {
+    return <Shell size={size} tile={tile} title={first?.name || t("widget.musicPlaylists")} subtitle={first ? undefined : t("widget.musicPlaylists.empty")} note={note} right={first ? playButton(first.name, true) : null} />;
+  }
+  const shown = (lists ?? []).slice(0, size === "large" ? 12 : 4);
   return (
-    <div className="xw">
-      <ul className="xw-list">
-        {shown.map((list) => (
-          <li key={list.name}>
-            <span className="xw-grow xw-line">{list.name} <span className="xw-muted">{list.count}</span></span>
-            <button type="button" className="xw-btn" aria-label={t("widget.music.play")} onClick={() => void play(list.name)}><Play size={12} /></button>
-          </li>
-        ))}
-      </ul>
-      {note && <p className="xw-muted xw-pad">{note}</p>}
-    </div>
+    <Shell size={size} tile={tile} title={t("widget.musicPlaylists")} subtitle={lists?.length ? t("widget.musicPlaylists.count", { count: lists.length }) : t("widget.musicPlaylists.empty")} note={note}>
+      {shown.length > 0 && (
+        <ul className="xw-list">
+          {shown.map((list) => (
+            <Row key={list.name} thumb={<Thumb image={list.cover}><Library size={13} /></Thumb>} title={list.name} subtitle={t("widget.musicQueue.count", { count: list.count })} end={playButton(list.name)} />
+          ))}
+        </ul>
+      )}
+    </Shell>
   );
 }
 
@@ -310,15 +407,22 @@ export function MusicRoomsWidget({ size }: Props) {
     () => host.voiceRooms.map((room) => ({ ...room, track: heard(host.players[room.id] ?? null)?.track ?? null })).filter((room) => room.track),
     [host.voiceRooms, host.players],
   );
-  if (!rooms.length) return <p className="xw-muted xw-pad">{t("widget.musicRooms.none")}</p>;
+  const first = rooms[0];
+  const join = (id: string) =>
+    id === host.voiceChannelId ? <small className="xw-here">{t("widget.musicRooms.here")}</small> : <button type="button" className="mw-join" onClick={() => host.joinVoice(id)}>{t("widget.music.join")}</button>;
+  const tile = <Tile image={size === "small" ? first?.track?.thumbnail : null}><Radio size={size === "small" ? 13 : 18} /></Tile>;
+  if (size === "small") {
+    return <Shell size={size} tile={tile} title={first?.track?.title || t("widget.musicRooms")} subtitle={first ? first.name : t("widget.musicRooms.none")} right={first ? join(first.id) : null} />;
+  }
   return (
-    <ul className="xw-list xw-pad">
-      {rooms.slice(0, size === "small" ? 1 : 8).map((room) => (
-        <li key={room.id}>
-          <span className="xw-grow xw-line"><strong>{room.name}</strong> <span className="xw-muted">{room.track?.title}</span></span>
-          {room.id !== host.voiceChannelId && <button type="button" className="xw-btn" onClick={() => host.joinVoice(room.id)}>{t("widget.music.join")}</button>}
-        </li>
-      ))}
-    </ul>
+    <Shell size={size} tile={tile} title={t("widget.musicRooms")} subtitle={rooms.length ? t("widget.musicRooms.count", { count: rooms.length }) : t("widget.musicRooms.none")}>
+      {rooms.length > 0 && (
+        <ul className="xw-list">
+          {rooms.slice(0, 8).map((room) => (
+            <Row key={room.id} thumb={<Thumb image={room.track?.thumbnail}><Music2 size={13} /></Thumb>} title={room.name} subtitle={room.track?.title} end={join(room.id)} />
+          ))}
+        </ul>
+      )}
+    </Shell>
   );
 }
