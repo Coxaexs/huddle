@@ -72,6 +72,8 @@ export interface Message {
   payload?: {
     /** Sent with @silent: no pushes, pop-ups or sounds. */
     silent?: boolean;
+    /** Forum posts: the tags they wear (ids from the forum's list). */
+    forumTags?: string[];
     /** Voice messages: length, a precomputed waveform (0–100 bars), and the transcript once someone asked for it. */
     voice?: { durationMs?: number; waveform?: number[]; transcript?: string };
     /** Theme share cards */

@@ -18,7 +18,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
     replyTarget, setActiveChannelId, setActiveServerId, setBannedIds, setDms, setDraft, setMembers,
     setMessages, setMobileNav, setNotice, setNudgeCooling, setReplyTarget, setStageChannelId,
     setTheme, setVoicePrefs, showCustomConfirm, showCustomPrompt, user, visibleDms, voice,
-    voiceChannels,
+    voiceChannels, forumDraftTags, setForumDraftTags,
   } = s;
 
   // ------------------------------------------------------------- actions
@@ -682,6 +682,8 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
 
   async function sendText(text: string, attachmentKeys?: string | string[], payload?: { imageAlts?: Record<string, string> }) {
     if (!activeChannelId) return;
+    // A new forum post takes the tags picked on the board.
+    const forumTags = forumDraftTags?.channelId === activeChannelId ? forumDraftTags.tags : [];
     const isDm = dmChannelIdsRef.current.has(activeChannelId) || inDmHome;
     if (isDm) {
       const now = new Date().toISOString();
@@ -742,9 +744,10 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
           attachmentKey: keys[0],
           attachmentKeys: keys.slice(1),
           replyTo,
-          payload,
+          payload: forumTags.length ? { ...(payload || {}), forumTags } : payload,
         }),
       });
+      if (forumTags.length) setForumDraftTags(null);
       if (pendingId) dropPending(res.message);
       return res;
     } catch (error) {

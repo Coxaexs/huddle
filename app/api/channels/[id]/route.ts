@@ -1,5 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { MAX_SLOWMODE_SECONDS } from "@/lib/slowmode";
+import { normalizeForumTags } from "@/lib/forum-tags";
 import { recordAudit } from "@/lib/audit";
 import { publishStructureChange } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
@@ -56,6 +57,8 @@ export async function PATCH(
     rtcRegion?: "auto" | "nl" | "de";
     /** Age-restricted: members confirm they are 18+ before it opens. */
     nsfw?: boolean;
+    /** Forum channels: the tags posts there can wear. */
+    forumTags?: unknown;
   };
 
   let kind = channel.kind;
@@ -111,6 +114,12 @@ export async function PATCH(
       id,
     )
     .run();
+  if (body.forumTags !== undefined && kind === "forum") {
+    await db
+      .prepare("UPDATE channels SET forum_tags = ? WHERE id = ?")
+      .bind(JSON.stringify(normalizeForumTags(body.forumTags)), id)
+      .run();
+  }
 
   await recordAudit(db, {
     serverId: channel.server_id,
