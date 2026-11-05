@@ -505,6 +505,8 @@ docker compose --profile musicbot build --no-cache musicwatch
 docker compose --profile musicbot up -d
 ```
 
+To add it to a server: sign in as the owner, open the Developer Portal at `/hangout/developers`, open **Hoffle Music** and copy its invite link. Anyone with Manage Server can add it to their server with that link, the same as any other bot.
+
 ## Single-container install (Unraid, TrueNAS, Synology)
 
 NAS systems often prefer one container over a compose file. `Dockerfile.all-in-one` bundles Hoffle and the music bot (without the D&D compendium):
