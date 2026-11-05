@@ -2,6 +2,7 @@ import { isBigUploadKey } from "@/lib/big-upload-key";
 import { servableBigUpload } from "@/lib/big-uploads";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
+import { uploadBlocked } from "@/lib/takedowns";
 import { isInlineSafe } from "@/lib/upload-sniff";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,16 @@ export async function GET(
   context: { params: Promise<{ key: string }> },
 ) {
   const { key } = await context.params;
+
+  // A file taken down under a legal order stops being served, whoever asks.
+  const db = bindings().DB;
+  if (db) {
+    await ensureSchema(db);
+    if (await uploadBlocked(db, key)) {
+      return new Response("This file was removed.", { status: 451, headers: { "Cache-Control": "no-store" } });
+    }
+  }
+
   if (isBigUploadKey(key)) return serveBigUpload(request, key);
 
   const bucket = bindings().UPLOADS;

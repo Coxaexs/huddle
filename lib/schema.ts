@@ -18,7 +18,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 26;
+export const SCHEMA_VERSION = 27;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -675,6 +675,29 @@ async function migrate(db: D1Database): Promise<void> {
       "CREATE INDEX IF NOT EXISTS recorder_diagnostics_session_idx ON recorder_diagnostics(session_id, created_at)",
     ),
     // Bots and integrations added to servers
+    // Content taken down under a legal order (lib/takedowns.ts).
+    db.prepare(`CREATE TABLE IF NOT EXISTS takedowns (
+        id TEXT PRIMARY KEY,
+        link TEXT NOT NULL,
+        message_id TEXT,
+        message_hidden INTEGER NOT NULL DEFAULT 0,
+        file_keys TEXT NOT NULL DEFAULT '[]',
+        channel_id TEXT,
+        server_id TEXT,
+        author TEXT,
+        source TEXT NOT NULL,
+        source_detail TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'down',
+        created_at TEXT NOT NULL,
+        resolved_at TEXT,
+        resolved_by TEXT
+      )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS blocked_uploads (
+        key TEXT NOT NULL,
+        takedown_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (key, takedown_id)
+      )`),
     // Bots made in the Developer Portal (lib/applications.ts). Each server one
     // joined is a server_bots row with application_id set.
     db.prepare(`CREATE TABLE IF NOT EXISTS applications (

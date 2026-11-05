@@ -59,6 +59,7 @@ Voice and video run on servers we run ourselves, including on Oracle Cloud. Some
 - Your account and messages: until you delete them or your account.
 - Large shared files: deleted after 12 hours.
 - Music bot records (what you played, playlists, favourites, Reels likes): until you ask us to delete them.
+- Content removed under a legal order: hidden from everyone and kept for as long as the law requires, which is at least 6 months for terrorist content.
 - Server logs: normally up to about 6 weeks. Voice server logs can be kept longer.
 - Backups: overwritten on a rolling schedule, so deleted data disappears from them within about 30 days.
 

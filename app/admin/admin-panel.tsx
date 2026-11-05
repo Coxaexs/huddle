@@ -1,5 +1,6 @@
 "use client";
 
+import { TakedownsTab } from "./takedowns-tab";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -24,8 +25,7 @@ import {
   Trash2,
   Flag,
   File,
-  TrendingUp,
-} from "lucide-react";
+  TrendingUp, ShieldAlert } from "lucide-react";
 import type { AdminAuditEntry, AdminFeature, AdminOverview, AdminServer, AdminUser } from "@/lib/admin";
 import type { PublicUser } from "@/lib/users";
 import { apiFetch, basePath } from "../lib/client";
@@ -34,7 +34,7 @@ import { GrowthTab } from "./growth-tab";
 import { ConfirmDialog, FilesTab, InvitesTab, MessagesTab, MusixmatchUsageCard, ReportsTab, ServerPeek, SongsTab, VoiceTab, type ConfirmRequest } from "./admin-tools";
 import "./admin.css";
 
-type Tab = "overview" | "growth" | "hosts" | "users" | "bigfiles" | "servers" | "messages" | "reports" | "files" | "invites" | "voice" | "songs" | "audit" | "features";
+type Tab = "overview" | "growth" | "hosts" | "users" | "bigfiles" | "servers" | "messages" | "reports" | "takedowns" | "files" | "invites" | "voice" | "songs" | "audit" | "features";
 
 interface AdminData {
   overview: AdminOverview;
@@ -160,6 +160,7 @@ const TABS: Array<{ id: Tab; label: string; icon: typeof Activity }> = [
   { id: "servers", label: "Servers", icon: Server },
   { id: "messages", label: "Messages", icon: MessageSquare },
   { id: "reports", label: "Reports", icon: Flag },
+  { id: "takedowns", label: "Takedowns", icon: ShieldAlert },
   { id: "files", label: "Files", icon: File },
   { id: "invites", label: "Invites", icon: Ticket },
   { id: "voice", label: "Voice rooms", icon: Mic },
@@ -1109,6 +1110,8 @@ export function AdminPanel() {
         <MessagesTab servers={data.servers} confirm={setConfirming} />
       ) : tab === "reports" ? (
         <ReportsTab servers={data.servers} />
+      ) : tab === "takedowns" ? (
+        <TakedownsTab confirm={setConfirming} />
       ) : tab === "files" ? (
         <FilesTab />
       ) : tab === "invites" ? (

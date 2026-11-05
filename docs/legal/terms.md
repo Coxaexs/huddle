@@ -34,6 +34,8 @@ If you break these rules we may remove the content, mute you, remove you from se
 - **Block a person:** open their profile and tap **Block**. You won't see their messages and they can't message you directly.
 - **Contact us:** email [info@hoffle.online](mailto:info@hoffle.online) about anything else, including illegal content, copyright complaints and appeals.
 
+If an authority orders content removed, we may take it down automatically and straight away.
+
 We review reports of objectionable content **within 24 hours**. If content breaks these terms, we remove it and act against the user who posted it.
 
 ## Servers and moderators

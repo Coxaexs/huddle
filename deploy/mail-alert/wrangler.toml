@@ -6,3 +6,9 @@ compatibility_date = "2026-10-01"
 HOFFLE_URL = "https://chat.hoffle.online"
 # FORWARD_TO: the address your mail goes to now. It must be verified in Email Routing.
 FORWARD_TO = ""
+# Domains whose orders are acted on without a person, comma separated. Empty
+# means automatic takedown is off and mail only rings your phone. See the README
+# before filling this in.
+TAKEDOWN_SENDERS = ""
+# Who writes the Authentication-Results header we trust. See the README.
+AUTH_SERVER = "mx.cloudflare.net"

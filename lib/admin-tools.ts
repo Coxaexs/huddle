@@ -6,7 +6,7 @@
 
 import { clampInviteUses } from "./invite-limits";
 import { INSTANCE_AUDIT } from "./admin";
-import { recordAudit } from "./audit";
+import { recordAudit, type AuditActor } from "./audit";
 import { generateInviteCode, type User } from "./auth";
 import { dispatchMessageDelete } from "./discord/dispatch";
 import { channelAudience } from "./dms";
@@ -316,7 +316,7 @@ export async function searchMessages(
  * Hides a message for everyone, as its author deleting it would. Its files
  * stay in storage so they can still be reviewed in /admin/media.
  */
-export async function adminDeleteMessage(db: D1Database, id: string, actor: User): Promise<boolean> {
+export async function adminDeleteMessage(db: D1Database, id: string, actor: AuditActor): Promise<boolean> {
   const message = await db
     .prepare(
       `SELECT m.id, m.channel_id, m.author, m.content, c.server_id, c.kind
