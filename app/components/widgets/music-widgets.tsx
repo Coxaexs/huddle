@@ -29,7 +29,7 @@ import type { WidgetSize } from "@/lib/layout-prefs";
 import { heard, playbackPosition } from "@/lib/protocol";
 import { openMusicPlayer } from "../music-player";
 import { useWidgetHost } from "./widget-host";
-import { clock, Progress, Row, Shell, Thumb, Tile, useTicking } from "./widget-parts";
+import { clock, Progress, Row, Shell, ThinBar, Thumb, Tile, useTicking } from "./widget-parts";
 
 type Props = { size: WidgetSize };
 
@@ -45,6 +45,24 @@ function useRoomMusic() {
   const state = heard(host.players[roomId ?? ""] ?? null);
   const track = state?.track ?? null;
   return { room, elsewhere, roomId, state, track, playing: Boolean(track && !state?.paused) };
+}
+
+/** How far through its song a room is. Nothing playing, or a live stream, has no answer. */
+function songProgress(state: ReturnType<typeof heard>) {
+  const duration = state?.track?.duration ? state.track.duration * 1000 : 0;
+  if (!state || !duration) return null;
+  const position = Math.min(playbackPosition(state), duration);
+  return { position, duration, percent: (position / duration) * 100 };
+}
+
+/** The Music widget's bar for the song in this room; a thin line at small size. */
+function TrackBar({ size }: Props) {
+  const { state, playing } = useRoomMusic();
+  useTicking(playing);
+  const progress = songProgress(state);
+  if (!progress) return null;
+  if (size === "small") return <ThinBar edge percent={progress.percent} />;
+  return <Progress position={progress.position} duration={progress.duration} />;
 }
 
 /** Runs a music command the way the slash commands do, so the DJ booth gets it too. */
@@ -87,7 +105,6 @@ export function MusicControlsWidget({ size }: Props) {
   const { track, playing, state } = useRoomMusic();
   const { run, busy, note, canRun } = useMusicCommand();
   const idle = useIdleLine();
-  useTicking(playing && size !== "small");
 
   const off = busy || !track || !canRun;
   const loop = state?.loop ?? "off";
@@ -103,12 +120,10 @@ export function MusicControlsWidget({ size }: Props) {
   const title = track?.title || t("widget.musicControls");
   const subtitle = track ? track.artist : idle;
   if (size === "small") {
-    return <Shell size={size} tile={tile} title={title} note={note} right={<span className="mw-controls">{main}{skip}</span>} />;
+    return <Shell size={size} tile={tile} title={title} note={note} bar={<TrackBar size={size} />} right={<span className="mw-controls">{main}{skip}</span>} />;
   }
-  const duration = track?.duration ? track.duration * 1000 : 0;
   return (
-    <Shell size={size} bigTile tile={tile} title={title} subtitle={subtitle} note={note}>
-      {track && duration > 0 && state && <Progress position={Math.min(playbackPosition(state), duration)} duration={duration} />}
+    <Shell size={size} bigTile tile={tile} title={title} subtitle={subtitle} note={note} bar={<TrackBar size={size} />}>
       <div className="xw-transport">
         <button type="button" className={`mw-btn ${loop !== "off" ? "xw-on" : ""}`} disabled={off} title={t("widget.musicControls.loop")} aria-label={t("widget.musicControls.loop")} onClick={() => void run(`/loop ${NEXT_LOOP[loop]}`)}>
           {loop === "track" ? <Repeat1 size={14} /> : <Repeat size={14} />}
@@ -131,13 +146,13 @@ export function MusicQueueWidget({ size }: Props) {
   const next = queue[0];
   const tile = <Tile image={next?.thumbnail}><ListMusic size={size === "small" ? 13 : 18} /></Tile>;
   if (size === "small") {
-    return <Shell size={size} tile={tile} title={next?.title || t("widget.musicQueue")} subtitle={next ? t("widget.music.upNext") : t("widget.musicQueue.empty")} note={note} />;
+    return <Shell size={size} tile={tile} title={next?.title || t("widget.musicQueue")} subtitle={next ? t("widget.music.upNext") : t("widget.musicQueue.empty")} note={note} bar={<TrackBar size={size} />} />;
   }
   const seconds = queue.reduce((sum, item) => sum + (item.duration ?? 0), 0);
   const count = t("widget.musicQueue.count", { count: queue.length });
   const shown = queue.slice(0, size === "large" ? 12 : 4);
   return (
-    <Shell size={size} tile={tile} title={t("widget.musicQueue")} subtitle={queue.length ? (seconds ? `${count} · ${clock(seconds * 1000)}` : count) : t("widget.musicQueue.empty")} note={note}>
+    <Shell size={size} tile={tile} title={t("widget.musicQueue")} subtitle={queue.length ? (seconds ? `${count} · ${clock(seconds * 1000)}` : count) : t("widget.musicQueue.empty")} note={note} bar={<TrackBar size={size} />}>
       {shown.length > 0 && (
         <ol className="xw-list">
           {shown.map((item, index) => (
@@ -170,11 +185,11 @@ export function MusicHistoryWidget({ size }: Props) {
   const last = history[0];
   const tile = <Tile image={last?.thumbnail}><History size={size === "small" ? 13 : 18} /></Tile>;
   if (size === "small") {
-    return <Shell size={size} tile={tile} title={last?.title || t("widget.musicHistory")} subtitle={last ? t("widget.musicHistory") : t("widget.musicHistory.empty")} note={note} />;
+    return <Shell size={size} tile={tile} title={last?.title || t("widget.musicHistory")} subtitle={last ? t("widget.musicHistory") : t("widget.musicHistory.empty")} note={note} bar={<TrackBar size={size} />} />;
   }
   const shown = history.slice(0, size === "large" ? 12 : 4);
   return (
-    <Shell size={size} tile={tile} title={t("widget.musicHistory")} subtitle={history.length ? t("widget.musicQueue.count", { count: history.length }) : t("widget.musicHistory.empty")} note={note}>
+    <Shell size={size} tile={tile} title={t("widget.musicHistory")} subtitle={history.length ? t("widget.musicQueue.count", { count: history.length }) : t("widget.musicHistory.empty")} note={note} bar={<TrackBar size={size} />}>
       {shown.length > 0 && (
         <ul className="xw-list">
           {shown.map((item) => (
@@ -198,22 +213,19 @@ export function MusicHistoryWidget({ size }: Props) {
 
 export function MusicCoverWidget({ size }: Props) {
   const { t } = useI18n();
-  const { track, state, playing, roomId } = useRoomMusic();
+  const { track, roomId } = useRoomMusic();
   const idle = useIdleLine();
-  useTicking(playing && size !== "small");
   if (size === "small" || !track) {
-    return <Shell size={size} tile={<Tile image={track?.thumbnail}><Music2 size={size === "small" ? 13 : 18} /></Tile>} title={track?.title || t("widget.musicCover")} subtitle={track ? track.artist : idle} />;
+    return <Shell size={size} tile={<Tile image={track?.thumbnail}><Music2 size={size === "small" ? 13 : 18} /></Tile>} title={track?.title || t("widget.musicCover")} subtitle={track ? track.artist : idle} bar={<TrackBar size={size} />} />;
   }
-  const duration = track.duration ? track.duration * 1000 : 0;
-  const percent = duration && state ? Math.min(100, (playbackPosition(state) / duration) * 100) : 0;
   return (
     <button type="button" className={`xw-cover xw-cover-${size}`} title={t("widget.musicCover.open")} aria-label={t("widget.musicCover.open")} onClick={() => openMusicPlayer({ channelId: roomId })}>
       {track.thumbnail ? <img src={proxiedImage(track.thumbnail)} alt="" loading="lazy" /> : <span className="xw-cover-none"><Music2 size={36} /></span>}
       <span className="xw-cover-text">
         <strong>{track.title}</strong>
         {track.artist ? <small>{track.artist}</small> : null}
+        <TrackBar size={size} />
       </span>
-      {percent > 0 && <span className="xw-cover-bar" style={{ width: `${percent}%` }} />}
     </button>
   );
 }
@@ -250,13 +262,13 @@ export function MusicLyricsWidget({ size }: Props) {
   ) : null;
 
   if (size === "small") {
-    return <Shell size={size} tile={tile} title={lines.length ? now : track?.title || t("widget.musicLyrics")} subtitle={lines.length ? undefined : track ? t("widget.musicLyrics.none") : idle} />;
+    return <Shell size={size} tile={tile} title={lines.length ? now : track?.title || t("widget.musicLyrics")} subtitle={lines.length ? undefined : track ? t("widget.musicLyrics.none") : idle} bar={<TrackBar size={size} />} />;
   }
   if (!track) return <Shell size={size} tile={tile} title={t("widget.musicLyrics")} subtitle={idle} />;
   if (!lines.length) {
     const plain = answer?.lyrics;
     return (
-      <Shell size={size} tile={tile} title={track.title} subtitle={plain ? track.artist : t("widget.musicLyrics.none")} right={full}>
+      <Shell size={size} tile={tile} title={track.title} subtitle={plain ? track.artist : t("widget.musicLyrics.none")} right={full} bar={<TrackBar size={size} />}>
         {plain && size === "large" && <div className="xw-text">{plain}</div>}
       </Shell>
     );
@@ -265,7 +277,7 @@ export function MusicLyricsWidget({ size }: Props) {
   const before = lines.slice(Math.max(0, index - around), index);
   const after = lines.slice(index + 1, index + 1 + around);
   return (
-    <Shell size={size} tile={tile} title={track.title} subtitle={track.artist} right={full}>
+    <Shell size={size} tile={tile} title={track.title} subtitle={track.artist} right={full} bar={<TrackBar size={size} />}>
       <div className="xw-lyrics">
         {before.map(([at, line]) => <span key={at}>{line || "♪"}</span>)}
         <strong>{now}</strong>
@@ -318,12 +330,12 @@ export function MusicSearchWidget({ size }: Props) {
     </form>
   );
   const tile = <Tile><Search size={size === "small" ? 13 : 18} /></Tile>;
-  if (!canRun) return <Shell size={size} tile={tile} title={t("widget.musicSearch")} subtitle={idle} />;
+  if (!canRun) return <Shell size={size} tile={tile} title={t("widget.musicSearch")} subtitle={idle} bar={<TrackBar size={size} />} />;
   if (size === "small") {
-    return <div className="mw mw-small">{tile}{note ? <span className="mw-line"><small role="status">{note}</small></span> : box}</div>;
+    return <div className="mw mw-small">{tile}{note ? <span className="mw-line"><small role="status">{note}</small></span> : box}<TrackBar size={size} /></div>;
   }
   return (
-    <Shell size={size} tile={tile} title={t("widget.musicSearch")} subtitle={searching ? "…" : t("widget.musicSearch.hint")} note={note}>
+    <Shell size={size} tile={tile} title={t("widget.musicSearch")} subtitle={searching ? "…" : t("widget.musicSearch.hint")} note={note} bar={<TrackBar size={size} />}>
       {box}
       {results.length > 0 && (
         <ul className="xw-list">
@@ -381,13 +393,13 @@ export function MusicPlaylistsWidget({ size }: Props) {
   );
   const first = lists?.[0];
   const tile = <Tile image={first?.cover}><Library size={size === "small" ? 13 : 18} /></Tile>;
-  if (!room) return <Shell size={size} tile={tile} title={t("widget.musicPlaylists")} subtitle={idle} />;
+  if (!room) return <Shell size={size} tile={tile} title={t("widget.musicPlaylists")} subtitle={idle} bar={<TrackBar size={size} />} />;
   if (size === "small") {
-    return <Shell size={size} tile={tile} title={first?.name || t("widget.musicPlaylists")} subtitle={first ? undefined : t("widget.musicPlaylists.empty")} note={note} right={first ? playButton(first.name, true) : null} />;
+    return <Shell size={size} tile={tile} title={first?.name || t("widget.musicPlaylists")} subtitle={first ? undefined : t("widget.musicPlaylists.empty")} note={note} bar={<TrackBar size={size} />} right={first ? playButton(first.name, true) : null} />;
   }
   const shown = (lists ?? []).slice(0, size === "large" ? 12 : 4);
   return (
-    <Shell size={size} tile={tile} title={t("widget.musicPlaylists")} subtitle={lists?.length ? t("widget.musicPlaylists.count", { count: lists.length }) : t("widget.musicPlaylists.empty")} note={note}>
+    <Shell size={size} tile={tile} title={t("widget.musicPlaylists")} subtitle={lists?.length ? t("widget.musicPlaylists.count", { count: lists.length }) : t("widget.musicPlaylists.empty")} note={note} bar={<TrackBar size={size} />}>
       {shown.length > 0 && (
         <ul className="xw-list">
           {shown.map((list) => (
@@ -404,23 +416,41 @@ export function MusicRoomsWidget({ size }: Props) {
   const { t } = useI18n();
   const host = useWidgetHost();
   const rooms = useMemo(
-    () => host.voiceRooms.map((room) => ({ ...room, track: heard(host.players[room.id] ?? null)?.track ?? null })).filter((room) => room.track),
+    () =>
+      host.voiceRooms
+        .map((room) => {
+          const state = heard(host.players[room.id] ?? null);
+          return { ...room, state, track: state?.track ?? null };
+        })
+        .filter((room) => room.track),
     [host.voiceRooms, host.players],
   );
+  useTicking(rooms.some((room) => !room.state?.paused));
   const first = rooms[0];
+  const firstProgress = songProgress(first?.state ?? null);
   const join = (id: string) =>
     id === host.voiceChannelId ? <small className="xw-here">{t("widget.musicRooms.here")}</small> : <button type="button" className="mw-join" onClick={() => host.joinVoice(id)}>{t("widget.music.join")}</button>;
   const tile = <Tile image={size === "small" ? first?.track?.thumbnail : null}><Radio size={size === "small" ? 13 : 18} /></Tile>;
   if (size === "small") {
-    return <Shell size={size} tile={tile} title={first?.track?.title || t("widget.musicRooms")} subtitle={first ? first.name : t("widget.musicRooms.none")} right={first ? join(first.id) : null} />;
+    return <Shell size={size} tile={tile} title={first?.track?.title || t("widget.musicRooms")} subtitle={first ? first.name : t("widget.musicRooms.none")} right={first ? join(first.id) : null} bar={firstProgress ? <ThinBar edge percent={firstProgress.percent} /> : null} />;
   }
   return (
     <Shell size={size} tile={tile} title={t("widget.musicRooms")} subtitle={rooms.length ? t("widget.musicRooms.count", { count: rooms.length }) : t("widget.musicRooms.none")}>
       {rooms.length > 0 && (
         <ul className="xw-list">
-          {rooms.slice(0, 8).map((room) => (
-            <Row key={room.id} thumb={<Thumb image={room.track?.thumbnail}><Music2 size={13} /></Thumb>} title={room.name} subtitle={room.track?.title} end={join(room.id)} />
-          ))}
+          {rooms.slice(0, 8).map((room) => {
+            const progress = songProgress(room.state);
+            return (
+              <Row
+                key={room.id}
+                thumb={<Thumb image={room.track?.thumbnail}><Music2 size={13} /></Thumb>}
+                title={room.name}
+                subtitle={room.track?.title}
+                bar={progress ? <ThinBar percent={progress.percent} /> : null}
+                end={join(room.id)}
+              />
+            );
+          })}
         </ul>
       )}
     </Shell>

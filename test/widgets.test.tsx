@@ -233,3 +233,63 @@ describe("what the rebuilt widgets can do", () => {
     expect(badges[0].className).toContain("crit");
   });
 });
+
+describe("the progress bar", () => {
+  const widgets = ["music-controls", "music-queue", "music-history", "music-cover", "music-lyrics", "music-search", "music-playlists"];
+  const at = (seconds: number, over: object = {}) => ({ ...playing, positionMs: seconds * 1000, updatedAt: Date.now(), paused: true, ...over });
+  const room = (value: object) => host({ players: { room: value as never } });
+
+  it.each(widgets)("%s shows the song's times, like the Music widget", async (id) => {
+    for (const size of ["medium", "large"] as const) {
+      const { container, unmount } = show(id, size, room(at(50)));
+      await act(async () => undefined);
+      const bar = container.querySelector(".mw-progress");
+      expect(bar?.textContent, size).toBe("0:503:20");
+      expect((bar?.firstElementChild as HTMLElement).style.width, size).toBe("25%");
+      unmount();
+    }
+  });
+
+  it.each(widgets)("%s has a thin bar at small size", async (id) => {
+    const { container } = show(id, "small", room(at(50)));
+    await act(async () => undefined);
+    expect((container.querySelector(".xw-edge-bar > span") as HTMLElement).style.width).toBe("25%");
+  });
+
+  it.each(widgets)("%s has no bar with nothing playing", async (id) => {
+    const { container } = show(id, "medium", host({ players: {} }));
+    await act(async () => undefined);
+    expect(container.querySelector(".mw-progress")).toBeNull();
+  });
+
+  it.each(widgets)("%s has no bar for a live stream, which has no length", async (id) => {
+    const { container } = show(id, "medium", room(at(50, { track: { ...playing.track, duration: null } })));
+    await act(async () => undefined);
+    expect(container.querySelector(".mw-progress")).toBeNull();
+  });
+
+  it("stops at the end of the song", async () => {
+    const { container } = show("music-queue", "medium", room(at(500)));
+    await act(async () => undefined);
+    expect(container.querySelector(".mw-progress")?.textContent).toBe("3:203:20");
+  });
+
+  it("moves while the song plays", async () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = show("music-queue", "medium", room(at(50, { paused: false })));
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+      expect(container.querySelector(".mw-progress")?.textContent).toBe("1:003:20");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives every room its own bar", async () => {
+    const value = host({ players: { room: at(50) as never, other: at(100, { channelId: "other" }) as never } });
+    const { container } = show("music-rooms", "medium", value);
+    await act(async () => undefined);
+    const widths = [...container.querySelectorAll<HTMLElement>(".xw-row-bar > span")].map((bar) => bar.style.width);
+    expect(widths).toEqual(["25%", "50%"]);
+  });
+});

@@ -46,6 +46,7 @@ export function Shell({
   subtitle,
   right,
   note,
+  bar,
   bigTile,
   children,
 }: {
@@ -55,6 +56,8 @@ export function Shell({
   subtitle?: ReactNode;
   right?: ReactNode;
   note?: string | null;
+  /** A progress bar: under the head, or along the bottom edge at small size. */
+  bar?: ReactNode;
   bigTile?: boolean;
   children?: ReactNode;
 }) {
@@ -67,6 +70,7 @@ export function Shell({
           {note ? <small role="status">{note}</small> : subtitle ? <small>{subtitle}</small> : null}
         </span>
         {right}
+        {bar}
       </div>
     );
   }
@@ -80,6 +84,7 @@ export function Shell({
         </span>
         {right}
       </div>
+      {bar}
       {children}
       {note && <p className="mw-note" role="status">{note}</p>}
     </div>
@@ -90,11 +95,20 @@ export function Shell({
 export function Progress({ position, duration }: { position: number; duration: number }) {
   const percent = duration ? Math.min(100, (position / duration) * 100) : 0;
   return (
-    <div className="mw-progress" aria-hidden="true">
+    <span className="mw-progress" aria-hidden="true">
       <span style={{ width: `${percent}%` }} />
       <small>{clock(position)}</small>
       <small>{clock(duration)}</small>
-    </div>
+    </span>
+  );
+}
+
+/** The same bar with no times, for where they will not fit. */
+export function ThinBar({ percent, edge }: { percent: number; edge?: boolean }) {
+  return (
+    <span className={edge ? "xw-edge-bar" : "xw-row-bar"} aria-hidden="true">
+      <span style={{ width: `${percent}%` }} />
+    </span>
   );
 }
 
@@ -103,6 +117,7 @@ export function Row({
   thumb,
   title,
   subtitle,
+  bar,
   end,
   current,
   onClick,
@@ -111,6 +126,7 @@ export function Row({
   thumb?: ReactNode;
   title: ReactNode;
   subtitle?: ReactNode;
+  bar?: ReactNode;
   end?: ReactNode;
   current?: boolean;
   onClick?: () => void;
@@ -122,6 +138,7 @@ export function Row({
       <span className="xw-item-text">
         <strong>{title}</strong>
         {subtitle ? <small>{subtitle}</small> : null}
+        {bar}
       </span>
     </>
   );

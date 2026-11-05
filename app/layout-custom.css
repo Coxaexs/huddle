@@ -1864,11 +1864,15 @@ button.xw-item-main { cursor: pointer; }
 }
 .xw-badge.crit { color: var(--mint, #4ade80); box-shadow: inset 0 0 0 1px var(--mint, #4ade80); }
 .xw-badge.fail { color: var(--coral, #f59e6e); box-shadow: inset 0 0 0 1px var(--coral, #f59e6e); }
+.xw-edge-bar, .xw-row-bar { display: block; overflow: hidden; background: color-mix(in srgb, var(--ink) 12%, transparent); }
+.xw-edge-bar > span, .xw-row-bar > span { display: block; height: 100%; background: var(--lavender, var(--accent)); transition: width 1s linear; }
+.xw-edge-bar { position: absolute; inset: auto 0 0 0; height: 2px; }
+.xw-row-bar { height: 3px; margin-top: 3px; border-radius: 99px; }
 .xw-transport { display: flex; align-items: center; justify-content: center; gap: 4px; }
 .xw-transport .mw-btn { flex: 0 0 auto; }
 .xw-transport .mw-btn-main { flex: 0 0 36px; width: 36px; height: 36px; border-radius: 50%; }
 .mw-btn.xw-on { color: var(--lavender, var(--accent)); border-color: var(--lavender, var(--accent)); }
-.xw-here { color: var(--muted); font-size: 11px; }
+.xw-here { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .xw-cover {
   position: relative;
   display: block;
@@ -1897,7 +1901,9 @@ button.xw-item-main { cursor: pointer; }
 .xw-cover-text strong, .xw-cover-text small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .xw-cover-text strong { font-size: 13px; font-weight: 650; }
 .xw-cover-text small { font-size: 11.5px; opacity: 0.8; }
-.xw-cover-bar { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--lavender, var(--accent)); transition: width 1s linear; }
+.xw-cover-text .mw-progress { display: block; margin: 6px 0 15px; background: #ffffff40; }
+.xw-cover-text .mw-progress > span { background: #fff; }
+.xw-cover-text .mw-progress > small { color: #ffffffd9; opacity: 1; font-size: 10.5px; }
 .xw-lyrics { display: flex; flex-direction: column; gap: 5px; padding: 2px; text-align: center; }
 .xw-lyrics span { color: var(--muted); font-size: 12px; line-height: 1.3; }
 .xw-lyrics strong { color: var(--ink); font-size: 14.5px; font-weight: 650; line-height: 1.3; }
