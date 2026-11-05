@@ -332,6 +332,7 @@
 }
 
 .widget {
+  flex: 0 0 auto;
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -867,7 +868,7 @@
 
 /* While customizing, leave room for the tray along the bottom. */
 :root[data-customizing] .app-shell {
-  padding-bottom: var(--customize-h, 196px);
+  padding-bottom: var(--customize-h, 280px);
   box-sizing: border-box;
 }
 
@@ -876,11 +877,11 @@
    fixed height, so anything the grid parks in a spare row (the member list
    during a call) stays out of sight below it. */
 :root[data-customizing]:not([data-chan]):not([data-members]) .app-shell {
-  grid-template-rows: calc(100dvh - var(--customize-h, 196px)) !important;
+  grid-template-rows: calc(100dvh - var(--customize-h, 280px)) !important;
 }
 
 :root[data-customizing]:not(#_) .discord-user-footer {
-  bottom: calc(var(--customize-h, 196px) + 8px);
+  bottom: calc(var(--customize-h, 280px) + 8px);
 }
 
 .customize-bar {
@@ -889,7 +890,7 @@
   right: 0;
   bottom: 0;
   z-index: 300;
-  height: var(--customize-h, 196px);
+  height: var(--customize-h, 280px);
   display: flex;
   flex-direction: column;
   background: var(--panel);
@@ -962,6 +963,7 @@
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  min-height: 0;
   flex: 1 1 auto;
 }
 
@@ -969,9 +971,11 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  max-height: 168px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding-bottom: 4px;
+  align-content: flex-start;
   align-items: flex-start;
 }
 
@@ -1789,28 +1793,31 @@
 .call-diagram.call-right .ld-bar { top: 9px; bottom: 9px; right: 5px; width: 5px; }
 
 /* The music and D&D widgets (components/widgets/*-widgets.tsx). */
-.bw { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 13px; }
-.bw-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.bw-grow { flex: 1; min-width: 0; }
-.bw-line { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.bw-muted { color: var(--muted); font-size: 12px; }
-.bw-head { font-weight: 600; font-size: 12px; color: var(--muted); }
-.bw-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow-y: auto; }
-.bw-list li { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.bw-list li.bw-current { font-weight: 600; color: var(--accent-hi); }
-.bw-input { flex: 1; min-width: 0; background: var(--chat-bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; }
-.bw-btn { background: var(--lavender-soft); color: var(--ink); border: 0; border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 12px; cursor: pointer; flex: none; display: inline-flex; align-items: center; gap: 4px; }
-.bw-btn:hover:not(:disabled) { background: var(--lavender-muted); }
-.bw-btn:disabled { opacity: 0.5; cursor: default; }
-.bw-btn.on { background: var(--accent-strong); color: var(--on-accent); }
-.bw-dice { display: flex; flex-wrap: wrap; gap: 4px; }
-.bw-cover { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; display: block; }
-.widget-small .bw-cover { width: 24px; height: 24px; aspect-ratio: auto; border-radius: 4px; flex: none; }
-.bw-lyric-now { font-size: 15px; font-weight: 600; }
-.bw-bar { height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; flex: 1; min-width: 40px; }
-.bw-bar > span { display: block; height: 100%; background: var(--mint); }
-.bw-text { white-space: pre-wrap; max-height: 260px; overflow-y: auto; line-height: 1.4; }
-.bw-slots { display: flex; gap: 3px; flex-wrap: wrap; }
-.bw-slot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent-strong); }
-.bw-slot.used { background: var(--line); }
+.xw { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 13px; padding: 10px; }
+.widget-small .xw { padding: 6px 8px; }
+.xw-pad { padding: 10px; }
+.widget-small .xw-pad { padding: 6px 8px; }
+.xw-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.xw-grow { flex: 1; min-width: 0; }
+.xw-line { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.xw-muted { color: var(--muted); font-size: 12px; }
+.xw-head { font-weight: 600; font-size: 12px; color: var(--muted); }
+.xw-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow-y: auto; }
+.xw-list li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.xw-list li.xw-current { font-weight: 600; color: var(--accent-hi); }
+.xw-input { flex: 1; min-width: 0; background: var(--chat-bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; }
+.xw-btn { background: var(--lavender-soft); color: var(--ink); border: 0; border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 12px; cursor: pointer; flex: none; display: inline-flex; align-items: center; gap: 4px; }
+.xw-btn:hover:not(:disabled) { background: var(--lavender-muted); }
+.xw-btn:disabled { opacity: 0.5; cursor: default; }
+.xw-btn.on { background: var(--accent-strong); color: var(--on-accent); }
+.xw-dice { display: flex; flex-wrap: wrap; gap: 4px; }
+.xw-cover { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; display: block; }
+.widget-small .xw-cover { width: 24px; height: 24px; aspect-ratio: auto; border-radius: 4px; flex: none; }
+.xw-lyric-now { font-size: 15px; font-weight: 600; }
+.xw-bar { height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; flex: 1; min-width: 40px; }
+.xw-bar > span { display: block; height: 100%; background: var(--mint); }
+.xw-text { white-space: pre-wrap; max-height: 260px; overflow-y: auto; line-height: 1.4; }
+.xw-slots { display: flex; gap: 3px; flex-wrap: wrap; }
+.xw-slot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent-strong); }
+.xw-slot.used { background: var(--line); }
 

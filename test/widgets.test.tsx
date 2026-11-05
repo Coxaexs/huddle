@@ -129,7 +129,7 @@ describe("D&D widgets", () => {
 
   it("shows whose turn it is", () => {
     show("dnd-initiative", "medium");
-    expect(screen.getByText("Goblin").closest("li")?.className).toContain("bw-current");
+    expect(screen.getByText("Goblin").closest("li")?.className).toContain("xw-current");
     expect(screen.getByText(/round.*3/)).toBeTruthy();
   });
 
@@ -138,8 +138,8 @@ describe("D&D widgets", () => {
     expect(screen.getByText("20/40")).toBeTruthy();
     cleanup();
     const { container } = show("dnd-slots", "medium");
-    expect(container.querySelectorAll(".bw-slot")).toHaveLength(6);
-    expect(container.querySelectorAll(".bw-slot.used")).toHaveLength(1);
+    expect(container.querySelectorAll(".xw-slot")).toHaveLength(6);
+    expect(container.querySelectorAll(".xw-slot.used")).toHaveLength(1);
   });
 
   it("looks things up in place", async () => {

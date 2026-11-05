@@ -56,14 +56,14 @@ function useMusicCommand() {
 function Idle() {
   const { t } = useI18n();
   const { room } = useRoomMusic();
-  return <p className="bw-muted">{t(room ? "widget.music.idle" : "widget.music.joinFirst")}</p>;
+  return <p className="xw-muted xw-pad">{t(room ? "widget.music.idle" : "widget.music.joinFirst")}</p>;
 }
 
 function TrackLine({ track }: { track: Pick<Track, "title" | "artist"> }) {
   return (
-    <span className="bw-grow bw-line" title={track.title}>
+    <span className="xw-grow xw-line" title={track.title}>
       {track.title}
-      {track.artist ? <span className="bw-muted"> · {track.artist}</span> : null}
+      {track.artist ? <span className="xw-muted"> · {track.artist}</span> : null}
     </span>
   );
 }
@@ -76,20 +76,20 @@ export function MusicControlsWidget({ size }: Props) {
   const off = busy || !track;
   const small = size === "small";
   return (
-    <div className="bw">
-      <div className="bw-row">
-        <button type="button" className="bw-btn" disabled={off} title={t("widget.musicControls.replay")} aria-label={t("widget.musicControls.replay")} onClick={() => void run("/replay")}><RotateCcw size={14} /></button>
-        <button type="button" className="bw-btn on" disabled={off} title={t(playing ? "widget.music.pause" : "widget.music.play")} aria-label={t(playing ? "widget.music.pause" : "widget.music.play")} onClick={() => void run(playing ? "/pause" : "/resume")}>{playing ? <Pause size={14} /> : <Play size={14} />}</button>
-        <button type="button" className="bw-btn" disabled={off} title={t("widget.music.skip")} aria-label={t("widget.music.skip")} onClick={() => void run("/skip")}><SkipForward size={14} /></button>
+    <div className="xw">
+      <div className="xw-row">
+        <button type="button" className="xw-btn" disabled={off} title={t("widget.musicControls.replay")} aria-label={t("widget.musicControls.replay")} onClick={() => void run("/replay")}><RotateCcw size={14} /></button>
+        <button type="button" className="xw-btn on" disabled={off} title={t(playing ? "widget.music.pause" : "widget.music.play")} aria-label={t(playing ? "widget.music.pause" : "widget.music.play")} onClick={() => void run(playing ? "/pause" : "/resume")}>{playing ? <Pause size={14} /> : <Play size={14} />}</button>
+        <button type="button" className="xw-btn" disabled={off} title={t("widget.music.skip")} aria-label={t("widget.music.skip")} onClick={() => void run("/skip")}><SkipForward size={14} /></button>
         {!small && (
           <>
-            <button type="button" className="bw-btn" disabled={busy || !state?.queue.length} title={t("widget.musicControls.shuffle")} aria-label={t("widget.musicControls.shuffle")} onClick={() => void run("/shuffle")}><Shuffle size={14} /></button>
-            <button type="button" className={`bw-btn ${state?.loop && state.loop !== "off" ? "on" : ""}`} disabled={off} title={t("widget.musicControls.loop")} aria-label={t("widget.musicControls.loop")} onClick={() => void run(`/loop ${NEXT_LOOP[state?.loop ?? "off"]}`)}><Repeat size={14} /></button>
-            <button type="button" className="bw-btn" disabled={off} title={t("widget.musicControls.stop")} aria-label={t("widget.musicControls.stop")} onClick={() => void run("/stop")}><Square size={14} /></button>
+            <button type="button" className="xw-btn" disabled={busy || !state?.queue.length} title={t("widget.musicControls.shuffle")} aria-label={t("widget.musicControls.shuffle")} onClick={() => void run("/shuffle")}><Shuffle size={14} /></button>
+            <button type="button" className={`xw-btn ${state?.loop && state.loop !== "off" ? "on" : ""}`} disabled={off} title={t("widget.musicControls.loop")} aria-label={t("widget.musicControls.loop")} onClick={() => void run(`/loop ${NEXT_LOOP[state?.loop ?? "off"]}`)}><Repeat size={14} /></button>
+            <button type="button" className="xw-btn" disabled={off} title={t("widget.musicControls.stop")} aria-label={t("widget.musicControls.stop")} onClick={() => void run("/stop")}><Square size={14} /></button>
           </>
         )}
       </div>
-      {note && <p className="bw-muted">{note}</p>}
+      {note && <p className="xw-muted xw-pad">{note}</p>}
     </div>
   );
 }
@@ -99,16 +99,16 @@ export function MusicQueueWidget({ size }: Props) {
   const { state } = useRoomMusic();
   const queue = state?.queue ?? [];
   if (size === "small") {
-    return <div className="bw-row bw-line">{queue[0] ? <TrackLine track={queue[0]} /> : <span className="bw-muted">{t("widget.musicQueue.empty")}</span>}</div>;
+    return <div className="xw-row xw-line xw-pad">{queue[0] ? <TrackLine track={queue[0]} /> : <span className="xw-muted">{t("widget.musicQueue.empty")}</span>}</div>;
   }
   const shown = queue.slice(0, size === "large" ? 12 : 5);
   return (
-    <div className="bw">
-      <span className="bw-head">{t("widget.music.upNext")}</span>
-      {!shown.length ? <p className="bw-muted">{t("widget.musicQueue.empty")}</p> : (
-        <ol className="bw-list">{shown.map((item) => <li key={item.id}><TrackLine track={item} /></li>)}</ol>
+    <div className="xw">
+      <span className="xw-head">{t("widget.music.upNext")}</span>
+      {!shown.length ? <p className="xw-muted xw-pad">{t("widget.musicQueue.empty")}</p> : (
+        <ol className="xw-list">{shown.map((item) => <li key={item.id}><TrackLine track={item} /></li>)}</ol>
       )}
-      {queue.length > shown.length && <span className="bw-muted">{t("widget.music.more", { count: queue.length - shown.length })}</span>}
+      {queue.length > shown.length && <span className="xw-muted">{t("widget.music.more", { count: queue.length - shown.length })}</span>}
     </div>
   );
 }
@@ -119,19 +119,19 @@ export function MusicHistoryWidget({ size }: Props) {
   const { run, busy, canRun } = useMusicCommand();
   const history = state?.history ?? [];
   if (size === "small") {
-    return <div className="bw-row bw-line">{history[0] ? <TrackLine track={history[0]} /> : <span className="bw-muted">{t("widget.musicHistory.empty")}</span>}</div>;
+    return <div className="xw-row xw-line xw-pad">{history[0] ? <TrackLine track={history[0]} /> : <span className="xw-muted">{t("widget.musicHistory.empty")}</span>}</div>;
   }
   const shown = history.slice(0, size === "large" ? 12 : 5);
   return (
-    <div className="bw">
-      <span className="bw-head">{t("widget.musicHistory")}</span>
-      {!shown.length ? <p className="bw-muted">{t("widget.musicHistory.empty")}</p> : (
-        <ul className="bw-list">
+    <div className="xw">
+      <span className="xw-head">{t("widget.musicHistory")}</span>
+      {!shown.length ? <p className="xw-muted xw-pad">{t("widget.musicHistory.empty")}</p> : (
+        <ul className="xw-list">
           {shown.map((item) => (
             <li key={item.id}>
               <TrackLine track={item} />
               {canRun && (
-                <button type="button" className="bw-btn" disabled={busy} title={t("widget.musicHistory.again")} aria-label={t("widget.musicHistory.again")} onClick={() => void run(`/playnext ${item.pageUrl || item.title}`)}>
+                <button type="button" className="xw-btn" disabled={busy} title={t("widget.musicHistory.again")} aria-label={t("widget.musicHistory.again")} onClick={() => void run(`/playnext ${item.pageUrl || item.title}`)}>
                   <Plus size={12} />
                 </button>
               )}
@@ -148,8 +148,8 @@ export function MusicCoverWidget({ size }: Props) {
   if (!track) return <Idle />;
   const cover = track.thumbnail ? proxiedImage(track.thumbnail) : null;
   return (
-    <div className={size === "small" ? "bw-row" : "bw"}>
-      {cover && <img className="bw-cover" src={cover} alt="" />}
+    <div className={size === "small" ? "xw-row xw-pad" : "xw"}>
+      {cover && <img className="xw-cover" src={cover} alt="" />}
       <TrackLine track={track} />
     </div>
   );
@@ -185,19 +185,19 @@ export function MusicLyricsWidget({ size }: Props) {
   const lines = answer?.lines ?? [];
   if (!lines.length) {
     const plain = answer?.lyrics;
-    if (plain && size === "large") return <div className="bw bw-text">{plain}</div>;
-    return <p className="bw-muted">{t("widget.musicLyrics.none")}</p>;
+    if (plain && size === "large") return <div className="xw xw-text">{plain}</div>;
+    return <p className="xw-muted xw-pad">{t("widget.musicLyrics.none")}</p>;
   }
   const seconds = state ? playbackPosition(state) / 1000 : 0;
   let index = 0;
   lines.forEach(([at], position) => { if (at <= seconds) index = position; });
   const now = lines[index]?.[1] || "♪";
-  if (size === "small") return <div className="bw-line">{now}</div>;
+  if (size === "small") return <div className="xw-line xw-pad">{now}</div>;
   const after = lines.slice(index + 1, index + (size === "large" ? 5 : 2));
   return (
-    <div className="bw">
-      <span className="bw-lyric-now">{now}</span>
-      {after.map(([at, line]) => <span key={at} className="bw-muted">{line || "♪"}</span>)}
+    <div className="xw">
+      <span className="xw-lyric-now">{now}</span>
+      {after.map(([at, line]) => <span key={at} className="xw-muted">{line || "♪"}</span>)}
     </div>
   );
 }
@@ -234,22 +234,22 @@ export function MusicSearchWidget({ size }: Props) {
     }
   };
   return (
-    <div className="bw">
-      <form className="bw-row" onSubmit={(event) => void search(event)}>
-        <input className="bw-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("widget.music.queueAdd")} aria-label={t("widget.musicSearch")} />
-        <button type="submit" className="bw-btn" disabled={busy || searching || !query.trim()}>{size === "small" ? <Plus size={12} /> : t("widget.musicSearch.go")}</button>
+    <div className="xw">
+      <form className="xw-row" onSubmit={(event) => void search(event)}>
+        <input className="xw-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("widget.music.queueAdd")} aria-label={t("widget.musicSearch")} />
+        <button type="submit" className="xw-btn" disabled={busy || searching || !query.trim()}>{size === "small" ? <Plus size={12} /> : t("widget.musicSearch.go")}</button>
       </form>
       {results.length > 0 && (
-        <ul className="bw-list">
+        <ul className="xw-list">
           {results.slice(0, size === "large" ? 8 : 4).map((item) => (
             <li key={item.url}>
               <TrackLine track={item} />
-              <button type="button" className="bw-btn" disabled={busy} aria-label={t("widget.music.queueAdd")} onClick={() => add(item.url)}><Plus size={12} /></button>
+              <button type="button" className="xw-btn" disabled={busy} aria-label={t("widget.music.queueAdd")} onClick={() => add(item.url)}><Plus size={12} /></button>
             </li>
           ))}
         </ul>
       )}
-      {note && <p className="bw-muted">{note}</p>}
+      {note && <p className="xw-muted xw-pad">{note}</p>}
     </div>
   );
 }
@@ -284,20 +284,20 @@ export function MusicPlaylistsWidget({ size }: Props) {
   };
 
   if (!room) return <Idle />;
-  if (!lists) return <p className="bw-muted">…</p>;
-  if (!lists.length) return <p className="bw-muted">{t("widget.musicPlaylists.empty")}</p>;
+  if (!lists) return <p className="xw-muted xw-pad">…</p>;
+  if (!lists.length) return <p className="xw-muted xw-pad">{t("widget.musicPlaylists.empty")}</p>;
   const shown = lists.slice(0, size === "small" ? 1 : size === "large" ? 12 : 5);
   return (
-    <div className="bw">
-      <ul className="bw-list">
+    <div className="xw">
+      <ul className="xw-list">
         {shown.map((list) => (
           <li key={list.name}>
-            <span className="bw-grow bw-line">{list.name} <span className="bw-muted">{list.count}</span></span>
-            <button type="button" className="bw-btn" aria-label={t("widget.music.play")} onClick={() => void play(list.name)}><Play size={12} /></button>
+            <span className="xw-grow xw-line">{list.name} <span className="xw-muted">{list.count}</span></span>
+            <button type="button" className="xw-btn" aria-label={t("widget.music.play")} onClick={() => void play(list.name)}><Play size={12} /></button>
           </li>
         ))}
       </ul>
-      {note && <p className="bw-muted">{note}</p>}
+      {note && <p className="xw-muted xw-pad">{note}</p>}
     </div>
   );
 }
@@ -310,13 +310,13 @@ export function MusicRoomsWidget({ size }: Props) {
     () => host.voiceRooms.map((room) => ({ ...room, track: heard(host.players[room.id] ?? null)?.track ?? null })).filter((room) => room.track),
     [host.voiceRooms, host.players],
   );
-  if (!rooms.length) return <p className="bw-muted">{t("widget.musicRooms.none")}</p>;
+  if (!rooms.length) return <p className="xw-muted xw-pad">{t("widget.musicRooms.none")}</p>;
   return (
-    <ul className="bw-list">
+    <ul className="xw-list xw-pad">
       {rooms.slice(0, size === "small" ? 1 : 8).map((room) => (
         <li key={room.id}>
-          <span className="bw-grow bw-line"><strong>{room.name}</strong> <span className="bw-muted">{room.track?.title}</span></span>
-          {room.id !== host.voiceChannelId && <button type="button" className="bw-btn" onClick={() => host.joinVoice(room.id)}>{t("widget.music.join")}</button>}
+          <span className="xw-grow xw-line"><strong>{room.name}</strong> <span className="xw-muted">{room.track?.title}</span></span>
+          {room.id !== host.voiceChannelId && <button type="button" className="xw-btn" onClick={() => host.joinVoice(room.id)}>{t("widget.music.join")}</button>}
         </li>
       ))}
     </ul>
