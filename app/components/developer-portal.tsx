@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import "../developers.css";
 import type { PublicApplication } from "@/lib/applications";
 import { GatewayIntent } from "@/lib/discord/protocol";
-import { PERMISSION_INFO } from "@/lib/permissions";
+import { BOT_PERMISSION_INFO } from "@/lib/permissions";
 import { apiFetch, basePath } from "../lib/client";
 import { SignedIn } from "./signed-in";
 
@@ -37,7 +37,7 @@ function InviteLink({ app }: { app: PublicApplication }) {
       {CATEGORIES.map((category) => (
         <fieldset key={category} className="dev-permissions">
           <legend>{category}</legend>
-          {PERMISSION_INFO.filter((info) => info.category === category).map((info) => (
+          {BOT_PERMISSION_INFO.filter((info) => info.category === category).map((info) => (
             <label key={info.flag} title={info.description}>
               <input
                 type="checkbox"

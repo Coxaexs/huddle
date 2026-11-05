@@ -11,7 +11,7 @@ import { generateBotToken } from "@/lib/bot-token";
 import { refreshBotSessions } from "@/lib/discord/dispatch";
 import { publishStructureChange } from "@/lib/hub-client";
 import { MUSIC_BOT_KIND } from "@/lib/music-bot";
-import { can, Permission, PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
+import { BOT_PERMISSION_INFO, can, Permission, type PermissionFlag } from "@/lib/permissions";
 import { limitUser } from "@/lib/rate-limit";
 import { DM_SERVER_ID, ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
@@ -68,7 +68,7 @@ export async function GET(request: Request) {
       description: app.description,
       owner: owner?.display_name || "Someone",
     },
-    permissions: PERMISSION_INFO.filter((info) => permissions & info.flag).map((info) => info.label),
+    permissions: BOT_PERMISSION_INFO.filter((info) => permissions & info.flag).map((info) => info.label),
     servers,
   });
 }
@@ -96,9 +96,11 @@ export async function POST(request: Request) {
     return Response.json({ error: "You need Manage Server there to add a bot." }, { status: 403 });
   }
 
-  // Nobody can give a bot more than they hold themselves.
+  // Nobody can give a bot more than they hold themselves. Every member can see
+  // channels, though no role stores that.
   const permissions = cleanPermissions(body.permissions);
   for (const flag of Object.values(Permission) as PermissionFlag[]) {
+    if (flag === Permission.VIEW_CHANNEL) continue;
     if (permissions & flag && !(await can(db, user.id, serverId, flag))) {
       return Response.json({ error: "You can't give a bot a permission you don't have." }, { status: 403 });
     }

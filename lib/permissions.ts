@@ -282,6 +282,17 @@ export const PERMISSION_INFO: Array<{
   },
 ];
 
+/** What a bot can ask for: everything a role can have, plus seeing channels. */
+export const BOT_PERMISSION_INFO: typeof PERMISSION_INFO = [
+  {
+    flag: Permission.VIEW_CHANNEL,
+    label: "View Channels",
+    description: "See the server's channels, apart from private ones.",
+    category: "General",
+  },
+  ...PERMISSION_INFO,
+];
+
 /** True if `permissions` grants `flag` (administrator satisfies anything). */
 export function hasPermission(permissions: number, flag: PermissionFlag): boolean {
   if (permissions & Permission.ADMINISTRATOR) return true;

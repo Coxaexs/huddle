@@ -9,7 +9,7 @@
  */
 import type { BotIdentity } from "./bot-auth";
 import { GatewayIntent } from "./discord/protocol";
-import { Permission } from "./permissions";
+import { ALL_PERMISSIONS, Permission } from "./permissions";
 import { MUSIC_BOT_PERMISSIONS } from "./schema";
 
 export const APP_TOKEN_PREFIX = "hfl_app_";
@@ -19,9 +19,6 @@ export const MAX_BOTS_PER_SERVER = 50;
 /** The intents a bot must switch on in the portal before it may ask for them. */
 export const PRIVILEGED_INTENTS =
   GatewayIntent.GuildMembers | GatewayIntent.GuildPresences | GatewayIntent.MessageContent;
-
-/** Every permission bit that exists. Anything else in a request is dropped. */
-export const ALL_PERMISSIONS = Object.values(Permission).reduce((all, flag) => all | flag, 0);
 
 export interface ApplicationRow {
   id: string;

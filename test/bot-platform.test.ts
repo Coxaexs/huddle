@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { setBindings } from "@/lib/storage";
 import { ensureSchema, backfillMusicApplication, MUSIC_BOT_PERMISSIONS } from "@/lib/schema";
-import { Permission } from "@/lib/permissions";
+import { ALL_PERMISSIONS, BOT_PERMISSION_INFO, Permission } from "@/lib/permissions";
 import { resetMemoryRateLimits } from "@/lib/rate-limit";
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
@@ -308,6 +308,7 @@ describe("adding a bot", () => {
   it("cannot grant more than the person adding it holds", async () => {
     const bot = await makeBot();
     expect((await add(bot.id, "s1", P.MANAGE_SERVER, "mod")).status).toBe(200);
+    expect((await add(bot.id, "s1", P.VIEW_CHANNEL | P.MANAGE_SERVER, "mod")).status).toBe(200);
     expect((await add(bot.id, "s1", P.ADMINISTRATOR, "mod")).status).toBe(403);
     expect((await add(bot.id, "s1", P.BAN_MEMBERS, "mod")).status).toBe(403);
   });
@@ -325,10 +326,15 @@ describe("adding a bot", () => {
   it("shows the servers you can add to and what the bot asks for", async () => {
     const bot = await makeBot();
     signIn("owner");
-    const info = await authorizeInfo(new Request(`http://x/?client_id=${bot.id}&permissions=${P.SEND_MESSAGES}`));
+    const info = await authorizeInfo(new Request(`http://x/?client_id=${bot.id}&permissions=${P.VIEW_CHANNEL | P.SEND_MESSAGES}`));
     const body = (await info.json()) as { servers: Array<{ id: string }>; permissions: string[] };
     expect(body.servers.map((s) => s.id)).toEqual(["s1"]);
-    expect(body.permissions).toHaveLength(1);
+    expect(body.permissions).toEqual(["View Channels", "Send Messages"]);
+  });
+
+  it("shows every permission a bot can hold, so nothing is asked for silently", () => {
+    const shown = BOT_PERMISSION_INFO.reduce((all, info) => all | info.flag, 0);
+    expect(shown).toBe(ALL_PERMISSIONS);
   });
 
   it("does not let strangers pass a bot off as Hoffle", async () => {
