@@ -31,6 +31,8 @@ LANDING_DOMAINS=hoffle.online,www.hoffle.online
 
 # [OPTIONAL] Password for the integrated music bot dashboard
 MUSICWATCH_PASSWORD=optional_music_dashboard_password
+# Same value as the bot's HOFFLE_BOT_KEY. Used instead of the password when set.
+MUSICWATCH_BOT_KEY=
 
 # [OPTIONAL] Tenor API key for animated GIF search in the chat composer
 # Get a free key at: https://developers.google.com/tenor/guides/quickstart

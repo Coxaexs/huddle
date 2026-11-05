@@ -147,6 +147,7 @@ Each user can paste an [ntfy](https://ntfy.sh) topic URL under **Settings → Ap
 | `AI_DAILY_LIMIT`        | `/ask` answers per day for the whole server, default 200, which keeps a free key under its quota. |
 | `LASTFM_API_KEY`, `LASTFM_SECRET` | Last.fm "now playing" integration. |
 | `MUSICWATCH_PASSWORD`   | Password for the external music dashboard. |
+| `MUSICWATCH_BOT_KEY`    | Key for calling the music bot, the same value as the bot's `HOFFLE_BOT_KEY`. It only opens the routes Hoffle needs, and replaces `MUSICWATCH_PASSWORD` when set. |
 | `MUSICWATCH_BASE_URL`, `MUSICWATCH_PUBLIC_URL` | Address of an external music dashboard, if you run one. |
 
 ## Internal service addresses

@@ -3,7 +3,8 @@
  *
  * Huddle plays music itself, but the bot still owns things Huddle has no copy
  * of — the lyrics database, the Discord voice connection, listening history —
- * so those commands are proxied here with the dashboard password.
+ * so those commands are proxied here. With MUSICWATCH_BOT_KEY set they use that
+ * key, which only opens what Hoffle needs; without it, the dashboard password.
  */
 
 import { bindings } from "./storage";
@@ -12,6 +13,10 @@ export function baseUrl(): URL {
   return new URL(
     bindings().MUSICWATCH_BASE_URL?.trim() || "https://deeppixel.online",
   );
+}
+
+function botKey(): string {
+  return bindings().MUSICWATCH_BOT_KEY?.trim() || "";
 }
 
 let session: { cookie: string; until: number } | null = null;
@@ -42,6 +47,7 @@ async function signIn(): Promise<string> {
  * instead of logging in for every command.
  */
 export async function botSession(): Promise<string> {
+  if (botKey()) return "";
   if (session && session.until > Date.now()) return session.cookie;
   signingIn ??= signIn()
     .then((cookie) => {
@@ -59,12 +65,13 @@ export async function botFetch(
   cookie: string,
   init?: RequestInit,
 ): Promise<Record<string, any>> {
+  const key = botKey();
   const send = (cookieValue: string) =>
     fetch(new URL(path, baseUrl()), {
       ...init,
       headers: {
         Accept: "application/json",
-        Cookie: cookieValue,
+        ...(key ? { Authorization: `Bearer ${key}` } : { Cookie: cookieValue }),
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
       },
     });

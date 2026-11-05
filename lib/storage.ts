@@ -16,6 +16,7 @@ export interface HuddleBindings {
   MUSICWATCH_BASE_URL?: string;
   MUSICWATCH_PUBLIC_URL?: string;
   MUSICWATCH_PASSWORD?: string;
+  MUSICWATCH_BOT_KEY?: string;
   MUSIC_HELPER_BASE_URL?: string;
   DND_BASE_URL?: string;
   DND_PUBLIC_URL?: string;

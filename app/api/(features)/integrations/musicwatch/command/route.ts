@@ -1,68 +1,14 @@
 import { currentUser, unauthorized } from "@/lib/auth";
+import { botFetch, botSession } from "@/lib/musicbot";
 import { limitUser } from "@/lib/rate-limit";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
-function baseUrl(): URL {
-  return new URL(
-    bindings().MUSICWATCH_BASE_URL?.trim() || "https://deeppixel.online",
-  );
-}
-
 function helperBaseUrl(): URL {
   return new URL(
     bindings().MUSIC_HELPER_BASE_URL?.trim() || "http://127.0.0.1:8731",
   );
-}
-
-/** Logs into the music bot dashboard and returns its session cookie. */
-async function botSession(): Promise<string> {
-  const password = bindings().MUSICWATCH_PASSWORD;
-  if (!password) throw new Error("Music dashboard access is not configured.");
-
-  const response = await fetch(new URL("/api/session", baseUrl()), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ password }),
-  });
-  if (!response.ok) throw new Error("Music dashboard login failed.");
-
-  const cookie = response.headers.get("set-cookie")?.split(";", 1)[0];
-  if (!cookie) throw new Error("Music dashboard returned no session.");
-  return cookie;
-}
-
-async function botFetch(
-  path: string,
-  cookie: string,
-  init?: RequestInit,
-): Promise<Record<string, any>> {
-  const response = await fetch(new URL(path, baseUrl()), {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      Cookie: cookie,
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-    },
-  });
-
-  const raw = await response.text();
-  let data: Record<string, any> = {};
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    data = {};
-  }
-
-  if (!response.ok) {
-    const detail =
-      typeof data.error === "string" && data.error.trim()
-        ? data.error
-        : raw.trim() || `Music bot returned ${response.status}.`;
-    throw new Error(detail);
-  }
-  return data;
 }
 
 function stateSummary(state: Record<string, any>): string {
