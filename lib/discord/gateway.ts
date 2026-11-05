@@ -15,7 +15,7 @@
  * request that caused the event, not in the fan-out path.
  */
 import { PRIVILEGED_INTENTS } from "../applications";
-import { Permission } from "../permissions";
+import { botMayReceive } from "./app-permissions";
 import { channelsHiddenFromBot } from "./guild-data";
 import { DurableObject } from "cloudflare:workers";
 import { ensureSchema } from "../schema";
@@ -524,15 +524,8 @@ export class DiscordGateway extends DurableObject {
 
       // A Developer Portal bot hears only servers that added it, and only what
       // it was granted. An event aimed at it (an interaction) is already scoped.
-      if (session.botGrants && request.targetBotId !== session.botId) {
-        const grant =
-          request.serverId && Object.hasOwn(session.botGrants, request.serverId)
-            ? session.botGrants[request.serverId]
-            : null;
-        if (grant === null) continue;
-        if (!(grant & Permission.ADMINISTRATOR)) {
-          if (!(grant & Permission.VIEW_CHANNEL) || request.privateChannel) continue;
-        }
+      if (session.botGrants && request.targetBotId !== session.botId && !botMayReceive(session.botGrants, request)) {
+        continue;
       }
 
       // Server scoping: a bot added to one server never sees another's traffic.

@@ -147,3 +147,14 @@ export function withinGrant(grant: number, wanted: number): boolean {
   if (grant & Permission.ADMINISTRATOR) return true;
   return (wanted & Permission.ADMINISTRATOR) === 0 && (wanted & ~grant) === 0;
 }
+
+/** Whether a gateway event reaches a Developer Portal bot with these grants. */
+export function botMayReceive(
+  grants: Record<string, number>,
+  event: { serverId?: string | null; privateChannel?: boolean },
+): boolean {
+  if (!event.serverId || !Object.hasOwn(grants, event.serverId)) return false;
+  const grant = grants[event.serverId];
+  if (grant & Permission.ADMINISTRATOR) return true;
+  return Boolean(grant & Permission.VIEW_CHANNEL) && !event.privateChannel;
+}
