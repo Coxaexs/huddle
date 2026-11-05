@@ -217,13 +217,15 @@ async def run_yt_dlp_download(url_or_id: str) -> dict:
         if WATCH_MIN_FREE_BYTES and shutil.disk_usage(WATCH_DIR).free < WATCH_MIN_FREE_BYTES:
             raise ValueError("The server is short on disk space right now, so it can't save new videos.")
 
-        # Download format: best 1080p mp4 with audio, merged to mp4
+        # Download format: best 1080p H.264 with audio, merged to mp4. "ext=mp4"
+        # alone also matches YouTube's AV1 and VP9, which plenty of browsers and
+        # Windows machines show as a blank picture, so it is only the fallback.
         dl_cmd = [
             YTDLP_BIN,
             "--no-warnings",
             "--no-playlist",
             "--playlist-items", "1",
-            "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+            "-f", "bestvideo[height<=1080][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<=1080][vcodec^=avc1]/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
             "--merge-output-format", "mp4",
             *(["--max-filesize", WATCH_MAX_FILESIZE] if WATCH_MAX_FILESIZE else []),
             "-o", os.path.join(WATCH_DIR, f"{video_id}.%(ext)s"),

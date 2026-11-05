@@ -53,7 +53,7 @@ async function searchYouTube(query: string): Promise<YouTubeVideo[]> {
   }
 }
 
-export interface WatchInfo { duration: number; current: number; blocked: boolean; error: string | null }
+export interface WatchInfo { duration: number; current: number; blocked: boolean; error: string | null; buffering: boolean }
 
 /**
  * The watch party's queue: what plays after this film, most votes first, a

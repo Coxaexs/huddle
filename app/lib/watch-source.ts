@@ -15,8 +15,10 @@ import type { WatchQuality } from "@/lib/lounge-shared";
  *
  * The whole room shares one conversion, at the quality whoever started the
  * film picked: it comes through this server (lib/jellyfin-proxy.ts), which
- * asks Jellyfin for it as a single client. Only a Jellyfin the server does not
- * proxy falls back to a conversion per viewer.
+ * asks Jellyfin for it as a single client. A viewer whose connection cannot
+ * carry that quality steps down a ladder of lower ones on their own, without
+ * touching anyone else's picture. Only a Jellyfin the server does not proxy
+ * falls back to a conversion per viewer.
  */
 
 export interface WatchSourceOptions {
@@ -50,6 +52,30 @@ interface MediaSourceInfo { Id?: string; Container?: string; MediaStreams?: Medi
 
 export const UNPLAYABLE =
   "This video could not be played: the link may not allow other sites to use it, or it is not a video file.";
+export const NO_H264 = "This browser cannot play H.264 video, so it cannot show this film. Try the Hoffle app or another browser.";
+
+/** Time spent able to play without one frame before the source counts as failed. */
+const BLANK_SECONDS = 6;
+
+/**
+ * Whether to hand HLS to the browser itself. Only Apple's player earns that:
+ * Chromium browsers now say they can too, but theirs loads slowly and cannot
+ * step down to a lower quality, so hls.js plays there (Edge, Opera, the
+ * desktop apps), as Firefox always has.
+ */
+export function playsHlsItself(video: Pick<HTMLVideoElement, "canPlayType">): boolean {
+  return Boolean(video.canPlayType("application/vnd.apple.mpegurl")) && !/(Chrome|Chromium|Firefox)\//.test(navigator.userAgent);
+}
+
+/** Frames decoded so far, or null where the browser cannot say (or its count is not to be trusted). */
+function framesDecoded(video: HTMLVideoElement): number | null {
+  if (playsHlsItself(video)) return null;
+  return video.getVideoPlaybackQuality?.().totalVideoFrames ?? null;
+}
+
+function canPlayH264(): boolean {
+  return typeof MediaSource === "undefined" || MediaSource.isTypeSupported('video/mp4; codecs="avc1.640028"');
+}
 
 const hex2 = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
 
@@ -179,9 +205,10 @@ async function fetchJellyfinSource(link: JellyfinLink): Promise<MediaSourceInfo 
   }
 }
 
-/** The room's shared conversion, through this server. */
-export function sharedConversionUrl(link: JellyfinLink, mediaSourceId: string, session: string, quality: "8" | "4"): string {
+/** The room's shared conversion, through this server; with `ladder`, the lower qualities too. */
+export function sharedConversionUrl(link: JellyfinLink, mediaSourceId: string, session: string, quality: "8" | "4", ladder = false): string {
   const params = new URLSearchParams({ api_key: link.apiKey, MediaSourceId: mediaSourceId, b: link.base });
+  if (ladder) params.set("ladder", "1");
   return `${basePath}/api/watch/jellyfin/${link.itemId}/${session}/${quality}/master.m3u8?${params}`;
 }
 
@@ -192,9 +219,10 @@ export function sharedConversionUrl(link: JellyfinLink, mediaSourceId: string, s
  * Jellyfin films go down a ladder until one plays: the file itself (when the
  * room chose "original" and this browser says it can play it), the room's
  * shared conversion, and a conversion of this viewer's own as a last resort;
- * each HLS step is tried natively and then through hls.js. A step that errors,
- * or plays sound with no picture (a codec the browser only half supports),
- * moves on to the next.
+ * each HLS step is tried natively where that is trusted and then through
+ * hls.js. A step that errors, plays sound with no picture, or plays without
+ * ever decoding a frame (a codec the browser only half supports) moves on to
+ * the next.
  */
 export function attachWatchSource(video: HTMLVideoElement, url: string, options: WatchSourceOptions = {}): () => void {
   let stopped = false;
@@ -207,7 +235,22 @@ export function attachWatchSource(video: HTMLVideoElement, url: string, options:
   };
   video.addEventListener("error", onError);
   video.addEventListener("loadeddata", onLoaded);
+  /** Able to play, and yet no frame: the clock runs on over a blank picture and no error ever comes. */
+  let blankFor = 0;
+  const watchdog = setInterval(() => {
+    // A hidden tab may stop decoding the picture on purpose.
+    if (stopped || document.hidden || video.paused || video.seeking || video.readyState < 3) return;
+    if (framesDecoded(video) !== 0) {
+      blankFor = 0;
+      return;
+    }
+    if (++blankFor >= BLANK_SECONDS) {
+      blankFor = 0;
+      onFail();
+    }
+  }, 1000);
   const unlisten = () => {
+    clearInterval(watchdog);
     video.removeEventListener("error", onError);
     video.removeEventListener("loadeddata", onLoaded);
   };
@@ -252,8 +295,13 @@ export function attachWatchSource(video: HTMLVideoElement, url: string, options:
     video.load();
   };
 
-  /** Plays an HLS link natively if the browser can, else through hls.js; `next` when neither works. */
-  const playHls = (hlsUrl: string, next: () => void) => {
+  /**
+   * Plays an HLS link natively where that is trusted, else through hls.js;
+   * `next` when neither works. `ladderUrl` is the same film with lower
+   * qualities to step down to, for hls.js. Apple's player keeps the single
+   * quality: it would pick its own, starting a conversion for each.
+   */
+  const playHls = (hlsUrl: string, next: () => void, ladderUrl = hlsUrl) => {
     const viaHlsJs = async () => {
       onFail = next;
       reset();
@@ -266,6 +314,10 @@ export function attachWatchSource(video: HTMLVideoElement, url: string, options:
       const player = new Hls({
         startPosition: options.startAt && options.startAt > 1 ? options.startAt : -1,
         maxBufferLength: 30,
+      });
+      // Start on the room's conversion; a lower one only starts if this viewer needs it.
+      player.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+        player.startLevel = data.levels.length - 1;
       });
       let recoveries = 0;
       player.on(Hls.Events.ERROR, (_event, data) => {
@@ -280,12 +332,12 @@ export function attachWatchSource(video: HTMLVideoElement, url: string, options:
         }
         next();
       });
-      player.loadSource(hlsUrl);
+      player.loadSource(ladderUrl);
       player.attachMedia(video);
       hls = player;
     };
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      // Safari, the iOS app and newer Chrome play HLS themselves.
+    if (playsHlsItself(video)) {
+      // Safari, the Mac app and the iOS app.
       onFail = () => void viaHlsJs();
       reset();
       seekOnLoad();
@@ -298,7 +350,7 @@ export function attachWatchSource(video: HTMLVideoElement, url: string, options:
   const ownConversion = (mediaSourceId: string) => {
     ownSession ??= { playSessionId: randomId(), deviceId: deviceId() };
     playHls(jellyfinHlsUrl(link, mediaSourceId, ownSession), () =>
-      options.onProblem?.("Jellyfin could not convert this video for the browser."));
+      options.onProblem?.(canPlayH264() ? "Jellyfin could not convert this video for the browser." : NO_H264));
   };
 
   const sharedConversion = (mediaSourceId: string, quality: "8" | "4") => {
@@ -306,7 +358,11 @@ export function attachWatchSource(video: HTMLVideoElement, url: string, options:
       ownConversion(mediaSourceId);
       return;
     }
-    playHls(sharedConversionUrl(link, mediaSourceId, options.session, quality), () => ownConversion(mediaSourceId));
+    playHls(
+      sharedConversionUrl(link, mediaSourceId, options.session, quality),
+      () => ownConversion(mediaSourceId),
+      sharedConversionUrl(link, mediaSourceId, options.session, quality, true),
+    );
   };
 
   void (async () => {

@@ -25184,7 +25184,8 @@ a.link-preview-author:hover {
   font-size: 12px;
 }
 
-.watch-surface-problem {
+.watch-surface-problem,
+.watch-surface-note {
   position: absolute;
   inset: auto 12px 12px;
   padding: 8px 12px;
@@ -25193,6 +25194,18 @@ a.link-preview-author:hover {
   color: #fca5a5;
   font-size: 12px;
   text-align: center;
+}
+
+.watch-surface-note {
+  inset: 12px auto auto 12px;
+  color: #fff;
+}
+
+.watch-room-note {
+  inset: auto auto 148px 50%;
+  max-width: min(520px, calc(100% - 24px));
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 
 .video-hide-btn {

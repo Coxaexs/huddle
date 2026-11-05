@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("cloudflare:workers", () => ({ env: {} }));
 
 import { applyQueue, continueWatch, sanitizeShared, type WatchState } from "@/lib/lounge-shared";
-import { upstreamUrl } from "@/lib/jellyfin-proxy";
+import { ladderPlaylist, proxyConversion, stopSharedConversion, upstreamUrl } from "@/lib/jellyfin-proxy";
 import { cueAt, parseVtt, pickedSubtitle, type SubtitleTrack } from "@/app/lib/subtitles";
 
 const ITEM = "86bfa7a3dadfd688091aadb8d1bc73e2";
@@ -53,9 +53,66 @@ describe("the watch-party proxy", () => {
     const url = new URL(upstreamUrl(parts, query)!);
     expect(url.origin).toBe("http://127.0.0.1:8096");
     expect(url.pathname).toBe(`/jellyfin/Videos/${ITEM}/master.m3u8`);
-    expect(url.searchParams.get("PlaySessionId")).toBe("abc12345");
+    expect(url.searchParams.get("PlaySessionId")).toBe("abc12345-4");
     expect(url.searchParams.get("DeviceId")).toBe("huddle-party-abc12345");
     expect(url.searchParams.get("VideoBitrate")).toBe("4000000");
+  });
+
+  it("gives each quality its own Jellyfin session, or they would overwrite each other", () => {
+    const query = new URLSearchParams({ api_key: KEY, MediaSourceId: ITEM });
+    const sessions = ["8", "4", "2"].map((quality) =>
+      new URL(upstreamUrl({ ...parts, quality, file: "main.m3u8" }, query)!).searchParams.get("PlaySessionId"));
+    expect(new Set(sessions).size).toBe(3);
+  });
+
+  it("offers a viewer the room's quality and everything below it, best first", () => {
+    const query = new URLSearchParams({ api_key: KEY, MediaSourceId: ITEM, b: "https://x", ladder: "1" });
+    const lines = ladderPlaylist("8", query)!.split("\n");
+    expect(lines.filter((line) => line.startsWith("#EXT-X-STREAM-INF"))).toEqual([
+      "#EXT-X-STREAM-INF:BANDWIDTH=8192000",
+      "#EXT-X-STREAM-INF:BANDWIDTH=4160000",
+      "#EXT-X-STREAM-INF:BANDWIDTH=1628000",
+    ]);
+    expect(lines[2]).toBe(`../8/main.m3u8?api_key=${KEY}&MediaSourceId=${ITEM}`);
+    expect(lines[6]).toBe(`../2/main.m3u8?api_key=${KEY}&MediaSourceId=${ITEM}`);
+    expect(ladderPlaylist("4", query)).not.toContain("../8/");
+    expect(ladderPlaylist("40", query)).toBeNull();
+  });
+
+  it("answers the ladder itself, so it starts nothing on Jellyfin", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const query = new URLSearchParams({ api_key: KEY, MediaSourceId: ITEM, b: "https://deeppixel.online/jellyfin", ladder: "1" });
+    const response = await proxyConversion({ ...parts, quality: "8" }, query);
+    expect(response.headers.get("content-type")).toBe("application/vnd.apple.mpegurl");
+    expect(await response.text()).toContain("../2/main.m3u8");
+    expect(fetch).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("gives Apple's player the single quality it has always had", async () => {
+    const fetch = vi.fn(async () => new Response("#EXTM3U\nmain.m3u8\n"));
+    vi.stubGlobal("fetch", fetch);
+    const query = new URLSearchParams({ api_key: KEY, MediaSourceId: ITEM, b: "https://deeppixel.online/jellyfin" });
+    const text = await (await proxyConversion({ ...parts, quality: "8" }, query)).text();
+    expect(text).not.toContain("../2/");
+    expect(fetch).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
+  });
+
+  it("will not hand out a ladder for another server's Jellyfin", async () => {
+    const query = new URLSearchParams({ api_key: KEY, MediaSourceId: ITEM, b: "https://elsewhere.example.com/jellyfin", ladder: "1" });
+    expect((await proxyConversion(parts, query)).status).toBe(404);
+  });
+
+  it("stops every quality's conversion when the party ends", async () => {
+    const fetch = vi.fn(async (_url: string, _init?: RequestInit) => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+    await stopSharedConversion({ url: `https://deeppixel.online/jellyfin/Items/${ITEM}/Download?api_key=${KEY}`, session: "abc12345" });
+    const sessions = fetch.mock.calls.map(([url]) => new URL(url).searchParams.get("PlaySessionId")).sort();
+    expect(sessions).toEqual(["abc12345-2", "abc12345-4", "abc12345-8"]);
+    expect(fetch.mock.calls.every(([, init]) => init?.method === "DELETE")).toBe(true);
+    vi.unstubAllGlobals();
   });
 
   it("passes segment timing through", () => {

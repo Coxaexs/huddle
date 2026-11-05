@@ -8,6 +8,10 @@
  * Jellyfin for it as one client: the first viewer starts the conversion and
  * everyone else is served the same segments from Jellyfin's cache.
  *
+ * A viewer on a slow connection cannot be asked to wait for the room's quality,
+ * so hls.js gets a ladder of lower ones to step down to. Each rung is a shared
+ * conversion of its own, which only starts once somebody needs it.
+ *
  * Only the Jellyfin this server is configured for is proxied (it reaches it
  * locally); links to any other Jellyfin play per viewer, as before.
  */
@@ -29,15 +33,35 @@ export function isProxiedBase(base: string): boolean {
   return Boolean(config && base.replace(/\/+$/, "").toLowerCase() === config.publicBase.toLowerCase());
 }
 
-/** What each quality asks Jellyfin for: H.264 + AAC stereo up to 1080p, at 8 or 4 Mbps. */
-export const CONVERSION_QUALITY: Record<Exclude<WatchQuality, "original">, Record<string, string>> = {
+/** A room can pick 8 or 4; 2 is only ever a viewer stepping down. */
+type ConversionQuality = Exclude<WatchQuality, "original"> | "2";
+
+/** What each quality asks Jellyfin for: H.264 + AAC stereo at 8 or 4 Mbps up to 1080p, or about 2 Mbps at 720p. */
+export const CONVERSION_QUALITY: Record<ConversionQuality, Record<string, string>> = {
   "8": { VideoBitrate: "8000000", AudioBitrate: "192000", MaxWidth: "1920", MaxHeight: "1080" },
   "4": { VideoBitrate: "4000000", AudioBitrate: "160000", MaxWidth: "1920", MaxHeight: "1080" },
+  "2": { VideoBitrate: "1500000", AudioBitrate: "128000", MaxWidth: "1280", MaxHeight: "720" },
 };
+
+const QUALITIES = Object.keys(CONVERSION_QUALITY) as ConversionQuality[];
 
 /** The one "client" Jellyfin sees for every watch party. */
 export const PARTY_USER_AGENT = "Huddle-WatchParty/1";
 export const partyDevice = (session: string) => `huddle-party-${session}`;
+/** Jellyfin knows a conversion by its session, not its bitrate, so each quality needs a session of its own. */
+export const partySession = (session: string, quality: string) => `${session}-${quality}`;
+
+/** A playlist of the room's quality and the ones below it, best first. */
+export function ladderPlaylist(quality: string, query: URLSearchParams): string | null {
+  const top = QUALITIES.indexOf(quality as ConversionQuality);
+  if (top < 0) return null;
+  const params = new URLSearchParams({ api_key: query.get("api_key") ?? "", MediaSourceId: query.get("MediaSourceId") ?? "" });
+  const rungs = [...QUALITIES].sort((a, b) => Number(b) - Number(a)).filter((rung) => Number(rung) <= Number(quality));
+  return ["#EXTM3U", ...rungs.flatMap((rung) => {
+    const { VideoBitrate, AudioBitrate } = CONVERSION_QUALITY[rung];
+    return [`#EXT-X-STREAM-INF:BANDWIDTH=${Number(VideoBitrate) + Number(AudioBitrate)}`, `../${rung}/main.m3u8?${params}`];
+  }), ""].join("\n");
+}
 
 export const ITEM_ID = /^[0-9a-f]{32}$/i;
 export const SESSION_ID = /^[a-z0-9]{8,32}$/i;
@@ -57,7 +81,7 @@ export function upstreamUrl(
   const config = jellyfinProxyConfig();
   if (!config) return null;
   if (!ITEM_ID.test(parts.item) || !SESSION_ID.test(parts.session)) return null;
-  const quality = CONVERSION_QUALITY[parts.quality as "8" | "4"];
+  const quality = CONVERSION_QUALITY[parts.quality as ConversionQuality];
   if (!quality) return null;
   const key = query.get("api_key") || query.get("ApiKey") || "";
   if (!API_KEY.test(key)) return null;
@@ -68,7 +92,7 @@ export function upstreamUrl(
   const params = new URLSearchParams({
     api_key: key,
     MediaSourceId: mediaSource,
-    PlaySessionId: parts.session,
+    PlaySessionId: partySession(parts.session, parts.quality),
     DeviceId: partyDevice(parts.session),
     VideoCodec: "h264",
     AudioCodec: "aac",
@@ -95,6 +119,11 @@ export async function proxyConversion(
   if (base !== null && !isProxiedBase(base)) return new Response("Not this server's Jellyfin", { status: 404 });
   const upstream = upstreamUrl(parts, query);
   if (!upstream) return new Response("Bad watch-party request", { status: 400 });
+  if (parts.file === "master.m3u8" && query.has("ladder")) {
+    return new Response(ladderPlaylist(parts.quality, query), {
+      headers: { "content-type": "application/vnd.apple.mpegurl", "cache-control": "no-store" },
+    });
+  }
   let response: Response;
   try {
     response = await fetch(upstream, { headers: { "User-Agent": PARTY_USER_AGENT } });
@@ -126,9 +155,12 @@ export async function stopSharedConversion(watch: Pick<WatchState, "url" | "sess
   const config = jellyfinProxyConfig();
   const link = jellyfinLink(watch.url);
   if (!config || !watch.session || !link || link.needsKey || !isProxiedBase(link.base)) return;
-  const params = new URLSearchParams({ DeviceId: partyDevice(watch.session), PlaySessionId: watch.session, api_key: link.apiKey });
-  await fetch(`${config.localBase}/Videos/ActiveEncodings?${params}`, {
-    method: "DELETE",
-    headers: { "User-Agent": PARTY_USER_AGENT },
-  });
+  const session = watch.session;
+  await Promise.all(QUALITIES.map((quality) => {
+    const params = new URLSearchParams({ DeviceId: partyDevice(session), PlaySessionId: partySession(session, quality), api_key: link.apiKey });
+    return fetch(`${config.localBase}/Videos/ActiveEncodings?${params}`, {
+      method: "DELETE",
+      headers: { "User-Agent": PARTY_USER_AGENT },
+    });
+  }));
 }

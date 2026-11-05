@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
-import { attachWatchSource } from "@/app/lib/watch-source";
+import { attachWatchSource, playsHlsItself } from "@/app/lib/watch-source";
 
 const ITEM = "9617412d4b00d752c2ac3d6dfceb5d4c";
 // Each test its own server, so the cached PlaybackInfo of one never answers another.
 let server = 0;
 const link = () => `https://media${++server}.example.com/jellyfin/Items/${ITEM}/Download?api_key=k`;
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 /** A <video> whose browser claims to play everything, HLS included. */
 function overconfidentVideo() {
@@ -99,4 +102,64 @@ it("does not stop the room's shared conversion when one viewer leaves", async ()
   await tick();
   detach();
   expect(fetch.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(false);
+});
+
+it("trusts Apple's HLS but not the Chromium browsers that now claim it", () => {
+  const says = { canPlayType: () => "maybe" as const };
+  const userAgent = (value: string) => vi.stubGlobal("navigator", { userAgent: value });
+  userAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)");
+  expect(playsHlsItself(says)).toBe(true);
+  userAgent("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1");
+  expect(playsHlsItself(says)).toBe(true);
+  userAgent("Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 huddle-desktop/1.1.1 Chrome/152.0.7977.130 Electron/44.7.0 Safari/537.36");
+  expect(playsHlsItself(says)).toBe(false);
+  userAgent("Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 Chrome/152.0.0.0 Safari/537.36 OPR/120.0.0.0");
+  expect(playsHlsItself(says)).toBe(false);
+  userAgent("Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0");
+  expect(playsHlsItself(says)).toBe(false);
+  userAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 HeadlessChrome/151.0.7922.34 Safari/537.36");
+  expect(playsHlsItself(says)).toBe(false);
+  expect(playsHlsItself({ canPlayType: () => "" })).toBe(false);
+});
+
+/** A <video> that says it is playing, with this many frames behind it, on a Chromium browser. */
+function playingVideo(frames: number) {
+  vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 Chrome/152.0.0.0 Safari/537.36" });
+  const video = document.createElement("video");
+  vi.spyOn(video, "load").mockImplementation(() => undefined);
+  Object.defineProperty(video, "paused", { get: () => false });
+  Object.defineProperty(video, "readyState", { get: () => 4 });
+  video.getVideoPlaybackQuality = () => ({ totalVideoFrames: frames }) as VideoPlaybackQuality;
+  return video;
+}
+
+it("speaks up when a video plays on without ever decoding a frame", () => {
+  vi.useFakeTimers();
+  const onProblem = vi.fn();
+  const detach = attachWatchSource(playingVideo(0), "https://example.com/film.mp4", { onProblem });
+  vi.advanceTimersByTime(5000);
+  expect(onProblem).not.toHaveBeenCalled();
+  vi.advanceTimersByTime(1000);
+  expect(onProblem).toHaveBeenCalledOnce();
+  detach();
+});
+
+it("leaves a video alone once frames are coming", () => {
+  vi.useFakeTimers();
+  const onProblem = vi.fn();
+  const detach = attachWatchSource(playingVideo(12), "https://example.com/film.mp4", { onProblem });
+  vi.advanceTimersByTime(60000);
+  expect(onProblem).not.toHaveBeenCalled();
+  detach();
+});
+
+it("does not mistake a hidden tab's paused decoding for a broken film", () => {
+  vi.useFakeTimers();
+  vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+  const onProblem = vi.fn();
+  const detach = attachWatchSource(playingVideo(0), "https://example.com/film.mp4", { onProblem });
+  vi.advanceTimersByTime(60000);
+  expect(onProblem).not.toHaveBeenCalled();
+  detach();
+  vi.restoreAllMocks();
 });
