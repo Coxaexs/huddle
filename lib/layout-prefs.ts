@@ -28,7 +28,9 @@ export interface ToolbarPrefs {
 }
 
 export interface WidgetPlacement {
-  /** "music" for the built-in one, `bot:<botId>:<name>` for a bot's. */
+  /** This placement. The same widget can be placed many times, each with its own. */
+  uid: string;
+  /** Which widget: "music", "music-queue", "dnd-dice" and so on, or `bot:<botId>:<name>`. */
   id: string;
   area: WidgetArea;
   size: WidgetSize;
@@ -108,10 +110,25 @@ export const AREA_SIZES: Record<WidgetArea, WidgetSize[]> = {
   call: ["small", "large"],
 };
 
-export const MAX_WIDGETS = 12;
-export const MAX_PER_AREA = 4;
+export const MAX_WIDGETS = 40;
+export const MAX_PER_AREA = 12;
+/** The header and the call line are one row, so they hold fewer. */
+const ROW_AREAS: readonly WidgetArea[] = ["header", "call"];
+export const MAX_PER_ROW = 6;
 
-const WIDGET_ID = /^(music|bot:[A-Za-z0-9_-]{1,64}:[a-z0-9_-]{1,32})$/;
+export function maxInArea(area: WidgetArea): number {
+  return ROW_AREAS.includes(area) ? MAX_PER_ROW : MAX_PER_AREA;
+}
+
+const WIDGET_ID = /^(music(-[a-z]+)?|dnd-[a-z]+|bot:[A-Za-z0-9_-]{1,64}:[a-z0-9_-]{1,32})$/;
+const WIDGET_UID = /^[a-z0-9]{1,16}$/;
+
+function freshUid(taken: ReadonlySet<string>): string {
+  for (;;) {
+    const uid = Math.random().toString(36).slice(2, 10);
+    if (uid && !taken.has(uid)) return uid;
+  }
+}
 
 /**
  * The size to use for a widget in an area: the wanted one when both allow it,
@@ -155,16 +172,20 @@ export function normalizeLayout(raw: unknown): LayoutPrefs {
   for (const item of Array.isArray(input.widgets) ? input.widgets : []) {
     if (widgets.length >= MAX_WIDGETS) break;
     if (!item || typeof item !== "object") continue;
-    const { id, area, size } = item as Record<string, unknown>;
-    if (typeof id !== "string" || !WIDGET_ID.test(id) || seen.has(id)) continue;
+    const { uid, id, area, size } = item as Record<string, unknown>;
+    if (typeof id !== "string" || !WIDGET_ID.test(id)) continue;
     if (!WIDGET_AREAS.includes(area as WidgetArea)) continue;
     const where = area as WidgetArea;
-    if ((perArea.get(where) ?? 0) >= MAX_PER_AREA) continue;
+    if ((perArea.get(where) ?? 0) >= maxInArea(where)) continue;
     const fitted = fitSize(where, WIDGET_SIZES.includes(size as WidgetSize) ? (size as WidgetSize) : "medium");
     if (!fitted) continue;
-    seen.add(id);
+    // Layouts from before a widget could be placed twice have no uid. The same
+    // one every time, so reading a layout twice gives the same result.
+    let key = typeof uid === "string" && WIDGET_UID.test(uid) && !seen.has(uid) ? uid : `w${widgets.length}`;
+    while (seen.has(key)) key += "x";
+    seen.add(key);
     perArea.set(where, (perArea.get(where) ?? 0) + 1);
-    widgets.push({ id, area: where, size: fitted });
+    widgets.push({ uid: key, id, area: where, size: fitted });
   }
 
   const callBar = CALL_BAR_SIDES.includes(input.callBar as CallBarSide)
@@ -280,9 +301,20 @@ export function isDefaultLayout(layout: LayoutPrefs): boolean {
   );
 }
 
+/** Where a placement goes: before another one (by uid) when given, else at the end. */
+function insert(widgets: WidgetPlacement[], placed: WidgetPlacement, before?: string | null): WidgetPlacement[] {
+  const at = before ? widgets.findIndex((widget) => widget.uid === before) : -1;
+  return at >= 0 ? [...widgets.slice(0, at), placed, ...widgets.slice(at)] : [...widgets, placed];
+}
+
+function roomFor(widgets: readonly WidgetPlacement[], area: WidgetArea): boolean {
+  return widgets.filter((widget) => widget.area === area).length < maxInArea(area) && widgets.length < MAX_WIDGETS;
+}
+
 /**
- * Puts a widget into an area (moving it if it was elsewhere), before the
- * widget `before` when given, else at the end. A full area refuses it.
+ * Adds a copy of a widget to an area, however many are already placed. It
+ * goes before the placement `before` when given, else at the end. A full area
+ * refuses it, and so does one with no size the widget offers.
  */
 export function placeWidget(
   layout: LayoutPrefs,
@@ -290,32 +322,41 @@ export function placeWidget(
   area: WidgetArea,
   options: { size?: WidgetSize; before?: string | null; offered?: readonly WidgetSize[] } = {},
 ): LayoutPrefs {
-  const existing = layout.widgets.find((widget) => widget.id === id);
-  const size = fitSize(area, options.size ?? existing?.size ?? "medium", options.offered);
-  if (!size) return layout;
-  const rest = layout.widgets.filter((widget) => widget.id !== id);
-  if (rest.filter((widget) => widget.area === area).length >= MAX_PER_AREA) return layout;
-  if (rest.length >= MAX_WIDGETS) return layout;
-  const placed: WidgetPlacement = { id, area, size };
-  const at = options.before ? rest.findIndex((widget) => widget.id === options.before) : -1;
-  const widgets = at >= 0 ? [...rest.slice(0, at), placed, ...rest.slice(at)] : [...rest, placed];
-  return { ...layout, widgets };
+  const size = fitSize(area, options.size ?? "medium", options.offered);
+  if (!size || !roomFor(layout.widgets, area)) return layout;
+  const uid = freshUid(new Set(layout.widgets.map((widget) => widget.uid)));
+  return { ...layout, widgets: insert(layout.widgets, { uid, id, area, size }, options.before) };
 }
 
-export function removeWidget(layout: LayoutPrefs, id: string): LayoutPrefs {
-  return { ...layout, widgets: layout.widgets.filter((widget) => widget.id !== id) };
+/** Moves one placement, keeping its size where the new area allows it. */
+export function moveWidget(
+  layout: LayoutPrefs,
+  uid: string,
+  area: WidgetArea,
+  options: { before?: string | null; offered?: readonly WidgetSize[] } = {},
+): LayoutPrefs {
+  const widget = layout.widgets.find((item) => item.uid === uid);
+  if (!widget) return layout;
+  const size = fitSize(area, widget.size, options.offered);
+  const rest = layout.widgets.filter((item) => item.uid !== uid);
+  if (!size || !roomFor(rest, area)) return layout;
+  return { ...layout, widgets: insert(rest, { ...widget, area, size }, options.before) };
+}
+
+export function removeWidget(layout: LayoutPrefs, uid: string): LayoutPrefs {
+  return { ...layout, widgets: layout.widgets.filter((widget) => widget.uid !== uid) };
 }
 
 export function resizeWidget(
   layout: LayoutPrefs,
-  id: string,
+  uid: string,
   size: WidgetSize,
   offered?: readonly WidgetSize[],
 ): LayoutPrefs {
   return {
     ...layout,
     widgets: layout.widgets.map((widget) => {
-      if (widget.id !== id) return widget;
+      if (widget.uid !== uid) return widget;
       return { ...widget, size: fitSize(widget.area, size, offered) ?? widget.size };
     }),
   };

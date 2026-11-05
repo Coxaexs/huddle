@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_LAYOUT,
   MAX_PER_AREA,
+  MAX_PER_ROW,
+  MAX_WIDGETS,
   fitSize,
   isDefaultLayout,
   normalizeLayout,
   placeWidget,
   moveToolbarItem,
+  moveWidget,
   removeWidget,
   resizeWidget,
   setPanelPartHidden,
@@ -25,11 +28,12 @@ describe("normalizeLayout", () => {
 
   it("keeps valid sides and widgets, from an object or stored JSON", () => {
     const value = { channels: "bottom", members: "left", widgets: [{ id: "music", area: "header", size: "small" }] };
-    expect(normalizeLayout(value)).toEqual({ ...DEFAULT_LAYOUT, ...value });
-    expect(normalizeLayout(JSON.stringify(value))).toEqual({ ...DEFAULT_LAYOUT, ...value });
+    const expected = { ...DEFAULT_LAYOUT, ...value, widgets: value.widgets.map((widget) => expect.objectContaining(widget)) };
+    expect(normalizeLayout(value)).toEqual(expected);
+    expect(normalizeLayout(JSON.stringify(value))).toEqual(expected);
   });
 
-  it("drops bad widget ids, duplicates and unknown areas", () => {
+  it("drops bad widget ids and unknown areas, and keeps copies of the same widget", () => {
     const layout = normalizeLayout({
       widgets: [
         { id: "music", area: "sidebar-bottom", size: "large" },
@@ -39,7 +43,7 @@ describe("normalizeLayout", () => {
         { id: "bot:x:y", area: "ceiling", size: "small" },
       ],
     });
-    expect(layout.widgets.map((widget) => widget.id)).toEqual(["music", "bot:dnd-bot:initiative"]);
+    expect(layout.widgets.map((widget) => widget.id)).toEqual(["music", "music", "bot:dnd-bot:initiative"]);
   });
 
   it("shrinks a widget to what its area allows", () => {
@@ -75,29 +79,91 @@ describe("fitSize", () => {
 describe("placing widgets", () => {
   const base = normalizeLayout(null);
 
+  const uids = (layout: ReturnType<typeof normalizeLayout>, id: string) =>
+    layout.widgets.filter((widget) => widget.id === id).map((widget) => widget.uid);
+
   it("adds, moves before another widget, resizes and removes", () => {
     let layout = placeWidget(base, "music", "sidebar-bottom", { size: "large" });
     layout = placeWidget(layout, "bot:b:poll", "sidebar-bottom");
-    layout = placeWidget(layout, "bot:b:poll", "sidebar-bottom", { before: "music" });
+    const [music] = uids(layout, "music");
+    const [poll] = uids(layout, "bot:b:poll");
+    layout = moveWidget(layout, poll, "sidebar-bottom", { before: music });
     expect(layout.widgets.map((widget) => widget.id)).toEqual(["bot:b:poll", "music"]);
 
-    layout = placeWidget(layout, "music", "header");
-    expect(layout.widgets.find((widget) => widget.id === "music")).toEqual({ id: "music", area: "header", size: "small" });
+    layout = moveWidget(layout, music, "header");
+    expect(layout.widgets.find((widget) => widget.id === "music")).toEqual({ uid: music, id: "music", area: "header", size: "small" });
 
-    layout = resizeWidget(layout, "bot:b:poll", "large");
+    layout = resizeWidget(layout, poll, "large");
     expect(layout.widgets.find((widget) => widget.id === "bot:b:poll")?.size).toBe("large");
 
-    layout = removeWidget(layout, "music");
+    layout = removeWidget(layout, music);
     expect(layout.widgets.map((widget) => widget.id)).toEqual(["bot:b:poll"]);
+  });
+
+  it("places the same widget as many times as you like", () => {
+    let layout = placeWidget(base, "music", "sidebar-bottom");
+    layout = placeWidget(layout, "music", "sidebar-bottom");
+    layout = placeWidget(layout, "music", "members-top", { size: "large" });
+    const placed = uids(layout, "music");
+    expect(placed).toHaveLength(3);
+    expect(new Set(placed).size).toBe(3);
+    expect(normalizeLayout(layout).widgets).toHaveLength(3);
+  });
+
+  it("moves, resizes and removes one copy without touching the others", () => {
+    let layout = placeWidget(base, "dnd-dice", "sidebar-bottom");
+    layout = placeWidget(layout, "dnd-dice", "sidebar-bottom");
+    const [first, second] = uids(layout, "dnd-dice");
+    layout = resizeWidget(layout, second, "large");
+    expect(layout.widgets.map((widget) => widget.size)).toEqual(["medium", "large"]);
+    layout = moveWidget(layout, first, "members-top");
+    expect(layout.widgets.map((widget) => widget.area).sort()).toEqual(["members-top", "sidebar-bottom"]);
+    layout = removeWidget(layout, first);
+    expect(uids(layout, "dnd-dice")).toEqual([second]);
+  });
+
+  it("keeps a layout saved before copies existed, the same way every time", () => {
+    const old = { widgets: [{ id: "music", area: "sidebar-bottom", size: "large" }, { id: "bot:b:poll", area: "header", size: "small" }] };
+    const once = normalizeLayout(old);
+    expect(once.widgets.map((widget) => widget.id)).toEqual(["music", "bot:b:poll"]);
+    expect(new Set(once.widgets.map((widget) => widget.uid)).size).toBe(2);
+    expect(normalizeLayout(old)).toEqual(once);
+    expect(normalizeLayout(once)).toEqual(once);
+  });
+
+  it("gives two copies stored with the same uid their own", () => {
+    const layout = normalizeLayout({ widgets: [
+      { uid: "abc", id: "music", area: "sidebar-bottom", size: "medium" },
+      { uid: "abc", id: "music", area: "sidebar-bottom", size: "medium" },
+    ] });
+    expect(new Set(layout.widgets.map((widget) => widget.uid)).size).toBe(2);
+  });
+
+  it("accepts every built-in widget and refuses made-up ones", () => {
+    const layout = normalizeLayout({ widgets: [
+      { id: "music-lyrics", area: "members-top" },
+      { id: "dnd-dice", area: "members-top" },
+      { id: "<script>", area: "members-top" },
+      { id: "dnd-", area: "members-top" },
+    ] });
+    expect(layout.widgets.map((widget) => widget.id)).toEqual(["music-lyrics", "dnd-dice"]);
   });
 
   it("refuses a widget its area has no size for, and a full area", () => {
     expect(placeWidget(base, "bot:b:big", "header", { offered: ["large"] })).toBe(base);
     let layout = base;
-    for (let index = 0; index < MAX_PER_AREA; index += 1) {
-      layout = placeWidget(layout, `bot:b:w${index}`, "header");
-    }
+    for (let index = 0; index < MAX_PER_ROW; index += 1) layout = placeWidget(layout, "music", "header");
+    expect(layout.widgets).toHaveLength(MAX_PER_ROW);
     expect(placeWidget(layout, "music", "header")).toBe(layout);
+  });
+
+  it("stops at the overall limit", () => {
+    let layout = base;
+    for (const area of ["sidebar-bottom", "members-top", "sidebar-top", "header", "call"] as const) {
+      for (let index = 0; index < MAX_PER_AREA; index += 1) layout = placeWidget(layout, "music", area);
+    }
+    expect(layout.widgets.length).toBeLessThanOrEqual(MAX_WIDGETS);
+    expect(normalizeLayout(layout).widgets).toHaveLength(layout.widgets.length);
   });
 });
 
@@ -151,6 +217,6 @@ describe("toolbars", () => {
 
   it("puts widgets in the call view in its two sizes", () => {
     expect(fitSize("call", "medium")).toBe("small");
-    expect(placeWidget(DEFAULT_LAYOUT, "music", "call", { size: "large" }).widgets[0]).toEqual({ id: "music", area: "call", size: "large" });
+    expect(placeWidget(DEFAULT_LAYOUT, "music", "call", { size: "large" }).widgets[0]).toMatchObject({ id: "music", area: "call", size: "large" });
   });
 });

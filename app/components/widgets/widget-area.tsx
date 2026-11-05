@@ -13,9 +13,10 @@ import {
 import { pickWidget, useServerWidgets } from "@/app/lib/widget-store";
 import {
   AREA_SIZES,
-  MAX_PER_AREA,
   WIDGET_SIZES,
   fitSize,
+  maxInArea,
+  moveWidget,
   placeWidget,
   removeWidget,
   resizeWidget,
@@ -23,18 +24,18 @@ import {
   type WidgetSize,
 } from "@/lib/layout-prefs";
 import { BotWidget } from "./bot-widget";
-import { MusicWidget } from "./music-widget";
-import { MUSIC_ENTRY, useWidgetHost } from "./widget-host";
+import { BuiltinWidgetBody } from "./builtin-widgets";
+import { builtinWidget, useWidgetHost } from "./widget-host";
 
 export const WIDGET_DRAG_TYPE = "application/x-hoffle-widget";
 
-/** The sizes a widget offers, from its bot (or all three for built-ins). */
-export function readDraggedWidget(event: DragEvent): { id: string; sizes: WidgetSize[] } | null {
+/** What is being dragged: from the tray a new copy, from an area (with a uid) that one. */
+export function readDraggedWidget(event: DragEvent): { id: string; uid?: string; sizes: WidgetSize[] } | null {
   const raw = event.dataTransfer.getData(WIDGET_DRAG_TYPE);
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as { id?: string; sizes?: WidgetSize[] };
-    return parsed.id ? { id: parsed.id, sizes: parsed.sizes?.length ? parsed.sizes : WIDGET_SIZES } : null;
+    const parsed = JSON.parse(raw) as { id?: string; uid?: string; sizes?: WidgetSize[] };
+    return parsed.id ? { id: parsed.id, uid: parsed.uid, sizes: parsed.sizes?.length ? parsed.sizes : WIDGET_SIZES } : null;
   } catch {
     return null;
   }
@@ -59,32 +60,39 @@ export function WidgetArea({ area }: { area: Area }) {
   if (!customizing && !placed.length) return null;
 
   const offeredSizes = (id: string): readonly WidgetSize[] => {
-    if (id === MUSIC_ENTRY.id) return MUSIC_ENTRY.sizes;
+    const builtin = builtinWidget(id);
+    if (builtin) return builtin.sizes;
     return serverWidgets.find((widget) => widget.key === id)?.sizes ?? WIDGET_SIZES;
   };
-  const full = placed.length >= MAX_PER_AREA;
-  const accepts = (id: string, sizes: readonly WidgetSize[]) =>
-    Boolean(fitSize(area, "medium", sizes)) && (!full || placed.some((widget) => widget.id === id));
+  const full = placed.length >= maxInArea(area);
+  const accepts = (sizes: readonly WidgetSize[], uid?: string) =>
+    Boolean(fitSize(area, "medium", sizes)) && (!full || placed.some((widget) => widget.uid === uid));
 
   const drop = (event: DragEvent, before: string | null) => {
     const dragged = readDraggedWidget(event);
     setOver(false);
-    if (!dragged || !accepts(dragged.id, dragged.sizes)) return;
+    if (!dragged || !accepts(dragged.sizes, dragged.uid)) return;
     event.preventDefault();
     event.stopPropagation();
-    if (dragged.id === before) return;
-    setLayout((current) => placeWidget(current, dragged.id, area, { before, offered: dragged.sizes }));
+    if (dragged.uid && dragged.uid === before) return;
+    setLayout((current) =>
+      dragged.uid
+        ? moveWidget(current, dragged.uid, area, { before, offered: dragged.sizes })
+        : placeWidget(current, dragged.id, area, { before, offered: dragged.sizes }),
+    );
     armWidget(null);
   };
 
   const rendered = placed.map((placement) => {
     let body: React.ReactNode = null;
     let name = placement.id;
-    if (placement.id === MUSIC_ENTRY.id) {
-      name = t("widget.music");
-      // Hidden in servers without the music bot, the way a bot's widget is.
-      if (host.musicBot) body = <MusicWidget size={placement.size} area={area} />;
-      else if (customizing) body = <p className="widget-missing">{t("widget.notHere", { name })}</p>;
+    const builtin = builtinWidget(placement.id);
+    if (builtin) {
+      name = t(builtin.titleKey);
+      // Hidden where its bot isn't, the way a bot's own widget is.
+      if (builtin.needs === "music" ? host.musicBot : host.serverId) {
+        body = <BuiltinWidgetBody id={placement.id} size={placement.size} area={area} />;
+      } else if (customizing) body = <p className="widget-missing">{t("widget.notHere", { name })}</p>;
     } else {
       const widget = pickWidget(serverWidgets, placement.id, [host.voiceChannelId, host.activeChannelId]);
       if (widget) {
@@ -98,7 +106,7 @@ export function WidgetArea({ area }: { area: Area }) {
     if (!body) return null;
     if (!customizing) {
       return (
-        <div key={placement.id} className={`widget widget-${placement.size}`} data-widget={placement.id}>
+        <div key={placement.uid} className={`widget widget-${placement.size}`} data-widget={placement.id}>
           {body}
         </div>
       );
@@ -106,21 +114,21 @@ export function WidgetArea({ area }: { area: Area }) {
     const sizes = AREA_SIZES[area].filter((size) => offeredSizes(placement.id).includes(size));
     return (
       <div
-        key={placement.id}
+        key={placement.uid}
         className={`widget widget-${placement.size} widget-editing`}
         data-widget={placement.id}
         draggable
         onDragStart={(event) => {
           event.dataTransfer.setData(
             WIDGET_DRAG_TYPE,
-            JSON.stringify({ id: placement.id, sizes: offeredSizes(placement.id) }),
+            JSON.stringify({ id: placement.id, uid: placement.uid, sizes: offeredSizes(placement.id) }),
           );
           event.dataTransfer.effectAllowed = "move";
         }}
         onDragOver={(event) => {
           if (event.dataTransfer.types.includes(WIDGET_DRAG_TYPE)) event.preventDefault();
         }}
-        onDrop={(event) => drop(event, placement.id)}
+        onDrop={(event) => drop(event, placement.uid)}
       >
         <div className="widget-edit-bar">
           <GripVertical size={13} className="widget-grip" aria-hidden="true" />
@@ -133,7 +141,7 @@ export function WidgetArea({ area }: { area: Area }) {
                 className={`widget-size-btn ${placement.size === size ? "active" : ""}`}
                 aria-pressed={placement.size === size}
                 title={t("customize.sizeLabel", { size: t(`customize.size.${size}`) })}
-                onClick={() => setLayout((current) => resizeWidget(current, placement.id, size, offeredSizes(placement.id)))}
+                onClick={() => setLayout((current) => resizeWidget(current, placement.uid, size, offeredSizes(placement.id)))}
               >
                 {t(`customize.size.${size}`)}
               </button>
@@ -143,7 +151,7 @@ export function WidgetArea({ area }: { area: Area }) {
             className="widget-remove-btn"
             aria-label={t("customize.remove", { name })}
             title={t("customize.remove", { name })}
-            onClick={() => setLayout((current) => removeWidget(current, placement.id))}
+            onClick={() => setLayout((current) => removeWidget(current, placement.uid))}
           >
             <X size={13} />
           </button>
@@ -161,7 +169,7 @@ export function WidgetArea({ area }: { area: Area }) {
   const strip = (layout.channels === "top" || layout.channels === "bottom") && area.startsWith("sidebar-");
   const label = strip ? t(`area.${area as "sidebar-top" | "sidebar-bottom"}.strip`) : t(`area.${area}`);
   const armedSizes = armed ? offeredSizes(armed) : null;
-  const canTake = armed ? accepts(armed, armedSizes!) : false;
+  const canTake = armed ? accepts(armedSizes!) : false;
   return (
     <div
       className={`widget-area widget-area-${area} widget-zone ${over ? "is-over" : ""} ${armed ? (canTake ? "can-take" : "cannot-take") : ""}`}

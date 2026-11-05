@@ -444,6 +444,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
             break;
           case "dice-roll":
             handlersRef.current.onDiceRoll?.(payload.channelId, payload.roll);
+            window.dispatchEvent(new CustomEvent("huddle-dice-roll", { detail: payload.roll }));
             break;
           case "character-presentation":
             handlersRef.current.onCharacterPresentation?.(payload.channelId, {

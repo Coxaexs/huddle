@@ -967,8 +967,10 @@
 
 .customize-palette {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  overflow-x: auto;
+  max-height: 168px;
+  overflow-y: auto;
   padding-bottom: 4px;
   align-items: flex-start;
 }
@@ -1785,3 +1787,30 @@
 .call-diagram.call-top .ld-bar { left: 18px; right: 18px; top: 5px; height: 5px; }
 .call-diagram.call-left .ld-bar { top: 9px; bottom: 9px; left: 5px; width: 5px; }
 .call-diagram.call-right .ld-bar { top: 9px; bottom: 9px; right: 5px; width: 5px; }
+
+/* The music and D&D widgets (components/widgets/*-widgets.tsx). */
+.bw { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 13px; }
+.bw-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.bw-grow { flex: 1; min-width: 0; }
+.bw-line { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.bw-muted { color: var(--muted); font-size: 12px; }
+.bw-head { font-weight: 600; font-size: 12px; color: var(--muted); }
+.bw-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow-y: auto; }
+.bw-list li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.bw-list li.bw-current { font-weight: 600; color: var(--accent-hi); }
+.bw-input { flex: 1; min-width: 0; background: var(--chat-bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; }
+.bw-btn { background: var(--lavender-soft); color: var(--ink); border: 0; border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 12px; cursor: pointer; flex: none; display: inline-flex; align-items: center; gap: 4px; }
+.bw-btn:hover:not(:disabled) { background: var(--lavender-muted); }
+.bw-btn:disabled { opacity: 0.5; cursor: default; }
+.bw-btn.on { background: var(--accent-strong); color: var(--on-accent); }
+.bw-dice { display: flex; flex-wrap: wrap; gap: 4px; }
+.bw-cover { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; display: block; }
+.widget-small .bw-cover { width: 24px; height: 24px; aspect-ratio: auto; border-radius: 4px; flex: none; }
+.bw-lyric-now { font-size: 15px; font-weight: 600; }
+.bw-bar { height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; flex: 1; min-width: 40px; }
+.bw-bar > span { display: block; height: 100%; background: var(--mint); }
+.bw-text { white-space: pre-wrap; max-height: 260px; overflow-y: auto; line-height: 1.4; }
+.bw-slots { display: flex; gap: 3px; flex-wrap: wrap; }
+.bw-slot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent-strong); }
+.bw-slot.used { background: var(--line); }
+

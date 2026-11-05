@@ -62,6 +62,9 @@ export function renderChatShell(s: ChatShellViewState) {
     },
     membersOpen: Boolean(membersOpen && !stageChannel),
     musicBot: inDmHome || activeServer?.musicBot !== false,
+    userId: user.id,
+    runCommand: v.runCommand,
+    table: { initiative: v.livingRoom.shared.initiative, characters: v.livingRoom.shared.characters },
   };
 
   // The member list hides itself on the Friends page (DM home, nothing open);

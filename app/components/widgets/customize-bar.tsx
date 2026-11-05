@@ -53,7 +53,7 @@ export function CustomizeBar({ onOpen }: { onOpen: () => void }) {
   }, [customizing, armed]);
 
   if (!customizing) return null;
-  const placed = new Set(layout.widgets.map((widget) => widget.id));
+  const placedCount = (id: string) => layout.widgets.filter((widget) => widget.id === id).length;
   const armedEntry = catalog.find((entry) => entry.id === armed);
   const hint =
     tab === "widgets"
@@ -106,7 +106,7 @@ export function CustomizeBar({ onOpen }: { onOpen: () => void }) {
                 <button
                   type="button"
                   key={entry.id}
-                  className={`palette-item ${armed === entry.id ? "armed" : ""} ${placed.has(entry.id) ? "placed" : ""}`}
+                  className={`palette-item ${armed === entry.id ? "armed" : ""} ${placedCount(entry.id) ? "placed" : ""}`}
                   draggable
                   onDragStart={(event) => {
                     event.dataTransfer.setData(WIDGET_DRAG_TYPE, JSON.stringify({ id: entry.id, sizes: entry.sizes }));
@@ -121,12 +121,11 @@ export function CustomizeBar({ onOpen }: { onOpen: () => void }) {
                     <strong>{entry.title}</strong>
                     <small>
                       {entry.botName ? t("customize.by", { bot: entry.botName }) : ""}
-                      {placed.has(entry.id) ? ` · ${t("customize.placed")}` : ""}
+                      {placedCount(entry.id) ? ` · ${t("customize.placedCount", { count: placedCount(entry.id) })}` : ""}
                     </small>
                   </span>
                 </button>
               ))}
-              {catalog.length < 2 && <p className="customize-empty">{t("customize.noBots")}</p>}
             </div>
             {/* The call view's line, here too so it can be filled outside a call. */}
             <div className="customize-call-zone">

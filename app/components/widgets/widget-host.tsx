@@ -1,6 +1,8 @@
 "use client";
 
 import { createContext, useContext, useMemo } from "react";
+import type { MessageKey } from "@/lib/i18n";
+import type { Initiative, TableCharacter } from "@/lib/lounge-shared";
 import type { PlayerState } from "@/lib/protocol";
 import type { BotWidget } from "@/lib/bot-widgets";
 import { WIDGET_SIZES, type WidgetSize } from "@/lib/layout-prefs";
@@ -22,6 +24,12 @@ export interface WidgetHostValue {
   membersOpen: boolean;
   /** The music bot is in the server on screen (always true in DMs). */
   musicBot: boolean;
+  /** Who is signed in. */
+  userId: string;
+  /** Runs a slash command as if typed in the open channel. */
+  runCommand: (raw: string) => Promise<void>;
+  /** The D&D table of the voice room you are in. */
+  table: { initiative: Initiative | null; characters: Record<string, TableCharacter> };
 }
 
 const WidgetHost = createContext<WidgetHostValue | null>(null);
@@ -46,25 +54,63 @@ export interface WidgetEntry {
   bot?: BotWidget;
 }
 
-export const MUSIC_ENTRY: Omit<WidgetEntry, "title" | "description"> = {
-  id: "music",
-  icon: "♫",
-  botName: "Music + Watch",
-  sizes: WIDGET_SIZES,
-};
+export interface BuiltinEntry extends Omit<WidgetEntry, "title" | "description"> {
+  /** Which bot it comes with: music where that bot is, D&D in every server. */
+  needs: "music" | "dnd";
+  titleKey: MessageKey;
+  descKey: MessageKey;
+}
+
+const MUSIC = "Music + Watch";
+const DND = "D&D Bot";
+const music = (id: string, icon: string, titleKey: MessageKey, descKey: MessageKey): BuiltinEntry => ({
+  id, icon, titleKey, descKey, needs: "music", botName: MUSIC, sizes: WIDGET_SIZES,
+});
+const dnd = (id: string, icon: string, titleKey: MessageKey, descKey: MessageKey): BuiltinEntry => ({
+  id, icon, titleKey, descKey, needs: "dnd", botName: DND, sizes: WIDGET_SIZES,
+});
+
+/** The widgets that come with the music and D&D bots. Each can be placed many times. */
+export const BUILTIN_WIDGETS: readonly BuiltinEntry[] = [
+  music("music", "♫", "widget.music", "widget.music.desc"),
+  music("music-controls", "⏯", "widget.musicControls", "widget.musicControls.desc"),
+  music("music-queue", "📜", "widget.musicQueue", "widget.musicQueue.desc"),
+  music("music-history", "🕘", "widget.musicHistory", "widget.musicHistory.desc"),
+  music("music-cover", "💿", "widget.musicCover", "widget.musicCover.desc"),
+  music("music-lyrics", "🎤", "widget.musicLyrics", "widget.musicLyrics.desc"),
+  music("music-search", "🔎", "widget.musicSearch", "widget.musicSearch.desc"),
+  music("music-playlists", "📂", "widget.musicPlaylists", "widget.musicPlaylists.desc"),
+  music("music-rooms", "🔊", "widget.musicRooms", "widget.musicRooms.desc"),
+  dnd("dnd-dice", "🎲", "widget.dndDice", "widget.dndDice.desc"),
+  dnd("dnd-rolls", "📊", "widget.dndRolls", "widget.dndRolls.desc"),
+  dnd("dnd-initiative", "⚔", "widget.dndInitiative", "widget.dndInitiative.desc"),
+  dnd("dnd-party", "🛡", "widget.dndParty", "widget.dndParty.desc"),
+  dnd("dnd-me", "🧙", "widget.dndMe", "widget.dndMe.desc"),
+  dnd("dnd-slots", "✨", "widget.dndSlots", "widget.dndSlots.desc"),
+  dnd("dnd-spell", "📖", "widget.dndSpell", "widget.dndSpell.desc"),
+  dnd("dnd-monster", "🐉", "widget.dndMonster", "widget.dndMonster.desc"),
+  dnd("dnd-item", "🗡", "widget.dndItem", "widget.dndItem.desc"),
+  dnd("dnd-condition", "💫", "widget.dndCondition", "widget.dndCondition.desc"),
+  dnd("dnd-feat", "🏅", "widget.dndFeat", "widget.dndFeat.desc"),
+  dnd("dnd-class", "📜", "widget.dndClass", "widget.dndClass.desc"),
+];
+
+export function builtinWidget(id: string): BuiltinEntry | undefined {
+  return BUILTIN_WIDGETS.find((entry) => entry.id === id);
+}
 
 /** Everything placeable in the server on screen. */
 export function useWidgetCatalog(
   serverId: string | null,
-  t: (key: "widget.music" | "widget.music.desc") => string,
+  t: (key: MessageKey) => string,
   musicBot = true,
 ): WidgetEntry[] {
   const widgets = useServerWidgets(serverId);
   return useMemo(() => {
-    // Like any bot's widget, the music one is offered where its bot is.
-    const entries: WidgetEntry[] = musicBot
-      ? [{ ...MUSIC_ENTRY, title: t("widget.music"), description: t("widget.music.desc") }]
-      : [];
+    // Like any bot's widget, these are offered where their bot is.
+    const entries: WidgetEntry[] = BUILTIN_WIDGETS.filter((entry) => (entry.needs === "music" ? musicBot : serverId)).map(
+      (entry) => ({ ...entry, title: t(entry.titleKey), description: t(entry.descKey) }),
+    );
     for (const widget of distinctWidgets(widgets)) {
       const embed = widget.embeds[0] as { description?: string } | undefined;
       entries.push({
@@ -78,5 +124,5 @@ export function useWidgetCatalog(
       });
     }
     return entries;
-  }, [widgets, t, musicBot]);
+  }, [widgets, t, musicBot, serverId]);
 }
