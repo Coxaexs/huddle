@@ -10,6 +10,7 @@ import { dispatchMessage } from "@/lib/discord/dispatch";
 import { hubState, publishMessage } from "@/lib/hub-client";
 import { sendPushNotifications } from "@/lib/push";
 import { isSilentPayload, takeSilent } from "@/lib/silent-messages";
+import { deliverToFollowers } from "@/lib/channel-follows";
 import { parseForumTags, pickPostTags, requestedTags, withPostTags } from "@/lib/forum-tags";
 import { findChannel as findForumChannel } from "@/lib/servers";
 import { handleMatchesName } from "@/lib/mention-handles";
@@ -630,6 +631,8 @@ export async function postMessageAs(
   let channelName = body.channel?.slice(0, 64) || "general";
   let audience: string[] | null = null;
   let serverId: string | null = null;
+  /** The kind of channel posted in (announcements go out to their followers). */
+  let postedKind: string | null = null;
   /** This member's permissions in the channel, or null when it has no overwrites. */
   let here: number | null = null;
   if (channelId) {
@@ -643,6 +646,7 @@ export async function postMessageAs(
       return Response.json({ error: "That channel is gone." }, { status: 404 });
     }
     serverId = channel.server_id;
+    postedKind = channel.kind;
     if (channel.kind === "dm") {
       if (!(await isDmMember(db, channelId, user.id))) return unauthorized();
       audience = await channelAudience(db, channelId);
@@ -1007,6 +1011,10 @@ export async function postMessageAs(
   // Connected Discord bots see the same message. This runs after the hub
   // publish so a slow or absent gateway never delays the sender's own tabs.
   afterResponse(dispatchMessage("MESSAGE_CREATE", stored, { origin: options.origin }));
+  // A post in an announcement channel goes out to every channel following it.
+  if (postedKind === "announcement" && channelId && !threadId) {
+    afterResponse(deliverToFollowers(db, channelId, stored).catch(() => 0));
+  }
 
   const pushTargets = new Set<string>();
   if (message.mentions) {

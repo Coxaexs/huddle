@@ -21113,6 +21113,111 @@ html[data-motion="reduced"] .bat-wing {
    Forwarded Messages & Forward Dialog
    ========================================================================== */
 
+/* Following an announcement channel (app/components/follow-channel-dialog.tsx) */
+.follow-dialog-body {
+  display: grid;
+  gap: 12px;
+  padding: 4px 18px 18px;
+}
+
+.follow-dialog-note,
+.follow-dialog-done,
+.follow-dialog-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.follow-dialog-done {
+  color: #34d399;
+}
+
+.follow-dialog-error {
+  color: #f87171;
+}
+
+.follow-dialog-pick {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.follow-dialog-pick label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  min-width: 0;
+}
+
+.follow-dialog-pick select {
+  background: var(--chat-bg, var(--paper));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  padding: 7px 8px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.follow-dialog-pick .forward-btn-submit {
+  height: 34px;
+}
+
+@media (max-width: 520px) {
+  .follow-dialog-pick {
+    grid-template-columns: 1fr;
+  }
+}
+
+.follow-dialog-list h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.follow-dialog-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.follow-dialog-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.follow-dialog-list button {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+
+.follow-dialog-list button:hover:not(:disabled) {
+  color: #f87171;
+  border-color: #f87171;
+}
+
+.bot-tag.follow-tag {
+  background: var(--lavender);
+}
+
 .forward-dialog-card {
   width: 100%;
   max-width: 480px;
