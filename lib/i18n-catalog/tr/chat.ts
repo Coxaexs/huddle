@@ -108,6 +108,7 @@ export const chat: Record<keyof typeof en, string> = {
   // Messages & Reactions
   "message.serverOwner": "Sunucu sahibi",
   "message.ttsNotice": "/tts ile gönderildi: kanaldaki herkese sesli okunur",
+  "message.silentNotice": "@silent ile gönderildi: kimseye bildirim gitmedi",
   "message.pinned": "Sabitlendi",
   "message.addReaction": "Tepki ekle · Hızlı tepkilere eklemek için Shift ile tıkla",
   "message.reply": "Yanıtla",

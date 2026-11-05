@@ -10,7 +10,7 @@ import { type GameKind } from "@/lib/games";
 import { stripTextStyle } from "@/lib/text-style";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
 import { type Member, type PublicUser } from "@/lib/users";
-import { Crown, Pin, Bookmark, BookmarkCheck, Pencil, Trash2, Volume2, Reply, MessageSquare, SmilePlus, Vote, UserPlus, MoreHorizontal, ShieldAlert, Forward, LogOut, Clapperboard, Smartphone } from "lucide-react";
+import { Crown, Pin, Bookmark, BookmarkCheck, Pencil, Trash2, Volume2, Reply, MessageSquare, SmilePlus, Vote, UserPlus, MoreHorizontal, ShieldAlert, Forward, LogOut, Clapperboard, Smartphone, BellOff } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { AvatarDecoration } from "../../cosmetics";
 import { StyledName } from "../../profile-style-parts";
@@ -602,6 +602,11 @@ function MessageRowImpl({
                                 title={t("message.ttsNotice")}
                               >
                                 <Volume2 size={12} aria-hidden="true" /> TTS
+                              </span>
+                            )}
+                            {message.payload?.silent && (
+                              <span className="silent-tag" title={t("message.silentNotice")}>
+                                <BellOff size={12} aria-label={t("message.silentNotice")} />
                               </span>
                             )}
                             <time title={formatClientDateTime(message.createdAt)}>

@@ -12,6 +12,7 @@
  * logic depends on telling those apart.
  */
 import { authenticateBot, botById, type BotIdentity } from "../bot-auth";
+import { hasSuppressNotifications } from "../silent-messages";
 import { ensureSchema, DM_SERVER_ID } from "../schema";
 import { bindings, type StoredMessage } from "../storage";
 import { publishMessage, publishMessageEvent } from "../hub-client";
@@ -2016,7 +2017,11 @@ export async function createMessage(
     // Embeds and components round-trip through `payload`, which is how the
     // serializer reads them back out for other bots and for message fetches.
     // It always names the bot, which is what lets it (and only it) edit later.
-    payload: botPayload(context.bot.id, embeds, components, avatarUrl ? { avatarUrl } : undefined),
+    payload: botPayload(context.bot.id, embeds, components, {
+      ...(avatarUrl ? { avatarUrl } : {}),
+      // SUPPRESS_NOTIFICATIONS: Discord's @silent.
+      ...(hasSuppressNotifications(body.flags) ? { silent: true } : {}),
+    }),
     reply_to: replyTo,
     // A thread reply is stored against the parent channel and points at the
     // thread, exactly as the web UI writes one — that is what keeps the same

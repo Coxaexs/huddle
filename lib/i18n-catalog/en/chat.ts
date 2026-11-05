@@ -107,6 +107,7 @@ export const chat = {
   // Messages & Reactions
   "message.serverOwner": "Server owner",
   "message.ttsNotice": "Sent with /tts: read aloud to everyone in the channel",
+  "message.silentNotice": "Sent with @silent: nobody was notified",
   "message.pinned": "Pinned",
   "message.addReaction": "Add reaction · Shift-click to add to quick reactions",
   "message.reply": "Reply",
