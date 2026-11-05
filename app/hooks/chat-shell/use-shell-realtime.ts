@@ -23,7 +23,7 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
     nearBottomRef, onBattlemapSocket, servers, setDiceRoll, setDms, setEventsRefresh, setHasOlder,
     setMembers, setMessages, setNotice, setPins, setPollCounts, setPollVoters, setRoomActivity,
     setThreadMessages, setTtsSpeakingId, setTyping, setUnread, setUnseenCount, setUser,
-    stageChannelId, threadRoot, user, voiceStopSpeakingRef,
+    stageChannelId, threadRoot, user, voiceStopSpeakingRef, friendUserIds, setFriendsTick,
   } = s;
 
   // ------------------------------------------------------------ realtime
@@ -432,6 +432,7 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
     onMember: (userId) => {
       if (user && userId === user.id) return;
       reloadMemberSoon(userId);
+      if (friendUserIds.has(userId)) setFriendsTick((tick) => tick + 1);
     },
     onMessageDeleted: (channelId, id) => {
       emitVoiceChat(channelId, { type: "deleted", id: String(id) });

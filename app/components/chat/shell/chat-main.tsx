@@ -109,6 +109,21 @@ export function renderChatMain(v: ShellRenderState) {
       {inDmHome && !activeChannelId && !stageChannel ? (
         <FriendsView
           onlineUserIds={hub.online}
+          voiceRooms={hub.voice}
+          servers={v.servers}
+          myVoiceChannelId={v.voice.channelId}
+          refreshKey={v.friendsTick}
+          onJoinVoice={(serverId, channel) => {
+            // Open the friend's server and step into their room. A stage seats
+            // you in the audience, where you can raise a hand to speak.
+            v.setActiveServerId(serverId);
+            v.player.prime();
+            v.setStageChannelId(channel.id);
+            v.setMobileNav(false);
+            if (v.voice.channelId !== channel.id) {
+              void v.voice.join(channel.id, { startMuted: channel.kind === "stage" });
+            }
+          }}
           onOpenDm={(targetUser) => {
             void openDm(targetUser.id);
           }}

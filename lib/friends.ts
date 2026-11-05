@@ -1,6 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { findOrCreateDm } from "./dms";
-import { statusSeenBy } from "./users";
+import { sharedActivity } from "./auth";
+import { statusSeenBy, type ProfileActivity, type SpotifyActivity } from "./users";
 
 export interface FriendUser {
   id: string;
@@ -15,6 +16,9 @@ export interface FriendUser {
   dmChannelId?: string | null;
   relationshipId?: string;
   createdAt?: string;
+  /** Accepted friends only: the game/app and song they share right now. */
+  activity?: ProfileActivity | null;
+  spotifyActivity?: SpotifyActivity | null;
 }
 
 export interface FriendsSummary {
@@ -33,7 +37,8 @@ export async function listFriends(
     .prepare(
       `SELECT f.id AS relationship_id, f.user_id, f.friend_id, f.status, f.created_at,
               u.id AS other_id, u.username, u.display_name, u.avatar, u.avatar_url,
-              u.color, u.status AS user_status, u.custom_status, u.last_seen_at
+              u.color, u.status AS user_status, u.custom_status, u.last_seen_at,
+              u.activity, u.spotify_activity
          FROM friendships f
          JOIN users u ON u.id = CASE WHEN f.user_id = ?1 THEN f.friend_id ELSE f.user_id END
         WHERE f.user_id = ?1 OR f.friend_id = ?1
@@ -55,6 +60,8 @@ export async function listFriends(
       user_status: string | null;
       custom_status: string | null;
       last_seen_at: string | null;
+      activity?: string | null;
+      spotify_activity?: string | null;
     }>();
 
   const results = rows.results || [];
@@ -103,7 +110,7 @@ export async function listFriends(
     };
 
     if (r.status === "accepted") {
-      summary.friends.push(friend);
+      summary.friends.push({ ...friend, ...sharedActivity(r) });
     } else if (r.status === "pending") {
       if (r.user_id === userId) {
         summary.outgoing.push(friend);

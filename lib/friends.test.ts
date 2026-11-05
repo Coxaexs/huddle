@@ -9,6 +9,36 @@ import {
 } from "./friends";
 
 describe("friends operations", () => {
+  it("lists what accepted friends are doing, and nothing for pending requests", async () => {
+    const game = JSON.stringify({ kind: "playing", name: "Valorant", startedAt: Date.now() - 60_000, updatedAt: Date.now() });
+    const song = JSON.stringify({ song: "What Love Is", artist: "Zimmer90", isPlaying: true, updatedAt: Date.now() });
+    const row = (other: string, status: string, userId: string) => ({
+      relationship_id: `r-${other}`, user_id: userId, friend_id: userId === "me" ? other : "me", status,
+      created_at: "2026-11-01T00:00:00Z", other_id: other, username: other, display_name: other,
+      avatar: "", avatar_url: null, color: "#000", user_status: "online", custom_status: null,
+      last_seen_at: null, activity: game, spotify_activity: song,
+    });
+    const mockDb = {
+      prepare: (sql: string) => ({
+        bind: () => ({
+          all: async () => ({
+            results: sql.includes("FROM friendships") ? [row("flo", "accepted", "me"), row("stranger", "pending", "stranger")] : [],
+          }),
+        }),
+      }),
+    } as unknown as D1Database;
+
+    const summary = await listFriends(mockDb, "me");
+    expect(summary.friends[0]).toMatchObject({
+      id: "flo",
+      activity: { kind: "playing", name: "Valorant" },
+      spotifyActivity: { song: "What Love Is", artist: "Zimmer90" },
+    });
+    expect(summary.incoming[0].id).toBe("stranger");
+    expect(summary.incoming[0].activity).toBeUndefined();
+    expect(summary.incoming[0].spotifyActivity).toBeUndefined();
+  });
+
   it("prevents adding self as a friend", async () => {
     const mockDb = {
       prepare: () => ({

@@ -128,6 +128,14 @@ function profileActivity(value: string | null | undefined): ProfileActivity | nu
   return normalizeProfileActivity(parseJson(value));
 }
 
+/** The game/app and song someone shares, checked the same way their profile does. */
+export function sharedActivity(row: { activity?: string | null; spotify_activity?: string | null }): {
+  activity: ProfileActivity | null;
+  spotifyActivity: SpotifyActivity | null;
+} {
+  return { activity: profileActivity(row.activity), spotifyActivity: spotifyActivity(row.spotify_activity) };
+}
+
 /** The profile everyone can see, shared by publicUser and memberFromRow. */
 function profileFields(user: User) {
   return {
