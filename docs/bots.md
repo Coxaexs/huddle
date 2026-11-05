@@ -2,25 +2,51 @@
 
 Hoffle has three kinds of bots:
 
-- **Built-in bots** (music, D&D companion) that you switch on per server. See [Managing bots in a server](#managing-bots-in-a-server).
+- **Bots from the Developer Portal**, which anyone can make and add to a server with an invite link, the way Discord works. See [Making a bot](#making-a-bot).
 - **Unmodified Discord bots** written with discord.js, discord.py and similar libraries. See [Running real Discord bots](#running-real-discord-bots).
 - **Simple scripts** that post messages over plain HTTP. See [Hoffle's own bot API](#hoffles-own-bot-api).
 
 The examples use `http://localhost:8730`. Replace it with your server's address, and use `https://` / `wss://` if it is behind HTTPS.
 
+## Making a bot
+
+1. Open the **Developer Portal** at `/hangout/developers` (or Server Settings → Integrations → Your own bot).
+2. Create a bot and copy its token. It is shown once. If you lose it, reset it.
+3. Under **Invite link**, tick the permissions your bot needs and copy the link.
+4. Share the link. Anyone with **Manage Server** opens it, picks a server, sees what the bot asks for and authorizes it.
+
+One token works in every server that added the bot. Run your bot wherever you like: it connects to Hoffle the same way a Discord bot connects to Discord.
+
+- **Public bot:** on, anyone with the link can add it. Off, only you can.
+- **Privileged intents:** Message Content, Server Members and Presence are off until you switch them on. A bot that asks for one anyway is disconnected with close code 4014, as on Discord.
+
+### What a bot added this way can do
+
+Exactly what the server granted it, and nothing else:
+
+- It only reaches servers that added it, and its global commands only appear there.
+- Every API call is checked against what it was granted. Anything not on the list is refused.
+- It cannot see private channels unless it was granted Administrator.
+- It cannot read message history without the Message Content intent.
+- It cannot kick, ban or change the server's owner, even as Administrator.
+- It cannot give anyone a role with more permissions than it holds.
+- It has no access to direct messages.
+
+The person adding a bot cannot grant it more than they hold themselves. Add the same link again to change what a bot was granted, and remove a bot in **Server Settings → Integrations**.
+
+The `permissions` number in an invite link uses Hoffle's own bit numbers, so a number from a Discord calculator means something else. Use the one in the Developer Portal.
+
+These bots use the Discord-compatible API (`/api/v10`), not the plain `/api/v1` API further down.
+
 ## Managing bots in a server
 
-Server administrators can manage bots directly from the Hoffle web interface:
+Server administrators manage bots in **Server Settings → Integrations**:
 
-1. Open Server Settings (click the server name header -> Server Settings).
-2. Navigate to "Bots & Integrations".
-3. Add built-in bots with one click:
-   - Hoffle Music Bot: Synchronized voice audio, queue, and playback control. Like a Discord bot, it is only in servers that add it: until then `/play` and the other music commands, the DJ booth and the Music widget are not there. Servers that existed before this change got it added once, so they keep it until they remove it.
-     It also brings two voice-room activities, **Watch Together** (one synced player: search YouTube or paste a link) and **Reels Together** (a synced Shorts feed that learns each person's taste). Open them from the room's activities or with `/watch` and `/reels`. Each member gets their own one-time ticket into the bot's room, carrying their name, picture and role: whoever started the activity is its host, and people who can manage channels or moderate are its moderators. They are not reachable from Discord or by link.
-   - D&D Companion: 5e spell, monster, and item compendium lookups and cryptographic dice rolls.
-   - Discord Bridge: Live channel bridging between Hoffle and Discord.
-4. Or click "Create Bot Integration" to generate a dedicated bot token for custom scripts.
-5. Active bots can be enabled, disabled, or removed at any time.
+- **D&D Companion** and **Discord Bridge** are added with one click there.
+- Every other bot is added with its invite link.
+- Active bots can be turned off or removed at any time.
+
+The music bot, with **Watch Together** and **Reels Together**, is added with its invite link like any other bot. Until a server adds it, `/play` and the other music commands aren't there.
 
 ## Running real Discord bots
 

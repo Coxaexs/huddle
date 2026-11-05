@@ -49,6 +49,7 @@ Files and voice/video streams go to the people in the conversation. Some feature
 ## Optional features
 
 - **AI features** (such as asking a question, summarising a channel, translating a message or a call recap) are for people 18 and over. We ask before your first use. They send the text you ask about to an AI provider to produce the answer. Only use them when you are fine with that. AI answers can be wrong.
+- **Bots other people make** are run by them, not by us. Before you add one, check what it asks for and only add bots you trust. If you make a bot, these terms apply to what it does.
 - **Bots, games, music and watch-together** features are provided as they are. Don't use them to share content you don't have the right to share.
 
 ## Account deletion
