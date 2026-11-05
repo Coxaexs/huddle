@@ -3,7 +3,8 @@
 import { WidgetArea } from "../../widgets/widget-area";
 import type { VoiceApi } from "../../../hooks/use-voice";
 import type { PublicChannel } from "@/lib/servers";
-import { ArrowUpToLine, Search, Pin, Bookmark, Settings, Users, Menu, MoreHorizontal, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut, MessageCircle, Award } from "lucide-react";
+import { ArrowUpToLine, Search, Pin, Bookmark, Settings, Users, Menu, MoreHorizontal, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut, MessageCircle, Award, Megaphone } from "lucide-react";
+import { FollowChannelDialog } from "../../follow-channel-dialog";
 import { type DmSummary } from "../../../lib/chat/types";
 import { channelKindIcon } from "../channel-kind";
 import { Icon } from "../icon-button";
@@ -129,6 +130,8 @@ export function ChatHeader({
   const anyHidden = ["invite", "search", "mentions", "pins", "saved", "achievements", "members"].some(tb.hidden);
   // Phones keep only the essentials in the header; the rest sit behind "More".
   const [moreOpen, setMoreOpen] = useState(false);
+  /** The Follow dialog of an announcement channel. */
+  const [followOpen, setFollowOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!moreOpen) return;
@@ -457,6 +460,18 @@ export function ChatHeader({
                 </Icon>
               )}
               <span className="header-extra">
+                {!inDmHome && activeChannel?.kind === "announcement" && (
+                  <Icon label={t("header.followChannel")} active={followOpen} onClick={() => setFollowOpen(true)}>
+                    <Megaphone size={18} />
+                  </Icon>
+                )}
+                {followOpen && activeChannel && (
+                  <FollowChannelDialog
+                    channelId={activeChannel.id}
+                    channelName={activeChannel.name}
+                    onClose={() => setFollowOpen(false)}
+                  />
+                )}
                 <Icon
                   label={t("header.pinnedMessages")}
                   active={pinsOpen}

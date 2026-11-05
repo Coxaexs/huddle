@@ -74,6 +74,8 @@ export interface Message {
     silent?: boolean;
     /** Forum posts: the tags they wear (ids from the forum's list). */
     forumTags?: string[];
+    /** A copy of a post from an announcement channel this channel follows. */
+    followedFrom?: { serverId: string; serverName: string; channelId: string; channelName: string; messageId: string };
     /** Voice messages: length, a precomputed waveform (0–100 bars), and the transcript once someone asked for it. */
     voice?: { durationMs?: number; waveform?: number[]; transcript?: string };
     /** Theme share cards */

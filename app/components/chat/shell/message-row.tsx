@@ -593,6 +593,16 @@ function MessageRowImpl({
                                   DISCORD
                                 </span>
                               )
+                            ) : message.payload?.followedFrom ? (
+                              <span
+                                className="bot-tag follow-tag"
+                                title={t("message.followedFrom", {
+                                  channel: message.payload.followedFrom.channelName,
+                                  server: message.payload.followedFrom.serverName,
+                                })}
+                              >
+                                {t("message.followedTag")}
+                              </span>
                             ) : (
                               message.bot && <span className="bot-tag">BOT</span>
                             )}

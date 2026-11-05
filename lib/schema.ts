@@ -1208,6 +1208,15 @@ async function migrate(db: D1Database): Promise<void> {
       created_at TEXT NOT NULL,
       PRIMARY KEY (user_id, message_id)
     )`),
+    // Announcement channels followed into other servers' channels (lib/channel-follows.ts).
+    db.prepare(`CREATE TABLE IF NOT EXISTS channel_follows (
+      source_channel_id TEXT NOT NULL,
+      target_channel_id TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (source_channel_id, target_channel_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS channel_follows_target_idx ON channel_follows(target_channel_id)"),
     db.prepare(`CREATE TABLE IF NOT EXISTS server_recaps (
       server_id TEXT PRIMARY KEY,
       channel_id TEXT NOT NULL,
