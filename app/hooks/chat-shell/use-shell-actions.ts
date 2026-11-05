@@ -119,7 +119,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
         method: "POST",
         body: JSON.stringify({
           channelId: activeChannelId,
-          content: `sent a wink: ${wink.emoji} ${wink.name}`,
+          content: `sent a winkie: ${wink.emoji} ${wink.name}`,
           payload: { wink: wink.id },
         }),
       });
