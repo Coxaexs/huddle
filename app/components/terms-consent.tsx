@@ -6,7 +6,7 @@ import { SITE } from "./site-chrome";
 import { useI18n } from "../lib/i18n-context";
 
 /** Bump when the terms change in a way people should agree to again. */
-export const TERMS_VERSION = "2026-10-18";
+export const TERMS_VERSION = "2026-11-05";
 export const TERMS_ACCEPTED_KEY = "hoffle-terms-accepted";
 
 export function rememberTermsAccepted() {

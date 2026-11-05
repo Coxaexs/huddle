@@ -1,6 +1,6 @@
 # Terms of Use
 
-_Last updated: 18 October 2026_
+_Last updated: 5 November 2026_
 
 These terms are the user agreement for Hoffle at **chat.hoffle.online** and the Hoffle apps for iPhone, iPad, Android and desktop (together, "Hoffle"). Hoffle is run by Abdullah Türk ("we", "us"). By creating an account or using Hoffle you agree to these terms and to the [Privacy Policy](/docs/privacy). If you don't agree, don't use Hoffle.
 
@@ -30,7 +30,7 @@ If you break these rules we may remove the content, mute you, remove you from se
 
 ## Reporting and blocking
 
-- **Report a message:** long-press it (or right-click on a computer) and choose **Report**. Reports go to the server's moderators and to us.
+- **Report a message:** long-press it (or right-click on a computer) and choose **Report**. Reports go to the server's moderators and to us. Reports of direct messages come only to us, and we read the reported message.
 - **Block a person:** open their profile and tap **Block**. You won't see their messages and they can't message you directly.
 - **Contact us:** email [info@hoffle.online](mailto:info@hoffle.online) about anything else, including illegal content, copyright complaints and appeals.
 
@@ -48,7 +48,7 @@ Files and voice/video streams go to the people in the conversation. Some feature
 
 ## Optional features
 
-- **AI features** (such as asking a question or summarising a channel) send the text you ask about to an AI provider to produce the answer. Only use them when you are fine with that. AI answers can be wrong.
+- **AI features** (such as asking a question, summarising a channel, translating a message or a call recap) are for people 18 and over. We ask before your first use. They send the text you ask about to an AI provider to produce the answer. Only use them when you are fine with that. AI answers can be wrong.
 - **Bots, games, music and watch-together** features are provided as they are. Don't use them to share content you don't have the right to share.
 
 ## Account deletion
