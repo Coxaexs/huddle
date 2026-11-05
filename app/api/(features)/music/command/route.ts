@@ -11,7 +11,7 @@ import { heard, liveTrack, playbackPosition, type PlayerState } from "@/lib/prot
 import { ensureSchema } from "@/lib/schema";
 import { can, Permission } from "@/lib/permissions";
 import { findChannel, isServerMember } from "@/lib/servers";
-import { MUSIC_BOT_MISSING, musicBotInServer } from "@/lib/music-bot";
+import { MUSIC_BOT_MISSING, musicBotInServer, PLAYER_COMMANDS, playerBotInServer } from "@/lib/music-bot";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { publicMessage } from "@/app/api/messages/route";
 
@@ -206,8 +206,12 @@ export async function POST(request: Request) {
     if (!(await isServerMember(db, voiceChannel.server_id, user.id))) {
       return Response.json({ error: "You're not in that server." }, { status: 403 });
     }
-    // Like a Discord bot, it only works in servers that added it.
-    if (!(await musicBotInServer(db, voiceChannel.server_id))) {
+    // Like a Discord bot, it only works in servers that added it. Pause, skip
+    // and the like act on the room player, so any bot using it brings those.
+    const allowed = PLAYER_COMMANDS.has(name)
+      ? await playerBotInServer(db, voiceChannel.server_id)
+      : await musicBotInServer(db, voiceChannel.server_id);
+    if (!allowed) {
       return Response.json({ error: MUSIC_BOT_MISSING, text: MUSIC_BOT_MISSING }, { status: 409 });
     }
   }

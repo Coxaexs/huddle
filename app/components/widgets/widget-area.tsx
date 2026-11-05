@@ -25,7 +25,7 @@ import {
 } from "@/lib/layout-prefs";
 import { BotWidget } from "./bot-widget";
 import { BuiltinWidgetBody } from "./builtin-widgets";
-import { builtinWidget, useWidgetHost } from "./widget-host";
+import { builtinWidget, useWidgetHost, widgetAvailable } from "./widget-host";
 
 export const WIDGET_DRAG_TYPE = "application/x-hoffle-widget";
 
@@ -90,7 +90,7 @@ export function WidgetArea({ area }: { area: Area }) {
     if (builtin) {
       name = t(builtin.titleKey);
       // Hidden where its bot isn't, the way a bot's own widget is.
-      if (builtin.needs === "music" ? host.musicBot : host.serverId) {
+      if (widgetAvailable(builtin, host)) {
         body = <BuiltinWidgetBody id={placement.id} size={placement.size} area={area} />;
       } else if (customizing) body = <p className="widget-missing">{t("widget.notHere", { name })}</p>;
     } else {

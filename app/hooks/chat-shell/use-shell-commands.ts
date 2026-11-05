@@ -1,3 +1,4 @@
+import { PLAYER_COMMANDS } from "@/lib/music-bot";
 import { isGameKind, type GameKind } from "@/lib/games";
 import { parseWhisper } from "@/lib/whisper";
 import type { MusicSettings } from "../../components/music-cards";
@@ -314,7 +315,8 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
       return;
     }
 
-    if (MUSIC_COMMANDS.has(name)) {
+    // A server with another bot's player keeps its own /play; pause and the like still work.
+    if (MUSIC_COMMANDS.has(name) && (s.activeServer?.musicBot !== false || PLAYER_COMMANDS.has(name))) {
       await runMusicCommand(name, value, raw, {
         voiceChannelId: voice.channelId,
         voiceChannels,

@@ -18,7 +18,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 28;
+export const SCHEMA_VERSION = 29;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -675,6 +675,24 @@ async function migrate(db: D1Database): Promise<void> {
       "CREATE INDEX IF NOT EXISTS recorder_diagnostics_session_idx ON recorder_diagnostics(session_id, created_at)",
     ),
     // Bots and integrations added to servers
+    // Voice room activities a bot offers, and the one-time tickets into them (lib/bot-activities.ts).
+    db.prepare(`CREATE TABLE IF NOT EXISTS bot_activities (
+        application_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        icon TEXT NOT NULL DEFAULT '🎮',
+        url TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (application_id, name)
+      )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS bot_activity_tickets (
+        ticket_hash TEXT PRIMARY KEY,
+        application_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        expires_at INTEGER NOT NULL
+      )`),
     // Content taken down under a legal order (lib/takedowns.ts).
     db.prepare(`CREATE TABLE IF NOT EXISTS takedowns (
         id TEXT PRIMARY KEY,
@@ -1517,6 +1535,11 @@ async function migrate(db: D1Database): Promise<void> {
       "CREATE INDEX IF NOT EXISTS messages_extra_files_idx ON messages(id) WHERE attachments IS NOT NULL OR audio_url IS NOT NULL",
     ),
   ]);
+
+  const appColumns = await columnNames(db, "applications");
+  if (!appColumns.has("player")) {
+    await db.prepare("ALTER TABLE applications ADD COLUMN player INTEGER NOT NULL DEFAULT 0").run();
+  }
 
   const botColumns = await columnNames(db, "server_bots");
   if (!botColumns.has("application_id")) {

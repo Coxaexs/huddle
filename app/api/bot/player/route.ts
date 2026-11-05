@@ -1,4 +1,5 @@
-import { authenticateMusicBot, type BotIdentity } from "@/lib/bot-auth";
+import { hasPermission, Permission } from "@/lib/permissions";
+import { authenticatePlayerBot, type BotIdentity } from "@/lib/bot-auth";
 import { botCanSeeServer } from "@/lib/discord/guild-data";
 import { playerCommand, playerState } from "@/lib/hub-client";
 import { resolveTrack } from "@/lib/music";
@@ -9,15 +10,48 @@ import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
-/** The room's server has to have added this bot. */
+/** The room's server has to have added this bot, and let it into voice. */
 async function mayUseRoom(db: D1Database, bot: BotIdentity, channelId: string): Promise<boolean> {
   if (!bot.grants) return true;
   const channel = await findChannel(db, channelId);
-  return Boolean(channel?.server_id && botCanSeeServer(bot, channel.server_id));
+  if (!channel?.server_id || !botCanSeeServer(bot, channel.server_id)) return false;
+  const grant = bot.grants[channel.server_id];
+  return hasPermission(grant, Permission.CONNECT) && hasPermission(grant, Permission.SPEAK);
+}
+
+/** What any bot may ask the player to do. Lookups belong to the music bot. */
+const OPEN_ACTIONS = new Set(["pause", "resume", "toggle", "skip", "stop", "seek", "volume", "loop", "shuffle", "clear"]);
+
+function httpsUrl(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 2000) return null;
+  try {
+    return new URL(value).protocol === "https:" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A bot's own tracks: each brings its audio, because Hoffle looks nothing up for it. */
+function ownTracks(items: unknown[], requestedBy: string): Track[] {
+  return items.slice(0, 100).flatMap((raw) => {
+    const item = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+    const audioUrl = httpsUrl(item.audioUrl);
+    if (!audioUrl) return [];
+    return [{
+      id: crypto.randomUUID(),
+      title: String(item.title || "Unknown").slice(0, 200),
+      artist: String(item.artist || "").slice(0, 200),
+      thumbnail: httpsUrl(item.thumbnail),
+      duration: typeof item.duration === "number" ? item.duration : null,
+      audioUrl,
+      pageUrl: httpsUrl(item.pageUrl),
+      requestedBy,
+    }];
+  });
 }
 
 export async function GET(request: Request) {
-  const bot = await authenticateMusicBot(request);
+  const bot = await authenticatePlayerBot(request);
   if (!bot) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -37,7 +71,7 @@ export async function GET(request: Request) {
  * the music bot dashboard calls when you press play on a Huddle room.
  */
 export async function POST(request: Request) {
-  const bot = await authenticateMusicBot(request);
+  const bot = await authenticatePlayerBot(request);
   if (!bot) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -79,6 +113,23 @@ export async function POST(request: Request) {
   }
   if (!(await mayUseRoom(db, bot, channelId))) {
     return Response.json({ error: "This server has not added the bot." }, { status: 403 });
+  }
+
+  // Any other bot: its own audio and the transport controls, nothing else.
+  if (bot.applicationId && bot.kind !== "music") {
+    if (body.tracks?.length) {
+      const tracks = ownTracks(body.tracks, bot.name);
+      if (!tracks.length) {
+        return Response.json({ error: "Each track needs an https audioUrl." }, { status: 400 });
+      }
+      return Response.json({
+        state: await playerCommand(channelId, { name: "enqueueMany", tracks, startNow: Boolean(body.startNow) }),
+      });
+    }
+    if (!body.action || !OPEN_ACTIONS.has(body.action.name)) {
+      return Response.json({ error: "That is not something this bot can do to the player." }, { status: 403 });
+    }
+    return Response.json({ state: await playerCommand(channelId, body.action) });
   }
 
   if (body.tracks?.length) {

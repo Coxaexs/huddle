@@ -24,6 +24,8 @@ export interface WidgetHostValue {
   membersOpen: boolean;
   /** The music bot is in the server on screen (always true in DMs). */
   musicBot: boolean;
+  /** Some bot here can use the room player, which the player widgets need. */
+  playerBot: boolean;
   /** Who is signed in. */
   userId: string;
   /** Runs a slash command as if typed in the open channel. */
@@ -55,8 +57,8 @@ export interface WidgetEntry {
 }
 
 export interface BuiltinEntry extends Omit<WidgetEntry, "title" | "description"> {
-  /** Which bot it comes with: music where that bot is, D&D in every server. */
-  needs: "music" | "dnd";
+  /** What it takes: the music bot, any bot using the room player, or nothing (D&D). */
+  needs: "music" | "player" | "dnd";
   titleKey: MessageKey;
   descKey: MessageKey;
 }
@@ -66,21 +68,24 @@ const DND = "D&D Bot";
 const music = (id: string, icon: string, titleKey: MessageKey, descKey: MessageKey): BuiltinEntry => ({
   id, icon, titleKey, descKey, needs: "music", botName: MUSIC, sizes: WIDGET_SIZES,
 });
+const player = (id: string, icon: string, titleKey: MessageKey, descKey: MessageKey): BuiltinEntry => ({
+  id, icon, titleKey, descKey, needs: "player", botName: null, sizes: WIDGET_SIZES,
+});
 const dnd = (id: string, icon: string, titleKey: MessageKey, descKey: MessageKey): BuiltinEntry => ({
   id, icon, titleKey, descKey, needs: "dnd", botName: DND, sizes: WIDGET_SIZES,
 });
 
 /** The widgets that come with the music and D&D bots. Each can be placed many times. */
 export const BUILTIN_WIDGETS: readonly BuiltinEntry[] = [
-  music("music", "♫", "widget.music", "widget.music.desc"),
-  music("music-controls", "⏯", "widget.musicControls", "widget.musicControls.desc"),
-  music("music-queue", "📜", "widget.musicQueue", "widget.musicQueue.desc"),
-  music("music-history", "🕘", "widget.musicHistory", "widget.musicHistory.desc"),
-  music("music-cover", "💿", "widget.musicCover", "widget.musicCover.desc"),
+  player("music", "♫", "widget.music", "widget.music.desc"),
+  player("music-controls", "⏯", "widget.musicControls", "widget.musicControls.desc"),
+  player("music-queue", "📜", "widget.musicQueue", "widget.musicQueue.desc"),
+  player("music-history", "🕘", "widget.musicHistory", "widget.musicHistory.desc"),
+  player("music-cover", "💿", "widget.musicCover", "widget.musicCover.desc"),
   music("music-lyrics", "🎤", "widget.musicLyrics", "widget.musicLyrics.desc"),
   music("music-search", "🔎", "widget.musicSearch", "widget.musicSearch.desc"),
   music("music-playlists", "📂", "widget.musicPlaylists", "widget.musicPlaylists.desc"),
-  music("music-rooms", "🔊", "widget.musicRooms", "widget.musicRooms.desc"),
+  player("music-rooms", "🔊", "widget.musicRooms", "widget.musicRooms.desc"),
   dnd("dnd-dice", "🎲", "widget.dndDice", "widget.dndDice.desc"),
   dnd("dnd-rolls", "📊", "widget.dndRolls", "widget.dndRolls.desc"),
   dnd("dnd-initiative", "⚔", "widget.dndInitiative", "widget.dndInitiative.desc"),
@@ -99,16 +104,24 @@ export function builtinWidget(id: string): BuiltinEntry | undefined {
   return BUILTIN_WIDGETS.find((entry) => entry.id === id);
 }
 
+/** Whether a built-in widget works on what is on screen. */
+export function widgetAvailable(entry: BuiltinEntry, where: { serverId: string | null; musicBot: boolean; playerBot: boolean }): boolean {
+  if (entry.needs === "music") return where.musicBot;
+  if (entry.needs === "player") return where.playerBot;
+  return Boolean(where.serverId);
+}
+
 /** Everything placeable in the server on screen. */
 export function useWidgetCatalog(
   serverId: string | null,
   t: (key: MessageKey) => string,
   musicBot = true,
+  playerBot = musicBot,
 ): WidgetEntry[] {
   const widgets = useServerWidgets(serverId);
   return useMemo(() => {
     // Like any bot's widget, these are offered where their bot is.
-    const entries: WidgetEntry[] = BUILTIN_WIDGETS.filter((entry) => (entry.needs === "music" ? musicBot : serverId)).map(
+    const entries: WidgetEntry[] = BUILTIN_WIDGETS.filter((entry) => widgetAvailable(entry, { serverId, musicBot, playerBot })).map(
       (entry) => ({ ...entry, title: t(entry.titleKey), description: t(entry.descKey) }),
     );
     for (const widget of distinctWidgets(widgets)) {
@@ -124,5 +137,5 @@ export function useWidgetCatalog(
       });
     }
     return entries;
-  }, [widgets, t, musicBot, serverId]);
+  }, [widgets, t, musicBot, playerBot, serverId]);
 }

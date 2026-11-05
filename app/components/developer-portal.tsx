@@ -182,6 +182,13 @@ function BotSettings({
             <small>Anyone with the invite link can add it. Turn this off and only you can.</small>
           </span>
         </label>
+        <label className="dev-toggle">
+          <input type="checkbox" checked={app.player} onChange={(event) => void save({ player: event.target.checked })} />
+          <span>
+            <strong>Room player</strong>
+            <small>Play audio in voice rooms through Hoffle's player, with its queue, controls and widgets. Servers grant it with Connect and Speak.</small>
+          </span>
+        </label>
         <h3>Privileged intents</h3>
         {INTENTS.map((intent) => (
           <label key={intent.flag} className="dev-toggle">

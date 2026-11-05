@@ -158,6 +158,8 @@ export interface MusicPlayerLayerProps {
   onVolume?: (volume: number) => void;
   /** Unlocks the page's audio element from a click. */
   prime?: () => void;
+  /** Lyrics, search, playlists and the DJ booth come from the music bot. */
+  musicBot?: boolean;
 }
 
 /** Mounted once by the chat shell; shows the player while it is open. */
@@ -205,8 +207,9 @@ function MusicPlayer({
   volume,
   onVolume,
   prime,
+  musicBot = true,
 }: MusicPlayerLayerProps & { view: MusicPlayerView }) {
-  const [tab, setTab] = useState<MusicPlayerTab>(view.tab);
+  const [tab, setTab] = useState<MusicPlayerTab>(musicBot ? view.tab : "queue");
   const [now, setNow] = useState(() => Date.now());
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -372,7 +375,7 @@ function MusicPlayer({
           <strong>{roomId ? roomName : "No voice room"}</strong>
         </div>
         <nav className="mp-tabs" role="tablist" aria-label="Player views">
-          {TABS.map((item) => (
+          {TABS.filter((item) => musicBot || item.id === "queue").map((item) => (
             <button
               key={item.id}
               type="button"

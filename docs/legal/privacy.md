@@ -49,7 +49,7 @@ We share only what each one needs:
 - **Last.fm:** only if you add a Last.fm username to your profile. We ask Last.fm what you are listening to.
 - **Google Fonts:** only when you use the Winamp theme. Your browser loads its fonts from Google, which sees your IP address.
 - **ntfy:** only if you add an ntfy address for phone notifications. Your notifications are sent there.
-- **Bots made by other people:** a bot added to a server is run by whoever made it, not by us. It can see what that server allowed it to see, for example the messages in channels it can read. What it does with that is up to its maker. It can't see your direct messages.
+- **Bots made by other people:** a bot added to a server is run by whoever made it, not by us. It can see what that server allowed it to see, for example the messages in channels it can read. What it does with that is up to its maker. It can't see your direct messages. If you open a bot's activity, the bot learns your name and picture, and its page loads from its own server. Audio a bot plays also comes from its server. Those servers see your IP address.
 - **Link previews:** when you post a link, our server fetches that page to show a preview. The site sees our server, not you.
 
 Voice and video run on servers we run ourselves, including on Oracle Cloud. Some of the companies above are outside the EU, mainly in the US, so your data can go there. We don't sell personal data or share it for advertising.

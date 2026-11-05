@@ -15,6 +15,8 @@ export interface BotIdentity {
   grants?: Record<string, number>;
   /** The privileged gateway intents switched on in the portal. */
   privilegedIntents?: number;
+  /** May use the room player (switched on in the portal). */
+  player?: boolean;
 }
 
 export { generateBotToken } from "./bot-token";
@@ -234,3 +236,11 @@ export async function authenticateMusicBot(request: Request): Promise<BotIdentit
   if (!bot) return null;
   return bot.kind === "system" || (bot.applicationId && bot.kind === "music") ? bot : null;
 }
+
+/** A bot allowed to drive the room player: the music bot, or one with it switched on. */
+export async function authenticatePlayerBot(request: Request): Promise<BotIdentity | null> {
+  const bot = await authenticateBot(request).catch(() => null);
+  if (!bot) return null;
+  return bot.kind === "system" || bot.player ? bot : null;
+}
+

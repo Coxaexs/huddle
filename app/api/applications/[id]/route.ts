@@ -47,6 +47,7 @@ export async function PATCH(request: Request, context: Context) {
     avatar?: string;
     public?: boolean;
     intents?: number;
+    player?: boolean;
   };
   let name = app.name;
   if (body.name !== undefined) {
@@ -58,11 +59,12 @@ export async function PATCH(request: Request, context: Context) {
   const avatar = body.avatar !== undefined ? String(body.avatar).trim().slice(0, 8) || "🤖" : app.avatar;
   const isPublic = body.public !== undefined ? (body.public ? 1 : 0) : app.public;
   const intents = body.intents !== undefined ? Number(body.intents) & PRIVILEGED_INTENTS : app.intents;
+  const player = body.player !== undefined ? (body.player ? 1 : 0) : app.player;
 
   await db.batch([
     db
-      .prepare("UPDATE applications SET name = ?, description = ?, avatar = ?, public = ?, intents = ? WHERE id = ?")
-      .bind(name, description, avatar, isPublic, intents, app.id),
+      .prepare("UPDATE applications SET name = ?, description = ?, avatar = ?, public = ?, intents = ?, player = ? WHERE id = ?")
+      .bind(name, description, avatar, isPublic, intents, player, app.id),
     db
       .prepare("UPDATE server_bots SET name = ?, avatar = ?, description = ? WHERE application_id = ?")
       .bind(name, avatar, description, app.id),
@@ -88,6 +90,7 @@ export async function DELETE(request: Request, context: Context) {
     db.prepare("DELETE FROM server_bots WHERE application_id = ?").bind(app.id),
     db.prepare("DELETE FROM discord_commands WHERE bot_id = ?").bind(app.id),
     db.prepare("DELETE FROM bot_widgets WHERE bot_id = ?").bind(app.id),
+    db.prepare("DELETE FROM bot_activities WHERE application_id = ?").bind(app.id),
     db.prepare("DELETE FROM applications WHERE id = ?").bind(app.id),
   ]);
   await refreshBotSessions(app.id);

@@ -37,3 +37,31 @@ export async function serversWithMusicBot(db: D1Database): Promise<Set<string>> 
     .all<{ server_id: string }>();
   return new Set((results || []).map((row) => row.server_id));
 }
+
+const PLAYER_BOT = `SELECT 1 FROM server_bots b LEFT JOIN applications a ON a.id = b.application_id
+  WHERE b.enabled = 1 AND (b.kind = 'music' OR a.player = 1)`;
+
+/** True when some bot in this server can use the room player. */
+export async function playerBotInServer(db: D1Database, serverId: string | null | undefined): Promise<boolean> {
+  if (!serverId || serverId === DM_SERVER_ID) return false;
+  const row = await db.prepare(`${PLAYER_BOT} AND b.server_id = ? LIMIT 1`).bind(serverId).first();
+  return Boolean(row);
+}
+
+/** Every server with a bot that can use the room player, for the server list. */
+export async function serversWithPlayerBot(db: D1Database): Promise<Set<string>> {
+  const { results } = await db
+    .prepare(
+      `SELECT DISTINCT b.server_id FROM server_bots b LEFT JOIN applications a ON a.id = b.application_id
+        WHERE b.enabled = 1 AND (b.kind = 'music' OR a.player = 1)`,
+    )
+    .all<{ server_id: string }>();
+  return new Set((results || []).map((row) => row.server_id));
+}
+
+/** Commands that only touch the room player, so they work whichever bot is playing. */
+export const PLAYER_COMMANDS = new Set([
+  "pause", "resume", "skip", "stop", "shuffle", "clear", "seek", "volume", "loop",
+  "remove", "forward", "rewind", "replay", "skipto", "move", "removedupes",
+]);
+

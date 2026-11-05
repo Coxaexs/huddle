@@ -30,7 +30,7 @@ const characters = { me: { name: "Thorin", portraitUrl: null, cls: "Fighter", le
 function host(over: Partial<WidgetHostValue> = {}): WidgetHostValue {
   return {
     serverId: "s1", activeChannelId: "general", voiceChannelId: "room", players: { room: playing as never },
-    voiceRooms: [{ id: "room", name: "Lounge" }, { id: "other", name: "Other" }], joinVoice: vi.fn(), membersOpen: true, musicBot: true,
+    voiceRooms: [{ id: "room", name: "Lounge" }, { id: "other", name: "Other" }], joinVoice: vi.fn(), membersOpen: true, musicBot: true, playerBot: true,
     userId: "me", runCommand: vi.fn(async () => undefined), table: { initiative, characters }, ...over,
   };
 }

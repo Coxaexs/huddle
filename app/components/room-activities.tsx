@@ -370,8 +370,69 @@ function deepPixelUrl(gameId: string, name: string, userId: string) {
   return url.toString();
 }
 
-function activityTitle(kind: RoomActivityKind) {
+function activityTitle(kind: RoomActivityKind, state?: Record<string, unknown>) {
+  if (kind === "app") return String(state?.title || "Activity");
   return ACTIVITY_CHOICES.find((choice) => choice.kind === kind)?.name || "Activity";
+}
+
+interface OfferedActivity {
+  applicationId: string;
+  name: string;
+  title: string;
+  description: string;
+  icon: string;
+  botName: string;
+}
+
+/** A page a bot offers. Each member gets their own one-time link when it opens. */
+function AppFrame({ channelId, state }: { channelId: string; state: Record<string, unknown> }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const title = String(state.title || "Activity");
+  useEffect(() => {
+    let live = true;
+    apiFetch<{ url: string }>("/api/bot-activities", {
+      method: "POST",
+      body: JSON.stringify({ channelId, applicationId: state.applicationId, name: state.name }),
+    })
+      .then((data) => {
+        if (live) setUrl(data.url);
+      })
+      .catch((problem) => {
+        if (live) setError(problem instanceof Error ? problem.message : "This activity is unavailable.");
+      });
+    return () => {
+      live = false;
+    };
+  }, [channelId, state.applicationId, state.name]);
+  if (error) {
+    return (
+      <div className="together-embed together-problem">
+        <Bot size={28} />
+        <p>{error}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="watch-embed together-embed">
+      {url ? (
+        <iframe
+          key={url}
+          src={url}
+          title={title}
+          allow="autoplay; fullscreen; picture-in-picture"
+          allowFullScreen
+          // A bot's page: it may run, not navigate this window.
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
+        />
+      ) : (
+        <div className="together-loading" role="status">
+          <span className="together-spinner" aria-hidden="true" />
+          Opening {title}…
+        </div>
+      )}
+    </div>
+  );
 }
 
 async function postActivity(
@@ -1010,6 +1071,23 @@ export function RoomActivities({
     }
   }
 
+  // Bots in this server can offer their own activities.
+  const [offered, setOffered] = useState<OfferedActivity[]>([]);
+  useEffect(() => {
+    if (!open || activity) return;
+    let live = true;
+    apiFetch<{ activities: OfferedActivity[] }>(`/api/bot-activities?${new URLSearchParams({ channelId })}`)
+      .then((data) => {
+        if (live) setOffered(data.activities);
+      })
+      .catch(() => {
+        if (live) setOffered([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [open, activity, channelId]);
+
   async function openActivity(kind: RoomActivityKind) {
     if (isBotActivity(kind)) {
       // Each member gets their own link when the frame opens (TogetherFrame).
@@ -1054,7 +1132,8 @@ export function RoomActivities({
   // doesn't cut your chord off or drop you out of the film.
   const isGame = activity?.kind === "deeppixel" || activity?.kind === "richup";
   const botActivity = activity && isBotActivity(activity.kind) ? activity.kind : null;
-  if (!open && !isGame && !botActivity && activity?.kind !== "synth") return null;
+  const appActivity = activity?.kind === "app" ? activity : null;
+  if (!open && !isGame && !botActivity && !appActivity && activity?.kind !== "synth") return null;
 
   async function popOut(mode: "watch" | "reels") {
     // Opened before the request so the browser treats it as the click's window.
@@ -1104,7 +1183,7 @@ export function RoomActivities({
               : <Sparkles size={18} />}
           </span>
           <div>
-            <strong>{activity ? activityTitle(activity.kind) : "Room Activities"}</strong>
+            <strong>{activity ? activityTitle(activity.kind, activity.state) : "Room Activities"}</strong>
             <small>
               {activity
                 ? `Shared live in ${channelName}`
@@ -1175,7 +1254,25 @@ export function RoomActivities({
               </button>
             );
           })}
+          {offered.map((choice) => (
+            <button
+              type="button"
+              key={`${choice.applicationId}:${choice.name}`}
+              disabled={busy}
+              className="bot-activity"
+              onClick={() => void action({ action: "open", kind: "app", state: { applicationId: choice.applicationId, name: choice.name } })}
+            >
+              <span>{choice.icon}</span>
+              <strong>{choice.title}</strong>
+              <small>{choice.description}</small>
+              <em className="activity-bot-tag">
+                <Bot size={11} /> {choice.botName}
+              </em>
+            </button>
+          ))}
         </div>
+      ) : appActivity ? (
+        <AppFrame key={`${channelId}:${String(appActivity.state.applicationId)}:${String(appActivity.state.name)}`} channelId={channelId} state={appActivity.state} />
       ) : botActivity ? (
         <TogetherFrame key={`${channelId}:${botActivity}`} channelId={channelId} mode={botActivity} />
       ) : isGame ? (
@@ -1207,7 +1304,7 @@ export function RoomActivities({
           <iframe
             key={gameSrc}
             src={gameSrc}
-            title={activityTitle(activity.kind)}
+            title={activityTitle(activity.kind, activity.state)}
             allow="autoplay; fullscreen; clipboard-write; screen-wake-lock"
             allowFullScreen
           />

@@ -1,3 +1,4 @@
+import { activityInServer } from "@/lib/bot-activities";
 import { currentUser, unauthorized } from "@/lib/auth";
 import {
   BOT_ACTIVITY_NAMES,
@@ -364,6 +365,12 @@ export async function POST(request: Request) {
     }
     const before = isBotActivity(body.kind) ? await rowFor(db, channelId) : null;
     let state = cleanState(body.kind, body.state);
+    if (body.kind === "app") {
+      const wanted = (body.state ?? {}) as { applicationId?: unknown; name?: unknown };
+      const offered = await activityInServer(db, room.server_id, String(wanted.applicationId ?? ""), String(wanted.name ?? ""));
+      if (!offered) return Response.json({ error: "That activity isn't in this server." }, { status: 404 });
+      state = { applicationId: offered.application_id, name: offered.name, title: offered.title, icon: offered.icon, botName: offered.bot_name };
+    }
     let secret: string | null = null;
     if (body.kind === "drawguess") {
       secret = pickWord();
@@ -462,6 +469,8 @@ export async function POST(request: Request) {
       return Response.json({ error: "Unknown drawing action." }, { status: 400 });
     }
   } else if (body.action === "update") {
+    // A bot's activity keeps its own state on its own page.
+    if (existing.kind === "app") return Response.json({ error: "This activity can't be changed here." }, { status: 400 });
     state = cleanState(existing.kind, body.state);
   } else if (body.action === "stroke" && existing.kind === "whiteboard") {
     const stroke = cleanStroke(body.stroke, user.id);

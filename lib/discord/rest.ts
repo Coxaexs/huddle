@@ -63,6 +63,7 @@ import {
 } from "./threads";
 import { handleCommandRoutes, handleInteractionRoutes } from "./interactions";
 import { handleWidgetRoutes, isWidgetRoute } from "./widgets";
+import { handleActivityRoutes, isActivityRoute } from "./activities";
 import { botPayload, mergeBotPayload, payloadOwner, publishBotEdit } from "./bot-messages";
 import { snapshotBeforeEdit } from "../message-edits";
 import { publicOrigin } from "../public-origin";
@@ -344,6 +345,7 @@ async function route(context: RestContext, segments: string[]): Promise<Response
       return channelRoutes(context, rest);
     case "applications":
       if (isWidgetRoute(rest)) return handleWidgetRoutes(context, rest);
+      if (isActivityRoute(rest)) return handleActivityRoutes(context, rest);
       return handleCommandRoutes(context, rest);
     case "webhooks":
       // /webhooks/{id} with the bot's own token: manage a webhook.

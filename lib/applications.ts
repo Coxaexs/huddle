@@ -30,6 +30,8 @@ export interface ApplicationRow {
   public: number;
   intents: number;
   kind: string;
+  /** May play audio in voice rooms through the room player. */
+  player: number;
   disabled_at: string | null;
   created_at: string;
 }
@@ -41,6 +43,7 @@ export interface PublicApplication {
   avatar: string;
   public: boolean;
   intents: number;
+  player: boolean;
   servers: number;
   createdAt: string;
   /** Ticked in the permission calculator to start with. */
@@ -98,6 +101,7 @@ export async function applicationIdentity(db: D1Database, app: ApplicationRow): 
     applicationId: app.id,
     grants: await applicationGrants(db, app.id),
     privilegedIntents: Number(app.intents) & PRIVILEGED_INTENTS,
+    player: Boolean(app.player) || app.kind === "music",
   };
 }
 
@@ -113,6 +117,7 @@ export async function publicApplication(db: D1Database, app: ApplicationRow): Pr
     avatar: app.avatar,
     public: Boolean(app.public),
     intents: Number(app.intents) & PRIVILEGED_INTENTS,
+    player: Boolean(app.player) || app.kind === "music",
     servers: count?.n ?? 0,
     createdAt: app.created_at,
     defaultPermissions: app.kind === "music" ? MUSIC_BOT_PERMISSIONS : STARTING_PERMISSIONS,

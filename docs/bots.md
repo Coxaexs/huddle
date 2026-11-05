@@ -38,6 +38,57 @@ The `permissions` number in an invite link uses Hoffle's own bit numbers, so a n
 
 These bots use the Discord-compatible API (`/api/v10`), not the plain `/api/v1` API further down.
 
+### Activities
+
+A bot can offer its own voice room activity: a page of yours that opens inside Hoffle, in the room's Activities menu, in every server that added the bot.
+
+```http
+PUT    /hangout/api/v10/applications/{appId}/activities/{name}
+DELETE /hangout/api/v10/applications/{appId}/activities/{name}
+GET    /hangout/api/v10/applications/{appId}/activities
+```
+
+```json
+{ "title": "Quiz Night", "description": "Everyone plays", "icon": "🧠", "url": "https://bot.example/quiz" }
+```
+
+- `name`: 1-32 of `a-z 0-9 _ -`. Up to 10 activities per bot.
+- `url`: must be `https`. Your page has to allow being framed.
+
+Each person who opens it arrives with `?hoffle_ticket=…` on your URL. Trade it, from your server and with your bot token, to learn who they are:
+
+```http
+GET /hangout/api/v10/applications/{appId}/activity-tickets/{ticket}
+```
+
+```json
+{ "user": { "id": "…", "username": "…", "global_name": "…" }, "channel_id": "…", "guild_id": "…" }
+```
+
+A ticket works once, for five minutes, and only for your bot. Don't trust anything else in the URL.
+
+### The room player
+
+Switch on **Room player** in the Developer Portal and your bot can play audio in voice rooms through Hoffle's player: the queue, controls, full-screen view and player widgets all show it, and each listener's browser plays the audio. The server has to grant your bot **Connect** and **Speak**.
+
+```http
+POST /hangout/api/bot/player
+Authorization: Bearer <your bot token>
+```
+
+```json
+{ "channelId": "<voice room>", "startNow": true, "tracks": [
+  { "title": "Song", "artist": "Band", "duration": 180, "audioUrl": "https://bot.example/song.mp3", "thumbnail": "https://bot.example/cover.jpg" }
+] }
+```
+
+- `audioUrl` must be `https`, and your server has to allow browsers to stream it.
+- Send `{ "channelId": "…", "action": { "name": "pause" } }` for `pause`, `resume`, `toggle`, `skip`, `stop`, `seek`, `volume`, `loop`, `shuffle` or `clear`.
+- `GET /hangout/api/bot/player?channelId=…` reads what is playing.
+- Members' pause, skip and the like work whichever bot is playing. Register your own commands for anything else: `/play` belongs to the music bot only where the music bot is.
+
+Lyrics, search, playlists and the DJ booth are the music bot's. Build your own with widgets and activities.
+
 ## Managing bots in a server
 
 Server administrators manage bots in **Server Settings → Integrations**:
@@ -124,7 +175,7 @@ Serve images through the CDN route by adding `cdn: "http://localhost:8730/hangou
 
 ### What does not work
 
-- **Voice.** Discord's voice gateway needs raw UDP with Opus and xsalsa20 encryption, and Cloudflare Workers cannot open UDP sockets. Music bots and anything else that joins a voice channel will not connect. Use Hoffle's own music bot instead, which plays into Hoffle voice rooms directly.
+- **Voice** (use [the room player](#the-room-player) instead). Discord's voice gateway needs raw UDP with Opus and xsalsa20 encryption, and Cloudflare Workers cannot open UDP sockets. Music bots and anything else that joins a voice channel will not connect. Use Hoffle's own music bot instead, which plays into Hoffle voice rooms directly.
 - **Modals**, **autocomplete suggestions**, **user/channel/role/attachment options**, **scheduled events**, **stage instances**, and **editing per-channel permission overwrites** through the API: Hoffle has no equivalent surface yet, so these return empty or an explicit error rather than pretending.
 - **Sharding** beyond a single shard, which a self-hosted instance never needs.
 - **RESUME after the gateway hibernates.** The replay buffer is in memory, so a resume against an evicted object answers `INVALID_SESSION`; clients handle this by re-identifying.
