@@ -127,13 +127,11 @@ interface MessageRow extends MessageFiles {
 const MESSAGE = `SELECT m.id, m.channel_id, m.author, m.deleted_at, m.attachment_key, m.attachments, m.audio_url, c.server_id
   FROM messages m LEFT JOIN channels c ON c.id = m.channel_id`;
 
+// instr, not LIKE: D1 refuses a LIKE pattern over 50 bytes, and file keys are longer.
 async function messagesWithFile(db: D1Database, key: string): Promise<MessageRow[]> {
-  const like = `%${key.replace(/[\\%_]/g, "\\$&")}%`;
   const { results } = await db
-    .prepare(
-      `${MESSAGE} WHERE m.attachment_key = ? OR m.attachments LIKE ? ESCAPE '\\' OR m.audio_url LIKE ? ESCAPE '\\' LIMIT 20`,
-    )
-    .bind(key, like, like)
+    .prepare(`${MESSAGE} WHERE m.attachment_key = ? OR instr(m.attachments, ?) > 0 OR instr(m.audio_url, ?) > 0 LIMIT 20`)
+    .bind(key, key, key)
     .all<MessageRow>();
   return results || [];
 }
@@ -241,15 +239,14 @@ export async function fileOfDeletedMessage(db: D1Database, key: string): Promise
     .bind(key)
     .first<{ total: number; live: number }>();
   if (direct?.live) return false;
-  const like = `%${key.replace(/[\\%_]/g, "\\$&")}%`;
   const extra = await db
     .prepare(
       `SELECT COUNT(*) AS total, COUNT(CASE WHEN deleted_at IS NULL THEN 1 END) AS live
          FROM messages
         WHERE (attachments IS NOT NULL OR audio_url IS NOT NULL)
-          AND (attachments LIKE ? ESCAPE '\\' OR audio_url LIKE ? ESCAPE '\\')`,
+          AND (instr(attachments, ?) > 0 OR instr(audio_url, ?) > 0)`,
     )
-    .bind(like, like)
+    .bind(key, key)
     .first<{ total: number; live: number }>();
   if (extra?.live) return false;
   return Boolean(direct?.total || extra?.total);

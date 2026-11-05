@@ -24,7 +24,12 @@ function realDb(): D1Database {
   const statement = (query: string, params: unknown[] = []) => {
     const values = params as Array<string | number | null>;
     return {
-      bind: (...args: unknown[]) => statement(query, args),
+      bind: (...args: unknown[]) => {
+        // D1 refuses these and SQLite here does not, so hold this copy to D1's limit.
+        const tooLong = args.some((arg) => typeof arg === "string" && Buffer.byteLength(arg) > 50);
+        if (/\b(LIKE|GLOB)\b/i.test(query) && tooLong) throw new Error("D1_ERROR: LIKE or GLOB pattern too complex: SQLITE_ERROR");
+        return statement(query, args);
+      },
       async first<T>() {
         return (sqlite.prepare(query).get(...values) ?? null) as T;
       },
@@ -338,6 +343,33 @@ describe("deleting a message takes its file with it", () => {
     await remove("m2");
     signIn(true);
     expect((await fetchFile(KEY)).status).toBe(200);
+  });
+
+  describe("for a file with a real-length name", () => {
+    const LONG = "d8a149ad-b737-4dbd-91dc-a8ff241cb685--6c45d9cda62e4556c0ea8905c1da31ec.jpg";
+    const carry = () => db.prepare("UPDATE messages SET attachments = ? WHERE id = 'm3'").bind(JSON.stringify([LONG])).run();
+
+    beforeEach(() => {
+      files.set(LONG, "x");
+      signIn(false);
+    });
+
+    it("serves it when no message mentions it, like an avatar", async () => {
+      expect((await fetchFile(LONG)).status).toBe(200);
+    });
+
+    it("serves it while a message carries it, and not after", async () => {
+      await carry();
+      expect((await fetchFile(LONG)).status).toBe(200);
+      await remove("m3");
+      expect((await fetchFile(LONG)).status).toBe(404);
+    });
+
+    it("finds the messages carrying it for a takedown", async () => {
+      await carry();
+      await asMail([fileLink(LONG)]);
+      expect((await message("m3"))!.deleted_at).toBeTruthy();
+    });
   });
 
   it("covers extra attachments and voice messages", async () => {
