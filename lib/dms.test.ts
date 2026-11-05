@@ -160,6 +160,61 @@ describe("Direct Messages & Notes to Self", () => {
     expect(group.lastAt).toBe("2026-09-20T00:00:00Z");
   });
 
+  it("gives DM partners and group members the profile a server's member list shows", async () => {
+    const seen: string[] = [];
+    const profile = (id: string) => ({
+      id,
+      username: id,
+      display_name: id.toUpperCase(),
+      avatar: "",
+      avatar_url: null,
+      color: "#123456",
+      bio: `${id} bio`,
+      pronouns: "they/them",
+      profile_effect: `${id}-effect`,
+      nameplate: `${id}-plate`,
+      avatar_frame: "gold",
+      email: `${id}@example.com`,
+      last_seen_at: "2026-11-01T10:00:00Z",
+    });
+    const mockDb = {
+      prepare: (sql: string) => {
+        seen.push(sql);
+        return {
+          bind: () => ({
+            all: async () => {
+              if (sql.includes("c.is_group = 1")) {
+                return { results: [{ channel_id: "group-1", name: "Party", owner_id: "alice", created_at: "2026-09-20T00:00:00Z", hidden_at: null, last_message: null, last_at: null }] };
+              }
+              if (sql.includes("dm.channel_id IN")) {
+                return { results: ["alice", "cy"].map((id) => ({ channel_id: "group-1", ...profile(id) })) };
+              }
+              return { results: [{ channel_id: "dm-1", ...profile("bob"), last_message: "hi", last_at: "2026-11-02T00:00:00Z" }] };
+            },
+          }),
+        };
+      },
+    } as unknown as D1Database;
+
+    const dms = await listDms(mockDb, "alice");
+    const direct = dms.find((dm) => dm.channelId === "dm-1")!;
+    const group = dms.find((dm) => dm.channelId === "group-1")!;
+    expect(direct.user).toMatchObject({
+      id: "bob",
+      displayName: "BOB",
+      bio: "bob bio",
+      pronouns: "they/them",
+      profileEffect: "bob-effect",
+      nameplate: "bob-plate",
+      avatarFrame: "gold",
+      lastSeenAt: "2026-11-01T10:00:00Z",
+    });
+    expect(group.group?.members.find((member) => member.id === "cy")).toMatchObject({ profileEffect: "cy-effect", nameplate: "cy-plate" });
+    // Both queries ask for the profile columns, and nothing private leaves the server.
+    expect(seen.filter((sql) => sql.includes("u.profile_style"))).toHaveLength(2);
+    expect(JSON.stringify(dms)).not.toContain("@example.com");
+  });
+
   describe("compareDms & sorting", () => {
     const makeDm = (
       id: string,

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ChangeEvent, type DragEvent, type Ke
 import { unregisterNativePush } from "../../lib/native-push";
 import { channelKindInfo } from "@/lib/channel-kinds";
 import { type Member } from "@/lib/users";
+import { dmMemberList } from "../../lib/chat/dm-members";
 import { findTagQuery, nameToHandle } from "@/lib/mention-handles";
 import { type MentionOption } from "../../lib/chat/types";
 import { rankMentionMatches } from "../../lib/chat/format";
@@ -62,34 +63,10 @@ export function useShellComposer(s: ReturnType<typeof useShellMessaging>) {
   useEffect(() => {
     if (!tagQuery) setDismissedTagAt(null);
   }, [tagQuery]);
-  const dmMembers: Member[] = useMemo(() => {
-    if (!inDmHome || !user) return [];
-    const meAsMember: Member = {
-      id: user.id,
-      username: user.username,
-      displayName: user.displayName,
-      avatar: user.avatar,
-      avatarUrl: user.avatarUrl,
-      color: user.color,
-      lastSeenAt: new Date().toISOString(),
-    };
-    if (!activeDm) return [meAsMember];
-    if (activeDm.group) {
-      return activeDm.group.members.map((member) =>
-        member.id === user.id ? meAsMember : member,
-      );
-    }
-    const otherAsMember: Member = {
-      id: activeDm.user.id,
-      username: activeDm.user.username,
-      displayName: activeDm.user.displayName,
-      avatar: activeDm.user.avatar,
-      avatarUrl: activeDm.user.avatarUrl,
-      color: activeDm.user.color,
-      lastSeenAt: new Date().toISOString(),
-    };
-    return [meAsMember, otherAsMember];
-  }, [inDmHome, activeDm, user]);
+  const dmMembers: Member[] = useMemo(
+    () => (inDmHome && user ? dmMemberList(user, activeDm) : []),
+    [inDmHome, activeDm, user],
+  );
 
   const mentionMatches = useMemo<MentionOption[]>(() => {
     if (!tagQuery) return [];

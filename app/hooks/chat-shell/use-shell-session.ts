@@ -3,7 +3,7 @@ import { msnPictureFile, type MsnPicture } from "../../lib/msn-pictures";
 import type { PublicChannel, PublicRole, PublicServer } from "@/lib/servers";
 import { channelKindInfo } from "@/lib/channel-kinds";
 import { ALL_PERMISSIONS, hasPermission, Permission, canAccessServerSettings } from "@/lib/permissions";
-import { type Member, type PublicUser } from "@/lib/users";
+import { memberFromPublicUser, type Member, type PublicUser } from "@/lib/users";
 import { activeUntil } from "@/lib/timeouts";
 import { eventWhen, useServerEvents } from "../../components/events-panel";
 import { type ResolvedInvite } from "../../components/server-invite-card";
@@ -581,30 +581,17 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
       const own = map.get(user.id);
       map.set(user.id, {
         ...own,
-        id: user.id,
-        username: user.username,
+        ...memberFromPublicUser(user, own?.lastSeenAt || (user as any).lastSeenAt || new Date().toISOString()),
         displayName: own?.nickname || user.displayName,
-        globalName: user.displayName,
-        avatar: user.avatar,
         avatarUrl: own?.serverAvatarUrl || user.avatarUrl,
-        globalAvatarUrl: user.avatarUrl,
-        color: user.color,
-        isAdmin: user.isAdmin,
-        canInvite: user.canInvite,
-        lastSeenAt: own?.lastSeenAt || (user as any).lastSeenAt || new Date().toISOString(),
       });
     }
+    // DM partners and group DM members carry their full public profile, so
+    // their cards look the same as in a server.
     for (const dm of dms) {
-      if (dm.user && !map.has(dm.user.id)) {
-        map.set(dm.user.id, {
-          id: dm.user.id,
-          username: dm.user.username,
-          displayName: dm.user.displayName,
-          avatar: dm.user.avatar,
-          avatarUrl: dm.user.avatarUrl,
-          color: dm.user.color,
-          lastSeenAt: (dm.user as any).lastSeenAt || new Date().toISOString(),
-        });
+      for (const person of dm.group ? [dm.user, ...dm.group.members] : [dm.user]) {
+        if (!person || map.has(person.id)) continue;
+        map.set(person.id, { ...person, lastSeenAt: person.lastSeenAt || new Date().toISOString() });
       }
     }
     return map;

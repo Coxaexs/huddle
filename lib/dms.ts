@@ -1,15 +1,17 @@
+import { memberFromRow, userColumns, type MemberRow } from "./auth";
 import { DM_SERVER_ID } from "./schema";
+import type { Member } from "./users";
+
+/**
+ * The other person in a conversation, with the same public profile a server's
+ * member list shows, so their card keeps its effects, nameplate and banner.
+ * A group's stand-in carries only a name and an icon.
+ */
+export type DmUser = Pick<Member, "id" | "username" | "displayName" | "avatar" | "color"> & Partial<Member>;
 
 export interface DmSummary {
   channelId: string;
-  user: {
-    id: string;
-    username: string;
-    displayName: string;
-    avatar: string;
-    avatarUrl: string | null;
-    color: string;
-  };
+  user: DmUser;
   lastMessage: string | null;
   lastAt: string | null;
   /** Closed from the DM list; still reachable through the quick switcher. */
@@ -24,7 +26,7 @@ export interface DmSummary {
   group?: {
     name: string;
     ownerId: string | null;
-    members: DmSummary["user"][];
+    members: Member[];
   };
 }
 
@@ -169,7 +171,7 @@ export async function listDms(
   const rows = await db
     .prepare(
       `SELECT mine.channel_id AS channel_id,
-              u.id AS id, u.username, u.display_name, u.avatar, u.avatar_url, u.color,
+              ${userColumns("u")},
               (SELECT content FROM messages m
                 WHERE m.channel_id = mine.channel_id AND m.deleted_at IS NULL
                 ORDER BY m.created_at DESC LIMIT 1) AS last_message,
@@ -191,14 +193,8 @@ export async function listDms(
     .all();
 
   const direct = (
-    (rows.results || []) as Array<{
+    (rows.results || []) as unknown as Array<MemberRow & {
       channel_id: string;
-      id: string;
-      username: string;
-      display_name: string;
-      avatar: string;
-      avatar_url: string | null;
-      color: string;
       last_message: string | null;
       last_at: string | null;
       channel_created_at?: string | null;
@@ -207,14 +203,7 @@ export async function listDms(
     }>
   ).map((row) => ({
     channelId: row.channel_id,
-    user: {
-      id: row.id,
-      username: row.username,
-      displayName: row.display_name,
-      avatar: row.avatar,
-      avatarUrl: row.avatar_url,
-      color: row.color,
-    },
+    user: memberFromRow(row, userId),
     lastMessage: row.last_message,
     lastAt: row.last_at || row.channel_created_at || null,
     hidden: Boolean(row.hidden_at),
@@ -260,33 +249,17 @@ async function listGroupDms(db: D1Database, userId: string): Promise<DmSummary[]
   const placeholders = groups.map(() => "?").join(",");
   const memberRows = await db
     .prepare(
-      `SELECT dm.channel_id AS channel_id, u.id, u.username, u.display_name, u.avatar,
-              u.avatar_url, u.color
+      `SELECT dm.channel_id AS channel_id, ${userColumns("u")}
          FROM dm_members dm
          JOIN users u ON u.id = dm.user_id
         WHERE dm.channel_id IN (${placeholders})`,
     )
     .bind(...groups.map((g) => g.channel_id))
     .all();
-  const byChannel = new Map<string, DmSummary["user"][]>();
-  for (const row of (memberRows.results || []) as Array<{
-    channel_id: string;
-    id: string;
-    username: string;
-    display_name: string;
-    avatar: string;
-    avatar_url: string | null;
-    color: string;
-  }>) {
+  const byChannel = new Map<string, Member[]>();
+  for (const row of (memberRows.results || []) as unknown as Array<MemberRow & { channel_id: string }>) {
     const list = byChannel.get(row.channel_id) || [];
-    list.push({
-      id: row.id,
-      username: row.username,
-      displayName: row.display_name,
-      avatar: row.avatar,
-      avatarUrl: row.avatar_url,
-      color: row.color,
-    });
+    list.push(memberFromRow(row, userId));
     byChannel.set(row.channel_id, list);
   }
 

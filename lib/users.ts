@@ -229,6 +229,51 @@ export interface Member {
   joinedAt?: string | null;
 }
 
+/**
+ * The signed-in person as a member row, for lists and profile cards that are
+ * not tied to a server (DMs). The session carries profile edits the moment
+ * they are saved. Private account settings (email, layout, …) stay out, and
+ * fields the session lacks are left off so they never blank out a merge.
+ */
+export function memberFromPublicUser(user: PublicUser, lastSeenAt = new Date().toISOString()): Member {
+  const member: Member = {
+    id: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    globalName: user.displayName,
+    avatar: user.avatar,
+    avatarUrl: user.avatarUrl ?? null,
+    globalAvatarUrl: user.avatarUrl ?? null,
+    bannerUrl: user.bannerUrl,
+    bio: user.bio,
+    pronouns: user.pronouns,
+    tagline: user.tagline,
+    customStatus: user.customStatus,
+    prideBadges: user.prideBadges,
+    achievementShowcase: user.achievementShowcase,
+    spotifyActivity: user.spotifyActivity,
+    activity: user.activity,
+    socialLinks: user.socialLinks,
+    avatarFrame: user.avatarFrame,
+    profileEffect: user.profileEffect,
+    nameplate: user.nameplate,
+    profileFrame: user.profileFrame,
+    profileStyle: user.profileStyle,
+    color: user.color,
+    customCss: user.customCss,
+    customTheme: user.customTheme,
+    createdAt: user.createdAt,
+    isAdmin: user.isAdmin,
+    canInvite: user.canInvite,
+    isDev: user.isDev,
+    lastSeenAt,
+  };
+  for (const key of Object.keys(member) as (keyof Member)[]) {
+    if (member[key] === undefined) delete member[key];
+  }
+  return member;
+}
+
 export type PresenceStatus = "online" | "idle" | "dnd" | "invisible";
 
 /** Label + dot colour for each presence status. */
