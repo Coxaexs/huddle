@@ -1,4 +1,5 @@
 import { MsnDisplayPictures } from "../../msn-chrome";
+import { apiFetch } from "../../../lib/client";
 import { GAME_INFO } from "@/lib/games";
 import { channelKindInfo } from "@/lib/channel-kinds";
 import { hasPermission, Permission } from "@/lib/permissions";
@@ -370,6 +371,32 @@ export function renderChatMain(v: ShellRenderState) {
                   posts={messages}
                   channelName={channelTitle}
                   canPost={!composerBlocked}
+                  tags={activeChannel?.forumTags}
+                  canManageTags={canManageChannels}
+                  canModerate={canManageChannels || canPin}
+                  currentUserId={v.user.id}
+                  draftTags={v.forumDraftTags?.channelId === activeChannelId ? v.forumDraftTags.tags : undefined}
+                  onDraftTagsChange={(ids) => {
+                    if (activeChannelId) v.setForumDraftTags({ channelId: activeChannelId, tags: ids });
+                  }}
+                  onSaveTags={async (next) => {
+                    if (!activeChannelId) return;
+                    const res = await apiFetch<{ servers: typeof v.servers }>(
+                      `/api/channels/${encodeURIComponent(activeChannelId)}`,
+                      { method: "PATCH", body: JSON.stringify({ forumTags: next }) },
+                    );
+                    v.setServers(res.servers);
+                  }}
+                  onSetPostTags={async (postId, ids) => {
+                    try {
+                      await apiFetch(`/api/messages/${encodeURIComponent(String(postId))}`, {
+                        method: "PATCH",
+                        body: JSON.stringify({ tags: ids }),
+                      });
+                    } catch (error) {
+                      v.setNotice(error instanceof Error ? error.message : "Could not change the tags.");
+                    }
+                  }}
                   onOpenPost={(postId) => {
                     // Resolved here rather than passed through, so the board
                     // never has to know about the richer Message type.

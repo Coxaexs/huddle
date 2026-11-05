@@ -9,6 +9,7 @@ import { DM_SERVER_ID } from "./schema";
 import { serversWithMusicBot } from "./music-bot";
 import { channelKindInfo, isChannelKind, type ChannelKind } from "./channel-kinds";
 import { clampVoiceBitrate } from "./voice-quality";
+import { parseForumTags, type ForumTag } from "./forum-tags";
 import {
   applyOverwrites,
   isPrivateChannel,
@@ -33,6 +34,8 @@ export interface ChannelRow {
   rtc_region?: "auto" | "nl" | "de";
   /** 1 when the channel is age-restricted. */
   nsfw?: number;
+  /** Forum channels: their tags, as JSON (lib/forum-tags.ts). */
+  forum_tags?: string | null;
   position: number;
   category_id: string | null;
   created_at: string;
@@ -90,6 +93,8 @@ export interface PublicChannel {
   rtcRegion?: "auto" | "nl" | "de";
   /** Age-restricted: members confirm they are 18+ before it opens. */
   nsfw?: boolean;
+  /** Forum channels: the tags posts there can wear. */
+  forumTags?: ForumTag[];
   position: number;
   /** Category this channel sits under, or null when uncategorised. */
   categoryId: string | null;
@@ -166,6 +171,7 @@ export function publicChannel(channel: ChannelRow): PublicChannel {
     topic: channel.topic || "",
     slowmode: (channel as { slowmode?: number }).slowmode || 0,
     ...(channel.nsfw ? { nsfw: true } : {}),
+    ...(channel.kind === "forum" ? { forumTags: parseForumTags(channel.forum_tags) } : {}),
     ...(channelKindInfo(channel.kind).voice
       ? {
           bitrate: clampVoiceBitrate((channel as { bitrate?: number }).bitrate),
@@ -292,7 +298,7 @@ export async function listServers(
           .all(),
     scoped(
       (filter) =>
-        `SELECT id, server_id, name, kind, topic, slowmode, bitrate, soundboard, nsfw, position, category_id, created_at
+        `SELECT id, server_id, name, kind, topic, slowmode, bitrate, soundboard, nsfw, forum_tags, position, category_id, created_at
            FROM channels WHERE server_id != ?1 AND ${filter}
           ORDER BY position ASC, created_at ASC`,
     ),

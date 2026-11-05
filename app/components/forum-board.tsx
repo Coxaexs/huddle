@@ -1,7 +1,9 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { proxiedImage } from "@/app/lib/image-proxy";
-import { MessageSquare, Plus } from "lucide-react";
+import { MessageSquare, Plus, Tag, X } from "lucide-react";
+import { MAX_FORUM_TAGS, MAX_POST_TAGS, TAG_NAME_MAX, type ForumTag } from "@/lib/forum-tags";
 import { Avatar } from "./avatar";
 
 /**
@@ -34,6 +36,10 @@ export interface ForumPost {
   kind?: string;
   reactions?: Array<{ emoji: string; count: number }>;
   mentions?: string[];
+  /** Who wrote it, so its author can change its tags. */
+  userId?: string | null;
+  /** The tags the post wears (tag ids from the forum's list). */
+  payload?: { forumTags?: string[] } | null;
 }
 
 export interface ForumBoardProps {
@@ -49,6 +55,18 @@ export interface ForumBoardProps {
   onOpenPost: (postId: string | number) => void;
   /** Focuses the composer, where a new post is actually written. */
   onNewPost: () => void;
+  /** The forum's tags (lib/forum-tags.ts). */
+  tags?: ForumTag[];
+  /** May edit the tag list (Manage Channels). */
+  canManageTags?: boolean;
+  onSaveTags?: (tags: ForumTag[]) => Promise<void>;
+  /** Tags picked for the next post, sent along when it is posted. */
+  draftTags?: string[];
+  onDraftTagsChange?: (ids: string[]) => void;
+  currentUserId?: string;
+  /** May put moderated tags on, and retag anyone's post. */
+  canModerate?: boolean;
+  onSetPostTags?: (postId: string | number, ids: string[]) => Promise<void>;
 }
 
 /** Longest heading before it is trimmed with an ellipsis. */
@@ -102,14 +120,42 @@ export function boardPosts(posts: ForumPost[]): ForumPost[] {
     .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 }
 
+const NO_TAGS: ForumTag[] = [];
+const NO_IDS: string[] = [];
+
+function tagLabel(tag: ForumTag): string {
+  return tag.emoji ? `${tag.emoji} ${tag.name}` : tag.name;
+}
+
 export function ForumBoard({
   posts: allPosts,
   channelName,
   canPost,
   onOpenPost,
   onNewPost,
+  tags = NO_TAGS,
+  canManageTags = false,
+  onSaveTags,
+  draftTags = NO_IDS,
+  onDraftTagsChange,
+  currentUserId,
+  canModerate = false,
+  onSetPostTags,
 }: ForumBoardProps) {
-  const posts = boardPosts(allPosts);
+  const [filter, setFilter] = useState<string[]>([]);
+  const [editingList, setEditingList] = useState(false);
+  const [editingPost, setEditingPost] = useState<string | number | null>(null);
+  const byId = useMemo(() => new Map(tags.map((tag) => [tag.id, tag])), [tags]);
+  const tagsOf = (post: ForumPost) => (post.payload?.forumTags || []).filter((id) => byId.has(id));
+  // A filter for a tag that has since been deleted filters nothing.
+  const activeFilter = filter.filter((id) => byId.has(id));
+  const everyPost = boardPosts(allPosts);
+  const posts = activeFilter.length
+    ? everyPost.filter((post) => tagsOf(post).some((id) => activeFilter.includes(id)))
+    : everyPost;
+  const pickable = tags.filter((tag) => canModerate || !tag.moderated);
+  const draft = draftTags.filter((id) => byId.has(id));
+
   return (
     <div className="forum-board">
       <div className="forum-board-head">
@@ -118,32 +164,108 @@ export function ForumBoard({
             <MessageSquare size={15} aria-hidden="true" /> {channelName}
           </h2>
           <p className="forum-board-sub">
-            {posts.length} {posts.length === 1 ? "post" : "posts"} · each one opens its own
+            {activeFilter.length ? `${posts.length} of ` : ""}
+            {everyPost.length} {everyPost.length === 1 ? "post" : "posts"} · each one opens its own
             thread
           </p>
         </div>
-        {canPost && (
-          <button type="button" className="forum-new-post" onClick={onNewPost}>
-            <Plus size={14} aria-hidden="true" /> New post
-          </button>
-        )}
+        <div className="forum-board-actions">
+          {canManageTags && onSaveTags && !editingList && (
+            <button type="button" className="forum-edit-tags" onClick={() => setEditingList(true)}>
+              <Tag size={13} aria-hidden="true" /> {tags.length ? "Edit tags" : "Add tags"}
+            </button>
+          )}
+          {canPost && (
+            <button type="button" className="forum-new-post" onClick={onNewPost}>
+              <Plus size={14} aria-hidden="true" /> New post
+            </button>
+          )}
+        </div>
       </div>
+
+      {editingList && onSaveTags && (
+        <TagListEditor
+          tags={tags}
+          onCancel={() => setEditingList(false)}
+          onSave={async (next) => {
+            await onSaveTags(next);
+            setEditingList(false);
+          }}
+        />
+      )}
+
+      {!editingList && tags.length > 0 && (
+        <div className="forum-tagbar" role="group" aria-label="Show posts with these tags">
+          {tags.map((tag) => {
+            const on = activeFilter.includes(tag.id);
+            return (
+              <button
+                type="button"
+                key={tag.id}
+                className="forum-tag"
+                aria-pressed={on}
+                onClick={() => setFilter((current) => (on ? current.filter((id) => id !== tag.id) : [...current, tag.id]))}
+              >
+                {tagLabel(tag)}
+              </button>
+            );
+          })}
+          {activeFilter.length > 0 && (
+            <button type="button" className="forum-tag-clear" onClick={() => setFilter([])}>
+              Show all
+            </button>
+          )}
+        </div>
+      )}
+
+      {!editingList && canPost && onDraftTagsChange && pickable.length > 0 && (
+        <div className="forum-tagbar forum-draft-tags" role="group" aria-label="Tags for your next post">
+          <span className="forum-tagbar-label">Your next post:</span>
+          {pickable.map((tag) => {
+            const on = draft.includes(tag.id);
+            return (
+              <button
+                type="button"
+                key={tag.id}
+                className="forum-tag"
+                aria-pressed={on}
+                disabled={!on && draft.length >= MAX_POST_TAGS}
+                onClick={() => onDraftTagsChange(on ? draft.filter((id) => id !== tag.id) : [...draft, tag.id])}
+              >
+                {tagLabel(tag)}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {posts.length === 0 ? (
         <div className="forum-empty">
           <MessageSquare size={26} aria-hidden="true" />
-          <h3>No posts yet</h3>
-          <p>
-            {canPost
-              ? "Write the first one below. Every post here starts its own thread, so replies stay together."
-              : "Nothing has been posted here yet."}
-          </p>
+          {activeFilter.length ? (
+            <>
+              <h3>No posts with these tags</h3>
+              <p>Pick other tags, or show all posts.</p>
+            </>
+          ) : (
+            <>
+              <h3>No posts yet</h3>
+              <p>
+                {canPost
+                  ? "Write the first one below. Every post here starts its own thread, so replies stay together."
+                  : "Nothing has been posted here yet."}
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <ul className="forum-grid" aria-label={`Posts in ${channelName}`}>
           {posts.map((post) => {
             const { title, excerpt } = postHeading(post);
             const replies = post.threadCount ?? 0;
+            const postTags = tagsOf(post);
+            const mayRetag =
+              Boolean(onSetPostTags) && tags.length > 0 && (canModerate || (Boolean(currentUserId) && post.userId === currentUserId));
             return (
               <li key={post.id}>
                 <button
@@ -172,6 +294,15 @@ export function ForumBoard({
                   </div>
 
                   <h3 className="forum-card-title">{title}</h3>
+                  {postTags.length > 0 && (
+                    <span className="forum-card-tags">
+                      {postTags.map((id) => (
+                        <span key={id} className="forum-tag small">
+                          {tagLabel(byId.get(id)!)}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                   {excerpt && <p className="forum-card-excerpt">{excerpt}</p>}
 
                   {post.image && (
@@ -191,6 +322,29 @@ export function ForumBoard({
                     ))}
                   </div>
                 </button>
+                {mayRetag && editingPost !== post.id && (
+                  <button
+                    type="button"
+                    className="forum-card-edit-tags"
+                    aria-label={`Change tags on ${title}`}
+                    onClick={() => setEditingPost(post.id)}
+                  >
+                    <Tag size={12} aria-hidden="true" /> Tags
+                  </button>
+                )}
+                {mayRetag && editingPost === post.id && onSetPostTags && (
+                  <PostTagsEditor
+                    title={title}
+                    tags={tags}
+                    current={postTags}
+                    canModerate={canModerate}
+                    onCancel={() => setEditingPost(null)}
+                    onSave={async (ids) => {
+                      await onSetPostTags(post.id, ids);
+                      setEditingPost(null);
+                    }}
+                  />
+                )}
               </li>
             );
           })}
@@ -200,3 +354,169 @@ export function ForumBoard({
   );
 }
 
+/** Picks a post's tags: moderated ones stay as they are unless you moderate. */
+function PostTagsEditor({
+  title,
+  tags,
+  current,
+  canModerate,
+  onSave,
+  onCancel,
+}: {
+  title: string;
+  tags: ForumTag[];
+  current: string[];
+  canModerate: boolean;
+  onSave: (ids: string[]) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [picked, setPicked] = useState<string[]>(current);
+  const [saving, setSaving] = useState(false);
+  return (
+    <div className="forum-post-tags-editor" role="group" aria-label={`Tags on ${title}`}>
+      <div className="forum-tagbar">
+        {tags.map((tag) => {
+          const on = picked.includes(tag.id);
+          const locked = Boolean(tag.moderated) && !canModerate;
+          return (
+            <button
+              type="button"
+              key={tag.id}
+              className="forum-tag"
+              aria-pressed={on}
+              disabled={locked || (!on && picked.length >= MAX_POST_TAGS)}
+              title={locked ? "Only moderators can change this tag" : undefined}
+              onClick={() => setPicked((ids) => (on ? ids.filter((id) => id !== tag.id) : [...ids, tag.id]))}
+            >
+              {tagLabel(tag)}
+            </button>
+          );
+        })}
+      </div>
+      <div className="forum-tag-editor-actions">
+        <button type="button" className="forum-tag-clear" onClick={onCancel}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="forum-new-post"
+          disabled={saving}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              await onSave(picked);
+            } finally {
+              setSaving(false);
+            }
+          }}
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The forum's tag list, for people who manage the channel. */
+function TagListEditor({
+  tags,
+  onSave,
+  onCancel,
+}: {
+  tags: ForumTag[];
+  onSave: (tags: ForumTag[]) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [rows, setRows] = useState<ForumTag[]>(() => tags.map((tag) => ({ ...tag })));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const change = (index: number, patch: Partial<ForumTag>) =>
+    setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  return (
+    <form
+      className="forum-tag-editor"
+      aria-label="Forum tags"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setSaving(true);
+        setError("");
+        try {
+          await onSave(rows.filter((row) => row.name.trim()));
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Could not save the tags.");
+        } finally {
+          setSaving(false);
+        }
+      }}
+    >
+      <p className="forum-tag-editor-hint">
+        Up to {MAX_FORUM_TAGS} tags; a post can wear {MAX_POST_TAGS}. Moderated tags can only be put on
+        or taken off by moderators.
+      </p>
+      {rows.length > 0 && (
+        <ul>
+          {rows.map((row, index) => (
+            <li key={row.id} className="forum-tag-editor-row">
+              <input
+                type="text"
+                className="forum-tag-emoji-input"
+                aria-label={`Emoji for tag ${index + 1}`}
+                placeholder="🏷️"
+                value={row.emoji || ""}
+                onChange={(event) => change(index, { emoji: event.target.value })}
+              />
+              <input
+                type="text"
+                aria-label={`Name of tag ${index + 1}`}
+                placeholder="Tag name"
+                maxLength={TAG_NAME_MAX}
+                value={row.name}
+                onChange={(event) => change(index, { name: event.target.value })}
+              />
+              <label className="forum-tag-moderated">
+                <input
+                  type="checkbox"
+                  checked={Boolean(row.moderated)}
+                  onChange={(event) => change(index, { moderated: event.target.checked })}
+                />
+                Moderated
+              </label>
+              <button
+                type="button"
+                className="forum-tag-remove"
+                aria-label={`Remove ${row.name || `tag ${index + 1}`}`}
+                onClick={() => setRows((current) => current.filter((_, i) => i !== index))}
+              >
+                <X size={14} aria-hidden="true" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="forum-tag-editor-actions">
+        <button
+          type="button"
+          className="forum-tag-clear"
+          disabled={rows.length >= MAX_FORUM_TAGS}
+          onClick={() =>
+            setRows((current) => [...current, { id: `new${Date.now().toString(36)}${current.length}`, name: "" }])
+          }
+        >
+          <Plus size={13} aria-hidden="true" /> Add tag
+        </button>
+        <span className="forum-tag-editor-spacer" />
+        <button type="button" className="forum-tag-clear" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="submit" className="forum-new-post" disabled={saving}>
+          {saving ? "Saving…" : "Save tags"}
+        </button>
+      </div>
+      {error && (
+        <p className="forum-tag-editor-error" role="alert">
+          {error}
+        </p>
+      )}
+    </form>
+  );
+}

@@ -961,6 +961,10 @@ async function migrate(db: D1Database): Promise<void> {
   if (!channelColumns.has("slowmode")) {
     await db.prepare("ALTER TABLE channels ADD COLUMN slowmode INTEGER NOT NULL DEFAULT 0").run();
   }
+  // Forum channels: the tags posts there can wear (lib/forum-tags.ts).
+  if (!channelColumns.has("forum_tags")) {
+    await db.prepare("ALTER TABLE channels ADD COLUMN forum_tags TEXT").run();
+  }
   // Voice channels only; 0 means "the default" (see lib/voice-quality).
   if (!channelColumns.has("bitrate")) {
     await db.prepare("ALTER TABLE channels ADD COLUMN bitrate INTEGER NOT NULL DEFAULT 0").run();

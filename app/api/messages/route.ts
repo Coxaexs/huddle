@@ -10,6 +10,8 @@ import { dispatchMessage } from "@/lib/discord/dispatch";
 import { hubState, publishMessage } from "@/lib/hub-client";
 import { sendPushNotifications } from "@/lib/push";
 import { isSilentPayload, takeSilent } from "@/lib/silent-messages";
+import { parseForumTags, pickPostTags, requestedTags, withPostTags } from "@/lib/forum-tags";
+import { findChannel as findForumChannel } from "@/lib/servers";
 import { handleMatchesName } from "@/lib/mention-handles";
 import { can, canAny, hasPermission, Permission } from "@/lib/permissions";
 import { CHANNEL_DEFAULTS, channelOverwritePermissions, channelViewers, mayView } from "@/lib/channel-permissions";
@@ -770,6 +772,18 @@ export async function postMessageAs(
   payload = withImageAlts(payload, allKeys);
   if (silent) {
     payload = { ...(payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {}), silent: true };
+  }
+  // A forum post wears the tags its author picked from the forum's list;
+  // tags anywhere else are dropped.
+  const askedTags = requestedTags(payload);
+  if (askedTags) {
+    const forum = channelId && !threadId ? await findForumChannel(db, channelId) : null;
+    const available = forum?.kind === "forum" ? parseForumTags(forum.forum_tags) : [];
+    const moderator =
+      forum?.kind === "forum"
+        ? await canAny(db, user.id, forum.server_id, Permission.MANAGE_MESSAGES, Permission.MANAGE_CHANNELS)
+        : false;
+    payload = withPostTags(payload, available.length ? pickPostTags(askedTags, available, moderator) : []);
   }
 
   const stored: StoredMessage = {

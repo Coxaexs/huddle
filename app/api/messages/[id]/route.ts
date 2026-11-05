@@ -5,7 +5,9 @@ import {
   dispatchMessageDelete,
 } from "@/lib/discord/dispatch";
 import { publishMessageEvent } from "@/lib/hub-client";
-import { can, Permission } from "@/lib/permissions";
+import { can, canAny, Permission } from "@/lib/permissions";
+import { parseForumTags, pickPostTags, requestedTags, withPostTags } from "@/lib/forum-tags";
+import { findChannel } from "@/lib/servers";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import { channelAudience, isDmMember } from "@/lib/dms";
@@ -165,7 +167,45 @@ export async function PATCH(
   const body = (await request.json().catch(() => ({}))) as {
     pinned?: boolean;
     content?: string;
+    /** A forum post's tags (ids from the forum's list). */
+    tags?: unknown;
   };
+
+  // A forum post's tags: its author or a moderator picks them from the
+  // forum's list; moderated tags stay as they are unless you moderate.
+  if (body.tags !== undefined) {
+    const extra = await db
+      .prepare("SELECT payload, thread_id, edited_at FROM messages WHERE id = ?")
+      .bind(id)
+      .first<{ payload: string | null; thread_id: string | null; edited_at: string | null }>();
+    const forum = message.channel_id && !extra?.thread_id ? await findChannel(db, message.channel_id) : null;
+    if (!forum || forum.kind !== "forum") {
+      return Response.json({ error: "Only forum posts have tags." }, { status: 400 });
+    }
+    const moderator = await canAny(db, user.id, forum.server_id, Permission.MANAGE_MESSAGES, Permission.MANAGE_CHANNELS);
+    if (message.user_id !== user.id && !moderator) {
+      return Response.json({ error: "Only the author or a moderator can change a post's tags." }, { status: 403 });
+    }
+    let stored: unknown;
+    try {
+      stored = extra?.payload ? JSON.parse(extra.payload) : undefined;
+    } catch {
+      stored = undefined;
+    }
+    const tags = pickPostTags(body.tags, parseForumTags(forum.forum_tags), moderator, requestedTags(stored) ?? []);
+    const next = withPostTags(stored, tags);
+    await db
+      .prepare("UPDATE messages SET payload = ? WHERE id = ?")
+      .bind(next ? JSON.stringify(next) : null, id)
+      .run();
+    // Clients merge this over what they hold, so an empty list clears the tags.
+    await publishMessageEvent(
+      forum.id,
+      { t: "message-edited", id, editedAt: extra?.edited_at || undefined, payload: { forumTags: tags } },
+      await channelAudience(db, forum.id),
+    );
+    return Response.json({ ok: true, tags });
+  }
 
   // Editing the text is a separate operation from pinning, and only the author
   // can do it.
