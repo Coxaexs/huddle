@@ -142,7 +142,8 @@ export function ServerRail({
           title={t("rail.dms")}
           onClick={() => {
             setActiveServerId(DM_HOME);
-            setActiveChannelId(visibleDms[0]?.channelId || null);
+            // Home opens on Friends, where Active now shows what everyone is up to.
+            setActiveChannelId(null);
             setStageChannelId(null);
             setMobileNav(false);
           }}

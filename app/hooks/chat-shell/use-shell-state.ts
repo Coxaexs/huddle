@@ -195,6 +195,8 @@ export function useShellState() {
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [pendingFriendCount, setPendingFriendCount] = useState(0);
   const [friendUserIds, setFriendUserIds] = useState<Set<string>>(new Set());
+  /** Bumped when a friend's profile or activity changes; the Friends page reloads. */
+  const [friendsTick, setFriendsTick] = useState(0);
   const [outgoingFriendUserIds, setOutgoingFriendUserIds] = useState<Set<string>>(new Set());
   const [incomingFriendUserIds, setIncomingFriendUserIds] = useState<Set<string>>(new Set());
   const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
@@ -1381,7 +1383,7 @@ export function useShellState() {
     setMessages, messagesRef, rawUnread, setUnread, pins, setPins, pinsOpen, setPinsOpen,
     mentionsOpen, setMentionsOpen, savedOpen, setSavedOpen, savedList, savedIds, loadSaved,
     toggleSaved, mentionsTab, setMentionsTab, mentionInbox, setMentionInbox, globalSearchOpen,
-    setGlobalSearchOpen, pendingFriendCount, setPendingFriendCount, friendUserIds,
+    setGlobalSearchOpen, pendingFriendCount, setPendingFriendCount, friendUserIds, friendsTick, setFriendsTick,
     setFriendUserIds, outgoingFriendUserIds, setOutgoingFriendUserIds, incomingFriendUserIds,
     setIncomingFriendUserIds, blockedUserIds, setBlockedUserIds, blockedUserIdsRef,
     expandedBlockedMessages, setExpandedBlockedMessages, channelDraftsRef, draftSaveTimerRef,

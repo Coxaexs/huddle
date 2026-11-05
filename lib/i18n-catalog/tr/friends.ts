@@ -29,6 +29,12 @@ export const friends: Record<keyof typeof en, string> = {
 
   // Empty States
   "friends.emptyOnline": "Şu an çevrimiçi arkadaşın yok.",
+  "friends.activeNow": "Şu an aktif",
+  "friends.activeNow.quietTitle": "Şimdilik sessiz",
+  "friends.activeNow.quietBody": "Bir arkadaşın ses odasına girince, oyun açınca ya da şarkı açınca burada görünür.",
+  "friends.activeNow.join": "Katıl",
+  "friends.activeNow.here": "Buradasın",
+  "friends.activeNow.inRoom": "{room} odasında",
   "friends.emptyAll": "Henüz eklenmiş bir arkadaşın yok.",
   "friends.emptyPending": "Bekleyen arkadaşlık isteği yok.",
   "friends.emptyBlocked": "Henüz kimseyi engellemedin.",

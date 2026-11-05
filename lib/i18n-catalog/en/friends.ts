@@ -28,6 +28,12 @@ export const friends = {
 
   // Empty States
   "friends.emptyOnline": "No friends online right now.",
+  "friends.activeNow": "Active now",
+  "friends.activeNow.quietTitle": "It's quiet for now",
+  "friends.activeNow.quietBody": "When a friend hops into a voice room, starts a game or puts on a song, it shows up here.",
+  "friends.activeNow.join": "Join",
+  "friends.activeNow.here": "You're here",
+  "friends.activeNow.inRoom": "In {room}",
   "friends.emptyAll": "You don't have any friends added yet.",
   "friends.emptyPending": "There are no pending friend requests.",
   "friends.emptyBlocked": "You haven't blocked anyone.",

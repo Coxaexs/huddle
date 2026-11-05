@@ -20,6 +20,11 @@ import { apiFetch } from "../lib/client";
 import { Avatar } from "./avatar";
 import { Hoffy } from "./hoffy";
 import type { FriendUser, FriendsSummary } from "@/lib/friends";
+import type { VoiceParticipant } from "@/lib/protocol";
+import type { PublicChannel, PublicServer } from "@/lib/servers";
+import { memberActivityLine } from "@/lib/users";
+import { activeNow } from "../lib/active-now";
+import { ActiveNowPanel } from "./active-now-panel";
 import { useI18n } from "@/app/lib/i18n-context";
 
 interface FriendsViewProps {
@@ -35,7 +40,18 @@ interface FriendsViewProps {
   onCallUser?: (user: { id: string; username: string; displayName: string }) => void;
   onPendingCountChange?: (count: number) => void;
   onOpenMobileNav?: () => void;
+  /** Who sits in which voice room (the hub's state), for Active now. */
+  voiceRooms?: Record<string, VoiceParticipant[]>;
+  servers?: PublicServer[];
+  myVoiceChannelId?: string | null;
+  onJoinVoice?: (serverId: string, channel: PublicChannel) => void;
+  /** Bumped when a friend's profile or activity changes, to reload the list. */
+  refreshKey?: number;
 }
+
+const NO_ROOMS: Record<string, VoiceParticipant[]> = {};
+const NO_SERVERS: PublicServer[] = [];
+const ignoreJoin = () => undefined;
 
 type TabKey = "online" | "all" | "pending" | "blocked" | "add";
 
@@ -45,6 +61,11 @@ export function FriendsView({
   onCallUser,
   onPendingCountChange,
   onOpenMobileNav,
+  voiceRooms = NO_ROOMS,
+  servers = NO_SERVERS,
+  myVoiceChannelId = null,
+  onJoinVoice = ignoreJoin,
+  refreshKey = 0,
 }: FriendsViewProps) {
   const { t } = useI18n();
   const [tab, setTab] = useState<TabKey>("online");
@@ -84,6 +105,19 @@ export function FriendsView({
 
   useEffect(() => {
     void loadFriends();
+  }, []);
+
+  // A friend changed their profile or what they are doing: reload shortly, so
+  // a burst of changes is one request. Every minute as well, so games and
+  // songs that end without a word drop off.
+  useEffect(() => {
+    if (!refreshKey) return;
+    const timer = window.setTimeout(() => void loadFriends(), 800);
+    return () => window.clearTimeout(timer);
+  }, [refreshKey]);
+  useEffect(() => {
+    const timer = window.setInterval(() => void loadFriends(), 60_000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const handleSendRequest = async (e: React.FormEvent) => {
@@ -206,6 +240,10 @@ export function FriendsView({
   const onlineFriends = useMemo(() => {
     return data.friends.filter((f) => onlineUserIds.has(f.id));
   }, [data.friends, onlineUserIds]);
+  const activeEntries = useMemo(
+    () => activeNow(data.friends, onlineUserIds, voiceRooms, servers),
+    [data.friends, onlineUserIds, voiceRooms, servers],
+  );
 
   const displayedFriends = useMemo(() => {
     const list = tab === "online" ? onlineFriends : data.friends;
@@ -334,7 +372,8 @@ export function FriendsView({
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto p-6" onClick={() => setMenuUserId(null)}>
+      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 min-w-0 overflow-y-auto p-6" onClick={() => setMenuUserId(null)}>
         {/* ADD FRIEND TAB */}
         {tab === "add" && (
           <div className="max-w-2xl">
@@ -599,6 +638,9 @@ export function FriendsView({
         {/* ONLINE & ALL TABS */}
         {(tab === "online" || tab === "all") && (
           <div className="max-w-3xl">
+            <div className="xl:hidden">
+              <ActiveNowPanel compact entries={activeEntries} myVoiceChannelId={myVoiceChannelId} onJoin={onJoinVoice} onOpenDm={onOpenDm} />
+            </div>
             {/* Search filter */}
             <div className="relative mb-6">
               <input
@@ -689,7 +731,7 @@ export function FriendsView({
                             {f.displayName}
                           </div>
                           <div className="text-xs text-[var(--muted)] truncate">
-                            {f.customStatus || `@${f.username}`}
+                            {f.customStatus || (isOnline && memberActivityLine(f, t)) || `@${f.username}`}
                           </div>
                         </div>
                       </div>
@@ -754,6 +796,10 @@ export function FriendsView({
             )}
           </div>
         )}
+      </div>
+      <aside className="hidden xl:block w-[340px] shrink-0 border-l border-[var(--line)] overflow-y-auto p-5">
+        <ActiveNowPanel entries={activeEntries} myVoiceChannelId={myVoiceChannelId} onJoin={onJoinVoice} onOpenDm={onOpenDm} />
+      </aside>
       </div>
     </div>
   );
