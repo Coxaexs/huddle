@@ -8,6 +8,7 @@ import { isGifPageUrl } from "@/lib/unfurl";
 import { GifPageEmbed, LinkPreviewCard } from "./link-preview";
 import { MessageLinkCard } from "./message-link-card";
 import { parseMessageLink, type MessageLinkTarget } from "../lib/chat/message-links";
+import { formatTimestamp, timestampDate, type TimestampStyle } from "../lib/discord-timestamp";
 import { extractInviteCodes } from "../lib/chat/invites";
 import { resolveEmojiShortcode } from "@/lib/emoji-shortcodes";
 import { handleMatchesName } from "@/lib/mention-handles";
@@ -57,9 +58,33 @@ const INLINE_PATTERN = new RegExp(
     // A personal emoticon (lib/msn-contacts.ts): [emo:<upload key>|(cat)]
     `|(?:\\[emo:(?<emokey>[A-Za-z0-9._-]{1,160})\\|(?<emoname>[^\\]\\s|]{1,12})\\])` +
     // A command button (lib/command-buttons.ts): <button label="…">/roll 1d20</button>
-    `|(?:${COMMAND_BUTTON_SOURCE})`,
+    `|(?:${COMMAND_BUTTON_SOURCE})` +
+    // A Discord timestamp: <t:1700000000> or <t:1700000000:R> (app/lib/discord-timestamp.ts)
+    `|(?:<t:(?<tsunix>-?\\d{1,13})(?::(?<tsstyle>[tTdDfFR]))?>)`,
   "gi",
 );
+
+/**
+ * A `<t:…>` timestamp in the viewer's own time and language. Relative ones
+ * ("in 5 minutes") keep counting while they are on screen.
+ */
+function DiscordTime({ date, style }: { date: Date; style: TimestampStyle }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (style !== "R") return;
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [style]);
+  return (
+    <time
+      dateTime={date.toISOString()}
+      title={formatTimestamp(date, "F", now)}
+      className="discord-time rounded px-1 bg-[var(--panel)] text-[var(--ink)]"
+    >
+      {formatTimestamp(date, style, now)}
+    </time>
+  );
+}
 
 /** A channel a `#name` token can link to. */
 export interface MentionChannel {
@@ -356,6 +381,10 @@ function renderInline(
           {channel.name}
         </button>,
       );
+    } else if (match.groups?.tsunix) {
+      const date = timestampDate(Number(match.groups.tsunix));
+      const style = (match.groups.tsstyle || "f") as TimestampStyle;
+      parts.push(date ? <DiscordTime key={key} date={date} style={style} /> : token);
     } else if (match.groups?.emokey) {
       const { emokey, emoname } = match.groups;
       parts.push(
