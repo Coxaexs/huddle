@@ -108,6 +108,7 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
         !incoming.bot &&
         !incoming.payload?.nudge &&
         !incoming.payload?.wink &&
+        !incoming.payload?.silent &&
         (channelId !== activeChannelRef.current || !document.hasFocus()) &&
         (channelId === activeChannelRef.current ||
           isDm ||
@@ -164,6 +165,7 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
         user &&
         !incoming.bot &&
         !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId)) &&
+        !incoming.payload?.silent &&
         (isDm || incoming.mentions?.includes(user.id))
       ) {
         notifyMoment(isDm ? "dm" : "mention");
@@ -197,7 +199,9 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
             mentions: (current[channelId]?.mentions || 0) + (mentioned ? 1 : 0),
           },
         }));
-        if (mentioned && level !== "nothing") {
+        if (incoming.payload?.silent) {
+          // Sent with @silent: unread, but nothing pops up.
+        } else if (mentioned && level !== "nothing") {
           showNotification(
             `${incoming.author} mentioned you`,
             incoming.text.slice(0, 140),

@@ -9,6 +9,7 @@ import { GUESTBOOK_CHANNEL_ID, GUESTBOOK_SERVER_ID } from "@/lib/guestbook";
 import { dispatchMessage } from "@/lib/discord/dispatch";
 import { hubState, publishMessage } from "@/lib/hub-client";
 import { sendPushNotifications } from "@/lib/push";
+import { isSilentPayload, takeSilent } from "@/lib/silent-messages";
 import { handleMatchesName } from "@/lib/mention-handles";
 import { can, canAny, hasPermission, Permission } from "@/lib/permissions";
 import { CHANNEL_DEFAULTS, channelOverwritePermissions, channelViewers, mayView } from "@/lib/channel-permissions";
@@ -583,7 +584,9 @@ export async function postMessageAs(
   body: PostBody,
   options: PostOptions = {},
 ): Promise<Response> {
-  const content = body.content?.trim() || "";
+  // "@silent hi" posts "hi" without pinging anyone, like Discord.
+  const { content, silent: silentPrefix } = takeSilent(body.content?.trim() || "");
+  const silent = silentPrefix || isSilentPayload(body.payload);
   const refused = refusedPost(body);
   if (refused) return Response.json({ error: refused }, { status: 400 });
   // The first key stays in attachment_key; any extras go to the JSON column,
@@ -765,6 +768,9 @@ export async function postMessageAs(
     payload = { ...(body.payload as Record<string, unknown>), forwardedFrom: forwarded };
   }
   payload = withImageAlts(payload, allKeys);
+  if (silent) {
+    payload = { ...(payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {}), silent: true };
+  }
 
   const stored: StoredMessage = {
     id: crypto.randomUUID(),
@@ -997,7 +1003,8 @@ export async function postMessageAs(
       if (id !== user.id) pushTargets.add(id);
     }
   }
-  if (pushTargets.size > 0) {
+  // A silent message still counts as unread and as a mention, but pushes no one.
+  if (pushTargets.size > 0 && !silent) {
     // Filter pushTargets by per-channel or per-server notification levels and temporary mutes.
     const targetIds = Array.from(pushTargets);
     const channelKey = stored.channel_id || "";
