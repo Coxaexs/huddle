@@ -25,6 +25,7 @@ import { clampVoiceBitrate } from "@/lib/voice-quality";
 import { isScreenQuality, screenConstraints, type ScreenShareQuality } from "../lib/screen-quality";
 import { SFU_SCREEN_AUDIO_BITRATE, screenAudioBitrate, sfuMicBitrate, voiceBitrate } from "../lib/voice-bitrate";
 import { tuneAudioSender, tuneOpusSdp } from "../lib/opus-tuning";
+import { readSelfMute, saveSelfMute } from "../lib/self-mute";
 import {
   isMusicBot,
   gainedPublish,
@@ -307,6 +308,16 @@ export function useVoice({
   const [muted, setMuted] = useState(false);
   const mutedRef = useRef(false);
   mutedRef.current = muted;
+  /**
+   * The mute you chose yourself. `muted` is that plus whatever a stage, a server
+   * mute or deafening imposed; those belong to the room, so only this one
+   * follows you to the next room.
+   */
+  const selfMutedRef = useRef(false);
+  useEffect(() => {
+    selfMutedRef.current = readSelfMute();
+    if (selfMutedRef.current) setMuted(true);
+  }, []);
   /**
    * Stage rooms only: this tab's hand is up, asking for the floor. Purely a
    * signal to the hosts — it never changes whether the mic is live, which stays
@@ -2786,6 +2797,9 @@ export function useVoice({
     setStreamWatchers([]);
     setLatency({ rttMs: 0, jitterMs: 0, packetLoss: 0, quality: "excellent" });
     channelIdRef.current = null;
+    // A stage's or a server's mute ended with the room, so show what the next
+    // join will really do.
+    if (!deafenedRef.current) setMuted(selfMutedRef.current);
     setChannelId(null);
     setLocalVideos([]);
     send({ t: "voice-leave" });
@@ -2846,10 +2860,11 @@ export function useVoice({
         micChainRef.current = chain;
         // Peers get the processed track; the raw capture stays inside the chain.
         localStreamRef.current = chain.stream;
-        // A stage opens you in the audience. The central mic gate further down
-        // keys off this state, so setting it here is what actually keeps the
-        // microphone closed rather than merely showing a muted icon.
-        const startMuted = options?.startMuted === true;
+        // A stage opens you in the audience, and a mute you set yourself stays
+        // set. The central mic gate further down keys off this state, so setting
+        // it here is what actually keeps the microphone closed rather than
+        // merely showing a muted icon.
+        const startMuted = options?.startMuted === true || selfMutedRef.current;
         setMuted(startMuted);
         setDeafened(false);
         // Set the ref before announcing the join. React updates it on the next
@@ -2915,6 +2930,8 @@ export function useVoice({
       track.enabled = !next;
     });
     setMuted(next);
+    selfMutedRef.current = next;
+    saveSelfMute(next);
     if (next) {
       playMuteSound();
     } else {
