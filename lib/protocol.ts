@@ -210,6 +210,22 @@ export function isLibraryAudio(url: string | null | undefined): boolean {
   return Boolean(url?.startsWith(LIBRARY_AUDIO));
 }
 
+/**
+ * A YouTube or Spotify page. The music bot hands any other link straight to
+ * yt-dlp, so these are the only links it is given as a song to save.
+ */
+export function isSongLink(value: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(value);
+    return (
+      /^https?:$/.test(protocol) &&
+      /^(?:(?:www|m|music)\.)?(?:youtube\.com|youtu\.be)$|^open\.spotify\.com$/.test(hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export interface Track {
   id: string;
   title: string;

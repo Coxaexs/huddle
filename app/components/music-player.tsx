@@ -15,6 +15,7 @@ import {
 import {
   ArrowLeft,
   ChevronDown,
+  CirclePlus,
   CircleStop,
   Disc3,
   ExternalLink,
@@ -26,6 +27,7 @@ import {
   Music2,
   Pause,
   Play,
+  Plus,
   Repeat,
   Repeat1,
   RotateCcw,
@@ -39,7 +41,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/app/lib/client";
 import { proxiedImage } from "@/app/lib/image-proxy";
-import { heard, playbackPosition, type PlayerState, type Track } from "@/lib/protocol";
+import { heard, isSongLink, playbackPosition, type PlayerState, type Track } from "@/lib/protocol";
 import { openWebView } from "./widgets/web-view";
 import { lyricsSource } from "@/app/lib/lyrics-source";
 
@@ -213,7 +215,10 @@ function MusicPlayer({
   const [now, setNow] = useState(() => Date.now());
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sheet, setSheet] = useState<{ song: SongToAdd | null } | null>(null);
+  const [openList, setOpenList] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const sheetOpener = useRef<HTMLElement | null>(null);
 
   useEffect(() => setTab(view.tab), [view]);
   useEffect(() => {
@@ -237,6 +242,7 @@ function MusicPlayer({
     null;
   const roomName = voiceRooms.find((room) => room.id === roomId)?.name ?? "the voice room";
   const inRoom = Boolean(roomId && roomId === voiceChannelId);
+  const playlists = useRoomPlaylists(roomId);
   const state = roomId ? heard(players[roomId] ?? null, now) : null;
   const track: Track | null = state?.track ?? null;
   const durationMs = track?.duration ? track.duration * 1000 : 0;
@@ -318,19 +324,32 @@ function MusicPlayer({
     [roomId, inRoom, roomName, prime],
   );
 
+  const openSheet = useCallback((song: SongToAdd | null) => {
+    sheetOpener.current = document.activeElement as HTMLElement | null;
+    setSheet({ song });
+  }, []);
+
+  // Back to the button that opened it, once the player is no longer inert.
+  useEffect(() => {
+    if (sheet) return;
+    sheetOpener.current?.focus();
+    sheetOpener.current = null;
+  }, [sheet]);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        closeMusicPlayer();
-      } else if (event.key === " " && !isTyping(event.target)) {
+        if (sheet) setSheet(null);
+        else closeMusicPlayer();
+      } else if (event.key === " " && !sheet && !isTyping(event.target)) {
         event.preventDefault();
         toggle();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle]);
+  }, [toggle, sheet]);
 
   const seekFromBar = (event: ReactMouseEvent<HTMLDivElement>) => {
     if (!controls || !durationMs) return;
@@ -360,7 +379,7 @@ function MusicPlayer({
       style={art ? ({ "--mp-art": `url("${art}")` } as CSSProperties) : undefined}
     >
       <div className="mp-backdrop" aria-hidden="true" />
-      <header className="mp-top">
+      <header className="mp-top" inert={sheet !== null}>
         <button
           type="button"
           className="mp-icon-btn"
@@ -396,7 +415,7 @@ function MusicPlayer({
         </nav>
       </header>
 
-      <div className="mp-body">
+      <div className="mp-body" inert={sheet !== null}>
         <section className="mp-now" aria-label="Now playing">
           <div className="mp-art">
             {art ? <img src={art} alt="" /> : <Music2 size={56} aria-hidden="true" />}
@@ -415,6 +434,15 @@ function MusicPlayer({
                 Added by {track.requestedBy}
                 {track.playlist?.name ? ` · from ${track.playlist.name}` : ""}
               </small>
+            )}
+            {track && musicBot && (
+              <button
+                type="button"
+                className="mp-button ghost small mp-add-song"
+                onClick={() => openSheet({ title: track.title, query: songQuery(track) })}
+              >
+                <CirclePlus size={14} /> Add to playlist
+              </button>
             )}
           </div>
 
@@ -532,10 +560,27 @@ function MusicPlayer({
             <QueuePane state={state} inRoom={inRoom} run={run} onSearch={() => setTab("search")} />
           </div>
           <div role="tabpanel" id="mp-pane-search" aria-labelledby="mp-tab-search" hidden={tab !== "search"} className="mp-pane-inner">
-            <SearchPane active={tab === "search"} inRoom={inRoom} playing={Boolean(track)} run={run} />
+            <SearchPane
+              active={tab === "search"}
+              inRoom={inRoom}
+              playing={Boolean(track)}
+              run={run}
+              onAddToPlaylist={openSheet}
+            />
           </div>
           <div role="tabpanel" id="mp-pane-playlists" aria-labelledby="mp-tab-playlists" hidden={tab !== "playlists"} className="mp-pane-inner">
-            <PlaylistsPane roomId={roomId} inRoom={inRoom} onPlay={playPlaylist} />
+            <PlaylistsPane
+              roomId={roomId}
+              inRoom={inRoom}
+              lists={playlists.lists}
+              error={playlists.error}
+              onRetry={playlists.load}
+              open={openList}
+              onOpen={setOpenList}
+              onPlay={playPlaylist}
+              onNew={() => openSheet(null)}
+              onFindSongs={() => setTab("search")}
+            />
           </div>
           <div role="tabpanel" id="mp-pane-dj" aria-labelledby="mp-tab-dj" hidden={tab !== "dj"} className="mp-pane-inner">
             <DjPane
@@ -549,6 +594,26 @@ function MusicPlayer({
           </div>
         </section>
       </div>
+
+      {sheet && roomId && (
+        <PlaylistSheet
+          roomId={roomId}
+          song={sheet.song}
+          lists={playlists.lists}
+          error={playlists.error}
+          onRetry={playlists.load}
+          onLists={playlists.setLists}
+          onClose={() => setSheet(null)}
+          onDone={(message, created) => {
+            setSheet(null);
+            setNote(message);
+            if (created && !sheet.song) {
+              setOpenList(created);
+              setTab("playlists");
+            }
+          }}
+        />
+      )}
 
       {note && (
         <div className="mp-note" role="status">
@@ -998,11 +1063,13 @@ function SearchPane({
   inRoom,
   playing,
   run,
+  onAddToPlaylist,
 }: {
   active: boolean;
   inRoom: boolean;
   playing: boolean;
   run: (command: string, announce?: boolean) => Promise<boolean>;
+  onAddToPlaylist: (song: SongToAdd) => void;
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SongResult[] | null>(null);
@@ -1059,7 +1126,7 @@ function SearchPane({
           {searching ? <LoaderCircle size={16} className="mp-spin" /> : "Search"}
         </button>
       </form>
-      {!inRoom && <p className="mp-lyrics-note">Join the voice room to add songs.</p>}
+      {!inRoom && <p className="mp-lyrics-note">Join the voice room to play songs, or press + to save one to a playlist.</p>}
       {error && <p className="mp-error">{error}</p>}
       {results && !results.length && !error && (
         <Empty icon={<Search size={28} />} title={`Nothing found for “${searched}”`} text="Try other words, or paste a link." />
@@ -1103,6 +1170,15 @@ function SearchPane({
                   )}
                 </span>
               )}
+              <button
+                type="button"
+                className="mp-icon-btn small"
+                onClick={() => onAddToPlaylist({ title: result.title, query: result.url })}
+                aria-label={`Add ${result.title} to a playlist`}
+                title="Add to playlist"
+              >
+                <CirclePlus size={16} />
+              </button>
             </li>
           ))}
         </ol>
@@ -1126,23 +1202,28 @@ interface RoomPlaylist {
   cover: string | null;
   description: string | null;
   auto: boolean;
+  /** You may add songs: you made it, or you are an admin. */
+  canEdit: boolean;
   tracks: Array<{ title: string; duration: string | null; thumbnail: string | null }>;
 }
 
-function PlaylistsPane({
-  roomId,
-  inRoom,
-  onPlay,
-}: {
-  roomId: string | null;
-  inRoom: boolean;
-  onPlay: (name: string, mode: "play" | "queue", start?: number, startTitle?: string) => Promise<void>;
-}) {
+/** The song "Add to playlist" is for, and what the bot finds it by. */
+interface SongToAdd {
+  title: string;
+  query: string;
+}
+
+/** What the bot finds a track by: its YouTube or Spotify page, else its name. */
+function songQuery(track: Track): string {
+  return track.pageUrl && isSongLink(track.pageUrl) ? track.pageUrl : `${track.artist} ${track.title}`.trim();
+}
+
+/** The room's playlists, for the Playlists tab and "Add to playlist". */
+function useRoomPlaylists(roomId: string | null) {
   const [lists, setLists] = useState<RoomPlaylist[] | null>(null);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!roomId) return;
@@ -1168,13 +1249,39 @@ function PlaylistsPane({
     if (roomId && loadedFor !== roomId && !loading && !error) void load();
   }, [roomId, loadedFor, loading, error, load]);
 
+  return { lists: loadedFor === roomId ? lists : null, error, load, setLists };
+}
+
+function PlaylistsPane({
+  roomId,
+  inRoom,
+  lists,
+  error,
+  onRetry,
+  open,
+  onOpen,
+  onPlay,
+  onNew,
+  onFindSongs,
+}: {
+  roomId: string | null;
+  inRoom: boolean;
+  lists: RoomPlaylist[] | null;
+  error: string | null;
+  onRetry: () => Promise<void>;
+  open: string | null;
+  onOpen: (name: string | null) => void;
+  onPlay: (name: string, mode: "play" | "queue", start?: number, startTitle?: string) => Promise<void>;
+  onNew: () => void;
+  onFindSongs: () => void;
+}) {
   if (!roomId) {
     return <Empty icon={<Library size={28} />} title="No voice room" text="Playlists belong to a voice room." />;
   }
   if (error) {
     return (
       <Empty icon={<Library size={28} />} title="Could not load the playlists" text={error}>
-        <button type="button" className="mp-button" onClick={() => void load()}>Try again</button>
+        <button type="button" className="mp-button" onClick={() => void onRetry()}>Try again</button>
       </Empty>
     );
   }
@@ -1186,8 +1293,12 @@ function PlaylistsPane({
       <Empty
         icon={<Library size={28} />}
         title="No playlists yet"
-        text="Make one on the music dashboard (/web) and it shows up here."
-      />
+        text="Make the first one, then add songs to it."
+      >
+        <button type="button" className="mp-button" onClick={onNew}>
+          <Plus size={16} /> New playlist
+        </button>
+      </Empty>
     );
   }
 
@@ -1196,7 +1307,7 @@ function PlaylistsPane({
     return (
       <div className="mp-list-wrap">
         <header className="mp-playlist-head">
-          <button type="button" className="mp-icon-btn" onClick={() => setOpen(null)} aria-label="All playlists" title="All playlists">
+          <button type="button" className="mp-icon-btn" onClick={() => onOpen(null)} aria-label="All playlists" title="All playlists">
             <ArrowLeft size={18} />
           </button>
           <Thumb src={chosen.cover} />
@@ -1221,9 +1332,27 @@ function PlaylistsPane({
             >
               <ListPlus size={18} />
             </button>
+            {chosen.canEdit && (
+              <button type="button" className="mp-icon-btn" onClick={onFindSongs} aria-label="Find songs to add" title="Find songs to add">
+                <Search size={18} />
+              </button>
+            )}
           </span>
         </header>
         {!inRoom && <p className="mp-lyrics-note">Join the voice room to play a playlist.</p>}
+        {!chosen.count && (
+          <Empty
+            icon={<Music2 size={28} />}
+            title="Nothing in here yet"
+            text={chosen.canEdit ? "Search for a song, then press + to add it here." : undefined}
+          >
+            {chosen.canEdit && (
+              <button type="button" className="mp-button" onClick={onFindSongs}>
+                <Search size={16} /> Find songs
+              </button>
+            )}
+          </Empty>
+        )}
         <ol className="mp-list">
           {chosen.tracks.map((item, index) => (
             <li key={`${item.title}-${index}`} className="mp-row">
@@ -1252,11 +1381,13 @@ function PlaylistsPane({
     <div className="mp-list-wrap">
       <header className="mp-list-head">
         <strong>Playlists</strong>
-        <span>{lists.length}</span>
+        <button type="button" className="mp-button small" onClick={onNew}>
+          <Plus size={14} /> New playlist
+        </button>
       </header>
       <div className="mp-grid">
         {lists.map((list) => (
-          <button key={list.name} type="button" className="mp-card" onClick={() => setOpen(list.name)}>
+          <button key={list.name} type="button" className="mp-card" onClick={() => onOpen(list.name)}>
             <span className="mp-card-art">
               {list.cover ? <img src={proxiedImage(list.cover)} alt="" loading="lazy" /> : <Music2 size={28} aria-hidden="true" />}
             </span>
@@ -1268,6 +1399,152 @@ function PlaylistsPane({
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * "Add to playlist" and "New playlist". It covers the player rather than
+ * dropping out of a row, because the rows scroll and would clip it.
+ */
+function PlaylistSheet({
+  roomId,
+  song,
+  lists,
+  error,
+  onRetry,
+  onLists,
+  onClose,
+  onDone,
+}: {
+  roomId: string;
+  /** Null when this only makes a playlist. */
+  song: SongToAdd | null;
+  lists: RoomPlaylist[] | null;
+  error: string | null;
+  onRetry: () => Promise<void>;
+  onLists: (lists: RoomPlaylist[]) => void;
+  onClose: () => void;
+  onDone: (message: string, created: string | null) => void;
+}) {
+  const [name, setName] = useState("");
+  /** The playlist being added to, or "" while making a new one. */
+  const [saving, setSaving] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const sheetRef = useRef<HTMLElement>(null);
+  const mine = lists?.filter((list) => list.canEdit) ?? [];
+
+  useEffect(() => {
+    sheetRef.current?.focus();
+  }, []);
+
+  const send = async (change: { action: "create" | "add_song"; name: string; query?: string }) => {
+    const data = await apiFetch<{ message?: string; name?: string; playlists?: RoomPlaylist[] }>("/api/music/playlists", {
+      method: "POST",
+      body: JSON.stringify({ voiceChannelId: roomId, ...change }),
+    });
+    if (data.playlists) onLists(data.playlists);
+    return data;
+  };
+
+  const save = async (label: string, work: () => Promise<{ message: string; created: string | null }>) => {
+    if (saving !== null) return;
+    setSaving(label);
+    setProblem(null);
+    try {
+      const { message, created } = await work();
+      onDone(message, created);
+    } catch (failure) {
+      setProblem(failure instanceof Error ? failure.message : "That did not work.");
+      setSaving(null);
+    }
+  };
+
+  const addTo = (list: string) =>
+    save(list, async () => {
+      const data = await send({ action: "add_song", name: list, query: song?.query });
+      return { message: data.message || `Added to ${list}.`, created: null };
+    });
+
+  const create = (event: FormEvent) => {
+    event.preventDefault();
+    const wanted = name.trim();
+    if (!wanted) return;
+    void save("", async () => {
+      // The list stays if the song then fails: it shows up above, to try again.
+      const made = await send({ action: "create", name: wanted });
+      const created = made.name || wanted;
+      setName("");
+      if (!song) return { message: made.message || `Created ${created}.`, created };
+      const added = await send({ action: "add_song", name: created, query: song.query });
+      return { message: added.message || `Added to ${created}.`, created };
+    });
+  };
+
+  return (
+    <div
+      className="mp-sheet-scrim"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        ref={sheetRef}
+        className="mp-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label={song ? `Add ${song.title} to a playlist` : "New playlist"}
+        tabIndex={-1}
+      >
+        <header className="mp-sheet-head">
+          <span className="mp-row-text">
+            <strong>{song ? "Add to playlist" : "New playlist"}</strong>
+            {song && <small>{song.title}</small>}
+          </span>
+          <button type="button" className="mp-icon-btn small" onClick={onClose} aria-label="Close" title="Close">
+            <X size={16} />
+          </button>
+        </header>
+        {song && error && (
+          <p className="mp-error">
+            {error}{" "}
+            <button type="button" className="mp-button ghost small" onClick={() => void onRetry()}>Try again</button>
+          </p>
+        )}
+        {song && !error && !lists && <p className="mp-sheet-note">Loading playlists…</p>}
+        {song && lists && !mine.length && (
+          <p className="mp-sheet-note">You can add songs to playlists you made. Make one here.</p>
+        )}
+        {song && mine.length > 0 && (
+          <ul className="mp-list mp-sheet-list">
+            {mine.map((list) => (
+              <li key={list.name} className="mp-row">
+                <button type="button" className="mp-row-main" disabled={saving !== null} onClick={() => void addTo(list.name)}>
+                  <Thumb src={list.cover} />
+                  <span className="mp-row-text">
+                    <strong>{list.name}</strong>
+                    <small>{list.count} {list.count === 1 ? "song" : "songs"}</small>
+                  </span>
+                  {saving === list.name && <LoaderCircle size={16} className="mp-spin" />}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form className="mp-search" onSubmit={create}>
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder={mine.length && song ? "Or a new playlist" : "Playlist name"}
+            aria-label="New playlist name"
+            maxLength={50}
+          />
+          <button type="submit" className="mp-button" disabled={!name.trim() || saving !== null}>
+            {saving === "" ? <LoaderCircle size={16} className="mp-spin" /> : "Create"}
+          </button>
+        </form>
+        {problem && <p className="mp-error">{problem}</p>}
+      </section>
     </div>
   );
 }

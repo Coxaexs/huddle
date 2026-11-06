@@ -783,6 +783,66 @@ button.mp-line:focus-visible {
   transform: translateX(-50%);
 }
 
+.mp-add-song {
+  margin-top: 10px;
+}
+
+/* "Add to playlist" and "New playlist", over the whole player. */
+
+.mp-sheet-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: calc(16px + var(--safe-top, 0px)) calc(16px + var(--safe-right, 0px)) calc(16px + var(--safe-bottom, 0px)) calc(16px + var(--safe-left, 0px));
+  background: color-mix(in srgb, var(--paper) 55%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.mp-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(420px, 100%);
+  max-height: min(560px, 100%);
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: var(--shadow-md);
+}
+
+.mp-sheet:focus {
+  outline: none;
+}
+
+.mp-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mp-sheet-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.mp-sheet-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* A search row holds three buttons now: on a phone the title needs the room. */
+@media (max-width: 520px) {
+  .mp-row-main.static .mp-row-time {
+    display: none;
+  }
+}
+
 .mp-spin {
   animation: mp-spin 1s linear infinite;
 }

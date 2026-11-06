@@ -1,4 +1,4 @@
-import { currentUser, unauthorized } from "@/lib/auth";
+import { currentUser, isInstanceAdmin, unauthorized } from "@/lib/auth";
 import { botFetch, botSession } from "@/lib/musicbot";
 import { can, Permission } from "@/lib/permissions";
 import { findChannel, isServerMember } from "@/lib/servers";
@@ -58,7 +58,8 @@ export async function POST(request: Request) {
     const cookie = await botSession();
     const link = await botFetch("/api/admin/huddle-link", cookie, {
       method: "POST",
-      body: JSON.stringify({ channel_id: channel.id }),
+      // The link acts as this person on the room's playlists.
+      body: JSON.stringify({ channel_id: channel.id, by: user.id, admin: isInstanceAdmin(user) }),
     });
     if (typeof link.token !== "string" || typeof link.guild_id !== "string") {
       throw new Error("The music bot returned no link.");

@@ -60,6 +60,16 @@ export async function botSession(): Promise<string> {
   return signingIn;
 }
 
+/** The bot's own answer to a request it refused, with its status. */
+export class BotError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 export async function botFetch(
   path: string,
   cookie: string,
@@ -95,7 +105,7 @@ export async function botFetch(
       typeof data.error === "string" && data.error.trim()
         ? data.error
         : raw.trim() || `Music bot returned ${response.status}.`;
-    throw new Error(detail);
+    throw new BotError(detail, response.status);
   }
   return data;
 }
@@ -322,26 +332,55 @@ export interface RoomPlaylist {
   description: string | null;
   /** Kept by the bot for every room ("Stemmed songs", the day's stem mixes). */
   auto: boolean;
+  /** The person asking may add songs: they made it, or they are an admin. */
+  canEdit: boolean;
   tracks: Array<{ title: string; duration: string | null; thumbnail: string | null }>;
+}
+
+/** The person behind a playlist request; the bot decides what they may change. */
+export interface PlaylistActor {
+  id: string;
+  admin: boolean;
 }
 
 const roomGuild = (channelId: string) => encodeURIComponent(`huddle:${channelId}`);
 
-/** A voice room's saved playlists on the bot: its own, shared and everywhere ones. */
-export async function roomPlaylists(channelId: string): Promise<RoomPlaylist[]> {
-  const data = await botFetch(`/api/guilds/${roomGuild(channelId)}/playlists`, await botSession());
+function playlistsFrom(data: Record<string, any>): RoomPlaylist[] {
   return ((data.playlists || []) as Array<Record<string, any>>).map((item) => ({
     name: String(item.name || ""),
     count: Number(item.count) || 0,
     cover: typeof item.cover === "string" ? item.cover : null,
     description: typeof item.description === "string" ? item.description : null,
     auto: Boolean(item.auto),
+    canEdit: Boolean(item.can_edit) && !item.auto,
     tracks: ((item.tracks || []) as Array<Record<string, any>>).slice(0, 200).map((track) => ({
       title: String(track.title || "Unknown"),
       duration: track.duration && track.duration !== "Unknown" ? String(track.duration) : null,
       thumbnail: typeof track.thumbnail === "string" ? track.thumbnail : null,
     })),
   })).filter((item) => item.name);
+}
+
+/** A voice room's saved playlists on the bot: its own, shared and everywhere ones. */
+export async function roomPlaylists(channelId: string, actor: PlaylistActor): Promise<RoomPlaylist[]> {
+  const params = new URLSearchParams({ by: actor.id });
+  if (actor.admin) params.set("admin", "1");
+  return playlistsFrom(
+    await botFetch(`/api/guilds/${roomGuild(channelId)}/playlists?${params}`, await botSession()),
+  );
+}
+
+/** Makes a playlist in the room, or adds a song to one, as this person. */
+export async function changeRoomPlaylist(
+  channelId: string,
+  actor: PlaylistActor,
+  change: { action: "create"; name: string } | { action: "add_song"; name: string; query: string },
+): Promise<{ message: string; playlists: RoomPlaylist[] }> {
+  const data = await botFetch(`/api/guilds/${roomGuild(channelId)}/playlists`, await botSession(), {
+    method: "POST",
+    body: JSON.stringify({ ...change, by: actor.id, admin: actor.admin }),
+  });
+  return { message: String(data.message || "Done."), playlists: playlistsFrom(data) };
 }
 
 /** Plays a saved playlist in the room ("play" replaces what is on, "load" queues it). */

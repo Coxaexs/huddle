@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const apiFetch = vi.fn();
 vi.mock("@/app/lib/client", () => ({ apiFetch: (...args: unknown[]) => apiFetch(...args) }));
@@ -348,4 +348,182 @@ it("an answer Musixmatch already gave shows for free, and a used-up plan says so
   left = 0;
   fireEvent.submit(screen.getAllByRole("search").at(-1)!);
   expect(await screen.findByText(/lookups are used up/)).toBeTruthy();
+});
+
+const MINE = {
+  playlists: [
+    { ...PLAYLISTS.playlists[0], canEdit: true },
+    { name: "Not mine", count: 1, cover: null, description: null, auto: false, canEdit: false, tracks: [] },
+  ],
+};
+const NONE_MINE = { playlists: [MINE.playlists[1]] };
+
+function playlistPosts(): Array<Record<string, unknown>> {
+  return apiFetch.mock.calls
+    .filter(([path, init]) => path === "/api/music/playlists" && (init as RequestInit | undefined)?.method === "POST")
+    .map(([, init]) => JSON.parse((init as RequestInit).body as string));
+}
+
+/** The bot's answers: `posts` by action, and `lists` for the plain read. */
+function playlistBot(lists: unknown, posts: Record<string, (body: Record<string, unknown>) => unknown> = {}) {
+  apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (!path.startsWith("/api/music/playlists")) return {};
+    if (init?.method !== "POST") return lists;
+    const body = JSON.parse(init.body as string);
+    return posts[body.action]?.(body) ?? lists;
+  });
+}
+
+it("adds the playing song to a playlist you may change, and offers only those", async () => {
+  state.track = track("t1", "Mayın Tarlası", { pageUrl: "https://www.youtube.com/watch?v=abcdefghijk" });
+  playlistBot(MINE, { add_song: () => ({ ...MINE, message: "Added 1 song to Road trip." }) });
+  show();
+  act(() => openMusicPlayer());
+  fireEvent.click(await screen.findByText("Add to playlist"));
+  const sheet = await screen.findByRole("dialog", { name: "Add Mayın Tarlası to a playlist" });
+  expect(await within(sheet).findByText("Road trip")).toBeTruthy();
+  expect(within(sheet).queryByText("Not mine")).toBeNull();
+
+  fireEvent.click(within(sheet).getByText("Road trip"));
+  expect(await screen.findByText("Added 1 song to Road trip.")).toBeTruthy();
+  expect(playlistPosts()).toEqual([{
+    voiceChannelId: room,
+    action: "add_song",
+    name: "Road trip",
+    query: "https://www.youtube.com/watch?v=abcdefghijk",
+  }]);
+  expect(screen.queryByRole("dialog", { name: /to a playlist/ })).toBeNull();
+});
+
+it("a song from anywhere else is found by its name", async () => {
+  state.track = track("t1", "Mayın Tarlası", { pageUrl: "https://soundcloud.com/x/y" });
+  playlistBot(MINE);
+  show();
+  act(() => openMusicPlayer());
+  fireEvent.click(await screen.findByText("Add to playlist"));
+  fireEvent.click(await within(await screen.findByRole("dialog", { name: /to a playlist/ })).findByText("Road trip"));
+  await waitFor(() => expect(playlistPosts()[0]?.query).toBe("Şebnem Ferah Mayın Tarlası"));
+});
+
+it("a search result goes into a playlist without being in the room", async () => {
+  apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (path.startsWith("/api/music/search")) {
+      return { results: [{ title: "Zehir", artist: "manifest", duration: 201, thumbnail: null, url: "https://www.youtube.com/watch?v=abcdefghijk" }] };
+    }
+    return path.startsWith("/api/music/playlists") ? { ...MINE, message: init?.method === "POST" ? "Added 1 song to Road trip." : undefined } : {};
+  });
+  show({ voiceChannelId: null });
+  act(() => openMusicPlayer({ seed, tab: "search" }));
+  fireEvent.change(screen.getByLabelText("Search for music"), { target: { value: "manifest zehir" } });
+  fireEvent.submit(screen.getByRole("search"));
+  fireEvent.click(await screen.findByLabelText("Add Zehir to a playlist"));
+  fireEvent.click(await within(await screen.findByRole("dialog", { name: /to a playlist/ })).findByText("Road trip"));
+  await waitFor(() =>
+    expect(playlistPosts()).toEqual([{
+      voiceChannelId: room,
+      action: "add_song",
+      name: "Road trip",
+      query: "https://www.youtube.com/watch?v=abcdefghijk",
+    }]),
+  );
+});
+
+it("with no playlists of your own it says so, and a new one takes the song", async () => {
+  const made = { playlists: [...NONE_MINE.playlists, { ...MINE.playlists[0], name: "Gece", count: 0 }] };
+  playlistBot(NONE_MINE, {
+    create: () => ({ ...made, message: "Created Gece.", name: "Gece" }),
+    add_song: () => ({ ...made, message: "Added 1 song to Gece." }),
+  });
+  show();
+  act(() => openMusicPlayer());
+  fireEvent.click(await screen.findByText("Add to playlist"));
+  expect(await screen.findByText("You can add songs to playlists you made. Make one here.")).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("New playlist name"), { target: { value: "Gece" } });
+  fireEvent.click(screen.getByText("Create"));
+  expect(await screen.findByText("Added 1 song to Gece.")).toBeTruthy();
+  expect(playlistPosts().map((post) => [post.action, post.name])).toEqual([["create", "Gece"], ["add_song", "Gece"]]);
+});
+
+it("if the song fails after the list is made, the list is there to try again", async () => {
+  const made = { playlists: [{ ...MINE.playlists[0], name: "Gece", count: 0 }] };
+  let tries = 0;
+  playlistBot({ playlists: [] }, {
+    create: () => ({ ...made, message: "Created Gece.", name: "Gece" }),
+    add_song: () => {
+      tries += 1;
+      if (tries === 1) throw new Error("No songs found.");
+      return { ...made, message: "Added 1 song to Gece." };
+    },
+  });
+  show();
+  act(() => openMusicPlayer());
+  fireEvent.click(await screen.findByText("Add to playlist"));
+  await screen.findByText("You can add songs to playlists you made. Make one here.");
+  fireEvent.change(screen.getByLabelText("New playlist name"), { target: { value: "Gece" } });
+  fireEvent.click(screen.getByText("Create"));
+  expect(await screen.findByText("No songs found.")).toBeTruthy();
+  fireEvent.click(within(screen.getByRole("dialog", { name: /to a playlist/ })).getByText("Gece"));
+  expect(await screen.findByText("Added 1 song to Gece.")).toBeTruthy();
+  expect(playlistPosts().filter((post) => post.action === "create")).toHaveLength(1);
+});
+
+it("the bot's refusal stays on screen, with the sheet open", async () => {
+  playlistBot(MINE, { add_song: () => { throw new Error("Only an admin or whoever made Road trip can change it."); } });
+  show();
+  act(() => openMusicPlayer());
+  fireEvent.click(await screen.findByText("Add to playlist"));
+  fireEvent.click(await within(await screen.findByRole("dialog", { name: /to a playlist/ })).findByText("Road trip"));
+  expect(await screen.findByText("Only an admin or whoever made Road trip can change it.")).toBeTruthy();
+  expect(screen.getByRole("dialog", { name: /to a playlist/ })).toBeTruthy();
+});
+
+it("makes an empty playlist from the Playlists tab and opens it", async () => {
+  const made = { playlists: [...MINE.playlists, { ...MINE.playlists[0], name: "Gece", count: 0, tracks: [] }] };
+  playlistBot(MINE, { create: () => ({ ...made, message: "Created Gece.", name: "Gece" }) });
+  show();
+  act(() => openMusicPlayer({ tab: "playlists" }));
+  fireEvent.click(await screen.findByText("New playlist"));
+  fireEvent.change(await screen.findByLabelText("New playlist name"), { target: { value: "Gece" } });
+  fireEvent.click(screen.getByText("Create"));
+  expect(await screen.findByText("Nothing in here yet")).toBeTruthy();
+  expect(playlistPosts()).toEqual([{ voiceChannelId: room, action: "create", name: "Gece" }]);
+  fireEvent.click(screen.getByText("Find songs"));
+  await waitFor(() => expect(document.getElementById("mp-pane-search")?.hidden).toBe(false));
+});
+
+it("a room with no playlists offers to make the first one", async () => {
+  playlistBot({ playlists: [] });
+  show();
+  act(() => openMusicPlayer({ tab: "playlists" }));
+  expect(await screen.findByText("No playlists yet")).toBeTruthy();
+  fireEvent.click(screen.getByText("New playlist"));
+  expect(await screen.findByRole("dialog", { name: "New playlist" })).toBeTruthy();
+});
+
+it("a playlist you can't change has nothing to add with", async () => {
+  playlistBot(MINE);
+  show();
+  act(() => openMusicPlayer({ tab: "playlists" }));
+  fireEvent.click(await screen.findByText("Not mine"));
+  expect(await screen.findByLabelText("All playlists")).toBeTruthy();
+  expect(screen.queryByLabelText("Find songs to add")).toBeNull();
+  fireEvent.click(screen.getByLabelText("All playlists"));
+  fireEvent.click(await screen.findByText("Road trip"));
+  expect(await screen.findByLabelText("Find songs to add")).toBeTruthy();
+});
+
+it("Escape closes the sheet and leaves the player open, and space stays out of it", async () => {
+  playlistBot(MINE);
+  show();
+  act(() => openMusicPlayer());
+  const opener = await screen.findByText("Add to playlist");
+  opener.focus();
+  fireEvent.click(opener);
+  await screen.findByRole("dialog", { name: /to a playlist/ });
+  fireEvent.keyDown(window, { key: " " });
+  expect(commands()).toEqual([]);
+  fireEvent.keyDown(window, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: /to a playlist/ })).toBeNull());
+  expect(screen.getByText("Add to playlist")).toBeTruthy();
+  expect(document.activeElement).toBe(opener);
 });
