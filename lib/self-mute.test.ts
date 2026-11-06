@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readSelfMute, saveSelfMute } from "../app/lib/self-mute";
+import { readSelfDeafen, readSelfMute, saveSelfDeafen, saveSelfMute } from "../app/lib/self-mute";
 
 function stubStorage(store: Map<string, string>) {
   vi.stubGlobal("window", {
@@ -26,6 +26,15 @@ describe("self mute", () => {
     expect(readSelfMute()).toBe(false);
   });
 
+  it("keeps deafen apart from mute", () => {
+    stubStorage(new Map());
+    saveSelfDeafen(true);
+    expect(readSelfDeafen()).toBe(true);
+    expect(readSelfMute()).toBe(false);
+    saveSelfDeafen(false);
+    expect(readSelfDeafen()).toBe(false);
+  });
+
   it("does not break when storage refuses", () => {
     vi.stubGlobal("window", {
       get localStorage(): Storage {
@@ -33,6 +42,8 @@ describe("self mute", () => {
       },
     });
     expect(readSelfMute()).toBe(false);
+    expect(readSelfDeafen()).toBe(false);
     expect(() => saveSelfMute(true)).not.toThrow();
+    expect(() => saveSelfDeafen(true)).not.toThrow();
   });
 });

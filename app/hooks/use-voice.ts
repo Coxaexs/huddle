@@ -25,7 +25,7 @@ import { clampVoiceBitrate } from "@/lib/voice-quality";
 import { isScreenQuality, screenConstraints, type ScreenShareQuality } from "../lib/screen-quality";
 import { SFU_SCREEN_AUDIO_BITRATE, screenAudioBitrate, sfuMicBitrate, voiceBitrate } from "../lib/voice-bitrate";
 import { tuneAudioSender, tuneOpusSdp } from "../lib/opus-tuning";
-import { readSelfMute, saveSelfMute } from "../lib/self-mute";
+import { readSelfDeafen, readSelfMute, saveSelfDeafen, saveSelfMute } from "../lib/self-mute";
 import {
   isMusicBot,
   gainedPublish,
@@ -448,6 +448,15 @@ export function useVoice({
   const [deafened, setDeafened] = useState(false);
   const deafenedRef = useRef(false);
   deafenedRef.current = deafened;
+  /** The deafen you chose yourself, which follows you the way `selfMutedRef` does. */
+  const selfDeafenedRef = useRef(false);
+  useEffect(() => {
+    selfDeafenedRef.current = readSelfDeafen();
+    if (!selfDeafenedRef.current) return;
+    setDeafened(true);
+    setMuted(true);
+    mutedByDeafenRef.current = !selfMutedRef.current;
+  }, []);
   /** Muted for everyone by someone else; you cannot undo it yourself. */
   const [forcedMute, setForcedMuteState] = useState(false);
   // Use the server's echoed state so failed sends/reconnects cannot leave a stale toggle.
@@ -2860,13 +2869,16 @@ export function useVoice({
         micChainRef.current = chain;
         // Peers get the processed track; the raw capture stays inside the chain.
         localStreamRef.current = chain.stream;
-        // A stage opens you in the audience, and a mute you set yourself stays
-        // set. The central mic gate further down keys off this state, so setting
-        // it here is what actually keeps the microphone closed rather than
-        // merely showing a muted icon.
-        const startMuted = options?.startMuted === true || selfMutedRef.current;
+        // A stage opens you in the audience, and a mute or deafen you set
+        // yourself stays set. The central mic gate further down keys off this
+        // state, so setting it here is what actually keeps the microphone closed
+        // rather than merely showing a muted icon.
+        const startDeafened = selfDeafenedRef.current;
+        const startMuted = options?.startMuted === true || selfMutedRef.current || startDeafened;
         setMuted(startMuted);
-        setDeafened(false);
+        setDeafened(startDeafened);
+        // Undeafening gives the mic back only if deafening is all that closed it.
+        mutedByDeafenRef.current = startDeafened && !selfMutedRef.current && options?.startMuted !== true;
         // Set the ref before announcing the join. React updates it on the next
         // render, which can lose a race with the first offer coming back.
         channelIdRef.current = nextChannelId;
@@ -2885,7 +2897,7 @@ export function useVoice({
         }
         // Tell the room about the opening mute, or it would list this seat as
         // "on stage" until the user touched a control.
-        if (startMuted) send({ t: "voice-state", muted: true });
+        if (startMuted) send({ t: "voice-state", muted: true, ...(startDeafened ? { deafened: true } : {}) });
         playUserJoinSound();
       } catch {
         setError(
@@ -2940,6 +2952,8 @@ export function useVoice({
     // When unmuting while deafened, also undeafen (matching Discord behavior)
     if (!next && deafened) {
       setDeafened(false);
+      selfDeafenedRef.current = false;
+      saveSelfDeafen(false);
       playUndeafenSound();
       // Taking the floor answers your own request, so the hand comes down.
       setHandRaised(false);
@@ -2983,6 +2997,8 @@ export function useVoice({
   const toggleDeafen = useCallback(() => {
     const next = !deafened;
     setDeafened(next);
+    selfDeafenedRef.current = next;
+    saveSelfDeafen(next);
     if (next) {
       playDeafenSound();
     } else {
