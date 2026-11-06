@@ -24,7 +24,7 @@ import { startScreenPreviewCapture } from "../lib/stream-preview";
 import { clampVoiceBitrate } from "@/lib/voice-quality";
 import { isScreenQuality, screenConstraints, type ScreenShareQuality } from "../lib/screen-quality";
 import { SFU_SCREEN_AUDIO_BITRATE, screenAudioBitrate, voiceBitrate } from "../lib/voice-bitrate";
-import { AUDIO_JITTER_TARGET_MS, tuneAudioSender, tuneOpusSdp } from "../lib/opus-tuning";
+import { tuneAudioSender, tuneOpusSdp } from "../lib/opus-tuning";
 import {
   isMusicBot,
   gainedPublish,
@@ -1602,14 +1602,7 @@ export function useVoice({
           );
           return exists ? current : [...current, { connectionId: remoteId, stream }];
         });
-        if (event.track.kind === "audio") {
-          // Not in every browser's typings/implementation yet; harmless where absent.
-          const receiver = event.receiver as RTCRtpReceiver & { jitterBufferTarget?: number | null };
-          if ("jitterBufferTarget" in receiver) {
-            try { receiver.jitterBufferTarget = AUDIO_JITTER_TARGET_MS; } catch { /* unsupported */ }
-          }
-          watchLevel(remoteId, stream);
-        }
+        if (event.track.kind === "audio") watchLevel(remoteId, stream);
       };
 
       peer.onconnectionstatechange = () => {
@@ -1954,15 +1947,11 @@ export function useVoice({
         onStreams: (streams) => {
           if (sfuRef.current === sfu) setSfuStreams(streams);
         },
-        onVoice: (remoteId, stream, receiver, kind) => {
+        onVoice: (remoteId, stream, kind) => {
           // /say speech lights its speaker's tile too, so everyone can see who it is.
           if (kind === "tts" || kind === "karaoke") {
             watchLevel(`${remoteId}:${kind}`, stream);
             return;
-          }
-          const tunable = receiver as (RTCRtpReceiver & { jitterBufferTarget?: number | null }) | undefined;
-          if (tunable && "jitterBufferTarget" in tunable) {
-            try { tunable.jitterBufferTarget = AUDIO_JITTER_TARGET_MS; } catch { /* unsupported */ }
           }
           watchLevel(remoteId, stream);
         },

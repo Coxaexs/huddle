@@ -111,7 +111,7 @@ export interface SfuHandlers {
   /** The full set of remote streams, whenever it changes. */
   onStreams: (streams: SfuRemoteStream[]) => void;
   /** A remote microphone arrived: for the speaking meter and jitter tuning. */
-  onVoice: (connectionId: string, stream: MediaStream, receiver: RTCRtpReceiver | undefined, kind: "voice" | "tts" | "karaoke") => void;
+  onVoice: (connectionId: string, stream: MediaStream, kind: "voice" | "tts" | "karaoke") => void;
   /** The connection is gone for good — not a reconnect, not our own leave. */
   onLost: () => void;
   /** Whether this tab asked not to receive someone's camera or screen. */
@@ -373,7 +373,7 @@ export class SfuVoice {
     if (!list.includes(track.mediaStreamTrack)) list.push(track.mediaStreamTrack);
     this.tracks.set(key, list);
     const stream = this.rebuild(key, who, kind);
-    if ((kind === "voice" || kind === "tts" || kind === "karaoke") && stream) this.handlers.onVoice(who.connectionId, stream, track.receiver, kind);
+    if ((kind === "voice" || kind === "tts" || kind === "karaoke") && stream) this.handlers.onVoice(who.connectionId, stream, kind);
     this.emit();
   }
 

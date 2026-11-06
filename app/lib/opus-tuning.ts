@@ -1,4 +1,4 @@
-/** How voice is sent and received over WebRTC: sender parameters, jitter buffer, Opus options. */
+/** How voice is sent over WebRTC: sender parameters and Opus options. */
 
 /** Caps an audio sender's bitrate and gives it priority over video. */
 export async function tuneAudioSender(
@@ -21,13 +21,12 @@ export async function tuneAudioSender(
   await sender.setParameters(parameters).catch(() => undefined);
 }
 
-/**
- * Target for incoming audio's jitter buffer. Chrome's adaptive default often
- * idles at 80+ ms; 30 ms was tried and was too tight for Wi-Fi, where it made
- * NetEq constantly stretch and squeeze speech to keep up — a warbly,
- * "phone line" voice. 60 ms still sits below the default.
+/*
+ * The receiver's jitter buffer is deliberately left alone. `jitterBufferTarget`
+ * acts as a floor, not a cap: 60 ms held a clean link's buffer at 63 ms where
+ * Chrome settles at about 26 ms, which added 34 ms to every voice. On a lossy
+ * link Chrome grew it to the same size with or without a target.
  */
-export const AUDIO_JITTER_TARGET_MS = 60;
 
 /**
  * Opus parameters the default negotiation leaves loose: in-band FEC so a lost
