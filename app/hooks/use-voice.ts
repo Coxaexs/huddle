@@ -23,7 +23,7 @@ import { desktopAppAudio, shellCapturesShareAudio } from "../lib/app-audio";
 import { startScreenPreviewCapture } from "../lib/stream-preview";
 import { clampVoiceBitrate } from "@/lib/voice-quality";
 import { isScreenQuality, screenConstraints, type ScreenShareQuality } from "../lib/screen-quality";
-import { SFU_SCREEN_AUDIO_BITRATE, screenAudioBitrate, voiceBitrate } from "../lib/voice-bitrate";
+import { SFU_SCREEN_AUDIO_BITRATE, screenAudioBitrate, sfuMicBitrate, voiceBitrate } from "../lib/voice-bitrate";
 import { tuneAudioSender, tuneOpusSdp } from "../lib/opus-tuning";
 import {
   isMusicBot,
@@ -870,9 +870,9 @@ export function useVoice({
       }
     }
     // Through the media server the voice is uploaded once, whoever listens,
-    // so it keeps the channel's full ceiling.
+    // so it keeps the channel's ceiling, up to what redundancy can carry.
     const sfuMic = sfuRef.current?.micSender();
-    if (sfuMic) void tuneAudioSender(sfuMic, roomBitrate);
+    if (sfuMic) void tuneAudioSender(sfuMic, sfuMicBitrate(roomBitrate));
   }, [channelId, listenerCount, sendingVideo, roomBitrate, sfuMode]);
 
   /**
@@ -1988,7 +1988,7 @@ export function useVoice({
         });
       const mic = backgroundMicRef.current ?? localStreamRef.current?.getAudioTracks()[0];
       if (mic) {
-        await publish(mic, "mic", { bitrate: roomBitrateRef.current });
+        await publish(mic, "mic", { bitrate: sfuMicBitrate(roomBitrateRef.current) });
         await sfu.setMicMuted(!micGateRef.current);
       }
       for (const track of screenStreamRef.current?.getTracks() || []) {

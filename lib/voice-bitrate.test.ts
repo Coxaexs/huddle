@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { screenAudioBitrate, voiceBitrate } from "../app/hooks/use-voice";
+import { sfuMicBitrate } from "../app/lib/voice-bitrate";
 
 describe("voice bitrate", () => {
+  it("keeps the media server's microphone where redundancy still works", () => {
+    expect(sfuMicBitrate(64_000)).toBe(64_000);
+    expect(sfuMicBitrate(128_000)).toBe(128_000);
+    expect(sfuMicBitrate(192_000)).toBe(192_000);
+    expect(sfuMicBitrate(256_000)).toBe(192_000);
+  });
+
   it("spends less per copy as the mesh grows", () => {
     expect(voiceBitrate(1, false)).toBe(64_000);
     expect(voiceBitrate(2, false)).toBe(64_000);

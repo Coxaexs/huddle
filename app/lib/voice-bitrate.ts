@@ -32,3 +32,15 @@ export function screenAudioBitrate(listeners: number): number {
 }
 /** Screen-share audio through the media server: uploaded once, so it keeps its quality. */
 export const SFU_SCREEN_AUDIO_BITRATE = 192_000;
+
+/**
+ * The microphone through the media server. It goes out with redundancy (each
+ * packet also carries the one before), and the browser silently drops that once
+ * packets get too big: at 256 kbps a lost packet is simply heard, as if there
+ * were no redundancy at all. Speech gains nothing up there, so stop below it.
+ */
+export const SFU_MIC_BITRATE_MAX = 192_000;
+
+export function sfuMicBitrate(room: number): number {
+  return Math.min(room, SFU_MIC_BITRATE_MAX);
+}
