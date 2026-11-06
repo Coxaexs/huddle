@@ -26,6 +26,7 @@ import { isScreenQuality, screenConstraints, type ScreenShareQuality } from "../
 import { SFU_SCREEN_AUDIO_BITRATE, screenAudioBitrate, voiceBitrate } from "../lib/voice-bitrate";
 import { AUDIO_JITTER_TARGET_MS, tuneAudioSender, tuneOpusSdp } from "../lib/opus-tuning";
 import {
+  isMusicBot,
   gainedPublish,
   mayPublish as mayPublishFrom,
   meshFallbackBlocked,
@@ -717,6 +718,11 @@ export function useVoice({
   /** Latest roster, readable from the watchdog without re-subscribing. */
   const roomsRef = useRef(rooms);
   roomsRef.current = rooms;
+  /** Only the music bot sends real stereo, so only its connection asks for it. */
+  const wantsStereo = useCallback(
+    (remoteId: string) => isMusicBot(roomsRef.current[channelIdRef.current ?? ""] ?? [], remoteId),
+    [],
+  );
   /** Lets the replay effect call the handler without depending on its identity. */
   const handleSignalRef = useRef<(from: string, raw: unknown) => void>(() => {});
   /** Bumped by every join and leave; a join that is no longer the latest bails. */
@@ -1747,7 +1753,7 @@ export function useVoice({
             await peer.addIceCandidate(candidate).catch(() => undefined);
           }
           pendingCandidatesRef.current.delete(from);
-          const answer = tuneOpusSdp(await peer.createAnswer());
+          const answer = tuneOpusSdp(await peer.createAnswer(), { stereo: wantsStereo(from) });
           await peer.setLocalDescription(answer);
           send({
             t: "signal",
@@ -1792,7 +1798,7 @@ export function useVoice({
         closePeer(from);
       }
     },
-    [applyVideoPause, closePeer, connectionId, createPeer, send],
+    [applyVideoPause, closePeer, connectionId, createPeer, send, wantsStereo],
   );
   handleSignalRef.current = handleSignal;
 
@@ -1803,7 +1809,7 @@ export function useVoice({
       peerSinceRef.current.set(remoteId, Date.now());
       void (async () => {
         try {
-          const offer = tuneOpusSdp(await peer.createOffer());
+          const offer = tuneOpusSdp(await peer.createOffer(), { stereo: wantsStereo(remoteId) });
           await peer.setLocalDescription(offer);
           send({
             t: "signal",
@@ -1815,7 +1821,7 @@ export function useVoice({
         }
       })();
     },
-    [closePeer, createPeer, send],
+    [closePeer, createPeer, send, wantsStereo],
   );
 
   /**
@@ -2239,7 +2245,7 @@ export function useVoice({
   const negotiatePeer = useCallback(
     async (remoteId: string, peer: RTCPeerConnection) => {
       if (peer.signalingState !== "stable") return;
-      const offer = tuneOpusSdp(await peer.createOffer());
+      const offer = tuneOpusSdp(await peer.createOffer(), { stereo: wantsStereo(remoteId) });
       await peer.setLocalDescription(offer);
       send({
         t: "signal",
@@ -2247,7 +2253,7 @@ export function useVoice({
         data: { kind: "offer", description: offer } satisfies SignalPayload,
       });
     },
-    [send],
+    [send, wantsStereo],
   );
   negotiateRef.current = negotiatePeer;
 

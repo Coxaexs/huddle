@@ -11,6 +11,7 @@ import {
   splitEarlySignals,
   watchdogVerdict,
   weCall,
+  isMusicBot,
 } from "@/app/lib/voice-mesh";
 import { tuneOpusSdp } from "@/app/lib/opus-tuning";
 import { nextScreenQuality, screenConstraints } from "@/app/lib/screen-quality";
@@ -138,6 +139,35 @@ describe("media helpers moved out of the hook", () => {
     const tuned = tuneOpusSdp({ type: "offer", sdp }).sdp!;
     expect(tuned).toContain("a=fmtp:111 minptime=10;usedtx=0;useinbandfec=1");
     expect(tuned).toContain("a=fmtp:109 stereo=1;useinbandfec=1;usedtx=0;minptime=10");
+  });
+
+  it("asks for stereo only when told to", () => {
+    const sdp = ["a=rtpmap:111 opus/48000/2", "a=fmtp:111 minptime=10;useinbandfec=1", ""].join("\r\n");
+    expect(tuneOpusSdp({ type: "offer", sdp }).sdp).not.toContain("stereo");
+    expect(tuneOpusSdp({ type: "offer", sdp }, { stereo: false }).sdp).not.toContain("stereo");
+    expect(tuneOpusSdp({ type: "offer", sdp }, { stereo: true }).sdp).toMatch(/a=fmtp:111 [^\r\n]*(^|;| )stereo=1/);
+  });
+
+  it("does not mistake sprop-stereo for stereo, and overrides stereo=0", () => {
+    const fmtp = (line: string) => ["a=rtpmap:111 opus/48000/2", line, ""].join("\r\n");
+    const sprop = tuneOpusSdp({ type: "offer", sdp: fmtp("a=fmtp:111 sprop-stereo=1") }, { stereo: true }).sdp!;
+    expect(sprop).toContain("sprop-stereo=1");
+    expect(sprop).toMatch(/[; ]stereo=1(;|\r|$)/);
+    expect(tuneOpusSdp({ type: "offer", sdp: fmtp("a=fmtp:111 stereo=0") }, { stereo: true }).sdp).not.toContain("stereo=0");
+  });
+
+  it("leaves a stereo video-less description with no Opus alone", () => {
+    const sdp = ["a=rtpmap:96 VP8/90000", "a=fmtp:96 x=1", ""].join("\r\n");
+    expect(tuneOpusSdp({ type: "offer", sdp }, { stereo: true }).sdp).toBe(sdp);
+  });
+
+  it("knows the music bot from people and other bots", () => {
+    const room = [seat("music", { bot: true, id: "bot:music" }), seat("bard", { bot: true, id: "bot:dnd" }), seat("kiwi")];
+    expect(isMusicBot(room, "music")).toBe(true);
+    expect(isMusicBot(room, "bard")).toBe(false);
+    expect(isMusicBot(room, "kiwi")).toBe(false);
+    expect(isMusicBot(room, "nobody")).toBe(false);
+    expect(isMusicBot([seat("kiwi", { id: "bot:music" })], "kiwi")).toBe(false);
   });
 
   it("sizes screen captures at 16:9 and steps resolution up, wrapping round", () => {

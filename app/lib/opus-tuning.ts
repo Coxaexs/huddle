@@ -33,8 +33,14 @@ export const AUDIO_JITTER_TARGET_MS = 60;
  * Opus parameters the default negotiation leaves loose: in-band FEC so a lost
  * packet is rebuilt from its neighbour, no DTX, and 10 ms packets when the far
  * side accepts them. Applied to every Opus payload type in the description.
+ *
+ * `stereo` is for a peer that sends real stereo. Chrome decodes to mono unless
+ * its own description asks for stereo, whatever the far side says it sends.
  */
-export function tuneOpusSdp<T extends RTCSessionDescriptionInit>(description: T): T {
+export function tuneOpusSdp<T extends RTCSessionDescriptionInit>(
+  description: T,
+  { stereo = false }: { stereo?: boolean } = {},
+): T {
   if (!description.sdp) return description;
   const opus = [...description.sdp.matchAll(/a=rtpmap:(\d+) opus\/48000/gi)].map((m) => m[1]);
   let sdp = description.sdp;
@@ -47,6 +53,7 @@ export function tuneOpusSdp<T extends RTCSessionDescriptionInit>(description: T)
       map.set("useinbandfec", "1");
       map.set("usedtx", "0");
       map.set("minptime", "10");
+      if (stereo) map.set("stereo", "1");
       return `a=fmtp:${pt} ${[...map].map(([k, v]) => `${k}=${v}`).join(";")}`;
     });
   }

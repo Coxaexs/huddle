@@ -67,6 +67,11 @@ export function meshPeers(people: VoiceParticipant[], self: string, sfu: boolean
   return others.filter((person) => meshWith(person, sfu) && (!tooBig || person.bot === true));
 }
 
+/** The music bot's seat: the one connection that sends real stereo. */
+export function isMusicBot(people: VoiceParticipant[], connectionId: string): boolean {
+  return people.some((person) => person.connectionId === connectionId && person.bot && person.id === "bot:music");
+}
+
 /**
  * The ICE transport policy for a direct connection to `person`: relay only, so
  * the other side learns our TURN server's address and never this machine's own
