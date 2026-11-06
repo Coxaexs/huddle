@@ -33,6 +33,9 @@ export interface JoinLinks {
 
 const EMBED_PATH = "/landing/say-hi";
 
+/** The themes on show before "more": a spread of moods, so the row stays calm. */
+const FEATURED_THEMES = ["cozy", "light", "msn", "midnight", "sunset", "vampire", "cyberpunk"];
+
 /* ─── Dialogs ─────────────────────────────────────────────────────────── */
 
 /** A native modal <dialog>: focus trapping, Esc and the backdrop come free. */
@@ -221,6 +224,10 @@ export function LiveChannel({ links, copy }: { links: JoinLinks; copy: LiveCopy 
     toEmbed({ hoffle: "say-hi", type: "theme", id });
   };
 
+  const [allThemes, setAllThemes] = useState(false);
+  const shownThemes = BUILTIN_THEMES.filter((theme) => allThemes || FEATURED_THEMES.includes(theme.id) || theme.id === themeId);
+  const hiddenThemes = BUILTIN_THEMES.length - shownThemes.length;
+
   // Start on the site's own light or dark look until someone picks a theme.
   useEffect(() => {
     const sync = () => {
@@ -279,14 +286,24 @@ export function LiveChannel({ links, copy }: { links: JoinLinks; copy: LiveCopy 
 
   return (
     <div>
-      <div className="mb-3 flex flex-col gap-3">
-        <p className="text-sm text-(--muted)">
-          <b className="text-(--ink)">{copy.lead}</b> {copy.tryRoll}{" "}
-          <code className="rounded bg-(--paper-2) px-1.5 py-0.5 text-[13px] text-(--ink)">/roll d20</code>. {copy.anyTheme}
-        </p>
-        {/* Phones get one swipeable row; 19 wrapped chips pushed the demo below the fold. */}
+      <p className="mb-4 text-[15px] leading-relaxed text-(--muted)">
+        <span aria-hidden className="mr-2 inline-block h-2 w-2 rounded-full bg-[#3ba55d] align-middle" />
+        <b className="font-semibold text-(--ink)">{copy.lead}</b> {copy.tryRoll}{" "}
+        <code className="rounded bg-(--paper-2) px-1.5 py-0.5 text-[13px] text-(--ink)">/roll d20</code>.
+      </p>
+      <div className="overflow-hidden rounded-2xl border border-(--line) shadow-[0_40px_80px_-40px_rgba(40,28,10,.45)]">
+        <iframe
+          ref={frameRef}
+          src={`${EMBED_PATH}?theme=cozy`}
+          title={copy.frameTitle}
+          className="block h-[600px] w-full sm:h-[620px]"
+        />
+      </div>
+      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <span className="text-sm font-semibold text-(--muted)">{copy.anyTheme}</span>
+        {/* Phones get one swipeable row. */}
         <div role="group" aria-label="Theme" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-          {BUILTIN_THEMES.map((theme) => {
+          {shownThemes.map((theme) => {
             const selected = theme.id === themeId;
             const c = theme.colors;
             return (
@@ -312,15 +329,16 @@ export function LiveChannel({ links, copy }: { links: JoinLinks; copy: LiveCopy 
               </button>
             );
           })}
+          {hiddenThemes > 0 && (
+            <button
+              type="button"
+              onClick={() => setAllThemes(true)}
+              className="inline-flex h-8 shrink-0 items-center rounded-full border border-dashed border-(--ink-2)/35 px-3 transition hover:border-(--ink-2)"
+            >
+              <span className="text-[13px] font-semibold text-(--ink-2)">{copy.moreThemes.replace("{n}", String(hiddenThemes))}</span>
+            </button>
+          )}
         </div>
-      </div>
-      <div className="overflow-hidden rounded-[14px] border border-(--line) shadow-[0_40px_80px_-40px_rgba(40,28,10,.45)]">
-        <iframe
-          ref={frameRef}
-          src={`${EMBED_PATH}?theme=cozy`}
-          title={copy.frameTitle}
-          className="block h-[600px] w-full sm:h-[620px]"
-        />
       </div>
       <NameDialog text={pending?.text ?? null} onCancel={() => setPending(null)} onSend={send} copy={copy.name} />
       <JoinDialog what={locked} onClose={() => setLocked(null)} links={links} copy={copy.join} />

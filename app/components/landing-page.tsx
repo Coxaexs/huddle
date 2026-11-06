@@ -1,9 +1,10 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Coffee, Heart } from "./site-icons";
 import { Hoffy } from "./hoffy";
 import { VS_DISCORD_PATH } from "./vs-discord-page";
 import { CopyButton, DownloadButton } from "./landing-client";
 import { LiveChannel, MatrixRain, ThemeTour, type JoinLinks } from "./landing-demo";
+import { CallScene, ChatScene, GameScene, MusicScene } from "./landing-scenes";
 import { LANDING_COPY, LANDING_PATH, type LandingCopy, type LandingLang } from "./landing-copy";
 import {
   APP_URL,
@@ -28,7 +29,13 @@ import { BUILTIN_THEMES } from "@/lib/themes";
  *
  * Every claim on here should be something the app actually does today; if a
  * feature is removed, remove it here too. The screenshots in /public/shots are
- * of a throwaway demo instance with made-up people, never of real chats.
+ * of a throwaway demo instance with made-up people, never of real chats, and
+ * the feature cards use drawn scenes with the same people (landing-scenes.tsx).
+ *
+ * Layout rules: every band has the same vertical padding (`band`), neighbouring
+ * bands differ in colour so no divider is needed, one idea per band, and the
+ * first screen shows the product. Detail people only sometimes need goes in a
+ * <details>, the FAQ or the docs, not in the flow.
  *
  * This is a server component on purpose: all the copy is in the first HTML
  * response, which is what search engines and link previews read. The live
@@ -173,7 +180,7 @@ function tourSlides(t: LandingCopy["tour"]) {
     {
       id: "msn",
       label: "Y2K Chat",
-      background: "linear-gradient(180deg,#1f5fcf 0%,#4a8fe8 45%,#a9d0f5 78%,#d9ecfb 100%)",
+      background: "linear-gradient(180deg,#1a53bd 0%,#2a6dd6 55%,#4f92e6 80%,#a9d0f5 100%)",
       content: (
         <>
           <div
@@ -372,10 +379,15 @@ function Buddy({ className = "" }: { className?: string }) {
 }
 
 const button =
-  "inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-[15px] font-semibold transition";
+  "inline-flex h-12 items-center justify-center gap-2 rounded-xl px-6 text-base font-semibold transition";
 const primaryButton = `${button} bg-(--violet-fill) text-white hover:bg-(--violet-fill-hover)`;
 const secondaryButton = `${button} border border-(--line) bg-(--card) text-(--ink) hover:border-(--ink)`;
-const sectionTitle = "lp-display text-3xl font-normal leading-tight sm:text-4xl";
+const sectionTitle = "lp-display text-[34px] leading-[1.1] sm:text-5xl";
+const sectionLead = "mt-5 max-w-xl text-lg leading-relaxed text-(--ink-2)";
+/** The same air around every band of the page. */
+const band = "px-4 py-20 sm:px-6 sm:py-28";
+const hoffleColumn = "bg-[color-mix(in_srgb,var(--violet)_6%,transparent)]";
+const quietLink = "inline-flex items-center gap-2 hover:text-(--ink)";
 const link = "font-semibold text-(--violet) underline decoration-dotted underline-offset-2";
 
 /* ─── Downloads ────────────────────────────────────────────────────────── */
@@ -416,6 +428,39 @@ function downloadRows(copy: LandingCopy["download"], manifest: DownloadManifest 
   ];
 }
 
+type Row = ReturnType<typeof downloadRows>[number];
+
+function DownloadRow({ row, action }: { row: Row; action: string }) {
+  return (
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-1 py-4">
+      {/* On a phone: the name and links on one line, what it is on the next. */}
+      <span className="font-semibold max-sm:flex-1 sm:w-40 sm:shrink-0">{row.name}</span>
+      <span className="min-w-0 text-sm text-(--muted) max-sm:order-last max-sm:basis-full sm:flex-1">{row.file}</span>
+      <a href={row.href} className="shrink-0 text-sm font-semibold text-(--violet) hover:underline">
+        {row.extras ? "Windows" : action} →
+      </a>
+      {row.extras?.map((extra) => (
+        <a key={extra.label} href={extra.href} className="shrink-0 text-sm font-semibold text-(--violet) hover:underline">
+          {extra.label} →
+        </a>
+      ))}
+    </li>
+  );
+}
+
+/** One feature: the words on top, a drawn scene rising from the bottom edge. */
+function FeatureCard({ title, body, className = "", children }: { title: string; body: string; className?: string; children: ReactNode }) {
+  return (
+    <article className={`flex flex-col overflow-hidden rounded-2xl border border-(--line) bg-(--card) ${className}`}>
+      <div className="px-7 pt-7 sm:px-8 sm:pt-8">
+        <h3 className="lp-display text-[26px] leading-tight">{title}</h3>
+        <p className="mt-2.5 leading-relaxed text-(--ink-2)">{body}</p>
+      </div>
+      <div className="mt-8 flex flex-1 items-end px-7 sm:px-8">{children}</div>
+    </article>
+  );
+}
+
 /** Below this many members "3 members" reads as empty, so the line leaves the numbers out. */
 const COMMUNITY_COUNT_FROM = 25;
 
@@ -435,11 +480,7 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
   const copy = LANDING_COPY[lang];
   const other: LandingLang = lang === "en" ? "tr" : "en";
   const [manifest, lounge] = await Promise.all([downloads(), community()]);
-  const themeNames = BUILTIN_THEMES.map((theme) => theme.name);
-  const themesLine = copy.themesLine(
-    themeNames.length,
-    `${themeNames.slice(0, -1).join(", ")} ${lang === "tr" ? "ve" : "and"} ${themeNames[themeNames.length - 1]}`,
-  );
+  const rows = downloadRows(copy.download, manifest);
   const downloadHrefs = {
     windows: manifest ? "/download/windows" : sectionHref(lang, "download"),
     linux: manifest ? "/download/linux" : sectionHref(lang, "download"),
@@ -468,165 +509,197 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
 
       <main lang={lang}>
         {/* ── Hero ──────────────────────────────────────────────────── */}
-        <section className="px-4 pt-14 sm:px-6 sm:pt-20">
+        <section className="px-4 pb-20 pt-14 sm:px-6 sm:pb-28 sm:pt-24">
           <div className="mx-auto max-w-6xl">
-            <div className="flex items-start justify-between gap-8">
-              <h1 className="lp-display max-w-[22ch] text-4xl font-normal leading-[1.1] sm:text-[56px]">{copy.hero.title}</h1>
-              {/* A wrapper does the hiding: .hoffy sets its own display. */}
-              <span className="hidden shrink-0 md:block">
-                <Hoffy size={170} motion="boot" id="hoffy-hero" label="Hoffy, the Hoffle mascot" />
-              </span>
-            </div>
-            {/* The buttons follow the words they belong to; Hoffy holds the right. */}
-            <div className="mt-6 max-w-[62ch]">
-              <p className="text-lg leading-relaxed text-(--ink-2)">{copy.hero.body}</p>
-              <div className="mt-7 flex flex-wrap gap-3">
-                <a href={APP_URL} className={primaryButton}>{copy.hero.open}</a>
-                <DownloadButton labels={downloadLabels} hrefs={downloadHrefs} className={secondaryButton} />
-              </div>
-            </div>
-            <div className="mt-12 sm:mt-14">
-              <LiveChannel links={JOIN_LINKS} copy={copy.live} />
-            </div>
-            {lounge && (
-              <div className="mt-5 flex flex-col gap-4 rounded-xl border border-(--line) bg-(--paper-2) p-5 sm:flex-row sm:items-center sm:justify-between">
-                <p className="max-w-[70ch] leading-relaxed text-(--ink-2)">{copy.community.line(lounge.memberCount >= COMMUNITY_COUNT_FROM ? lounge.memberCount : null, lounge.onlineCount)}</p>
-                <div className="flex shrink-0 flex-wrap gap-3">
-                  {/* The web page is also how search engines find the community from here. */}
-                  {lounge.webPath && <a href={lounge.webPath} className={secondaryButton}>{copy.community.read}</a>}
-                  <a href={COMMUNITY_URL} className={primaryButton}>{copy.community.button}</a>
+            <div className="relative flex items-center justify-between gap-10">
+              <div className="min-w-0">
+                <h1 className="lp-display text-[46px] leading-[1.04] sm:text-[76px]">
+                  {copy.hero.title.map((phrase, i) => (
+                    <Fragment key={phrase}>
+                      {i > 0 && " "}
+                      <span className="whitespace-nowrap">{phrase}</span>
+                    </Fragment>
+                  ))}
+                </h1>
+                <p className="mt-6 max-w-[36rem] text-lg leading-relaxed text-(--ink-2) sm:text-xl">{copy.hero.body}</p>
+                <div className="mt-9 flex flex-wrap gap-3">
+                  <a href={APP_URL} className={primaryButton}>{copy.hero.open}</a>
+                  <DownloadButton labels={downloadLabels} hrefs={downloadHrefs} className={secondaryButton} />
                 </div>
               </div>
-            )}
-          </div>
-        </section>
-
-        {/* ── Coming from Discord ──────────────────────────────────── */}
-        <section id="move" className="scroll-mt-4 border-y border-(--line) bg-(--paper-2) px-4 py-16 sm:px-6 sm:py-20">
-          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[2fr_3fr] lg:items-start">
-            <div>
-              <h2 className={sectionTitle}>{copy.moving.title}</h2>
-              <p className="mt-4 max-w-md leading-relaxed text-(--ink-2)">{copy.moving.lead}</p>
-              <a href={VS_DISCORD_PATH[lang]} className={`${link} mt-5 inline-block`}>{copy.moving.compare}</a>
+              {/* A wrapper does the hiding: .hoffy sets its own display. */}
+              <span className="hidden shrink-0 md:block">
+                <Hoffy size={210} motion="boot" id="hoffy-hero" label="Hoffy, the Hoffle mascot" />
+              </span>
+              <span className="absolute right-0 top-0 md:hidden">
+                <Hoffy size={84} motion="boot" id="hoffy-hero-small" label="Hoffy, the Hoffle mascot" />
+              </span>
             </div>
-            <ol className="grid gap-4 sm:grid-cols-3">
-              {copy.moving.steps.map((step, i) => (
-                <li key={step} className="rounded-xl border border-(--line) bg-(--card) p-5">
-                  <span className="lp-display text-3xl text-(--violet)">{i + 1}</span>
-                  <p className="mt-2 text-[15px] leading-relaxed text-(--ink-2)">{step}</p>
-                </li>
-              ))}
-            </ol>
+            <div className="mt-14 sm:mt-20">
+              <LiveChannel links={JOIN_LINKS} copy={copy.live} />
+            </div>
           </div>
         </section>
 
         {/* ── Features ─────────────────────────────────────────────── */}
-        <section id="features" className="scroll-mt-4 px-4 py-20 sm:px-6 sm:py-28">
+        <section id="features" className={`scroll-mt-4 border-y border-(--line) bg-(--paper-2) ${band}`}>
           <div className="mx-auto max-w-6xl">
-            <h2 className={sectionTitle}>{copy.features.title}</h2>
-            <p className="mt-3 max-w-2xl leading-relaxed text-(--ink-2)">{copy.features.lead}</p>
-            <div className="mt-10 grid gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
-              {copy.features.groups.map((group) => (
-                <div key={group.title}>
-                  <h3 className="text-lg font-medium">{group.title}</h3>
-                  <ul className="mt-3 list-disc space-y-2 pl-5 text-[15px] leading-relaxed text-(--ink-2) marker:text-(--muted)">
-                    {group.lead === "musicBot" && (
-                      <li>
-                        {copy.features.musicBotLead}{" "}
-                        <a href={MUSIC_BOT_REPO} className={link}>{copy.features.musicBotLink}</a>{" "}
-                        {copy.features.musicBotTail}
-                      </li>
-                    )}
-                    {group.lead === "themes" && <li>{themesLine}</li>}
-                    {group.items.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
+            <h2 className={`${sectionTitle} max-w-[18ch]`}>{copy.features.title}</h2>
+            <p className={sectionLead}>{copy.features.lead}</p>
+            <div className="mt-12 grid gap-5 lg:grid-cols-12">
+              <FeatureCard title={copy.features.cards.call.title} body={copy.features.cards.call.body} className="lg:col-span-7">
+                <CallScene s={copy.features.scenes} />
+              </FeatureCard>
+              <FeatureCard title={copy.features.cards.music.title} body={copy.features.cards.music.body} className="lg:col-span-5">
+                <MusicScene s={copy.features.scenes} />
+              </FeatureCard>
+              <FeatureCard title={copy.features.cards.games.title} body={copy.features.cards.games.body} className="lg:col-span-5">
+                <GameScene s={copy.features.scenes} />
+              </FeatureCard>
+              <FeatureCard title={copy.features.cards.chat.title} body={copy.features.cards.chat.body} className="lg:col-span-7">
+                <ChatScene s={copy.features.scenes} />
+              </FeatureCard>
+            </div>
+            <dl className="mt-14 grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
+              {copy.features.more.map((item) => (
+                <div key={item.title}>
+                  <dt className="font-semibold">{item.title}</dt>
+                  <dd className="mt-1.5 text-[15px] leading-relaxed text-(--ink-2)">{item.body}</dd>
                 </div>
               ))}
-            </div>
+              <div>
+                <dt className="font-semibold">{copy.nav.themes}</dt>
+                <dd className="mt-1.5 text-[15px] leading-relaxed text-(--ink-2)">{copy.features.themesLine(BUILTIN_THEMES.length)}</dd>
+              </div>
+            </dl>
+            <p className="mt-10 text-[15px] leading-relaxed text-(--muted)">
+              {copy.features.musicBotLead}{" "}
+              <a href={MUSIC_BOT_REPO} className={link}>{copy.features.musicBotLink}</a>{" "}
+              {copy.features.musicBotTail}
+            </p>
           </div>
         </section>
 
         {/* ── Theme tour ───────────────────────────────────────────── */}
         <ThemeTour slides={tourSlides(copy.tour)} controls={copy.tour.controls} />
 
-        {/* ── Compared to Discord ──────────────────────────────────── */}
-        <section id="compare" className="scroll-mt-4 px-4 py-20 sm:px-6 sm:py-28">
-          {/* Same left edge as the other sections; the table itself stays narrower. */}
-          <div className="mx-auto max-w-6xl"><div className="max-w-4xl">
-            <h2 className={sectionTitle}>{copy.compare.title}</h2>
-            <p className="mt-3 max-w-2xl leading-relaxed text-(--ink-2)">{copy.compare.lead}</p>
-            <div className="mt-8 overflow-x-auto rounded-xl border border-(--line)">
-              <table className="w-full border-collapse text-left text-[13px] sm:min-w-[560px] sm:text-[15px]">
-                <caption className="sr-only">{copy.compare.caption}</caption>
-                <thead>
-                  <tr className="border-b border-(--line) bg-(--paper-2) text-sm">
-                    <th scope="col" className="w-[28%] px-3 py-3 font-semibold text-(--muted) sm:px-4"><span className="sr-only">{copy.compare.featureColumn}</span></th>
-                    <th scope="col" className="w-[34%] px-3 py-3 font-semibold sm:px-4">{copy.compare.discord}</th>
-                    <th scope="col" className="w-[38%] px-3 py-3 font-semibold sm:px-4">Hoffle</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {copy.compare.rows.map((row) => (
-                    <tr key={row.label} className="border-b border-(--line) last:border-b-0">
-                      <th scope="row" className="px-3 py-3 align-top font-semibold sm:px-4">{row.label}</th>
-                      <td className="px-3 py-3 align-top text-(--ink-2) sm:px-4">{row.discord}</td>
-                      <td className="px-3 py-3 align-top sm:px-4">{row.hoffle}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {/* ── Coming from Discord ──────────────────────────────────── */}
+        <section id="move" className={`scroll-mt-4 ${band}`}>
+          <div className="mx-auto max-w-6xl">
+            <div className="grid gap-10 lg:grid-cols-[5fr_7fr] lg:gap-20">
+              <div>
+                <h2 className={sectionTitle}>{copy.moving.title}</h2>
+                <p className={sectionLead}>{copy.moving.lead}</p>
+              </div>
+              <ol className="divide-y divide-(--line) border-y border-(--line)">
+                {copy.moving.steps.map((step, i) => (
+                  <li key={step} className="flex items-baseline gap-5 py-5">
+                    <span className="lp-display w-6 shrink-0 text-2xl text-(--violet)">{i + 1}</span>
+                    <p className="text-[17px] leading-relaxed text-(--ink-2)">{step}</p>
+                  </li>
+                ))}
+              </ol>
             </div>
-            <a href={VS_DISCORD_PATH[lang]} className={`${link} mt-4 inline-block`}>{copy.compare.full}</a>
-            <p className="mt-3 text-sm text-(--muted)">{copy.compare.source}</p>
-          </div></div>
+
+            <div id="compare" className="mt-20 scroll-mt-4 sm:mt-28">
+              <h2 className={sectionTitle}>{copy.compare.title}</h2>
+              <p className={`${sectionLead} max-w-3xl`}>{copy.compare.lead}</p>
+              <div className="mt-10 overflow-hidden rounded-2xl border border-(--line) bg-(--card)">
+                <table className="w-full border-collapse text-left text-[15px] sm:text-base">
+                  <caption className="sr-only">{copy.compare.caption}</caption>
+                  <thead className="max-sm:sr-only">
+                    <tr className="border-b border-(--line)">
+                      <th scope="col" className="w-[30%] px-6 py-4 font-semibold text-(--muted)"><span className="sr-only">{copy.compare.featureColumn}</span></th>
+                      <th scope="col" className="w-[33%] px-6 py-4 font-semibold text-(--ink-2)">{copy.compare.discord}</th>
+                      <th scope="col" className={`w-[37%] px-6 py-4 font-semibold text-(--violet) ${hoffleColumn}`}>Hoffle</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {copy.compare.rows.map((row) => (
+                      <tr key={row.label} className="border-b border-(--line) last:border-b-0 max-sm:grid max-sm:grid-cols-2 max-sm:gap-x-4 max-sm:p-5">
+                        <th scope="row" className="px-6 py-4 align-top font-semibold max-sm:col-span-2 max-sm:p-0 max-sm:pb-2">{row.label}</th>
+                        <td className="px-6 py-4 align-top text-(--ink-2) max-sm:p-0">
+                          <span className="block text-xs font-semibold text-(--muted) sm:hidden">{copy.compare.discord}</span>
+                          {row.discord}
+                        </td>
+                        <td className={`px-6 py-4 align-top font-medium max-sm:bg-transparent max-sm:p-0 ${hoffleColumn}`}>
+                          <span className="block text-xs font-semibold text-(--violet) sm:hidden">Hoffle</span>
+                          {row.hoffle}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <a href={VS_DISCORD_PATH[lang]} className={`${link} mt-5 inline-block`}>{copy.compare.full}</a>
+              <p className="mt-3 text-sm text-(--muted)">{copy.compare.source}</p>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Built to stick around ────────────────────────────────── */}
+        <section id="staying" className={`scroll-mt-4 border-y border-(--line) bg-(--paper-2) ${band}`}>
+          <div className="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[5fr_7fr] lg:gap-20">
+            <div>
+              <h2 className={sectionTitle}>{copy.staying.title}</h2>
+              <p className={sectionLead}>{copy.staying.lead}</p>
+              <a href={STATUS_URL} className={`${secondaryButton} mt-8`}>
+                <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-[#3ba55d]" />
+                {copy.staying.status}
+              </a>
+            </div>
+            <dl className="grid gap-x-10 gap-y-10 sm:grid-cols-2">
+              {copy.staying.points.map((point) => (
+                <div key={point.title}>
+                  <dt className="text-[17px] font-semibold">{point.title}</dt>
+                  <dd className="mt-2 leading-relaxed text-(--ink-2)">{point.body}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         </section>
 
         {/* ── Download ─────────────────────────────────────────────── */}
-        <section id="download" className="scroll-mt-4 px-4 py-20 sm:px-6 sm:py-24">
-          <div className="mx-auto grid max-w-6xl items-start gap-14 lg:grid-cols-[7fr_5fr]">
+        <section id="download" className={`scroll-mt-4 ${band}`}>
+          <div className="mx-auto grid max-w-6xl items-start gap-14 lg:grid-cols-[7fr_5fr] lg:gap-20">
             <div>
               <h2 className={sectionTitle}>{copy.download.title}</h2>
-              <p className="mt-3 max-w-xl leading-relaxed text-(--ink-2)">{copy.download.lead}</p>
+              <p className={sectionLead}>{copy.download.lead}</p>
 
-              <div className="mt-8 rounded-xl border border-(--line) bg-(--card) p-5">
-                <h3 className="text-lg font-medium">{copy.download.browserTitle}</h3>
-                <p className="mt-1.5 max-w-xl text-[15px] leading-relaxed text-(--ink-2)">{copy.download.browserBody}</p>
-                <a href={INSTALL_URL} className={`${primaryButton} mt-4`}>{copy.download.browserButton}</a>
+              <div className="mt-10 rounded-2xl border border-(--line) bg-(--card) p-7 sm:p-8">
+                <h3 className="text-xl font-semibold">{copy.download.browserTitle}</h3>
+                <p className="mt-2 leading-relaxed text-(--ink-2)">{copy.download.browserBody}</p>
+                <a href={INSTALL_URL} className={`${primaryButton} mt-6`}>{copy.download.browserButton}</a>
               </div>
 
-              <h3 className="mt-10 text-lg font-medium">{copy.download.desktopTitle}</h3>
-              <p className="mt-1.5 max-w-xl text-[15px] leading-relaxed text-(--ink-2)">{copy.download.desktopBody}</p>
-              <ul className="mt-4 divide-y divide-(--line) border-y border-(--line)">
-                {downloadRows(copy.download, manifest).map((row) => (
-                  <li key={row.name} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-4">
-                    {/* On a phone: the name and links on one line, what it is on the next. */}
-                    <span className="font-bold max-sm:flex-1 sm:w-36 sm:shrink-0">{row.name}</span>
-                    <span className="min-w-0 text-sm text-(--muted) max-sm:order-last max-sm:basis-full sm:flex-1">{row.file}</span>
-                    <a href={row.href} className="shrink-0 text-sm font-semibold text-(--violet) hover:underline">
-                      {row.extras ? "Windows" : copy.download.action} →
-                    </a>
-                    {row.extras?.map((extra) => (
-                      <a key={extra.label} href={extra.href} className="shrink-0 text-sm font-semibold text-(--violet) hover:underline">
-                        {extra.label} →
-                      </a>
-                    ))}
-                  </li>
-                ))}
+              <h3 className="mt-14 text-xl font-semibold">{copy.download.desktopTitle}</h3>
+              <p className="mt-2 leading-relaxed text-(--ink-2)">{copy.download.desktopBody}</p>
+              <ul className="mt-5 divide-y divide-(--line) border-t border-(--line)">
+                {rows.slice(0, 4).map((row) => <DownloadRow key={row.name} row={row} action={copy.download.action} />)}
               </ul>
-              {manifest && <p className="mt-3 text-sm text-(--muted)">{copy.download.version(manifest.version)}</p>}
-              {(!manifest?.signed.windows || !manifest?.signed.mac) && (
-                <div className="mt-4 space-y-2 text-sm leading-relaxed text-(--ink-2)">
-                  {!manifest?.signed.windows && <p>{copy.download.windowsUnsigned}</p>}
-                  {!manifest?.signed.mac && <p>{copy.download.macUnsigned}</p>}
-                </div>
-              )}
+              <div className="lp-faq divide-y divide-(--line) border-y border-(--line)">
+                <details>
+                  <summary className="flex items-center justify-between gap-6 py-4 font-semibold">{copy.download.smallerTitle}</summary>
+                  <ul className="divide-y divide-(--line) border-t border-(--line)">
+                    {rows.slice(4).map((row) => <DownloadRow key={row.name} row={row} action={copy.download.action} />)}
+                  </ul>
+                </details>
+                {(!manifest?.signed.windows || !manifest?.signed.mac) && (
+                  <details>
+                    <summary className="flex items-center justify-between gap-6 py-4 font-semibold">{copy.download.warningTitle}</summary>
+                    <div className="space-y-3 pb-5 text-[15px] leading-relaxed text-(--ink-2)">
+                      {!manifest?.signed.windows && <p>{copy.download.windowsUnsigned}</p>}
+                      {!manifest?.signed.mac && <p>{copy.download.macUnsigned}</p>}
+                    </div>
+                  </details>
+                )}
+              </div>
+              {manifest && <p className="mt-4 text-sm text-(--muted)">{copy.download.version(manifest.version)}</p>}
 
-              <h3 id="on-your-phone" className="mt-10 scroll-mt-4 text-lg font-medium">{copy.download.phoneTitle}</h3>
-              <p className="mt-1.5 max-w-xl text-[15px] leading-relaxed text-(--ink-2)">{copy.download.phoneBody}</p>
+              <h3 id="on-your-phone" className="mt-14 scroll-mt-4 text-xl font-semibold">{copy.download.phoneTitle}</h3>
+              <p className="mt-2 leading-relaxed text-(--ink-2)">{copy.download.phoneBody}</p>
             </div>
-            <div className="mx-auto w-full max-w-[300px] lg:mt-20">
+            <div className="mx-auto w-full max-w-[300px] max-lg:hidden lg:self-center">
               <div className="rounded-[44px] border-[10px] border-(--slab) bg-(--slab) shadow-[0_30px_60px_-35px_rgba(20,15,40,.5)]">
                 <img
                   src="/shots/hoffle-phone-780.webp"
@@ -642,67 +715,27 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
           </div>
         </section>
 
-        {/* ── Will it last? ────────────────────────────────────────── */}
-        <section id="staying" className="scroll-mt-4 border-y border-(--line) bg-(--paper-2) px-4 py-20 sm:px-6 sm:py-24">
-          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[2fr_3fr]">
-            <div>
-              <h2 className={sectionTitle}>{copy.staying.title}</h2>
-              <p className="mt-4 max-w-md leading-relaxed text-(--ink-2)">{copy.staying.lead}</p>
-              <a href={STATUS_URL} className={`${secondaryButton} mt-6`}>
-                <span aria-hidden className="h-2.5 w-2.5 rounded-full bg-[#3ba55d]" />
-                {copy.staying.status}
-              </a>
-            </div>
-            <dl className="grid gap-x-8 gap-y-7 sm:grid-cols-2">
-              {copy.staying.points.map((point) => (
-                <div key={point.title}>
-                  <dt className="font-bold">{point.title}</dt>
-                  <dd className="mt-1.5 text-[15px] leading-relaxed text-(--ink-2)">{point.body}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        </section>
-
-        {/* ── Voice (LiveKit) ──────────────────────────────────────── */}
-        <section id="voice" className="scroll-mt-4 border-b border-(--line) bg-(--paper-2) px-4 py-20 sm:px-6 sm:py-24">
-          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[2fr_3fr]">
-            <div>
-              <h2 className={sectionTitle}>{copy.voice.title}</h2>
-              <p className="mt-4 max-w-md leading-relaxed text-(--ink-2)">{copy.voice.lead}</p>
-            </div>
-            <dl className="grid gap-x-8 gap-y-7 sm:grid-cols-2">
-              {copy.voice.points.map((point) => (
-                <div key={point.title}>
-                  <dt className="font-bold">{point.title}</dt>
-                  <dd className="mt-1.5 text-[15px] leading-relaxed text-(--ink-2)">{point.body}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        </section>
-
         {/* ── Self-host ────────────────────────────────────────────── */}
-        <section id="self-host" className="scroll-mt-4 bg-(--slab) px-4 py-20 text-white sm:px-6 sm:py-24">
-          <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
+        <section id="self-host" className={`scroll-mt-4 bg-(--slab) text-white ${band}`}>
+          <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-20">
             <div>
               <h2 className={sectionTitle}>{copy.selfHost.title}</h2>
-              <p className="mt-4 max-w-lg leading-relaxed text-white/75">{copy.selfHost.body}</p>
-              <ul className="mt-5 list-disc space-y-1.5 pl-5 text-[15px] text-white/85 marker:text-white/40">
+              <p className="mt-5 max-w-lg text-lg leading-relaxed text-white/75">{copy.selfHost.body}</p>
+              <ul className="mt-6 list-disc space-y-2 pl-5 text-white/85 marker:text-white/40">
                 {copy.selfHost.points.map((point) => (
-                  <li key={point}>{withCode(point)}</li>
+                  <li key={point}>{point}</li>
                 ))}
               </ul>
-              <a href={SELF_HOST_GUIDE} className="mt-7 inline-block font-semibold text-white underline decoration-white/40 underline-offset-4 hover:decoration-white">
+              <a href={SELF_HOST_GUIDE} className="mt-8 inline-block font-semibold text-white underline decoration-white/40 underline-offset-4 hover:decoration-white">
                 {copy.selfHost.guide}
               </a>
             </div>
-            <div className="overflow-hidden rounded-xl border border-white/10 bg-[#0e0b14]">
-              <div className="flex h-11 items-center justify-between border-b border-white/10 px-4">
+            <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0e0b14]">
+              <div className="flex h-11 items-center justify-between border-b border-white/10 px-5">
                 <span className="font-mono text-xs text-white/50">terminal</span>
                 <CopyButton text={SELF_HOST} labels={{ copy: copy.selfHost.copy, copied: copy.selfHost.copied }} />
               </div>
-              <pre className="overflow-x-auto p-5 font-mono text-[14px] leading-7 text-[#b8f5c9]">
+              <pre className="overflow-x-auto p-6 font-mono text-[14px] leading-7 text-[#b8f5c9]">
                 {SELF_HOST.split("\n").map((line) => (
                   <div key={line}><span className="select-none text-white/35">$ </span>{line}</div>
                 ))}
@@ -713,8 +746,8 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
         </section>
 
         {/* ── FAQ ──────────────────────────────────────────────────── */}
-        <section id="faq" className="scroll-mt-4 px-4 py-20 sm:px-6 sm:py-28">
-          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1fr_2fr]">
+        <section id="faq" className={`scroll-mt-4 ${band}`}>
+          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[5fr_7fr] lg:gap-20">
             <h2 className={sectionTitle}>{copy.faq.title}</h2>
             <div className="lp-faq divide-y divide-(--line) border-y border-(--line)">
               {copy.faq.items.map((item, i) => (
@@ -727,41 +760,46 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
           </div>
         </section>
 
-        {/* ── About ────────────────────────────────────────────────── */}
-        <section className="border-t border-(--line) px-4 py-16 sm:px-6">
-          <div className="mx-auto flex max-w-6xl flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-            <p className="max-w-2xl leading-relaxed text-(--ink-2)">{copy.about.body}</p>
-            <div className="flex flex-wrap gap-3">
-              {lounge && <a href={COMMUNITY_URL} className={secondaryButton}>{copy.community.button}</a>}
-              <a href={REPO} className={secondaryButton}>
-                <GithubMark className="h-4 w-4" /> {copy.about.github}
-              </a>
-              {KOFI_URL && (
-                <a href={KOFI_URL} target="_blank" rel="noopener noreferrer" className={secondaryButton}>
-                  <Coffee className="h-4 w-4" /> {copy.about.kofi}
-                </a>
-              )}
-              {GITHUB_SPONSORS_URL && (
-                <a href={GITHUB_SPONSORS_URL} target="_blank" rel="noopener noreferrer" className={secondaryButton}>
-                  <Heart className="h-4 w-4 text-[#ea4aaa]" /> {copy.about.sponsors}
-                </a>
-              )}
+        {/* ── The way in, and who made it ──────────────────────────── */}
+        <section className="px-4 pb-20 sm:px-6 sm:pb-28">
+          <div className="mx-auto max-w-6xl">
+            <div className="flex flex-col gap-8 overflow-hidden rounded-3xl bg-[#2b2059] px-7 py-12 text-white sm:px-14 sm:py-16 md:flex-row md:items-center md:justify-between">
+              <div className="max-w-xl">
+                <h2 className={sectionTitle}>{copy.closing.title}</h2>
+                <p className="mt-4 text-lg leading-relaxed text-white/85">{copy.closing.body}</p>
+                <div className="mt-8 flex flex-wrap gap-3">
+                  <a href={APP_URL} className={`${button} bg-white text-[#2b2059] hover:bg-white/90`}>{copy.hero.open}</a>
+                  {lounge && <a href={COMMUNITY_URL} className={`${button} border border-white/40 text-white hover:bg-white/10`}>{copy.community.button}</a>}
+                </div>
+              </div>
+              <span className="hidden shrink-0 md:block">
+                <Hoffy size={190} motion="idle" id="hoffy-closing" label="" />
+              </span>
+            </div>
+
+            <div className="mt-16 grid gap-10 lg:grid-cols-[7fr_5fr] lg:gap-20">
+              <div className="space-y-4 leading-relaxed text-(--ink-2)">
+                <p>{copy.about.body}</p>
+                {lounge && <p>{copy.community.line(lounge.memberCount >= COMMUNITY_COUNT_FROM ? lounge.memberCount : null, lounge.onlineCount)}</p>}
+              </div>
+              <div className="flex flex-wrap content-start gap-x-6 gap-y-3 text-[15px] font-semibold text-(--ink-2) lg:justify-end">
+                {lounge?.webPath && <a href={lounge.webPath} className={quietLink}>{copy.community.read}</a>}
+                <a href={REPO} className={quietLink}><GithubMark className="h-4 w-4" /> {copy.about.github}</a>
+                {KOFI_URL && (
+                  <a href={KOFI_URL} target="_blank" rel="noopener noreferrer" className={quietLink}>
+                    <Coffee className="h-4 w-4" /> {copy.about.kofi}
+                  </a>
+                )}
+                {GITHUB_SPONSORS_URL && (
+                  <a href={GITHUB_SPONSORS_URL} target="_blank" rel="noopener noreferrer" className={quietLink}>
+                    <Heart className="h-4 w-4 text-[#ea4aaa]" /> {copy.about.sponsors}
+                  </a>
+                )}
+              </div>
             </div>
           </div>
         </section>
       </main>
     </SiteShell>
-  );
-}
-
-/** Self-host bullets name Docker flags ("--profile livekit"); those read as code. */
-function withCode(text: string): ReactNode {
-  const match = text.match(/^(.*?)(--profile \w+)$/);
-  if (!match) return text;
-  return (
-    <>
-      {match[1]}
-      <code className="whitespace-nowrap text-[14px]">{match[2]}</code>
-    </>
   );
 }

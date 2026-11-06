@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { Coffee, Heart } from "./site-icons";
 import { SiteThemeToggle } from "./landing-client";
 import { LANDING_COPY, LANDING_PATH, type LandingLang } from "./landing-copy";
 
@@ -55,7 +54,6 @@ function navFor(lang: LandingLang) {
   return [
     { href: sectionHref(lang, "features"), label: nav.features },
     { href: sectionHref(lang, "themes"), label: nav.themes },
-    { href: sectionHref(lang, "staying"), label: nav.staying },
     { href: sectionHref(lang, "download"), label: nav.download },
     { href: "/docs", label: nav.docs },
   ];
@@ -67,18 +65,18 @@ const THEME_TOGGLE_LABELS: Record<LandingLang, { dark: string; light: string; ti
 };
 
 const LIGHT_TOKENS = `
-  --paper: #ffffff;
-  --paper-2: #f4f3f8;
+  --paper: #fdfbf7;
+  --paper-2: #f6f1e7;
   --card: #ffffff;
-  --ink: #17151f;
-  --ink-2: #45414f;
-  --muted: #6b6676;
-  --line: #e2e0e8;
+  --ink: #1d1a22;
+  --ink-2: #4a4552;
+  --muted: #6d6773;
+  --line: #e9e2d5;
   --violet: #6a4ddb;
   --coral: #6a4ddb;
   --violet-fill: #6a4ddb;
-  --violet-fill-hover: #17151f;
-  --slab: #17151f;
+  --violet-fill-hover: #5a3fc7;
+  --slab: #1b1724;
 `;
 
 const DARK_TOKENS = `
@@ -106,37 +104,13 @@ const SITE_THEME_KEY = "hoffle-site-theme";
  */
 const THEME_SCRIPT = `(function(){var d=document.documentElement,m=window.matchMedia("(prefers-color-scheme: dark)");function saved(){try{var s=localStorage.getItem("${SITE_THEME_KEY}");return s==="light"||s==="dark"?s:null}catch(e){return null}}function apply(){d.dataset.lpTheme=saved()||(m.matches?"dark":"light")}apply();m.addEventListener&&m.addEventListener("change",function(){if(!saved()){apply();window.dispatchEvent(new Event("lp-theme-change"))}})})();`;
 
-/** GitHub, Ko-fi, Sponsors and the Open Hoffle button, on the right of the header. */
+/** GitHub and the Open Hoffle button, on the right of the header. Ko-fi and Sponsors live in the footer. */
 function HeaderLinks({ label }: { label: string }) {
   return (
     <>
       <a href={REPO} className="hidden h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink) sm:grid" aria-label="Hoffle on GitHub">
         <GithubMark className="h-5 w-5" />
       </a>
-      {KOFI_URL && (
-        <a
-          href={KOFI_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hidden h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink) sm:grid"
-          aria-label="Support Hoffle on Ko-fi"
-          title="Support Hoffle on Ko-fi"
-        >
-          <Coffee className="h-5 w-5" />
-        </a>
-      )}
-      {GITHUB_SPONSORS_URL && (
-        <a
-          href={GITHUB_SPONSORS_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hidden h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink) sm:grid"
-          aria-label="Sponsor Hoffle on GitHub"
-          title="Sponsor Hoffle on GitHub"
-        >
-          <Heart className="h-5 w-5" />
-        </a>
-      )}
       <a href={APP_URL} className="inline-flex h-10 items-center whitespace-nowrap rounded-lg bg-(--violet-fill) px-4 text-sm font-semibold text-white hover:bg-(--violet-fill-hover)">
         {label}
       </a>
@@ -177,13 +151,13 @@ export function SiteShell({
         html[data-lp-theme="dark"] { color-scheme: dark; }
         html[data-lp-theme="dark"] body { background: #0f0d15; }
         html[data-lp-theme="light"] { color-scheme: light; }
-        html[data-lp-theme="light"] body { background: #ffffff; }
+        html[data-lp-theme="light"] body { background: #fdfbf7; }
         html[data-lp-theme="dark"] .lp-if-light, html:not([data-lp-theme="dark"]) .lp-if-dark { display: none; }
         .lp-display {
           /* The app's fonts (globals.css --font-display / --font-ui), so the site and the app read as one. */
           font-family: Fraunces, Georgia, serif;
           font-weight: 500;
-          letter-spacing: -0.01em;
+          letter-spacing: -0.02em;
         }
         .lp-root a:focus-visible, .lp-root button:focus-visible, .lp-root summary:focus-visible {
           outline: 3px solid var(--violet); outline-offset: 3px; border-radius: 8px;
@@ -191,8 +165,8 @@ export function SiteShell({
       `}</style>
       <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
 
-      <header className="border-b border-(--line)">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+      <header className="border-b border-(--line) px-4 sm:px-6">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4">
           <a href={LANDING_PATH[lang]} aria-label="Hoffle" className="shrink-0">
             <Wordmark className="text-[22px]" />
           </a>

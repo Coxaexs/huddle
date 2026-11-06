@@ -160,12 +160,11 @@ export function SayHiEmbed({ initialTheme }: { initialTheme: string }) {
     const host = hostRef.current;
     if (!host) return;
     host.innerHTML = msn ? SHELL_MSN : SHELL_STANDARD;
-    // Like the app, the member list starts open only on screens wider than 760px.
-    if (window.innerWidth <= 760) {
-      host.querySelector("main.app-shell")?.classList.remove("has-members");
-      host.querySelector(".member-panel")?.classList.add("closed");
-      host.querySelector('[aria-label="Toggle member list"]')?.classList.remove("active");
-    }
+    // The member list starts closed: here it only ever holds a guest or two, and
+    // the messages read better with the room. The button in the header opens it.
+    host.querySelector("main.app-shell")?.classList.remove("has-members");
+    host.querySelector(".member-panel")?.classList.add("closed");
+    host.querySelector('[aria-label="Toggle member list"]')?.classList.remove("active");
     setSlots({
       main: host.querySelector<HTMLElement>("main.app-shell")!,
       messages: host.querySelector<HTMLElement>(".messages")!,
@@ -348,6 +347,8 @@ export function SayHiEmbed({ initialTheme }: { initialTheme: string }) {
 
   return (
     <>
+      {/* On a phone the name of the channel matters more than the buttons that only lead to the join dialog. */}
+      <style>{`@media (max-width: 480px) { .chat-header .header-actions [aria-label="Find users"], .chat-header .header-actions [aria-label="Pinned messages"], .chat-header .header-actions [aria-label="Mentions"] { display: none; } }`}</style>
       <MatrixRain />
       <div ref={hostRef} style={{ display: "contents", visibility: themed ? undefined : "hidden" }} />
       {slots && createPortal(<MessageList messages={messages} onCommand={compose} />, slots.messages)}

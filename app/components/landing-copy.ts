@@ -13,13 +13,21 @@ export const LANDING_PATH: Record<LandingLang, string> = { en: "/", tr: "/tr" };
 
 export interface LandingCopy {
   meta: { title: string; description: string; ogLocale: string };
-  nav: { features: string; themes: string; download: string; staying: string; docs: string; open: string; otherLang: string; otherLangShort: string; otherLangLabel: string };
+  nav: { features: string; themes: string; download: string; docs: string; open: string; otherLang: string; otherLangShort: string; otherLangLabel: string };
   footer: { madeBy: string; notDiscord: string; webApp: string; download: string; docs: string; selfHost: string; faq: string; status: string; terms: string; privacy: string };
-  hero: { title: string; body: string; open: string; downloadFor: (os: string) => string; downloadGeneric: string; onPhone: string };
+  hero: {
+    /** Phrases that stay whole, so the lines only ever break between them. */
+    title: string[];
+    body: string;
+    open: string; downloadFor: (os: string) => string; downloadGeneric: string;
+    onPhone: string;
+  };
   live: {
     lead: string;
     tryRoll: string;
     anyTheme: string;
+    /** {n} is filled in on the client, so this has to stay a plain string. */
+    moreThemes: string;
     frameTitle: string;
     name: { titleRoll: string; titleSend: string; lead: string; label: string; placeholder: string; cancel: string; sending: string; roll: string; send: string; offline: string; badName: string; failed: string };
     join: { title: string; partOfThing: string | null; partOfPlain: string; joinTitle: string; joinBody: string; create: string; hostTitle: string; hostBody: string; guide: string };
@@ -27,8 +35,18 @@ export interface LandingCopy {
   /** Shown only once the community's invite (COMMUNITY_INVITE) exists. */
   /** `members` is null while the community is too small for a number to help. */
   community: { line: (members: number | null, online: number) => string; button: string; read: string };
-  features: { title: string; lead: string; groups: { title: string; items: string[]; lead?: "musicBot" | "themes" }[]; musicBotLink: string; musicBotLead: string; musicBotTail: string };
-  themesLine: (count: number, names: string) => string;
+  features: {
+    title: string;
+    lead: string;
+    cards: Record<"call" | "music" | "games" | "chat", { title: string; body: string }>;
+    /** The words inside the drawn scenes. */
+    scenes: { movieNight: string; live: string; sharing: string; sameSecond: string; upNext: string; rolled: string; chatKai: string; chatMira: string };
+    more: { title: string; body: string }[];
+    themesLine: (count: number) => string;
+    musicBotLink: string;
+    musicBotLead: string;
+    musicBotTail: string;
+  };
   tour: {
     /** Strings for the client-side slideshow: {i}, {n} and {name} are filled in there. */
     controls: { label: string; counter: string; prev: string; next: string; show: string };
@@ -39,7 +57,7 @@ export interface LandingCopy {
   };
   compare: { title: string; lead: string; caption: string; featureColumn: string; discord: string; rows: { label: string; discord: string; hoffle: string }[]; source: string; full: string };
   /** Coming from Discord: the one-link move. */
-  moving: { title: string; lead: string; steps: string[]; compare: string };
+  moving: { title: string; lead: string; steps: string[] };
   staying: { title: string; lead: string; points: { title: string; body: string }[]; status: string };
   download: {
     title: string;
@@ -49,6 +67,8 @@ export interface LandingCopy {
     browserButton: string;
     desktopTitle: string;
     desktopBody: string;
+    smallerTitle: string;
+    warningTitle: string;
     rows: { windows: string; macArm: string; macIntel: string; linux: string; lite: string; native: string };
     files: { windows: string; macArm: string; macIntel: string; linux: string; lite: string; native: string };
     action: string;
@@ -59,9 +79,9 @@ export interface LandingCopy {
     phoneBody: string;
     phoneAlt: string;
   };
-  voice: { title: string; lead: string; points: { title: string; body: string }[] };
   selfHost: { title: string; body: string; points: string[]; guide: string; after: string; copy: string; copied: string };
   faq: { title: string; items: { q: string; a: string }[] };
+  closing: { title: string; body: string };
   about: { body: string; github: string; kofi: string; sponsors: string };
 }
 
@@ -76,7 +96,6 @@ const en: LandingCopy = {
     features: "Features",
     themes: "Themes",
     download: "Download",
-    staying: "Will it last?",
     docs: "Docs",
     open: "Open Hoffle",
     otherLang: "Türkçe",
@@ -96,9 +115,9 @@ const en: LandingCopy = {
     privacy: "Privacy",
   },
   hero: {
-    title: "Hoffle: a chat app for small groups, with voice, screen sharing and game night built in.",
+    title: ["Game night,", "movie night,", "any night."],
     body:
-      "I started Hoffle for my own friend group, who spent most evenings in a Discord call. It has the things we used every night: voice, 1080p screen sharing with sound, a music bot, and D&D tools. It's free and open source, and it works right in your browser.",
+      "Hoffle is a free, open-source chat app for your friend group, with voice, 1080p screen sharing, music and D&D tools built in. It runs right in your browser.",
     open: "Open Hoffle",
     downloadFor: (os) => `Download for ${os}`,
     downloadGeneric: "Get the desktop app",
@@ -107,7 +126,8 @@ const en: LandingCopy = {
   live: {
     lead: "This channel is live.",
     tryRoll: "Say hi, ask me something (I read all of it), or try",
-    anyTheme: "In any theme:",
+    anyTheme: "Try another theme:",
+    moreThemes: "{n} more",
     frameTitle: "#say-hi, a live Hoffle channel",
     name: {
       titleRoll: "What name should we roll this under?",
@@ -145,70 +165,55 @@ const en: LandingCopy = {
     read: "Read the chat",
   },
   features: {
-    title: "Features",
-    lead: "All of this is in the app today, for everyone.",
-    musicBotLead: "A music bot with one shared queue, synced so everyone hears the same second of the song. It's",
+    title: "Everything your group does together.",
+    lead: "All of it is in the app today, for everyone, with nothing to unlock.",
+    cards: {
+      call: {
+        title: "Talk, share, watch",
+        body: "Noise suppression keeps fans, keyboards and the TV out of the call. Share your screen at up to 1080p and 60 fps, with the game or film audio.",
+      },
+      music: {
+        title: "Music, in sync",
+        body: "One shared queue, so everyone hears the same second of the song. Lyrics, a two-deck DJ booth and Watch Together rooms for YouTube and reels too.",
+      },
+      games: {
+        title: "Game night, built in",
+        body: "Battlemaps with tokens and fog of war, 3D dice everyone sees land, and a spell and monster compendium right inside the call.",
+      },
+      chat: {
+        title: "Chat, the way you like it",
+        body: "Threads, replies, reactions, custom emoji and stickers, GIFs and voice messages, plus events with RSVPs and search with filters.",
+      },
+    },
+    scenes: {
+      movieNight: "Movie night",
+      live: "LIVE",
+      sharing: "Mira's screen, with sound",
+      sameSecond: "All on the same second",
+      upNext: "Up next",
+      rolled: "Kai rolled 17",
+      chatKai: "movie at 9? I'll share my screen",
+      chatMira: "in. bringing snacks",
+    },
+    more: [
+      { title: "In the call", body: "Spatial audio seating, virtual backgrounds, and push-to-talk that keeps working while a game has focus (desktop app)." },
+      { title: "Party games", body: "A whiteboard, Draw & Guess, tier lists, polls and a soundboard." },
+      { title: "Discord bots", body: "Bots written with discord.js or discord.py connect without code changes, and a bridge mirrors channels you still keep on Discord." },
+    ],
+    themesLine: (count) => `${count} built-in themes, plus your own in CSS. Profile banners, pride badges and a nickname per server.`,
+    musicBotLead: "The music bot is",
     musicBotLink: "its own open-source project",
     musicBotTail: "and also plays in Discord voice channels.",
-    groups: [
-      {
-        title: "Voice and screen sharing",
-        items: [
-          "Noise suppression runs on your own device, so fans, keyboards and the TV stay out of the call.",
-          "Screen share up to 1080p at 60 fps with the game or film audio, plus 24 fps film modes that stay smooth.",
-          "Push-to-talk that keeps working while a game has focus (desktop app).",
-          "Spatial audio seating and virtual backgrounds.",
-        ],
-      },
-      {
-        title: "Music and watching together",
-        lead: "musicBot",
-        items: [
-          "A two-deck DJ booth, lyrics, and Watch Together rooms for YouTube and reels.",
-          "A whiteboard, Draw & Guess, tier lists, polls and a soundboard.",
-        ],
-      },
-      {
-        title: "D&D",
-        items: [
-          "Battlemaps with tokens and fog of war.",
-          "3D dice with physics, rolled where everyone can see them.",
-          "A spell and monster compendium inside the call.",
-        ],
-      },
-      {
-        title: "Chat",
-        items: [
-          "Threads, replies, reactions, custom emoji and stickers, GIFs and voice messages.",
-          "Link previews, events with RSVPs, and search with filters.",
-        ],
-      },
-      {
-        title: "Discord bots",
-        items: [
-          "Hoffle speaks the Discord bot API, so bots written with discord.js or discord.py connect without code changes.",
-          "A bridge mirrors channels you still keep on Discord.",
-        ],
-      },
-      {
-        title: "Themes",
-        lead: "themes",
-        items: ["Profile banners, pride badges and a nickname per server."],
-      },
-    ],
   },
-  themesLine: (count, names) => `${count} built in: ${names}. Plus themes you write in CSS and share.`,
   tour: {
     controls: { label: "Theme tour", counter: "Theme tour · {i} of {n}", prev: "Previous theme", next: "Next: {name}", show: "Show {name}" },
     msn: {
       title: "The Y2K Chat theme",
       intro:
-        "A full second interface for Hoffle, modelled on Windows Live Messenger. It changes the layout and behaviour, not only the colours: messages read “Mira says:”, friends signing in show a toast, and a nudge shakes the other person's window.",
+        "A full second interface for Hoffle, modelled on Windows Live Messenger. Messages read “Mira says:”, friends signing in show a toast, and a nudge shakes the other person's window.",
       points: [
         "A contact list with your own groups, and a quiet list",
         "Display pictures, personal emoticons, winkies and handwriting",
-        "Statuses like Be Right Back and Out to Lunch",
-        "A sound for each event, picked in its Sounds settings",
         "Y2K Today: who's around, unread conversations and what's playing",
       ],
       emoticons: "Emoticons that turn into pictures when you send them",
@@ -221,7 +226,6 @@ const en: LandingCopy = {
         "Blackletter headings with a red glow",
         "Velvet gradients down the sidebars and member list",
         "The message box glows red while you type",
-        "Red text selection, and a matching scrollbar",
       ],
       alt: "Hoffle's Vampire theme: the Tuesday Crew server in blackletter with a red glow, a friend group's channel and six people online",
       toast: "has risen.",
@@ -232,7 +236,6 @@ const en: LandingCopy = {
         "Headings with a red and cyan chromatic split",
         "Clipped corners on server icons, channels and the message box",
         "Monospace cyan labels and timestamps",
-        "Faint CRT scanlines across the whole app",
       ],
       alt: "Hoffle's Cyberpunk theme: acid yellow on black, the selected channel as a clipped yellow tab and cyan labels",
       toast: "jacked in",
@@ -243,7 +246,6 @@ const en: LandingCopy = {
         "Digital rain behind the glass, or one still frame if you've asked for reduced motion",
         "A blinking cursor after the channel name",
         "The selected channel reads like a terminal's highlighted line",
-        "Monospace everywhere",
       ],
       alt: "Hoffle's Matrix theme: phosphor green monospace text over digital rain",
       toast: ["Wake up,", "Sam has joined the Lounge."],
@@ -258,16 +260,13 @@ const en: LandingCopy = {
     rows: [
       { label: "Price", discord: "Free; Nitro is $9.99 a month (US)", hoffle: "Free, no paid tier" },
       { label: "Screen share", discord: "720p at 30 fps (1080p60 and up with Nitro)", hoffle: "Up to 1080p at 60 fps, with audio" },
-      { label: "File uploads", discord: "20 MB per file", hoffle: "8 MB images, 20 MB PDFs, 40 MB video clips" },
-      { label: "Mic quality", discord: "64 kbps default, up to 96 kbps", hoffle: "64 kbps Opus with packet redundancy" },
       { label: "Custom emoji in other servers", discord: "Nitro only", hoffle: "Free" },
-      { label: "People in one voice room", discord: "Up to 99 (25 with video)", hoffle: "No set limit; the server's upload is the limit, about 4 Mbps per 1080p viewer" },
       { label: "Source code", discord: "Closed", hoffle: "Open source, AGPL-3.0" },
       { label: "Host it yourself", discord: "No", hoffle: "Yes, with Docker" },
       { label: "Bots", discord: "Yes", hoffle: "discord.js and discord.py bots connect unchanged" },
       { label: "Phone", discord: "iOS and Android apps", hoffle: "Phone browser, added to the home screen, with notifications" },
     ],
-    source: "Discord figures are from discord.com/nitro and Discord's help centre, October 2026. Hoffle's upload limits are those of chat.hoffle.online.",
+    source: "Discord figures are from discord.com/nitro and Discord's help centre, October 2026.",
     full: "The full comparison →",
   },
   moving: {
@@ -278,36 +277,26 @@ const en: LandingCopy = {
       "In Hoffle, press + → Create New and paste the link instead of a name.",
       "Post the ready-made \"we're moving\" message Hoffle gives you, invite link included.",
     ],
-    compare: "Discord vs Hoffle, row by row →",
   },
   staying: {
-    title: "Is this going to stick around?",
-    lead:
-      "Fair question before you move your group over. Hoffle is one person's project, so here's how it's run and what happens when something breaks.",
+    title: "Built to stick around.",
+    lead: "Moving your group is a big step. Hoffle is one person's project, so it's set up to keep running, and to never lock you in.",
     points: [
       {
         title: "Backed up every five minutes",
         body: "Every message and upload is copied to a second server in Germany every five minutes, and to a separate disk every night.",
       },
       {
-        title: "A backup server takes over by itself",
-        body: "Hoffle runs on a server at my place. If it stops answering, the one in Germany takes over on its own, usually within three minutes, and hands everything back when the main one is up again.",
+        title: "Stays up by itself",
+        body: "If the main server stops answering, the one in Germany takes over on its own, usually within three minutes.",
       },
       {
         title: "Your stuff is yours",
         body: "Settings → Password & Security → Download my data gives you everything you've posted, as one file, whenever you like.",
       },
       {
-        title: "Nobody can lock it up",
-        body: "The code is open source (AGPL), so not even I can close it off. If chat.hoffle.online ever went away, your group could carry on with its own Hoffle on any PC.",
-      },
-      {
-        title: "No surprise shutdown",
-        body: "If I ever close chat.hoffle.online, you'll hear it at least three months ahead, in the app and by email, and data downloads stay open until the last day.",
-      },
-      {
-        title: "Cheap to keep running",
-        body: "It runs on a home server and a free cloud machine, so it doesn't need your money to stay up. Ko-fi tips go to hardware and code-signing.",
+        title: "Open source, for good",
+        body: "The code is AGPL, so nobody can lock it up, not even me. Your group can always carry on with its own Hoffle on any PC.",
       },
     ],
     status: "Live status and uptime",
@@ -317,10 +306,12 @@ const en: LandingCopy = {
     lead: "You don't need to install anything: Hoffle works in Chrome, Edge, Firefox and Safari. If you'd like it in your taskbar or dock, there are two ways.",
     browserTitle: "Install it from your browser",
     browserBody:
-      "Open Hoffle in Chrome or Edge and click Install. In Safari on a Mac: File → Add to Dock. On a phone: Share → Add to Home Screen. No installer, nothing to approve, and it keeps itself up to date.",
+      "Open Hoffle in Chrome or Edge and click Install. In Safari on a Mac: File → Add to Dock. No installer, nothing to approve, and it keeps itself up to date.",
     browserButton: "Install Hoffle",
     desktopTitle: "Or get the desktop app",
     desktopBody: "It adds push-to-talk that works while a game has focus, and your computer's sound when you share your screen.",
+    smallerTitle: "Smaller builds",
+    warningTitle: "Seeing a warning when you open it?",
     rows: { windows: "Windows", macArm: "Mac (Apple chip)", macIntel: "Mac (Intel)", linux: "Linux", lite: "Hoffle Lite", native: "Hoffle Native" },
     files: {
       windows: ".exe installer",
@@ -337,41 +328,15 @@ const en: LandingCopy = {
     macUnsigned:
       "Mac: if it says the app can't be opened, go to System Settings → Privacy & Security, scroll down and click Open Anyway.",
     phoneTitle: "On your phone",
-    phoneBody:
-      "Open chat.hoffle.online and add it to your home screen. Notifications work too: allow them when Hoffle asks (on an iPhone, add it to the home screen first). Rather keep Google and Apple out of it? Hoffle can send them through the free ntfy app instead.",
+    phoneBody: "Open chat.hoffle.online and add it to your home screen. It works like an app, notifications included (on an iPhone, add it to the home screen first).",
     phoneAlt: "Hoffle on a phone: the same channel in the Cozy theme with the message box at the bottom",
-  },
-  voice: {
-    title: "How voice works",
-    lead:
-      "Since October 2026, calls on chat.hoffle.online run through LiveKit, an open-source media server. Before that, every call was peer-to-peer, which got heavy past about 8 people or when several people watched one screen share. Self-hosted servers can turn it on with a Docker profile and three settings.",
-    points: [
-      {
-        title: "Everyone uploads once",
-        body: "You send your mic and screen to the server once and it forwards them, so a room isn't capped at the 6 to 8 people a peer-to-peer call can carry.",
-      },
-      {
-        title: "A slow connection only affects itself",
-        body: "Screen shares are sent in two sizes. A viewer on a weak connection gets the smaller one, and the sharer and everyone else keep the full picture.",
-      },
-      {
-        title: "Modes for films and for desktops",
-        body: "Film modes run at 24 fps and give up resolution before frames, so movies don't stutter. Desktop modes keep text sharp and give up frames first.",
-      },
-      {
-        title: "Fewer dropouts",
-        body: "Mic audio is sent with spare packets, so a lost one is rebuilt instead of heard as a gap. If the media server can't be reached, the call falls back to peer-to-peer.",
-      },
-    ],
   },
   selfHost: {
     title: "Run your own Hoffle",
-    body: "Hoffle runs on a spare PC, a home server or a small VPS with Docker. The first account you create becomes the owner. Accounts, messages and uploads all live in one state folder, so a backup is a copy of that folder.",
+    body: "Hoffle runs on a spare PC, a home server or a small VPS with Docker. The first account you create becomes the owner, and a backup is just a copy of one folder.",
     points: [
       "No configuration needed for a first run",
-      "LiveKit for bigger voice rooms: --profile livekit",
-      "The full music bot: --profile musicbot",
-      "A TURN relay for friends on strict networks: --profile turn",
+      "Add LiveKit, the music bot or a TURN relay with a Docker profile",
       "The desktop app can point at your server from its menu",
     ],
     guide: "Self-hosting guide, step by step",
@@ -397,15 +362,19 @@ const en: LandingCopy = {
       },
       {
         q: "Is there a phone app?",
-        a: "Not in the stores yet. Open chat.hoffle.online on your phone and add it to your home screen; it then works like an app, notifications included.",
+        a: "Not in the stores yet. Open chat.hoffle.online on your phone and add it to your home screen; it then works like an app, notifications included. Rather keep Google and Apple out of it? Hoffle can send them through the free ntfy app instead.",
       },
       {
         q: "Who can read my messages?",
         a: "Like with most chat apps, whoever runs the server can. On chat.hoffle.online that's me, Abdullah. I don't go through people's chats, there are no ads or trackers, and nothing gets sold. If you'd rather it be you, host your own.",
       },
       {
+        q: "How does it stay free?",
+        a: "It's cheap to run: a home server and a free cloud machine, so it doesn't need your money to stay up. Ko-fi tips go to hardware and code-signing.",
+      },
+      {
         q: "What if Hoffle shuts down?",
-        a: "You'd get at least three months' notice, you can download your data at any time, and because the code is open your group can keep going on its own server. There's more about this under “Is this going to stick around?” above.",
+        a: "You'd get at least three months' notice, in the app and by email, and data downloads stay open until the last day. The code is open too, so your group can keep going on its own server.",
       },
       {
         q: "What does the Y2K Chat theme change?",
@@ -413,8 +382,12 @@ const en: LandingCopy = {
       },
     ],
   },
+  closing: {
+    title: "Your group is one link away.",
+    body: "Make a free account, send your friends an invite link, and you're all in. Nothing to install.",
+  },
   about: {
-    body: "Hoffle is made by me, Abdullah, in the Netherlands. Most of the ideas in it came from the friends who use it. Bug reports and pull requests are welcome on GitHub, or just say hi in #say-hi up top.",
+    body: "I started Hoffle for my own friend group, who spent most evenings in a Discord call. I'm Abdullah, I make it in the Netherlands, and most of the ideas in it came from those friends. Bug reports and pull requests are welcome on GitHub, or just say hi in #say-hi up top.",
     github: "Hoffle on GitHub",
     kofi: "Support on Ko-fi",
     sponsors: "GitHub Sponsors",
@@ -432,7 +405,6 @@ const tr: LandingCopy = {
     features: "Özellikler",
     themes: "Temalar",
     download: "İndir",
-    staying: "Kalıcı mı?",
     docs: "Belgeler",
     open: "Hoffle'ı aç",
     otherLang: "English",
@@ -452,9 +424,9 @@ const tr: LandingCopy = {
     privacy: "Gizlilik",
   },
   hero: {
-    title: "Hoffle: küçük gruplar için bir sohbet uygulaması. Sesli sohbet, ekran paylaşımı ve oyun gecesi içinde.",
+    title: ["Oyun gecesi,", "film gecesi,", "her gece."],
     body:
-      "Hoffle'ı akşamlarının çoğunu Discord'daki bir sesli kanalda geçiren kendi arkadaş grubum için yaptım. Her akşam kullandığımız her şey içinde: sesli sohbet, sesli 1080p ekran paylaşımı, müzik botu ve D&D araçları. Ücretsiz, açık kaynak ve doğrudan tarayıcında çalışıyor.",
+      "Hoffle, arkadaş grubun için ücretsiz ve açık kaynak bir sohbet uygulaması. Sesli sohbet, 1080p ekran paylaşımı, müzik ve D&D araçları içinde geliyor; doğrudan tarayıcında çalışıyor.",
     open: "Hoffle'ı aç",
     downloadFor: (os) => `${os} için indir`,
     downloadGeneric: "Masaüstü uygulamasını indir",
@@ -463,7 +435,8 @@ const tr: LandingCopy = {
   live: {
     lead: "Bu kanal canlı.",
     tryRoll: "Selam ver, bir şey sor (hepsini okuyorum) ya da şunu dene:",
-    anyTheme: "İstediğin temada:",
+    anyTheme: "Başka bir tema dene:",
+    moreThemes: "{n} tema daha",
     frameTitle: "#say-hi, canlı bir Hoffle kanalı",
     name: {
       titleRoll: "Bu zarı hangi isimle atalım?",
@@ -500,70 +473,55 @@ const tr: LandingCopy = {
     read: "Sohbeti oku",
   },
   features: {
-    title: "Özellikler",
-    lead: "Bunların hepsi bugün uygulamada, herkes için.",
-    musicBotLead: "Herkesin şarkının aynı saniyesini duyduğu, ortak sıralı bir müzik botu. Kendi başına",
+    title: "Grubunla yaptığın her şey, tek yerde.",
+    lead: "Hepsi bugün uygulamada, herkes için; kilitli hiçbir şey yok.",
+    cards: {
+      call: {
+        title: "Konuş, paylaş, izle",
+        body: "Gürültü engelleme fan, klavye ve televizyon sesini görüşmenin dışında tutar. Ekranını oyunun ya da filmin sesiyle birlikte 60 fps'de 1080p'ye kadar paylaş.",
+      },
+      music: {
+        title: "Herkes aynı saniyede",
+        body: "Ortak bir sıra, herkes şarkının aynı saniyesini duyar. Şarkı sözleri, iki desteli DJ kabini ve YouTube ile reels için Birlikte İzle odaları da var.",
+      },
+      games: {
+        title: "Oyun gecesi içinde",
+        body: "Piyonlu ve savaş sisli haritalar, herkesin gözü önünde düşen 3D zarlar ve görüşmenin içinde büyü ve canavar ansiklopedisi.",
+      },
+      chat: {
+        title: "Sohbet de tam istediğin gibi",
+        body: "Konular, yanıtlar, tepkiler, özel emoji ve çıkartmalar, GIF'ler ve sesli mesajlar. Katılım bildirimli etkinlikler ve filtreli arama da var.",
+      },
+    },
+    scenes: {
+      movieNight: "Film gecesi",
+      live: "CANLI",
+      sharing: "Mira'nın ekranı, sesiyle",
+      sameSecond: "Herkes aynı saniyede",
+      upNext: "Sırada",
+      rolled: "Kai 17 attı",
+      chatKai: "9'da film? ekranımı paylaşırım",
+      chatMira: "varım. atıştırmalık benden",
+    },
+    more: [
+      { title: "Görüşmede", body: "Uzamsal ses ile oturma düzeni, sanal arka planlar ve oyun açıkken bile çalışan bas-konuş (masaüstü uygulamasında)." },
+      { title: "Parti oyunları", body: "Beyaz tahta, Çiz ve Bil, tier listeleri, anketler ve ses efektleri paneli." },
+      { title: "Discord botları", body: "discord.js ya da discord.py ile yazılmış botlar kod değiştirmeden bağlanır; Discord'da tuttuğun kanalları buraya yansıtan bir köprü de var." },
+    ],
+    themesLine: (count) => `${count} hazır tema ve CSS ile yazdığın kendi temaların. Profil kapakları, onur rozetleri ve her sunucuda ayrı takma ad.`,
+    musicBotLead: "Müzik botu kendi başına",
     musicBotLink: "açık kaynak bir proje",
     musicBotTail: "ve Discord sesli kanallarında da çalıyor.",
-    groups: [
-      {
-        title: "Sesli sohbet ve ekran paylaşımı",
-        items: [
-          "Gürültü engelleme senin cihazında çalışır; fan, klavye ve televizyon sesi konuşmaya karışmaz.",
-          "Oyunun ya da filmin sesiyle birlikte 60 fps'de 1080p'ye kadar ekran paylaşımı, akıcı kalan 24 fps film modlarıyla.",
-          "Oyun açıkken bile çalışan bas-konuş (masaüstü uygulamasında).",
-          "Uzamsal ses ile oturma düzeni ve sanal arka planlar.",
-        ],
-      },
-      {
-        title: "Birlikte müzik ve izleme",
-        lead: "musicBot",
-        items: [
-          "İki desteli DJ kabini, şarkı sözleri ve YouTube ile reels için Birlikte İzle odaları.",
-          "Beyaz tahta, Çiz ve Bil, tier listeleri, anketler ve ses efektleri paneli.",
-        ],
-      },
-      {
-        title: "D&D",
-        items: [
-          "Piyonlu ve savaş sisli haritalar.",
-          "Herkesin görebileceği yerde atılan, fiziği olan 3D zarlar.",
-          "Görüşmenin içinde büyü ve canavar ansiklopedisi.",
-        ],
-      },
-      {
-        title: "Sohbet",
-        items: [
-          "Konular, yanıtlar, tepkiler, özel emoji ve çıkartmalar, GIF'ler ve sesli mesajlar.",
-          "Bağlantı önizlemeleri, katılım bildirimli etkinlikler ve filtreli arama.",
-        ],
-      },
-      {
-        title: "Discord botları",
-        items: [
-          "Hoffle Discord'un bot API'sini destekliyor; discord.js ya da discord.py ile yazılmış botlar kod değiştirmeden bağlanır.",
-          "Discord'da tuttuğun kanalları buraya yansıtan bir köprü de var.",
-        ],
-      },
-      {
-        title: "Temalar",
-        lead: "themes",
-        items: ["Profil kapakları, onur rozetleri ve her sunucuda ayrı takma ad."],
-      },
-    ],
   },
-  themesLine: (count, names) => `${count} hazır tema: ${names}. Bir de CSS ile yazıp paylaşabildiğin kendi temaların.`,
   tour: {
     controls: { label: "Tema turu", counter: "Tema turu · {i} / {n}", prev: "Önceki tema", next: "Sıradaki: {name}", show: "{name} temasını göster" },
     msn: {
       title: "Y2K Sohbet teması",
       intro:
-        "Windows Live Messenger'ı örnek alan, Hoffle için baştan sona ikinci bir arayüz. Yalnızca renkleri değil, düzeni ve davranışı da değiştirir: mesajlar “Mira diyor ki:” diye başlar, arkadaşın bağlanınca köşede bildirim çıkar, titreşim gönderince karşı tarafın penceresi sallanır.",
+        "Windows Live Messenger'ı örnek alan, Hoffle için baştan sona ikinci bir arayüz. Mesajlar “Mira diyor ki:” diye başlar, arkadaşın bağlanınca köşede bildirim çıkar, titreşim gönderince karşı tarafın penceresi sallanır.",
       points: [
         "Kendi gruplarınla bir kişi listesi ve sessiz liste",
         "Profil resimleri, kişisel ifadeler, göz kırpmalar ve el yazısı",
-        "Hemen Dönerim ve Yemekteyim gibi durumlar",
-        "Her olay için Sesler ayarından seçilen bir ses",
         "Y2K Bugün: kim çevrimiçi, okunmamış konuşmalar ve ne çalıyor",
       ],
       emoticons: "Gönderince resme dönüşen ifadeler",
@@ -576,7 +534,6 @@ const tr: LandingCopy = {
         "Kırmızı ışıltılı gotik başlıklar",
         "Kenar çubuklarında ve üye listesinde kadife geçişler",
         "Yazarken kırmızı parlayan mesaj kutusu",
-        "Kırmızı metin seçimi ve ona uyan kaydırma çubuğu",
       ],
       alt: "Hoffle'ın Vampir teması: kırmızı ışıltılı gotik harflerle Tuesday Crew sunucusu, bir arkadaş grubunun kanalı ve çevrimiçi altı kişi",
       toast: "dirildi.",
@@ -587,7 +544,6 @@ const tr: LandingCopy = {
         "Kırmızı ve camgöbeği renk kaymalı başlıklar",
         "Sunucu simgelerinde, kanallarda ve mesaj kutusunda kesik köşeler",
         "Tek aralıklı camgöbeği etiketler ve zaman damgaları",
-        "Bütün uygulamada hafif CRT çizgileri",
       ],
       alt: "Hoffle'ın Cyberpunk teması: siyah üstünde asit sarısı, seçili kanal kesik sarı bir sekme ve camgöbeği etiketler",
       toast: "sisteme girdi",
@@ -598,7 +554,6 @@ const tr: LandingCopy = {
         "Camın arkasında dijital yağmur; azaltılmış hareket seçiliyse tek bir sabit kare",
         "Kanal adının sonunda yanıp sönen imleç",
         "Seçili kanal, terminalde işaretli bir satır gibi görünür",
-        "Her yerde tek aralıklı yazı",
       ],
       alt: "Hoffle'ın Matrix teması: dijital yağmurun üstünde fosfor yeşili tek aralıklı yazı",
       toast: ["Uyan,", "Sam Lounge'a katıldı."],
@@ -613,16 +568,13 @@ const tr: LandingCopy = {
     rows: [
       { label: "Fiyat", discord: "Ücretsiz; Nitro aylık 9,99 $ (ABD)", hoffle: "Ücretsiz, ücretli plan yok" },
       { label: "Ekran paylaşımı", discord: "30 fps'de 720p (Nitro ile 1080p60 ve üstü)", hoffle: "Sesiyle birlikte 60 fps'de 1080p'ye kadar" },
-      { label: "Dosya yükleme", discord: "Dosya başına 20 MB", hoffle: "Resim 8 MB, PDF 20 MB, video klip 40 MB" },
-      { label: "Mikrofon kalitesi", discord: "Varsayılan 64 kbps, en fazla 96 kbps", hoffle: "Yedek paketli 64 kbps Opus" },
       { label: "Başka sunucularda özel emoji", discord: "Yalnızca Nitro ile", hoffle: "Ücretsiz" },
-      { label: "Bir sesli odada kaç kişi", discord: "En fazla 99 (görüntülü 25)", hoffle: "Sabit sınır yok; sınırı sunucunun yükleme hızı belirler, 1080p izleyen kişi başına yaklaşık 4 Mbps" },
       { label: "Kaynak kodu", discord: "Kapalı", hoffle: "Açık kaynak, AGPL-3.0" },
       { label: "Kendin barındır", discord: "Hayır", hoffle: "Evet, Docker ile" },
       { label: "Botlar", discord: "Var", hoffle: "discord.js ve discord.py botları olduğu gibi bağlanır" },
       { label: "Telefon", discord: "iOS ve Android uygulamaları", hoffle: "Ana ekrana eklenen telefon tarayıcısı, bildirimleriyle" },
     ],
-    source: "Discord rakamları discord.com/nitro ve Discord yardım merkezinden, Ekim 2026. Hoffle'ın yükleme sınırları chat.hoffle.online içindir.",
+    source: "Discord rakamları discord.com/nitro ve Discord yardım merkezinden, Ekim 2026.",
     full: "Tam karşılaştırma →",
   },
   moving: {
@@ -633,36 +585,26 @@ const tr: LandingCopy = {
       "Hoffle'da + → Yeni Oluştur'a bas ve linki isim yerine yapıştır.",
       "Hoffle'ın verdiği hazır \"taşınıyoruz\" mesajını, davet linkiyle birlikte at.",
     ],
-    compare: "Discord mu Hoffle mı, satır satır →",
   },
   staying: {
-    title: "Bu iş kalıcı mı?",
-    lead:
-      "Grubunu taşımadan önce sorulacak en doğru soru. Hoffle tek bir kişinin projesi; o yüzden nasıl çalıştırıldığını ve bir şey bozulunca ne olduğunu açıkça yazıyorum.",
+    title: "Kalıcı olsun diye yapıldı.",
+    lead: "Grubunu taşımak büyük bir adım. Hoffle tek bir kişinin projesi; o yüzden hem ayakta kalacak hem de seni hiçbir zaman kilitlemeyecek şekilde kuruldu.",
     points: [
       {
         title: "Beş dakikada bir yedekleniyor",
         body: "Her mesaj ve her dosya beş dakikada bir Almanya'daki ikinci bir sunucuya, her gece de ayrı bir diske kopyalanıyor.",
       },
       {
-        title: "Yedek sunucu kendiliğinden devralıyor",
-        body: "Hoffle evimdeki bir sunucuda çalışıyor. Cevap vermeyi bırakırsa Almanya'daki sunucu kendi kendine devralıyor, genelde üç dakika içinde; ana sunucu geri gelince her şeyi ona geri veriyor.",
+        title: "Kendi kendine ayakta kalıyor",
+        body: "Ana sunucu cevap vermeyi bırakırsa Almanya'daki sunucu kendi kendine devralıyor, genelde üç dakika içinde.",
       },
       {
         title: "Senin verin senin",
         body: "Ayarlar → Şifre ve Güvenlik → Verilerimi indir ile paylaştığın her şeyi istediğin zaman tek bir dosya olarak alabilirsin.",
       },
       {
-        title: "Kimse kilitleyemez",
-        body: "Kod açık kaynak (AGPL); ben bile kapatamam. chat.hoffle.online bir gün kapansa bile grubun herhangi bir bilgisayarda kendi Hoffle'ıyla devam edebilir.",
-      },
-      {
-        title: "Habersiz kapanma yok",
-        body: "chat.hoffle.online'ı kapatmaya karar verirsem en az üç ay önceden hem uygulamada hem e-postayla duyururum; veri indirme son güne kadar açık kalır.",
-      },
-      {
-        title: "Ayakta tutmak ucuz",
-        body: "Bir ev sunucusu ve ücretsiz bir bulut makinesinde çalışıyor; ayakta kalmak için senin paranı beklemiyor. Ko-fi bağışları donanıma ve kod imzalamaya gidiyor.",
+        title: "Hep açık kaynak",
+        body: "Kod AGPL lisanslı; kimse kilitleyemez, ben bile. Grubun her zaman herhangi bir bilgisayarda kendi Hoffle'ıyla devam edebilir.",
       },
     ],
     status: "Canlı durum ve çalışma süresi",
@@ -672,10 +614,12 @@ const tr: LandingCopy = {
     lead: "Bir şey kurman gerekmiyor: Hoffle Chrome, Edge, Firefox ve Safari'de çalışıyor. Görev çubuğunda ya da Dock'ta durmasını istersen iki yolu var.",
     browserTitle: "Tarayıcından yükle",
     browserBody:
-      "Hoffle'ı Chrome ya da Edge'de aç ve Yükle'ye tıkla. Mac'te Safari'de: Dosya → Dock'a Ekle. Telefonda: Paylaş → Ana Ekrana Ekle. Kurulum dosyası yok, onaylanacak bir şey yok ve kendini güncel tutuyor.",
+      "Hoffle'ı Chrome ya da Edge'de aç ve Yükle'ye tıkla. Mac'te Safari'de: Dosya → Dock'a Ekle. Kurulum dosyası yok, onaylanacak bir şey yok ve kendini güncel tutuyor.",
     browserButton: "Hoffle'ı yükle",
     desktopTitle: "Ya da masaüstü uygulamasını indir",
     desktopBody: "Oyun açıkken de çalışan bas-konuş ve ekran paylaşırken bilgisayarının sesi bu uygulamayla geliyor.",
+    smallerTitle: "Daha küçük sürümler",
+    warningTitle: "Açarken uyarı mı görüyorsun?",
     rows: { windows: "Windows", macArm: "Mac (Apple çipli)", macIntel: "Mac (Intel)", linux: "Linux", lite: "Hoffle Lite", native: "Hoffle Native" },
     files: {
       windows: ".exe kurulum dosyası",
@@ -692,41 +636,15 @@ const tr: LandingCopy = {
     macUnsigned:
       "Mac: uygulamanın açılamadığını söylerse Sistem Ayarları → Gizlilik ve Güvenlik'e gir, aşağı kaydır ve Yine de Aç'a tıkla.",
     phoneTitle: "Telefonunda",
-    phoneBody:
-      "chat.hoffle.online'ı aç ve ana ekrana ekle. Bildirimler de çalışıyor: Hoffle sorunca izin ver (iPhone'da önce ana ekrana ekle). Google'ı ve Apple'ı işin içine katmak istemiyorsan Hoffle bildirimleri ücretsiz ntfy uygulamasıyla da gönderebilir.",
+    phoneBody: "chat.hoffle.online'ı aç ve ana ekrana ekle. Bildirimleri de dahil bir uygulama gibi çalışır (iPhone'da önce ana ekrana ekle).",
     phoneAlt: "Telefonda Hoffle: Cozy temasında aynı kanal, mesaj kutusu altta",
-  },
-  voice: {
-    title: "Sesli sohbet nasıl çalışıyor",
-    lead:
-      "Ekim 2026'dan beri chat.hoffle.online'daki görüşmeler açık kaynak bir medya sunucusu olan LiveKit üzerinden geçiyor. Önceden her görüşme eşler arasıydı; 8 kişiyi geçince ya da birkaç kişi aynı ekran paylaşımını izleyince ağırlaşıyordu. Kendi sunucunu kuranlar bunu bir Docker profili ve üç ayarla açabilir.",
-    points: [
-      {
-        title: "Herkes bir kez yüklüyor",
-        body: "Mikrofonunu ve ekranını sunucuya bir kez gönderiyorsun, o da herkese dağıtıyor. Böylece oda, eşler arası bir görüşmenin taşıyabildiği 6-8 kişiyle sınırlı kalmıyor.",
-      },
-      {
-        title: "Yavaş bağlantı yalnızca kendini etkiliyor",
-        body: "Ekran paylaşımı iki boyutta gönderiliyor. Zayıf bağlantıdaki izleyici küçüğünü alıyor; paylaşan kişi ve diğerleri tam görüntüde kalıyor.",
-      },
-      {
-        title: "Film ve masaüstü için ayrı modlar",
-        body: "Film modları 24 fps'de çalışır ve gerekirse kare atlamak yerine çözünürlüğü düşürür, filmler takılmaz. Masaüstü modları yazıyı net tutar, gerekirse önce kare hızını düşürür.",
-      },
-      {
-        title: "Daha az kopma",
-        body: "Mikrofon sesi yedek paketlerle gidiyor; kaybolan bir paket boşluk olarak duyulmak yerine yeniden oluşturuluyor. Medya sunucusuna ulaşılamazsa görüşme eşler arası moda geçiyor.",
-      },
-    ],
   },
   selfHost: {
     title: "Kendi Hoffle sunucunu kur",
-    body: "Hoffle boşta duran bir bilgisayarda, bir ev sunucusunda ya da Docker'lı küçük bir VPS'te çalışır. Açtığın ilk hesap sahibi olur. Hesaplar, mesajlar ve dosyalar tek bir state klasöründe durur; yedek almak o klasörü kopyalamaktan ibaret.",
+    body: "Hoffle boşta duran bir bilgisayarda, bir ev sunucusunda ya da Docker'lı küçük bir VPS'te çalışır. Açtığın ilk hesap sahibi olur; yedek almak da tek bir klasörü kopyalamaktan ibaret.",
     points: [
       "İlk çalıştırma için hiçbir ayar gerekmez",
-      "Büyük sesli odalar için LiveKit: --profile livekit",
-      "Tam müzik botu: --profile musicbot",
-      "Katı ağlardaki arkadaşlar için TURN aktarıcı: --profile turn",
+      "LiveKit, müzik botu ya da TURN aktarıcıyı birer Docker profiliyle ekle",
       "Masaüstü uygulaması menüsünden senin sunucuna bağlanabilir",
     ],
     guide: "Adım adım kurulum rehberi (İngilizce)",
@@ -752,15 +670,19 @@ const tr: LandingCopy = {
       },
       {
         q: "Telefon uygulaması var mı?",
-        a: "Mağazalarda henüz yok. Telefonunda chat.hoffle.online'ı açıp ana ekrana ekle; bildirimleri de dahil, bir uygulama gibi çalışır.",
+        a: "Mağazalarda henüz yok. Telefonunda chat.hoffle.online'ı açıp ana ekrana ekle; bildirimleri de dahil, bir uygulama gibi çalışır. Google'ı ve Apple'ı işin içine katmak istemiyorsan Hoffle bildirimleri ücretsiz ntfy uygulamasıyla da gönderebilir.",
       },
       {
         q: "Mesajlarımı kim okuyabilir?",
         a: "Çoğu sohbet uygulamasında olduğu gibi sunucuyu çalıştıran kişi okuyabilir. chat.hoffle.online'da o kişi benim, Abdullah. İnsanların sohbetlerini karıştırmam; reklam ya da takipçi yok, hiçbir şey satılmıyor. Bu kişinin sen olmasını istersen kendi sunucunu kur.",
       },
       {
+        q: "Nasıl ücretsiz kalıyor?",
+        a: "Çalıştırması ucuz: bir ev sunucusu ve ücretsiz bir bulut makinesi yetiyor, ayakta kalmak için senin paranı beklemiyor. Ko-fi bağışları donanıma ve kod imzalamaya gidiyor.",
+      },
+      {
         q: "Hoffle kapanırsa ne olur?",
-        a: "En az üç ay önceden haber alırsın, verini istediğin an indirebilirsin ve kod açık olduğu için grubun kendi sunucusunda devam edebilir. Ayrıntısı yukarıda, “Bu iş kalıcı mı?” bölümünde.",
+        a: "En az üç ay önceden hem uygulamada hem e-postayla haber alırsın; veri indirme son güne kadar açık kalır. Kod da açık olduğu için grubun kendi sunucusunda devam edebilir.",
       },
       {
         q: "Y2K Sohbet teması neyi değiştiriyor?",
@@ -768,8 +690,12 @@ const tr: LandingCopy = {
       },
     ],
   },
+  closing: {
+    title: "Grubun bir link uzağında.",
+    body: "Ücretsiz bir hesap aç, arkadaşlarına davet linki gönder, herkes içeride. Kurulacak bir şey yok.",
+  },
   about: {
-    body: "Hoffle'ı Hollanda'dan ben, Abdullah, yapıyorum. İçindeki fikirlerin çoğu onu kullanan arkadaşlarımdan geldi. Hata bildirimleri ve pull request'ler GitHub'da her zaman açık, ya da yukarıdaki #say-hi kanalında bir selam ver.",
+    body: "Hoffle'ı akşamlarının çoğunu Discord'daki bir sesli kanalda geçiren kendi arkadaş grubum için yapmaya başladım. Ben Abdullah, Hollanda'dan yapıyorum; içindeki fikirlerin çoğu da o arkadaşlarımdan geldi. Hata bildirimleri ve pull request'ler GitHub'da her zaman açık, ya da yukarıdaki #say-hi kanalında bir selam ver.",
     github: "GitHub'da Hoffle",
     kofi: "Ko-fi'de destek ol",
     sponsors: "GitHub Sponsors",
