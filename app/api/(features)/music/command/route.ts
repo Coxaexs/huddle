@@ -14,6 +14,7 @@ import { findChannel, isServerMember } from "@/lib/servers";
 import { MUSIC_BOT_MISSING, musicBotInServer, PLAYER_COMMANDS, playerBotInServer } from "@/lib/music-bot";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { publicMessage } from "@/app/api/messages/route";
+import { redactSecrets } from "@/lib/redact-secrets";
 
 export const dynamic = "force-dynamic";
 
@@ -170,7 +171,7 @@ export async function POST(request: Request) {
   // later replies in the same command are follow-ups, not the invocation.
   let invocation: { text: string; by: string } | null =
     body.commandText && body.commandBy
-      ? { text: body.commandText.slice(0, 200), by: body.commandBy.slice(0, 80) }
+      ? { text: redactSecrets(body.commandText).slice(0, 200), by: body.commandBy.slice(0, 80) }
       : null;
   const say = (
     db2: D1Database,

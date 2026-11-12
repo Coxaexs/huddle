@@ -1,4 +1,8 @@
+import { currentUser } from "@/lib/auth";
 import { bindings } from "@/lib/storage";
+
+/** A video id as the helper names its files: no slashes, dots or anything that could leave its folder. */
+const VIDEO_ID = /^[A-Za-z0-9_-]{4,64}$/;
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +14,12 @@ export async function GET(
 ) {
   const { id } = await context.params;
   const cleanId = id.replace(/\.mp4$/i, "");
-  if (!cleanId) {
+  if (!VIDEO_ID.test(cleanId)) {
     return new Response("Missing video ID", { status: 400 });
+  }
+  // The room's video is for the people signed in here, not for the open web.
+  if (!(await currentUser(request))) {
+    return new Response("Sign in to watch this.", { status: 401 });
   }
 
   const helperBase = bindings().MUSIC_HELPER_BASE_URL?.trim() || "http://127.0.0.1:8731";
@@ -64,7 +72,8 @@ export async function GET(
       headers: resHeaders,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Stream error";
-    return new Response(message, { status: 502 });
+    // The reason names our own helper's address; keep it in the log.
+    console.error("youtube stream failed", error);
+    return new Response("Stream error", { status: 502 });
   }
 }

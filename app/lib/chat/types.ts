@@ -39,6 +39,8 @@ export interface Message {
   /** On a bot reply to a slash command: what was run, and by whom. */
   commandText?: string;
   commandBy?: string;
+  /** On a bot-styled post: the id of the person who sent or asked for it. */
+  senderId?: string;
   image?: string;
   images?: string[];
   file?: { url: string; name: string; type: "pdf" };

@@ -3,6 +3,7 @@ import { botCanSeeServer } from "@/lib/discord/guild-data";
 import { dispatchMessage } from "@/lib/discord/dispatch";
 import { publishMessage } from "@/lib/hub-client";
 import { publicMessage } from "@/app/api/messages/route";
+import { redactSecrets } from "@/lib/redact-secrets";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { afterResponse } from "@/lib/after-response";
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
     audio_url: body.audio?.trim().slice(0, 8000) || null,
     kind: body.kind?.trim().slice(0, 32) || null,
     payload: body.payload ? JSON.stringify(body.payload).slice(0, 8000) : null,
-    command_text: body.commandText?.trim().slice(0, 200) || null,
+    command_text: redactSecrets(body.commandText?.trim() || "").slice(0, 200) || null,
     command_by: body.commandBy?.trim().slice(0, 80) || null,
   };
 

@@ -25,6 +25,7 @@ import { blockIfUnverified } from "@/lib/verification-level";
 import { slowmodeResponse, slowmodeWait } from "@/lib/slowmode";
 import { stripTextStyle } from "@/lib/text-style";
 import { afterResponse } from "@/lib/after-response";
+import { redactSecrets } from "@/lib/redact-secrets";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +88,8 @@ export interface PublicMessage {
   /** On a bot answer to a slash command: the command run and who ran it. */
   commandText?: string;
   commandBy?: string;
+  /** On a bot-styled post: who sent or asked for it, so they can delete it. */
+  senderId?: string;
 }
 
 export function publicMessage(message: StoredMessage): PublicMessage {
@@ -179,8 +182,10 @@ export function publicMessage(message: StoredMessage): PublicMessage {
     imageAlts,
     files: fileAttachments.length ? fileAttachments : undefined,
     threadId: message.thread_id || undefined,
-    commandText: message.command_text || undefined,
+    // Also on the way out, for answers stored before commands were scrubbed.
+    commandText: message.command_text ? redactSecrets(message.command_text) : undefined,
     commandBy: message.command_by || undefined,
+    senderId: message.is_bot ? message.sender_id || undefined : undefined,
   };
 }
 
@@ -238,7 +243,7 @@ export async function GET(request: Request) {
 
   const columns = `id, channel_id, user_id, author, avatar, color, content, attachment_key,
                    is_bot, created_at, link, action_label, audio_url, kind, payload, pinned_at,
-                   reply_to, edited_at, attachments, thread_id, command_text, command_by`;
+                   reply_to, edited_at, attachments, thread_id, command_text, command_by, sender_id`;
   const pinnedOnly = params.get("pinned") === "1";
 
   // Paging: `before` loads the page older than a message, `around` loads a
@@ -828,7 +833,7 @@ export async function postMessageAs(
     thread_id: threadId,
     // Command attribution only makes sense on a bot answer, and it always
     // names the person who really sent it.
-    command_text: body.asBot ? body.commandText?.trim().slice(0, 200) || null : null,
+    command_text: body.asBot ? redactSecrets(body.commandText?.trim() || "").slice(0, 200) || null : null,
     command_by: body.asBot ? user.display_name : null,
     sender_id: user.id,
   };

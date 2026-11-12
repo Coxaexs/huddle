@@ -199,7 +199,7 @@ export function renderDigest(
 
   const from = new Date(now - WEEK_MS).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
   const to = new Date(now).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
-  const footer = "Change or turn off the weekly digest in Settings → Appearance → Weekly digest.";
+  const footer = "Change or turn off the weekly digest in Settings → Notifications → Weekly digest.";
   const markdown = [`📬 **Your week on Hoffle** (${from} – ${to})`, ...sections.map((s) => s.md.join("\n")), `_${footer}_`].join("\n\n");
   const text = [`Your week on Hoffle (${from} – ${to})`, ...sections.map((s) => s.txt.join("\n")), footer].join("\n\n");
   const parts = [
