@@ -18,6 +18,7 @@ import { useUiMode } from "@/app/lib/ui-mode";
 import type { Member } from "@/lib/users";
 import { HeaderFaces } from "./simple-parts";
 import { useToolbar } from "../../widgets/toolbar";
+import { useDismiss } from "../../../hooks/use-dismiss";
 
 export function ChatHeader({
   setMobileNav,
@@ -133,14 +134,7 @@ export function ChatHeader({
   /** The Follow dialog of an announcement channel. */
   const [followOpen, setFollowOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!moreOpen) return;
-    const close = (event: PointerEvent) => {
-      if (!moreRef.current?.contains(event.target as Node)) setMoreOpen(false);
-    };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, [moreOpen]);
+  useDismiss(moreOpen, () => setMoreOpen(false), moreRef);
   const pick = (action: () => void) => () => {
     setMoreOpen(false);
     action();
@@ -497,7 +491,8 @@ export function ChatHeader({
                   <Settings size={18} />
                 </Icon>
               )}
-              {!simpleTools && (
+              {/* Your notes have nobody else in them to list. */}
+              {!simpleTools && !isSelfDm && (
                 <Icon
                   label={t("header.toggleMemberList")}
                   active={membersOpen}
@@ -524,7 +519,7 @@ export function ChatHeader({
                         <AtSign size={18} /> {t("header.mentions")}
                       </button>
                     )}
-                    {(simpleTools || tb.hidden("members")) && (
+                    {(simpleTools || tb.hidden("members")) && !isSelfDm && (
                       <button type="button" role="menuitem" className={simpleTools ? "" : "tb-moved"} onClick={pick(() => setMembersOpen((open) => !open))}>
                         <Users size={18} /> {t("header.toggleMemberList")}
                       </button>

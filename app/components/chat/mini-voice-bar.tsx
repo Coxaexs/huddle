@@ -26,6 +26,7 @@ export function MiniVoiceBar({
   setSidebarShareSetupOpen,
   setStageChannelId,
   soundboardAllowed = true,
+  stageOpen = false,
 }: {
   voice: ReturnType<typeof useVoice>;
   /** The room's name, or the other person's in a DM call. */
@@ -39,6 +40,8 @@ export function MiniVoiceBar({
   setStageChannelId: Dispatch<SetStateAction<string | null>>;
   /** False in a stage audience or a room with the soundboard switched off. */
   soundboardAllowed?: boolean;
+  /** This room's stage is on screen, with the same big buttons under it. */
+  stageOpen?: boolean;
 }) {
   const { t } = useI18n();
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
@@ -123,7 +126,7 @@ export function MiniVoiceBar({
           </button>
         </div>
       </div>
-      {simpleUi && (
+      {simpleUi && !stageOpen && (
         <SimpleCallButtons
           voice={voice}
           shareOpen={sidebarShareSetupOpen}

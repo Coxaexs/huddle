@@ -37,6 +37,7 @@ export const easy: Record<keyof typeof en, string> = {
   "simple.cameraOff": "Kamerayı kapat",
   "simple.share": "Paylaş",
   "simple.stopShare": "Paylaşımı durdur",
+  "simple.activities": "Etkinlikler",
   "simple.leave": "Ayrıl",
   "simple.tipCount": "İpucu {n} / {total}",
   "simple.gotIt": "Anladım",

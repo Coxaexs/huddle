@@ -37,7 +37,6 @@ import {
   PenTool,
   Trophy,
   Palette,
-  Sparkles,
   ExternalLink,
   ChevronDown,
   Eraser,
@@ -1206,7 +1205,7 @@ export function RoomActivities({
           <span>
             {activity
               ? ACTIVITY_CHOICES.find((item) => item.kind === activity.kind)?.icon
-              : <Sparkles size={18} />}
+              : <Gamepad2 size={18} />}
           </span>
           <div>
             <strong>{activity ? activityTitle(activity.kind, activity.state) : "Room Activities"}</strong>
@@ -1418,8 +1417,9 @@ export function RoomActivities({
       )}
 
       {error && <button className="activity-error" onClick={() => setError("")}>{error} ×</button>}
-      <span className="activity-live-pill">● LIVE</span>
-      <span className="activity-by">Started by {activity?.createdByName || userName}</span>
+      {/* Only once something is running: the picker alone is not live. */}
+      {activity && <span className="activity-live-pill">● LIVE</span>}
+      {activity && <span className="activity-by">Started by {activity.createdByName || userName}</span>}
     </section>
   );
 }

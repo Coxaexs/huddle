@@ -49,6 +49,7 @@ import { MessageContextMenu } from "./message-context-menu";
 import { useI18n } from "@/app/lib/i18n-context";
 import type { RefObject, Dispatch, SetStateAction } from "react";
 import type { HeadTrackingSource, SpatialOutput, VideoPause, RemoteVoiceStream, VoiceLatencyStats, ScreenShareQuality, RelayStatus } from "../../../hooks/use-voice";
+import { botMenuKind } from "../../../lib/chat/bot-menu-kind";
 import type { HeadTrackingStatus } from "../../../lib/head-tracking";
 import type { BackgroundMode } from "../../../lib/virtual-background";
 import type { MicSettings, MicTelemetry } from "../../../lib/mic-chain";
@@ -352,7 +353,7 @@ function MessageRowImpl({
                     : undefined;
                   const canDelete =
                     message.userId === user.id ||
-                    message.bot ||
+                    (message.bot && message.senderId === user.id) ||
                     user.isAdmin ||
                     canModerate;
 
@@ -467,13 +468,9 @@ function MessageRowImpl({
                         }
                         event.preventDefault();
                         event.stopPropagation();
-                        if (message.bot) {
-                          openBotMenu(
-                            event,
-                            message.author.toLowerCase().includes("d&d")
-                              ? "dnd"
-                              : "music",
-                          );
+                        const botKind = message.bot ? botMenuKind(message.author) : null;
+                        if (botKind) {
+                          openBotMenu(event, botKind);
                           return;
                         }
                         setCtxMenu({ x: event.clientX, y: event.clientY });

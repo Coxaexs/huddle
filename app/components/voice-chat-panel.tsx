@@ -30,14 +30,14 @@ function dayLabel(date: Date): string {
   return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "long", year: "numeric" }).format(date);
 }
 
+/** Time only: the day is already on the divider above, as in the channel view. */
 function stampLabel(date: Date): string {
-  return new Intl.DateTimeFormat(undefined, {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+/** The full date and time, for the tooltip. */
+function fullStampLabel(date: Date): string {
+  return date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
 export function VoiceChatPanel({
@@ -47,6 +47,7 @@ export function VoiceChatPanel({
   selfHandle,
   canModerate,
   membersById,
+  roleColorFor,
   emojis,
   subscribe,
   onClose,
@@ -59,6 +60,8 @@ export function VoiceChatPanel({
   selfHandle?: string;
   canModerate: boolean;
   membersById: Map<string, Member>;
+  /** A member's top role colour on this server, if they have one. */
+  roleColorFor?: (member: Member | undefined) => string | null;
   emojis?: Record<string, string>;
   /** Registers the live-event sink; returns the unsubscribe. */
   subscribe: (channelId: string, sink: (event: VoiceChatEvent) => void) => () => void;
@@ -236,7 +239,7 @@ export function VoiceChatPanel({
             <strong>{author?.displayName || message.author}</strong>
             {rest}
           </span>
-          {at && <time dateTime={message.createdAt}>{stampLabel(at)}</time>}
+          {at && <time dateTime={message.createdAt} title={fullStampLabel(at)}>{stampLabel(at)}</time>}
         </div>,
       );
       previous = null;
@@ -262,11 +265,13 @@ export function VoiceChatPanel({
         <div className="voice-chat-content">
           {!grouped && (
             <div className="voice-chat-meta">
-              <strong style={{ color: author?.color || message.color }}>
+              {/* A member wears their role colour, as in the channel view; their
+                  avatar colour can be see-through and would hide the name. */}
+              <strong style={{ color: author ? roleColorFor?.(author) || undefined : message.color }}>
                 <StyledText text={author?.displayName || message.author} />
               </strong>
               {message.bot && <span className="voice-chat-bot">BOT</span>}
-              {at && <time dateTime={message.createdAt}>{stampLabel(at)}</time>}
+              {at && <time dateTime={message.createdAt} title={fullStampLabel(at)}>{stampLabel(at)}</time>}
             </div>
           )}
           {message.text && (

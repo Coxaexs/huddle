@@ -36,6 +36,7 @@ export const easy = {
   "simple.cameraOff": "Camera off",
   "simple.share": "Share",
   "simple.stopShare": "Stop sharing",
+  "simple.activities": "Activities",
   "simple.leave": "Leave",
   "simple.tipCount": "Tip {n} of {total}",
   "simple.gotIt": "Got it",

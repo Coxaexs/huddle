@@ -34,7 +34,7 @@ export const friends = {
   "friends.activeNow.join": "Join",
   "friends.activeNow.here": "You're here",
   "friends.activeNow.inRoom": "In {room}",
-  "friends.emptyAll": "You don't have any friends added yet.",
+  "friends.emptyAll": "No friends here yet. Add one by their username to start chatting.",
   "friends.emptyPending": "There are no pending friend requests.",
   "friends.emptyBlocked": "You haven't blocked anyone.",
   "friends.noSearchResults": "No friends found matching your search.",

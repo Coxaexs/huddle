@@ -19,7 +19,7 @@ export const auth: Record<keyof typeof en, string> = {
   "gate.lead.create": "Bir ad ve şifre seç. Davet gerekmiyor.",
   "gate.lead.serverInvite": "Bir ad ve şifre seç, içeridesin.",
   "gate.lead.invite": "İçerideki bir arkadaşından davet kodu iste.",
-  "gate.lead.signIn": "Adın ve mesajların kendi sunucunda kalır.",
+  "gate.lead.signIn": "Seni yeniden görmek güzel.",
   "gate.lead.code":
     "Doğrulama uygulamanı aç ve Hoffle için 6 haneli kodu yaz ya da kurtarma kodlarından birini kullan.",
   "gate.tabs": "Nasıl girmek istersin",

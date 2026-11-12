@@ -235,7 +235,8 @@ export function renderChatMain(v: ShellRenderState) {
               onRollCommand={(command) => void runCommand(command)}
               onOpenParticipantMenu={(event, person) => {
                 if (person.bot) {
-                  openBotMenu(event, "music");
+                  // Only the music bot has a menu; other bot seats have none.
+                  if (person.id === "bot:music") openBotMenu(event, "music");
                   return;
                 }
                 const member = membersById.get(person.id);
@@ -295,6 +296,7 @@ export function renderChatMain(v: ShellRenderState) {
                 selfHandle={user.username}
                 canModerate={canModerate}
                 membersById={membersById}
+                roleColorFor={roleColorFor}
                 emojis={emojiMap}
                 subscribe={subscribeVoiceChat}
                 onClose={() => setVoiceChatOpen(false)}

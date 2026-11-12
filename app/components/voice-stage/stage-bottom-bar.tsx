@@ -1,12 +1,14 @@
 "use client";
 
-import { Mic, Megaphone, Crown, SlidersHorizontal, MicOff, Headphones, Volume2, Volume1, VolumeX, Video, VideoOff, Monitor, Map, Sparkles, Maximize2, Minimize2, PhoneOff, X, ExternalLink, LayoutGrid, MoreHorizontal, Captions, Armchair, MessageCircleQuestionMark } from "lucide-react";
+import { Mic, Megaphone, Crown, SlidersHorizontal, MicOff, Headphones, Volume2, Volume1, VolumeX, Video, VideoOff, Monitor, Map, Sparkles, Maximize2, Minimize2, PhoneOff, X, ExternalLink, LayoutGrid, Gamepad2, MoreHorizontal, Captions, Armchair, MessageCircleQuestionMark } from "lucide-react";
 import { BUILTIN_BACKGROUND_IMAGES, type CustomBackgroundItem } from "../../lib/virtual-background";
 import { ScreenShareSetup } from "../screen-share-setup";
 import type { LivingRoom } from "../../hooks/use-living-room";
 import { VoiceApi, VideoTile } from "./types";
 import type { QaQuestion } from "@/lib/qa";
 import type { CaptionLine } from "../../hooks/use-live-captions";
+import { useRef } from "react";
+import { useDismiss } from "../../hooks/use-dismiss";
 import { useI18n } from "@/app/lib/i18n-context";
 import { useUiMode } from "@/app/lib/ui-mode";
 import { SimpleCallButtons } from "../chat/shell/simple-parts";
@@ -98,6 +100,8 @@ export function StageBottomBar({
   const tb = useToolbar("call");
   const moved = (id: string) => (tb.hidden(id) ? " tb-moved" : "");
   const moreItem = "vctrl-more-item flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-[var(--ink)] hover:bg-[var(--line)] transition-colors text-left";
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  useDismiss(moreMenuOpen, () => setMoreMenuOpen(false), moreMenuRef);
   if (simpleUi && joined) {
     return (
       <div className="voice-stage-bottom-bar is-simple">
@@ -106,6 +110,8 @@ export function StageBottomBar({
             voice={voice}
             shareOpen={screenSharePopoverOpen}
             onShare={() => setScreenSharePopoverOpen((open) => !open)}
+            activitiesOpen={activitiesOpen}
+            onActivities={() => setActivitiesOpen((open) => !open)}
           />
           {screenSharePopoverOpen && !voice.screenSharing && (
             <ScreenShareSetup
@@ -563,11 +569,11 @@ export function StageBottomBar({
           onClick={() => setActivitiesOpen((open) => !open)}
           title={t("voiceStage.activities")}
         >
-          <Sparkles size={18} />
+          <Gamepad2 size={18} />
         </button>
 
         {/* More Options Popover Menu */}
-        <div {...tb.item("more", "relative inline-flex items-center")}>
+        <div ref={moreMenuRef} {...tb.item("more", "relative inline-flex items-center")}>
           <button
             type="button"
             className={`vctrl-btn ${moreMenuOpen ? "active" : ""}`}
@@ -680,7 +686,7 @@ export function StageBottomBar({
                   setMoreMenuOpen(false);
                 }}
               >
-                <Sparkles size={15} className="text-[var(--coral)]" />
+                <Gamepad2 size={15} className="text-[var(--coral)]" />
                 <span>{t("voiceStage.activities")}</span>
               </button>
               {onPopout && (

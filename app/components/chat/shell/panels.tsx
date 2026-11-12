@@ -414,13 +414,13 @@ export function ChannelSidebar({
           <h1
             className={inDmHome ? undefined : "space-name-button"}
             onClick={inDmHome ? undefined : () => setServerMenuOpen((o) => !o)}
-            title={inDmHome ? undefined : t("sidebar.serverSettings")}
+            title={inDmHome ? undefined : t("sidebar.serverMenu")}
           >
             {inDmHome ? t("sidebar.dms") : activeServer?.name || "Hoffle"}
           </h1>
         </div>
         {!inDmHome && (
-          <Icon label={t("sidebar.serverSettings")} onClick={() => setServerMenuOpen((o) => !o)}>
+          <Icon label={t("sidebar.serverMenu")} onClick={() => setServerMenuOpen((o) => !o)}>
             •••
           </Icon>
         )}
@@ -691,9 +691,11 @@ export function ChannelSidebar({
                     <small>{t("sidebar.groupMembers", { count: dm.group.members.length })}</small>
                   </span>
                 ) : (
-                <span className="flex items-center gap-1.5 truncate">
-                  <StyledText text={dm.user.displayName} />
-                  {isSelf && t("sidebar.notes")}
+                <span className="flex items-center gap-1.5 min-w-0">
+                  {/* Your own chat is just "My notes": the name plus "(Notes)" never fit. */}
+                  <span className="truncate">
+                    {isSelf ? t("sidebar.myNotes") : <StyledText text={dm.user.displayName} />}
+                  </span>
                 </span>
                 )}
                 {dm.pinned && (
@@ -945,6 +947,7 @@ export function ChannelSidebar({
           setSidebarShareSetupOpen={setSidebarShareSetupOpen}
           setStageChannelId={setStageChannelId}
           soundboardAllowed={voiceSoundboardAllowed}
+          stageOpen={Boolean(stageChannelId) && stageChannelId === voice.channelId}
         />
       )}
 

@@ -18,7 +18,7 @@ export const auth = {
   "gate.lead.create": "Pick a name and a password. No invite needed.",
   "gate.lead.serverInvite": "Pick a name and a password, and you're in.",
   "gate.lead.invite": "Ask a friend already inside for an invite code.",
-  "gate.lead.signIn": "Your name and messages stay on your own server.",
+  "gate.lead.signIn": "Good to see you again.",
   "gate.lead.code":
     "Open your authenticator app and type the 6-digit code for Hoffle, or use one of your recovery codes.",
   "gate.tabs": "How to get in",

@@ -291,7 +291,8 @@ export function withShellRenderers(s: ChatShellViewState) {
                     }}
                     onContextMenu={(event) => {
                       if (person.bot) {
-                        openBotMenu(event, "music");
+                        // Only the music bot has a menu; other bot seats have none.
+                        if (person.id === "bot:music") openBotMenu(event, "music");
                         return;
                       }
                       const member = membersById.get(person.id);
@@ -300,7 +301,8 @@ export function withShellRenderers(s: ChatShellViewState) {
                     onClick={(event) => {
                       if (!touchInput) return;
                       if (person.bot) {
-                        openBotMenu(event, "music");
+                        // Only the music bot has a menu; other bot seats have none.
+                        if (person.id === "bot:music") openBotMenu(event, "music");
                         return;
                       }
                       const member = membersById.get(person.id);

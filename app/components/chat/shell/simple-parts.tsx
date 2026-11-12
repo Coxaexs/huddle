@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, ArrowDownLeft, ArrowLeft, ArrowUpRight, Mic, MicOff, Monitor, PhoneOff, UserPlus, Video, VideoOff } from "lucide-react";
+import { ArrowDown, ArrowDownLeft, ArrowLeft, ArrowUpRight, Mic, MicOff, Monitor, PhoneOff, Gamepad2, UserPlus, Video, VideoOff } from "lucide-react";
 import type { PublicChannel } from "@/lib/servers";
 import type { VoiceParticipant } from "@/lib/protocol";
 import type { Member } from "@/lib/users";
@@ -160,10 +160,15 @@ export function SimpleCallButtons({
   voice,
   onShare,
   shareOpen,
+  onActivities,
+  activitiesOpen,
 }: {
   voice: CallControls;
   onShare: () => void;
   shareOpen: boolean;
+  /** On the stage only: opens the room's games, Watch Together and the rest. */
+  onActivities?: () => void;
+  activitiesOpen?: boolean;
 }) {
   const { t } = useI18n();
   return (
@@ -188,6 +193,12 @@ export function SimpleCallButtons({
         <Monitor size={20} />
         <span>{voice.screenSharing ? t("simple.stopShare") : t("simple.share")}</span>
       </button>
+      {onActivities && (
+        <button type="button" className={activitiesOpen ? "is-on" : ""} onClick={onActivities}>
+          <Gamepad2 size={20} />
+          <span>{t("simple.activities")}</span>
+        </button>
+      )}
       <button type="button" className="is-leave" onClick={() => voice.leave()}>
         <PhoneOff size={20} />
         <span>{t("simple.leave")}</span>

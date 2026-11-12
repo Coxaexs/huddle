@@ -35,7 +35,7 @@ export const friends: Record<keyof typeof en, string> = {
   "friends.activeNow.join": "Katıl",
   "friends.activeNow.here": "Buradasın",
   "friends.activeNow.inRoom": "{room} odasında",
-  "friends.emptyAll": "Henüz eklenmiş bir arkadaşın yok.",
+  "friends.emptyAll": "Henüz arkadaşın yok. Sohbete başlamak için kullanıcı adıyla birini ekle.",
   "friends.emptyPending": "Bekleyen arkadaşlık isteği yok.",
   "friends.emptyBlocked": "Henüz kimseyi engellemedin.",
   "friends.noSearchResults": "Aramanla eşleşen arkadaş bulunamadı.",

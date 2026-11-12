@@ -8198,7 +8198,11 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   min-height: 0;
   padding: 16px;
   display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  /* Rows as tall as their cards: a short panel scrolls instead of squeezing
+     the cards until their icons and tags spill out. */
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: 10px;
   overflow: auto;
 }
@@ -12180,6 +12184,8 @@ html[data-motion="reduced"] .typing-dots i {
 
 /* Custom emoji render inline at text size. */
 .custom-emoji {
+  /* Inline with the words around it: images are blocks by default here. */
+  display: inline-block;
   width: 1.35em;
   height: 1.35em;
   object-fit: contain;

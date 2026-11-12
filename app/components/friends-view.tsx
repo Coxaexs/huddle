@@ -681,10 +681,12 @@ export function FriendsView({
                   motion={tab === "online" || data.friends.length > 0 ? "idle" : "wave"}
                 />
                 <p className="text-sm font-medium">
-                  {tab === "online"
-                    ? t("friends.emptyOnline")
-                    : data.friends.length === 0
+                  {/* With no friends at all, say so on every tab: "nobody online"
+                      reads as if there were someone to wait for. */}
+                  {data.friends.length === 0
                     ? t("friends.emptyAll")
+                    : tab === "online"
+                    ? t("friends.emptyOnline")
                     : t("friends.noSearchResults")}
                 </p>
                 {data.friends.length === 0 && (

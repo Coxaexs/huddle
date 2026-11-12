@@ -140,7 +140,7 @@ img.message-image[src*="/stickers/gang/gang-"] { width: 300px; max-width: 300px;
 .simple-call-buttons button.is-on { background: var(--simple-go-bg); color: var(--simple-go-ink); }
 .simple-call-buttons button.is-leave { background: color-mix(in srgb, #e5484d 16%, transparent); color: #e5484d; border-color: transparent; }
 :root[data-ui="simple"] .voice-view-switcher { display: none; }
-.voice-stage-bottom-bar.is-simple .simple-call-buttons { width: min(420px, calc(100vw - 32px)); padding: 8px; gap: 8px; }
+.voice-stage-bottom-bar.is-simple .simple-call-buttons { width: min(520px, calc(100vw - 32px)); padding: 8px; gap: 8px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .voice-stage-bottom-bar.is-simple .simple-call-buttons button { padding: 11px 4px 9px; font-size: 12.5px; }
 .mini-voice-bar .simple-call-buttons { width: 100%; box-sizing: border-box; align-self: stretch; }
 
@@ -207,3 +207,5 @@ button.simple-tile:hover { border-color: color-mix(in srgb, var(--lavender) 55%,
 /* Simple settings has no sidebar, so its single column sits in the middle. */
 .settings-modal.is-simple .settings-content-scroll { max-width: none; }
 :where(.settings-modal.is-simple .settings-content-scroll) > * { max-width: 772px; margin-inline: auto; }
+/* Every page sits in the middle, including the ones that set their own left margin. */
+.settings-modal.is-simple .settings-content-scroll > * { margin-inline: auto; }
