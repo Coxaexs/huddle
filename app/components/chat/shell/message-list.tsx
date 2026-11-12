@@ -20,6 +20,7 @@ import type { RefObject, Dispatch, SetStateAction } from "react";
 import type { ChannelKindInfo } from "@/lib/channel-kinds";
 import type { ClientEvent, VoiceParticipant, RecordingState } from "@/lib/protocol";
 import { MessageRow } from "./message-row";
+import type { PublicBotMenu } from "@/lib/bot-menus";
 import { Hoffy } from "../../hoffy";
 
 export function MessageList({
@@ -161,7 +162,11 @@ export function MessageList({
   longPressTriggeredRef: RefObject<boolean>;
   touchInput: boolean;
   setOpenActionsId: Dispatch<SetStateAction<string | number | null>>;
-  openBotMenu: (event: MouseEvent, kind: "music" | "dnd") => void;
+  openBotMenu: (
+    event: MouseEvent,
+    kind: "music" | "dnd" | "app",
+    app?: { menu: PublicBotMenu; onMessageMenu?: () => void },
+  ) => void;
   openProfile: (member: Member, e?: React.MouseEvent) => void;
   roleColorFor: (member: Member | undefined) => string | null;
   activeServer: PublicServer | null;

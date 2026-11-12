@@ -8,6 +8,7 @@ import { Mic, MicOff, HeadphoneOff, AudioLines, Eye, Film, Globe, Lock, UserPlus
 import { isOnTheWeb } from "@/lib/web-public-client";
 import { Avatar } from "../../avatar";
 import { type BotMenuAction } from "../../bot-menu";
+import type { PublicBotMenu } from "@/lib/bot-menus";
 import { openMusicPlayer } from "../../music-player";
 import { type MentionChannel } from "../../message-body";
 import { type ServerFolder } from "@/lib/server-folders";
@@ -589,6 +590,14 @@ export function withShellRenderers(s: ChatShellViewState) {
       ]
       : []),
   ];
+  /** A bot's own menu: each item runs (or starts typing) one of that bot's commands. */
+  const appBotActions = (menu: PublicBotMenu, onMessageMenu?: () => void): BotMenuAction[] => [
+    ...menu.items.map((item) => ({
+      label: item.icon ? `${item.icon} ${item.label}` : item.label,
+      onSelect: () => (item.fill ? prepareCommand(`${item.command} `) : void runCommand(item.command)),
+    })),
+    ...(onMessageMenu ? [{ label: "Message options…", onSelect: onMessageMenu }] : []),
+  ];
   const dndBotActions: BotMenuAction[] = [
     { label: "Roll dice…", onSelect: () => prepareCommand("/roll ") },
     { label: "Find a spell…", onSelect: () => prepareCommand("/spell ") },
@@ -609,6 +618,6 @@ export function withShellRenderers(s: ChatShellViewState) {
     rawDisplayedMembers, filterQ, displayedMembers, onlineMembers, offlineMembers,
     currentVoiceChannel, stageDm, stageChannel, openVoiceChannel, openMentionedChannel, watchStream,
     renderRailServer, renderRailFolder, renderChannel, renderTalkRoom, currentPlayer, musicBotActions,
-    dndBotActions,
+    dndBotActions, appBotActions,
   };
 }

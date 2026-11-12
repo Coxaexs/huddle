@@ -91,6 +91,7 @@ export async function DELETE(request: Request, context: Context) {
     db.prepare("DELETE FROM discord_commands WHERE bot_id = ?").bind(app.id),
     db.prepare("DELETE FROM bot_widgets WHERE bot_id = ?").bind(app.id),
     db.prepare("DELETE FROM bot_activities WHERE application_id = ?").bind(app.id),
+    db.prepare("DELETE FROM bot_menus WHERE application_id = ?").bind(app.id),
     db.prepare("DELETE FROM applications WHERE id = ?").bind(app.id),
   ]);
   await refreshBotSessions(app.id);

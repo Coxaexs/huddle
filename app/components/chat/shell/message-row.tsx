@@ -50,6 +50,8 @@ import { useI18n } from "@/app/lib/i18n-context";
 import type { RefObject, Dispatch, SetStateAction } from "react";
 import type { HeadTrackingSource, SpatialOutput, VideoPause, RemoteVoiceStream, VoiceLatencyStats, ScreenShareQuality, RelayStatus } from "../../../hooks/use-voice";
 import { botMenuKind } from "../../../lib/chat/bot-menu-kind";
+import { botMenuFor } from "../../../lib/bot-menu-store";
+import type { PublicBotMenu } from "@/lib/bot-menus";
 import type { HeadTrackingStatus } from "../../../lib/head-tracking";
 import type { BackgroundMode } from "../../../lib/virtual-background";
 import type { MicSettings, MicTelemetry } from "../../../lib/mic-chain";
@@ -171,7 +173,11 @@ function MessageRowImpl({
   longPressTriggeredRef: RefObject<boolean>;
   touchInput: boolean;
   setOpenActionsId: Dispatch<SetStateAction<string | number | null>>;
-  openBotMenu: (event: MouseEvent, kind: "music" | "dnd") => void;
+  openBotMenu: (
+    event: MouseEvent,
+    kind: "music" | "dnd" | "app",
+    app?: { menu: PublicBotMenu; onMessageMenu?: () => void },
+  ) => void;
   openProfile: (member: Member, e?: React.MouseEvent) => void;
   roleColorFor: (member: Member | undefined) => string | null;
   inDmHome: boolean;
@@ -471,6 +477,16 @@ function MessageRowImpl({
                         const botKind = message.bot ? botMenuKind(message.author) : null;
                         if (botKind) {
                           openBotMenu(event, botKind);
+                          return;
+                        }
+                        // A bot that made its own menu: that first, with the
+                        // ordinary message menu one click further in.
+                        const ownMenu = message.bot
+                          ? botMenuFor(activeServer?.id, message.payload?.botId)
+                          : null;
+                        if (ownMenu) {
+                          const at = { x: event.clientX, y: event.clientY };
+                          openBotMenu(event, "app", { menu: ownMenu, onMessageMenu: () => setCtxMenu(at) });
                           return;
                         }
                         setCtxMenu({ x: event.clientX, y: event.clientY });

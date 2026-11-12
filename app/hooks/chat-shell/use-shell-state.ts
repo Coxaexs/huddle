@@ -15,6 +15,8 @@ import { announceUnlocked } from "../../lib/achievement-client";
 import { type DialogOptions } from "../../components/custom-dialog";
 import { type Message, type DmSummary, type MentionEntry, type PendingFile } from "../../lib/chat/types";
 import { DM_HOME, DEFAULT_QUICK_REACTIONS, STARTER_QUICK_REACTIONS } from "../../lib/chat/constants";
+import { loadBotMenus } from "../../lib/bot-menu-store";
+import type { PublicBotMenu } from "@/lib/bot-menus";
 import { notifyLevel } from "../../lib/chat/format";
 import { pickImageFile } from "../../lib/chat/browser";
 import { type VoiceChatEvent } from "../../components/voice-chat-panel";
@@ -91,6 +93,10 @@ export function useShellState() {
   /** "Invite friends to <server>", landing people in channelId when set. */
   const [inviteDialog, setInviteDialog] = useState<{ channelId: string | null } | null>(null);
   const [activeServerId, setActiveServerId] = useState<string | null>(null);
+  // The bots' own right-click menus, ready before anyone right-clicks.
+  useEffect(() => {
+    if (activeServerId && activeServerId !== DM_HOME) void loadBotMenus(activeServerId);
+  }, [activeServerId]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   /** When set, the main column shows this voice channel's stage instead of text. */
   const [stageChannelId, setStageChannelId] = useState<string | null>(null);
@@ -1016,9 +1022,11 @@ export function useShellState() {
   /** True while auto-idle is holding you at "idle" after inactivity. */
   const autoIdleRef = useRef(false);
   const [botMenu, setBotMenu] = useState<{
-    kind: "music" | "dnd";
+    kind: "music" | "dnd" | "app";
     x: number;
     y: number;
+    /** kind "app": the bot's own menu, and how to reach the ordinary message menu from it. */
+    app?: { menu: PublicBotMenu; onMessageMenu?: () => void };
   } | null>(null);
   const [voicePrefs, setVoicePrefs] = useState<Record<string, VoicePref>>({});
   const prefFor = useCallback(

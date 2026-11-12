@@ -14,6 +14,7 @@ import { disableWebPush } from "../../lib/web-push";
 import { matchCommands } from "../../lib/commands";
 import { useVoiceRecorder } from "../../components/voice-message";
 import { useChannelServerActions } from "../use-channel-server-actions";
+import type { PublicBotMenu } from "@/lib/bot-menus";
 import type { useShellMessaging } from "./use-shell-messaging";
 
 /** ChatShell, part 9 of 9. Composer autocomplete (/commands, @mentions, :emoji:), its keyboard handling, attachments, server and channel actions, and the voice recorder. */
@@ -479,10 +480,14 @@ export function useShellComposer(s: ReturnType<typeof useShellMessaging>) {
     };
   }
 
-  function openBotMenu(event: MouseEvent, kind: "music" | "dnd") {
+  function openBotMenu(
+    event: MouseEvent,
+    kind: "music" | "dnd" | "app",
+    app?: { menu: PublicBotMenu; onMessageMenu?: () => void },
+  ) {
     event.preventDefault();
     setUserMenu(null);
-    setBotMenu({ kind, x: event.clientX, y: event.clientY });
+    setBotMenu({ kind, x: event.clientX, y: event.clientY, app });
   }
 
   function prepareCommand(command: string) {

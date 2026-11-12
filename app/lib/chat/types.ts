@@ -72,6 +72,8 @@ export interface Message {
   threadId?: string;
   threadCount?: number;
   payload?: {
+    /** On a message a Developer Portal bot sent: that bot's id. */
+    botId?: string;
     /** Sent with @silent: no pushes, pop-ups or sounds. */
     silent?: boolean;
     /** Forum posts: the tags they wear (ids from the forum's list). */

@@ -18,7 +18,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 29;
+export const SCHEMA_VERSION = 30;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -685,6 +685,12 @@ async function migrate(db: D1Database): Promise<void> {
         url TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         PRIMARY KEY (application_id, name)
+      )`),
+    // The right-click menu a bot shows on its messages (lib/bot-menus.ts).
+    db.prepare(`CREATE TABLE IF NOT EXISTS bot_menus (
+        application_id TEXT PRIMARY KEY,
+        items TEXT NOT NULL,
+        updated_at TEXT NOT NULL
       )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS bot_activity_tickets (
         ticket_hash TEXT PRIMARY KEY,

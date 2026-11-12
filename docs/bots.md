@@ -67,6 +67,30 @@ GET /hangout/api/v10/applications/{appId}/activity-tickets/{ticket}
 
 A ticket works once, for five minutes, and only for your bot. Don't trust anything else in the URL.
 
+### Menus
+
+A bot can have its own right-click menu, like the music bot does. Right-clicking one of your bot's messages shows your items first, with the ordinary message menu one click further in.
+
+```http
+PUT    /hangout/api/v10/applications/{appId}/menu
+GET    /hangout/api/v10/applications/{appId}/menu
+DELETE /hangout/api/v10/applications/{appId}/menu
+```
+
+```json
+{
+  "items": [
+    { "label": "Start a quiz", "icon": "🧠", "command": "/quiz start" },
+    { "label": "Pick a topic…", "command": "/quiz topic", "fill": true }
+  ]
+}
+```
+
+- Up to 10 items. `label` is 1-40 characters, `icon` is an optional emoji.
+- `command` is one of your own slash commands, written as someone would type it. Picking the item runs it as that person, in the channel they are in, and reaches you as the usual `INTERACTION_CREATE`.
+- `fill: true` puts the command in the message box for the person to finish, instead of running it. Use it when the command needs an argument.
+- Items whose command is not one your bot registered (globally or for that server) are left out, so register your commands first. A menu with no usable items does not appear.
+
 ### The room player
 
 Switch on **Room player** in the Developer Portal and your bot can play audio in voice rooms through Hoffle's player: the queue, controls, full-screen view and player widgets all show it, and each listener's browser plays the audio. The server has to grant your bot **Connect** and **Speak**.

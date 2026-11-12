@@ -55,7 +55,7 @@ export function renderChatOverlays(v: ShellRenderState) {
     canManageServer, canModerate, canOpenServerSettings, canViewAuditLog, changeChannelKind,
     channelMenu, channelPrefs, closeTutorial, composerRef, createContactGroup, createGroupDm,
     declineIncomingCall, deleteChannel, dialogCallback, dialogCancel, dialogDismissRef,
-    dialogOptions, directoryOpen, dms, dndBotActions, editChannelBitrate, editChannelRegion,
+    dialogOptions, directoryOpen, dms, dndBotActions, appBotActions, editChannelBitrate, editChannelRegion,
     editChannelSlowmode, toggleChannelNsfw, editChannelTopic, editHistoryId, editNickname, setServerAvatar, emojiMap, eventsOpen,
     floatingStream, folderIdOf, folderMenu, forwardTarget, friendUserIds, globalSearchOpen,
     groupDialog, groupDmMenu, inviteDialog, setInviteDialog, setDms, handleAcceptFriend, handleAddFriend, handleBlockUser,
@@ -148,16 +148,22 @@ export function renderChatOverlays(v: ShellRenderState) {
 
       {botMenu && (
         <BotMenu
-          name={botMenu.kind === "music" ? "Music + Watch" : "D&D Bot"}
+          name={botMenu.app ? botMenu.app.menu.botName : botMenu.kind === "music" ? "Music + Watch" : "D&D Bot"}
           description={
-            botMenu.kind === "music"
+            botMenu.app
+              ? botMenu.app.menu.description || "Bot"
+              : botMenu.kind === "music"
               ? "Music and watch-together bot"
               : "Tabletop helper bot"
           }
           x={botMenu.x}
           y={botMenu.y}
           actions={
-            botMenu.kind === "music" ? musicBotActions : dndBotActions
+            botMenu.app
+              ? appBotActions(botMenu.app.menu, botMenu.app.onMessageMenu)
+              : botMenu.kind === "music"
+              ? musicBotActions
+              : dndBotActions
           }
           voicePref={
             botMenu.kind === "music"
