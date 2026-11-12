@@ -24,7 +24,8 @@ import { startScreenPreviewCapture } from "../lib/stream-preview";
 import { clampVoiceBitrate } from "@/lib/voice-quality";
 import { isScreenQuality, screenConstraints, type ScreenShareQuality } from "../lib/screen-quality";
 import { SFU_SCREEN_AUDIO_BITRATE, screenAudioBitrate, sfuMicBitrate, voiceBitrate } from "../lib/voice-bitrate";
-import { tuneAudioSender, tuneOpusSdp } from "../lib/opus-tuning";
+import { shapeOpusSend, tuneAudioSender, tuneOpusSdp } from "../lib/opus-tuning";
+import { SELF_SPEAKER, VoiceQosMonitor, type QosSdpShape } from "../lib/voice-qos";
 import { readSelfDeafen, readSelfMute, saveSelfDeafen, saveSelfMute } from "../lib/self-mute";
 import {
   isMusicBot,
@@ -738,6 +739,57 @@ export function useVoice({
   /** Latest roster, readable from the watchdog without re-subscribing. */
   const roomsRef = useRef(rooms);
   roomsRef.current = rooms;
+
+  /**
+   * Per-link quality of service for the mesh (see voice-qos): the monitor
+   * moves each voice sender's bitrate itself, and asks for DTX or redundancy
+   * through `applySdp`. Those live in the far side's description, so the wish
+   * is kept here, applied to every description that peer sends, and a fresh
+   * round of negotiation is started to bring one in.
+   */
+  const qosShapeRef = useRef(new Map<string, QosSdpShape>());
+  /** The microphone's senders to one peer: audio that is not the screen share's. */
+  const voiceTransceivers = useCallback((peer: Pick<RTCPeerConnection, "getTransceivers">) => {
+    const screen = screenStreamRef.current?.getAudioTracks() || [];
+    return peer
+      .getTransceivers()
+      .filter((transceiver) => {
+        const track = transceiver.sender.track;
+        return track?.kind === "audio" && !screen.includes(track);
+      });
+  }, []);
+  const [qos] = useState(
+    () =>
+      new VoiceQosMonitor({
+        voiceSenders: (remoteId) => {
+          const peer = peersRef.current.get(remoteId);
+          return peer ? voiceTransceivers(peer).map((transceiver) => transceiver.sender) : [];
+        },
+        applySdp: async (remoteId, shape) => {
+          const peer = peersRef.current.get(remoteId);
+          if (!peer) return true;
+          // The bots are our own server on a wired link, and only ever answer.
+          const person = (roomsRef.current[channelIdRef.current || ""] || []).find(
+            (entry) => entry.connectionId === remoteId,
+          );
+          if (person?.bot) return true;
+          if (peer.connectionState !== "connected" || peer.signalingState !== "stable") return false;
+          qosShapeRef.current.set(remoteId, shape);
+          await negotiateRef.current(remoteId, peer);
+          return true;
+        },
+      }),
+  );
+  /** A peer's description as we apply it: with our QoS wishes for that link written in. */
+  const shapeRemote = useCallback(
+    (remoteId: string, peer: RTCPeerConnection, description: RTCSessionDescriptionInit) => {
+      const shape = qosShapeRef.current.get(remoteId);
+      if (!shape) return description;
+      const mids = voiceTransceivers(peer).flatMap((transceiver) => (transceiver.mid ? [transceiver.mid] : []));
+      return shapeOpusSend(description, { ...shape, mids });
+    },
+    [voiceTransceivers],
+  );
   /** Only the music bot sends real stereo, so only its connection asks for it. */
   const wantsStereo = useCallback(
     (remoteId: string) => isMusicBot(roomsRef.current[channelIdRef.current ?? ""] ?? [], remoteId),
@@ -880,20 +932,21 @@ export function useVoice({
   const sendingVideo = cameraOn || screenSharing;
   useEffect(() => {
     if (!channelId) return;
-    const voice = voiceBitrate(listenerCount, sendingVideo, roomBitrate);
+    // The voice figure is what a healthy link gets; the QoS monitor spends
+    // less on the ones that are losing packets (see voice-qos).
+    qos.setTarget(voiceBitrate(listenerCount, sendingVideo, roomBitrate));
     const screen = new Set(screenStreamRef.current?.getAudioTracks() || []);
     for (const peer of peersRef.current.values()) {
       for (const sender of peer.getSenders()) {
-        if (sender.track?.kind !== "audio") continue;
-        const bitrate = screen.has(sender.track) ? screenAudioBitrate(listenerCount) : voice;
-        void tuneAudioSender(sender, bitrate);
+        if (sender.track?.kind !== "audio" || !screen.has(sender.track)) continue;
+        void tuneAudioSender(sender, screenAudioBitrate(listenerCount));
       }
     }
     // Through the media server the voice is uploaded once, whoever listens,
     // so it keeps the channel's ceiling, up to what redundancy can carry.
     const sfuMic = sfuRef.current?.micSender();
     if (sfuMic) void tuneAudioSender(sfuMic, sfuMicBitrate(roomBitrate));
-  }, [channelId, listenerCount, sendingVideo, roomBitrate, sfuMode]);
+  }, [channelId, listenerCount, sendingVideo, roomBitrate, sfuMode, qos]);
 
   /**
    * Follow the server's view of this seat's microphone.
@@ -1312,6 +1365,8 @@ export function useVoice({
     const songHeardAt = new Map<string, number>();
     const timer = window.setInterval(() => {
       const loud = new Set<string>();
+      let loudest: string | null = null;
+      let loudestPeak = 8;
       for (const [id, analyser] of analysersRef.current.entries()) {
         analyser.getByteTimeDomainData(buffer);
         let peak = 0;
@@ -1322,6 +1377,10 @@ export function useVoice({
           continue;
         }
         if (peak > 8) loud.add(id.replace(/:tts$/, ""));
+        if (peak > loudestPeak && !id.endsWith(":tts")) {
+          loudestPeak = peak;
+          loudest = id;
+        }
       }
       // Songs heard in the last three seconds (a gap between songs is not a lost one).
       const audible = [...songHeardAt].filter(([, at]) => Date.now() - at < 3000).map(([id]) => id).sort().join(",");
@@ -1337,6 +1396,9 @@ export function useVoice({
       const say = ttsOutRef.current;
       if (say && say.context.currentTime < say.endsAt) loud.add("self");
       speakingStore.set(loud);
+      // Whoever holds the floor: us if we are talking at all, since that is
+      // the only voice our uplink carries.
+      qos.setActiveSpeaker(loud.has("self") ? SELF_SPEAKER : loudest);
     }, 200);
     return () => window.clearInterval(timer);
   }, [channelId]);
@@ -1542,6 +1604,8 @@ export function useVoice({
     const peer = peersRef.current.get(remoteId);
     peer?.close();
     peersRef.current.delete(remoteId);
+    qos.unregisterPeer(remoteId);
+    qosShapeRef.current.delete(remoteId);
     setStreamWatchers((prev) => prev.filter((id) => id !== remoteId));
     // A rebuilt connection starts sending again until the viewer re-asks,
     // which it does as soon as the new connection is up.
@@ -1574,6 +1638,7 @@ export function useVoice({
       });
       peersRef.current.set(remoteId, peer);
       peerSinceRef.current.set(remoteId, Date.now());
+      qos.registerPeer(remoteId, peer);
 
       for (const own of localStreamRef.current?.getTracks() || []) {
         // Someone joining while we are in the background gets the raw copy too.
@@ -1761,7 +1826,7 @@ export function useVoice({
             if (!polite) return;
             await peer.setLocalDescription({ type: "rollback" });
           }
-          await peer.setRemoteDescription(data.description);
+          await peer.setRemoteDescription(shapeRemote(from, peer, data.description));
           for (const candidate of pendingCandidatesRef.current.get(from) || []) {
             await peer.addIceCandidate(candidate).catch(() => undefined);
           }
@@ -1790,7 +1855,7 @@ export function useVoice({
           }
           await applyVideoPause(from);
         } else if (data.kind === "answer" && data.description) {
-          await peer.setRemoteDescription(data.description);
+          await peer.setRemoteDescription(shapeRemote(from, peer, data.description));
           await applyVideoPause(from);
           for (const candidate of pendingCandidatesRef.current.get(from) || []) {
             await peer.addIceCandidate(candidate).catch(() => undefined);
@@ -3097,8 +3162,9 @@ export function useVoice({
     cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
     for (const peer of peersRef.current.values()) peer.close();
     peersRef.current.clear();
+    qos.destroy();
     void audioContextRef.current?.close();
-  }, []);
+  }, [qos]);
 
   return {
     important,

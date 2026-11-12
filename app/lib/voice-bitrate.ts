@@ -12,7 +12,8 @@ import { VOICE_BITRATE_DEFAULT } from "@/lib/voice-quality";
  * competes for the same uplink, so it counts as a crowd of its own. At the
  * default 64 kbps that is 64 / 48 / 32 kbps for 1–2 / 3–4 / 5+ listeners.
  */
-const UPLINK_BUDGET = 600_000;
+/** Most voice one seat uploads across every copy. */
+export const UPLINK_BUDGET = 600_000;
 const CROWD_FLOOR = 32_000;
 
 export function voiceBitrate(

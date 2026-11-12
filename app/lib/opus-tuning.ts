@@ -56,5 +56,63 @@ export function tuneOpusSdp<T extends RTCSessionDescriptionInit>(
       return `a=fmtp:${pt} ${[...map].map(([k, v]) => `${k}=${v}`).join(";")}`;
     });
   }
+  // An answer copies the offer's codec order, and `shapeOpusSend` may have put
+  // RED first in the offer we were shown. Our own description always says
+  // Opus first, so the far side never sends RED because of our edit.
+  sdp = mapAudioSections(sdp, () => true, (section) => preferCodec(section, "opus"));
+  return { ...description, sdp };
+}
+
+/** Runs `edit` over each audio section of an SDP that `pick` accepts (by its mid). */
+function mapAudioSections(sdp: string, pick: (mid: string | null) => boolean, edit: (section: string) => string): string {
+  const [session, ...media] = sdp.split(/^(?=m=)/m);
+  return session + media.map((section) => {
+    if (!section.startsWith("m=audio ")) return section;
+    return pick(section.match(/^a=mid:(\S+)/m)?.[1] ?? null) ? edit(section) : section;
+  }).join("");
+}
+
+/** Moves a codec's payload type to the front of a media section's m= line. */
+function preferCodec(section: string, codec: string): string {
+  const pt = section.match(new RegExp(`^a=rtpmap:(\\d+) ${codec}/48000`, "im"))?.[1];
+  if (!pt) return section;
+  return section.replace(/^(m=audio \S+ \S+)((?: \d+)+)/, (_line, head: string, list: string) => {
+    const rest = list.trim().split(" ").filter((other) => other !== pt);
+    return `${head} ${[pt, ...rest].join(" ")}`;
+  });
+}
+
+/**
+ * Shapes how *we* send voice to a peer, by editing *their* description before
+ * it is applied: Chrome takes DTX and the send codec from the remote side, and
+ * ignores `encoding.dtx` / `encoding.codec` for audio. Nothing is signalled,
+ * so the far side neither knows nor changes what it sends.
+ *
+ * - `dtx`: stop sending during silence (a keep-alive every 400 ms instead of
+ *   50 packets a second).
+ * - `redundancy`: send RED, each packet carrying the one before as well, when
+ *   the far side can decode it. Costs twice the encoder's bitrate.
+ *
+ * Only the sections in `mids` are touched (the microphone's), so screen-share
+ * audio keeps plain Opus. Every call states both options, so applying it to
+ * each new remote description also turns them back off.
+ */
+export function shapeOpusSend<T extends RTCSessionDescriptionInit>(
+  description: T,
+  { dtx, redundancy, mids }: { dtx: boolean; redundancy: boolean; mids: Iterable<string> },
+): T {
+  if (!description.sdp) return description;
+  const wanted = new Set(mids);
+  if (!wanted.size) return description;
+  const sdp = mapAudioSections(description.sdp, (mid) => mid !== null && wanted.has(mid), (section) => {
+    let next = section;
+    for (const [, pt] of section.matchAll(/^a=rtpmap:(\d+) opus\/48000/gim)) {
+      next = next.replace(new RegExp(`^a=fmtp:${pt} ([^\r\n]*)`, "m"), (_line, params: string) => {
+        const kept = params.split(";").map((kv) => kv.trim()).filter((kv) => kv && !kv.startsWith("usedtx="));
+        return `a=fmtp:${pt} ${[...kept, `usedtx=${dtx ? 1 : 0}`].join(";")}`;
+      });
+    }
+    return preferCodec(next, redundancy ? "red" : "opus");
+  });
   return { ...description, sdp };
 }
