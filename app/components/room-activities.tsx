@@ -1094,7 +1094,8 @@ export function RoomActivities({
   // Bots in this server can offer their own activities.
   const [offered, setOffered] = useState<OfferedActivity[]>([]);
   useEffect(() => {
-    if (!open || activity) return;
+    // No room (you just left): nothing to ask about.
+    if (!open || activity || !channelId) return;
     let live = true;
     apiFetch<{ activities: OfferedActivity[] }>(`/api/bot-activities?${new URLSearchParams({ channelId })}`)
       .then((data) => {

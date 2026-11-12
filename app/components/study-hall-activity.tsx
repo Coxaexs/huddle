@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CloudRain, Coffee, Dices, Focus, Headphones, SkipForward, Square, Volume2 } from "lucide-react";
+import { CloudRain, Coffee, Dices, Focus, Headphones, SkipForward, Square, Timer, Volume2, X } from "lucide-react";
 import type { RoomActivity } from "@/lib/activities";
 import {
   AMBIENT_BEATS,
@@ -22,10 +22,14 @@ import {
   ambientChord,
   ambientPosition,
   ambientState,
+  ambientTimerStatus,
   retimeAmbient,
+  startAmbientTimer,
+  stopAmbientTimer,
   type AmbientEvent,
   type AmbientIntensity,
   type AmbientState,
+  type AmbientTimerKind,
 } from "@/lib/study-hall";
 import { TIMER_WORKER_SOURCE } from "../lib/worker-timers";
 
@@ -580,69 +584,156 @@ export function StudyHallActivity({
     });
   }
 
+  // Whoever started Study Hall just clicked to do it, so their browser lets the
+  // sound start straight away. Everyone else gets the big "Listen in" button.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (autoStarted.current) return;
+    autoStarted.current = true;
+    const activation = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
+    if (activation?.isActive) void toggle();
+  }, [toggle]);
+
+  function startTimer(kind: AmbientTimerKind, minutes: number) {
+    share(startAmbientTimer(state, kind, minutes, clockRef.current()));
+  }
+
   const position = ambientPosition(state, now);
   const playingBar = Math.max(0, position.bar);
   const chord = ambientChord(state, playingBar);
   const nextChord = ambientChord(state, playingBar + 1);
   const shownBpm = bpmDraft ?? state.bpm;
+  const timer = ambientTimerStatus(state, now);
+
+  // A soft two-note chime when the room's timer runs out, for those listening.
+  const lastPhase = useRef(timer.phase);
+  useEffect(() => {
+    const before = lastPhase.current;
+    lastPhase.current = timer.phase;
+    const audio = audioRef.current;
+    if (before !== "running" || timer.phase !== "done" || !audio || audio.state !== "running") return;
+    [0, 0.28].forEach((delay, index) => {
+      const tone = audio.createOscillator();
+      const level = audio.createGain();
+      const at = audio.currentTime + delay;
+      tone.type = "sine";
+      tone.frequency.value = index === 0 ? 659.25 : 880;
+      level.gain.setValueAtTime(0.0001, at);
+      level.gain.exponentialRampToValueAtTime(0.18 * volumeRef.current, at + 0.02);
+      level.gain.exponentialRampToValueAtTime(0.0001, at + 1.1);
+      tone.connect(level).connect(audio.destination);
+      tone.start(at);
+      tone.stop(at + 1.2);
+    });
+  }, [timer.phase]);
 
   return (
     <div className={`study-hall mood-${state.intensity}${listening ? " listening" : ""}`}>
-      <div className="study-hall-window" aria-hidden="true">
-        <span className="study-hall-rain" />
-      </div>
-
-      <div className="study-hall-now">
-        <button
-          type="button"
-          className={`study-hall-listen${listening ? " on" : ""}`}
-          aria-pressed={listening}
-          onClick={() => void toggle()}
-        >
-          {listening ? <Square size={14} /> : <Headphones size={14} />}
-          {listening ? "Stop listening" : "Listen in"}
-        </button>
-        <div className="study-hall-chord" aria-live="off">
-          <strong>{chord.name}</strong>
-          <small>next {nextChord.name}</small>
+      <div className="study-hall-scene">
+        <div className="study-hall-window" aria-hidden="true">
+          <span className="study-hall-rain" />
         </div>
-        <div
-          className="study-hall-bar"
-          role="progressbar"
-          aria-label="This bar"
-          aria-valuemin={0}
-          aria-valuemax={AMBIENT_BEATS}
-          aria-valuenow={Math.floor(position.beat)}
-        >
-          {Array.from({ length: AMBIENT_BEATS }, (_, beat) => (
-            <span key={beat} className={beat <= position.beat && position.bar >= 0 ? "lit" : ""} />
-          ))}
-        </div>
-      </div>
 
-      {blocked && (
-        <p className="study-hall-note" role="status">
-          Your browser didn’t let the sound start. Press Listen in again.
-        </p>
-      )}
-
-      <div className="study-hall-moods" role="group" aria-label="Mood">
-        {MOODS.map((choice) => (
-          <button
-            type="button"
-            key={choice.mood}
-            className={state.intensity === choice.mood ? "active" : ""}
-            aria-pressed={state.intensity === choice.mood}
-            title={choice.hint}
-            onClick={() => state.intensity !== choice.mood && share({ ...state, intensity: choice.mood })}
+        <div className="study-hall-playing">
+          <span className="study-hall-vinyl" aria-hidden="true" />
+          <div className="study-hall-chord" aria-live="off">
+            <strong>{chord.name}</strong>
+            <small>next {nextChord.name}</small>
+          </div>
+          <div
+            className="study-hall-bar"
+            role="progressbar"
+            aria-label="This bar"
+            aria-valuemin={0}
+            aria-valuemax={AMBIENT_BEATS}
+            aria-valuenow={Math.floor(position.beat)}
           >
-            {choice.icon}
-            {choice.name}
-          </button>
-        ))}
+            {Array.from({ length: AMBIENT_BEATS }, (_, beat) => (
+              <span key={beat} className={beat <= position.beat && position.bar >= 0 ? "lit" : ""} />
+            ))}
+          </div>
+        </div>
+
+        {!listening && (
+          <div className="study-hall-invite">
+            <button type="button" className="study-hall-listen" onClick={() => void toggle()}>
+              <Headphones size={18} /> Listen in
+            </button>
+            <small>
+              {blocked
+                ? "Your browser didn’t let the sound start. Press Listen in again."
+                : "The room’s music is playing. Press to hear it."}
+            </small>
+          </div>
+        )}
+
+        <div className={`study-hall-timer is-${timer.phase}${timer.phase !== "none" ? ` kind-${state.timerKind}` : ""}`}>
+          {timer.phase === "running" ? (
+            <>
+              <span className="study-hall-timer-label">
+                <Timer size={14} aria-hidden="true" /> {state.timerKind === "break" ? "Break" : "Focus"}
+              </span>
+              <strong role="timer" aria-live="off">{clockLabel(timer.leftMs)}</strong>
+              <button type="button" onClick={() => share(stopAmbientTimer(state))} title="Stop the timer for everyone">
+                <X size={14} /> Stop
+              </button>
+            </>
+          ) : timer.phase === "done" ? (
+            <>
+              <span className="study-hall-timer-label" role="status">
+                <Timer size={14} aria-hidden="true" />{" "}
+                {state.timerKind === "break" ? "Break’s over. Back to it?" : "Time’s up. Take a break?"}
+              </span>
+              <div className="study-hall-timer-picks">
+                {state.timerKind === "break" ? (
+                  <button type="button" className="primary" onClick={() => startTimer("focus", state.timerMinutes >= 10 ? state.timerMinutes : 25)}>
+                    Focus again
+                  </button>
+                ) : (
+                  <button type="button" className="primary" onClick={() => startTimer("break", 5)}>
+                    Break · 5 min
+                  </button>
+                )}
+                <button type="button" onClick={() => share(stopAmbientTimer(state))}>Not now</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="study-hall-timer-label">
+                <Timer size={14} aria-hidden="true" /> Focus together
+              </span>
+              <div className="study-hall-timer-picks">
+                <button type="button" onClick={() => startTimer("focus", 25)} title="A 25 minute timer everyone here sees">
+                  25 min
+                </button>
+                <button type="button" onClick={() => startTimer("focus", 50)} title="A 50 minute timer everyone here sees">
+                  50 min
+                </button>
+                <button type="button" onClick={() => startTimer("break", 5)} title="A 5 minute break for the room">
+                  Break · 5
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="study-hall-controls">
+        <div className="study-hall-moods" role="group" aria-label="Mood">
+          {MOODS.map((choice) => (
+            <button
+              type="button"
+              key={choice.mood}
+              className={state.intensity === choice.mood ? "active" : ""}
+              aria-pressed={state.intensity === choice.mood}
+              title={choice.hint}
+              onClick={() => state.intensity !== choice.mood && share({ ...state, intensity: choice.mood })}
+            >
+              {choice.icon}
+              {choice.name}
+            </button>
+          ))}
+        </div>
         <label className="study-hall-knob">
           Tempo
           <input
@@ -662,24 +753,39 @@ export function StudyHallActivity({
           <Dices size={14} /> New song
         </button>
         <span className="study-hall-spacer" />
-        <label className="study-hall-knob study-hall-volume" title="Your volume: only you hear this change">
-          <Volume2 size={14} aria-hidden="true" />
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={volume}
-            aria-label="Your volume"
-            onChange={(event) => changeVolume(Number(event.target.value))}
-          />
-        </label>
+        {listening && (
+          <>
+            <label className="study-hall-knob study-hall-volume" title="Your volume: only you hear this change">
+              <Volume2 size={14} aria-hidden="true" />
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={volume}
+                aria-label="Your volume"
+                onChange={(event) => changeVolume(Number(event.target.value))}
+              />
+            </label>
+            <button type="button" className="study-hall-stop" onClick={() => void toggle()} title="Stop the music for you only">
+              <Square size={13} /> Stop listening
+            </button>
+          </>
+        )}
       </div>
 
       <p className="study-hall-hint">
-        Made on your device, in step with everyone listening. Mood, tempo and chords change for the whole room; Listen
-        in and volume are yours alone.
+        Mood, tempo, chords and the timer change for the whole room. Listening and volume are yours alone.
       </p>
     </div>
   );
+}
+
+/** "24:59", or "1:02:03" past the hour. */
+function clockLabel(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = String(total % 60).padStart(2, "0");
+  return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}` : `${minutes}:${seconds}`;
 }

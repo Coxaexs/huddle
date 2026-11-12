@@ -3,23 +3,46 @@ import {
   AMBIENT_BEATS,
   AMBIENT_BPM_MAX,
   AMBIENT_BPM_MIN,
+  AMBIENT_TIMER_DONE_MS,
+  AMBIENT_TIMER_MAX_MINUTES,
   ambientBar,
   ambientBarMs,
   ambientChord,
   ambientPosition,
   ambientState,
+  ambientTimerStatus,
   mulberry32,
   retimeAmbient,
+  startAmbientTimer,
   starterAmbientState,
+  stopAmbientTimer,
   type AmbientState,
 } from "@/lib/study-hall";
 
-const base: AmbientState = { seed: 12345, startedAt: 1_700_000_000_000, intensity: "rainy", bpm: 74, chordIndex: 0 };
+const base: AmbientState = {
+  seed: 12345,
+  startedAt: 1_700_000_000_000,
+  intensity: "rainy",
+  bpm: 74,
+  chordIndex: 0,
+  timerEndsAt: 0,
+  timerKind: "focus",
+  timerMinutes: 25,
+};
 
 describe("ambientState", () => {
   it("fills in a complete default from nothing", () => {
     const state = ambientState(null, 5000);
-    expect(state).toEqual({ seed: 1, startedAt: 5000, intensity: "rainy", bpm: 74, chordIndex: 0 });
+    expect(state).toEqual({
+      seed: 1,
+      startedAt: 5000,
+      intensity: "rainy",
+      bpm: 74,
+      chordIndex: 0,
+      timerEndsAt: 0,
+      timerKind: "focus",
+      timerMinutes: 25,
+    });
   });
 
   it("clamps what is out of range", () => {
@@ -36,6 +59,42 @@ describe("ambientState", () => {
     const state = starterAmbientState(42, () => 0.5);
     expect(state.startedAt).toBe(42);
     expect(state.seed).toBe(2147483648);
+  });
+});
+
+describe("the room's timer", () => {
+  const NOW = 1_700_000_000_000;
+
+  it("counts down from when it was started, then says it is done", () => {
+    const running = startAmbientTimer(base, "focus", 25, NOW);
+    expect(running.timerEndsAt).toBe(NOW + 25 * 60_000);
+    expect(ambientTimerStatus(running, NOW + 60_000)).toEqual({ phase: "running", leftMs: 24 * 60_000 });
+    expect(ambientTimerStatus(running, NOW + 25 * 60_000 + 1).phase).toBe("done");
+    // Long after, it is simply gone.
+    expect(ambientTimerStatus(running, NOW + 25 * 60_000 + AMBIENT_TIMER_DONE_MS + 1).phase).toBe("none");
+  });
+
+  it("can be a break, and can be cleared", () => {
+    const rest = startAmbientTimer(base, "break", 5, NOW);
+    expect(rest.timerKind).toBe("break");
+    expect(ambientTimerStatus(stopAmbientTimer(rest), NOW).phase).toBe("none");
+  });
+
+  it("survives the trip through the server unchanged, and keeps the music where it was", () => {
+    const running = startAmbientTimer(base, "focus", 50, NOW);
+    const back = ambientState(JSON.parse(JSON.stringify(running)), NOW + 1000);
+    expect(back).toEqual(running);
+    expect(ambientBar(back, 3)).toEqual(ambientBar(base, 3));
+  });
+
+  it("refuses a timer longer than the longest allowed, or one set for the far future", () => {
+    expect(startAmbientTimer(base, "focus", 9999, NOW).timerMinutes).toBe(AMBIENT_TIMER_MAX_MINUTES);
+    expect(ambientState({ ...base, timerEndsAt: NOW + 24 * 3600_000 }, NOW).timerEndsAt).toBe(0);
+    expect(ambientState({ ...base, timerEndsAt: "soon", timerKind: "nap", timerMinutes: -4 }, NOW)).toMatchObject({
+      timerEndsAt: 0,
+      timerKind: "focus",
+      timerMinutes: 1,
+    });
   });
 });
 

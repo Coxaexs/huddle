@@ -19,6 +19,12 @@ export const AMBIENT_CHORD_INDEX_MAX = 1_000_000;
 export const AMBIENT_INTENSITIES = ["calm", "rainy", "focus"] as const;
 export type AmbientIntensity = (typeof AMBIENT_INTENSITIES)[number];
 
+export const AMBIENT_TIMER_KINDS = ["focus", "break"] as const;
+export type AmbientTimerKind = (typeof AMBIENT_TIMER_KINDS)[number];
+export const AMBIENT_TIMER_MAX_MINUTES = 120;
+/** How long a finished timer keeps saying so before it clears itself from view. */
+export const AMBIENT_TIMER_DONE_MS = 10 * 60_000;
+
 export interface AmbientState {
   /** Integer seed for the deterministic generator. */
   seed: number;
@@ -28,6 +34,11 @@ export interface AmbientState {
   bpm: number;
   /** How many chords the room has skipped ahead: bar 0 plays this chord. */
   chordIndex: number;
+  /** The room's shared focus or break timer: when it ends (epoch ms, server clock), or 0 for none. */
+  timerEndsAt: number;
+  timerKind: AmbientTimerKind;
+  /** How long that timer was set for. */
+  timerMinutes: number;
 }
 
 export type AmbientVoice = "keys" | "bass" | "kick" | "snare" | "hat" | "crackle";
@@ -114,7 +125,52 @@ export function ambientState(
     chordIndex: Number.isFinite(chordIndex)
       ? Math.max(0, Math.min(AMBIENT_CHORD_INDEX_MAX, Math.floor(chordIndex)))
       : 0,
+    ...ambientTimer(input, now),
   };
+}
+
+/** The timer part of the state, cleaned: an end time further off than any timer can be set is no timer. */
+function ambientTimer(
+  input: Record<string, unknown> | null | undefined,
+  now: number,
+): Pick<AmbientState, "timerEndsAt" | "timerKind" | "timerMinutes"> {
+  const minutes = Number(input?.timerMinutes);
+  const endsAt = Number(input?.timerEndsAt);
+  const timerMinutes = Number.isFinite(minutes)
+    ? Math.round(Math.max(1, Math.min(AMBIENT_TIMER_MAX_MINUTES, minutes)))
+    : 25;
+  const latest = now + (AMBIENT_TIMER_MAX_MINUTES + 5) * 60_000;
+  return {
+    timerEndsAt: Number.isFinite(endsAt) && endsAt > 0 && endsAt <= latest ? Math.round(endsAt) : 0,
+    timerKind: AMBIENT_TIMER_KINDS.includes(input?.timerKind as AmbientTimerKind)
+      ? (input?.timerKind as AmbientTimerKind)
+      : "focus",
+    timerMinutes,
+  };
+}
+
+/** Starts the room's timer from `now`. */
+export function startAmbientTimer(state: AmbientState, kind: AmbientTimerKind, minutes: number, now: number): AmbientState {
+  return ambientState({ ...state, timerKind: kind, timerMinutes: minutes, timerEndsAt: now + minutes * 60_000 }, now);
+}
+
+/** Clears the room's timer. */
+export function stopAmbientTimer(state: AmbientState): AmbientState {
+  return { ...state, timerEndsAt: 0 };
+}
+
+/**
+ * Where the room's timer stands: not set, counting down (with the ms left), or
+ * just finished. A timer that finished a while ago counts as not set.
+ */
+export function ambientTimerStatus(
+  state: AmbientState,
+  now: number,
+): { phase: "none" | "running" | "done"; leftMs: number } {
+  if (!state.timerEndsAt) return { phase: "none", leftMs: 0 };
+  const leftMs = state.timerEndsAt - now;
+  if (leftMs > 0) return { phase: "running", leftMs };
+  return { phase: -leftMs < AMBIENT_TIMER_DONE_MS ? "done" : "none", leftMs: 0 };
 }
 
 /** A new session. `random` is injectable for tests. */

@@ -8699,7 +8699,8 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   }
 }
 
-/* Hoffle Study Hall: a rainy window, the chord, the shared knobs */
+/* Hoffle Study Hall: a rainy window with the chord and the room's timer in it,
+   and the shared knobs along the bottom */
 .room-activity.kind-studyhall {
   flex: 0 1 auto;
   max-height: none;
@@ -8710,12 +8711,31 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 }
 
 .study-hall {
-  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 10px 12px 12px;
+  overflow: auto;
+}
+
+/* The scene: as tall as the panel lets it be, so a full-stage Study Hall is a
+   window to look at and not a strip of buttons over an empty box. */
+.study-hall-scene {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 210px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 18px 16px;
   overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
 }
 
 .study-hall-window {
@@ -8723,13 +8743,15 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--lavender) 14%, transparent), transparent 70%);
-  opacity: .7;
+  background:
+    radial-gradient(120% 90% at 50% 0, color-mix(in srgb, var(--lavender) 22%, transparent), transparent 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--lavender) 10%, transparent), transparent 80%);
+  opacity: .8;
   transition: opacity 1.5s ease;
 }
 
 .study-hall.mood-calm .study-hall-window {
-  opacity: .35;
+  opacity: .45;
 }
 
 /* Rain streaks, drawn with a repeating gradient and slid down. */
@@ -8764,81 +8786,69 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   }
 }
 
-.study-hall > :not(.study-hall-window) {
+.study-hall-scene > :not(.study-hall-window) {
   position: relative;
   z-index: 1;
 }
 
-.study-hall-now {
+/* What is playing: a record, the chord, and the four beats of this bar. */
+.study-hall-playing {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  width: min(100%, 440px);
 }
 
-.study-hall button,
-.study-hall-knob {
-  min-height: 32px;
-  padding: 0 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--ink);
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  font: 700 12px/1 inherit;
+.study-hall-vinyl {
+  flex: none;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--lavender) 0 15%, transparent 16%),
+    repeating-radial-gradient(circle, color-mix(in srgb, var(--ink) 80%, transparent) 0 2px, color-mix(in srgb, var(--ink) 62%, transparent) 2px 4px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 25%, transparent);
+  opacity: .55;
+  transition: opacity .6s ease;
 }
 
-.study-hall button {
-  cursor: pointer;
+.study-hall.listening .study-hall-vinyl {
+  opacity: 1;
+  animation: study-hall-spin 3.6s linear infinite;
+  /* Not a perfect circle of grooves, so the turning shows. */
+  background:
+    radial-gradient(circle, var(--lavender) 0 15%, transparent 16%),
+    conic-gradient(from 0deg, transparent 0 46%, color-mix(in srgb, var(--paper) 30%, transparent) 50%, transparent 54% 100%),
+    repeating-radial-gradient(circle, color-mix(in srgb, var(--ink) 80%, transparent) 0 2px, color-mix(in srgb, var(--ink) 62%, transparent) 2px 4px);
 }
 
-.study-hall button:hover {
-  border-color: var(--lavender);
-}
-
-.study-hall button:focus-visible {
-  outline: 2px solid var(--lavender);
-  outline-offset: 1px;
-}
-
-.study-hall .study-hall-listen {
-  min-width: 128px;
-  justify-content: center;
-  color: var(--on-accent);
-  background: var(--accent-strong);
-  border-color: transparent;
-}
-
-.study-hall .study-hall-listen.on {
-  color: var(--ink);
-  background: color-mix(in srgb, var(--coral) 22%, var(--paper));
-  border-color: var(--coral);
+@keyframes study-hall-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .study-hall-chord {
   display: flex;
   flex-direction: column;
-  min-width: 72px;
+  min-width: 92px;
 }
 
 .study-hall-chord strong {
   color: var(--ink);
-  font-size: 20px;
+  font-size: 26px;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
 
 .study-hall-chord small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .study-hall-bar {
-  position: relative;
   flex: 1;
-  min-width: 120px;
+  min-width: 90px;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 4px;
@@ -8855,6 +8865,138 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   background: var(--lavender);
 }
 
+/* Buttons and knobs. The sizes are spelled out one by one: the `font`
+   shorthand cannot take `inherit` for the family, and silently did nothing. */
+.study-hall button,
+.study-hall-knob {
+  min-height: 32px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.study-hall button {
+  cursor: pointer;
+}
+
+.study-hall button:hover {
+  border-color: var(--lavender);
+}
+
+.study-hall button:focus-visible {
+  outline: 2px solid var(--lavender);
+  outline-offset: 1px;
+}
+
+/* Nothing plays until you ask: the one thing to press, in the middle. */
+.study-hall-invite {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  text-align: center;
+}
+
+.study-hall-invite small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.study-hall .study-hall-listen {
+  min-height: 44px;
+  padding: 0 22px;
+  color: var(--on-accent);
+  background: var(--accent-strong);
+  border-color: transparent;
+  border-radius: 999px;
+  font-size: 15px;
+}
+
+.study-hall .study-hall-listen:hover {
+  filter: brightness(1.08);
+}
+
+/* The room's timer */
+.study-hall-timer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+}
+
+.study-hall-timer-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.study-hall-timer-picks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.study-hall-timer.is-running {
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 22px;
+  border-color: var(--lavender);
+}
+
+.study-hall-timer.is-running.kind-break {
+  border-color: var(--mint);
+}
+
+.study-hall-timer.is-running strong {
+  color: var(--ink);
+  font-size: clamp(38px, 7vw, 64px);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
+}
+
+.study-hall-timer.is-done {
+  border-color: var(--lavender);
+}
+
+.study-hall-timer.is-done .study-hall-timer-label {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.study-hall .study-hall-timer button.primary {
+  color: var(--on-accent);
+  background: var(--accent-strong);
+  border-color: transparent;
+}
+
+/* The shared knobs */
+.study-hall-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .study-hall-moods {
   display: flex;
   flex-wrap: wrap;
@@ -8864,13 +9006,6 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
 .study-hall-moods button.active {
   background: var(--lavender-soft);
   border-color: var(--lavender);
-}
-
-.study-hall-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
 }
 
 .study-hall-knob {
@@ -8900,21 +9035,22 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   flex: 1;
 }
 
-.study-hall-hint,
-.study-hall-note {
+.study-hall .study-hall-stop {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--coral) 16%, var(--paper));
+  border-color: color-mix(in srgb, var(--coral) 60%, var(--line));
+}
+
+.study-hall-hint {
   margin: 0;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.4;
 }
 
-.study-hall-note {
-  color: var(--coral);
-  font-weight: 700;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .study-hall .study-hall-rain {
+  .study-hall .study-hall-rain,
+  .study-hall .study-hall-vinyl {
     animation: none !important;
   }
 
