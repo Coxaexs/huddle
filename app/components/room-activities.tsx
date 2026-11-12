@@ -48,11 +48,17 @@ import {
   Hand,
   Smartphone,
   Bot,
+  Drum,
+  BookOpen,
 } from "lucide-react";
+import { starterBeatboxState } from "@/lib/beatbox";
+import { starterAmbientState } from "@/lib/study-hall";
 import { apiFetch } from "../lib/client";
 import { deferred } from "./chat/shell/deferred";
 
 const GestureSynth = deferred(() => import("./gesture-synth").then((m) => m.GestureSynth));
+const BeatboxActivity = deferred(() => import("./beatbox-activity").then((m) => m.BeatboxActivity));
+const StudyHallActivity = deferred(() => import("./study-hall-activity").then((m) => m.StudyHallActivity));
 
 interface RoomActivitiesProps {
   channelId: string;
@@ -65,6 +71,8 @@ interface RoomActivitiesProps {
   onOpen: (open: boolean) => void;
   /** The room's server added the Music Bot, which runs Watch and Reels Together. */
   musicBot?: boolean;
+  /** The hub's clock, shared by everyone in the room (Study Hall keeps time by it). */
+  serverNow?: () => number;
 }
 
 const ACTIVITY_CHOICES: Array<{
@@ -132,6 +140,18 @@ const ACTIVITY_CHOICES: Array<{
     icon: <Hand size={20} />,
     name: "Gesture Synth",
     description: "Jam together: hand signs on camera play chords",
+  },
+  {
+    kind: "beatbox",
+    icon: <Drum size={20} />,
+    name: "Hoffle Beatbox",
+    description: "Build a beat together: drum machine and acid bassline",
+  },
+  {
+    kind: "studyhall",
+    icon: <BookOpen size={20} />,
+    name: "Study Hall",
+    description: "Rain, vinyl and lofi keys everyone hears in sync",
   },
 ];
 
@@ -985,6 +1005,7 @@ export function RoomActivities({
   open,
   onOpen,
   musicBot = true,
+  serverNow,
 }: RoomActivitiesProps) {
   const [busy, setBusy] = useState(false);
   const gameFrameRef = useRef<HTMLDivElement>(null);
@@ -1111,7 +1132,11 @@ export function RoomActivities({
               ? { round: 1, turnIndex: 0, entries: [] }
               : kind === "synth"
                 ? { key: "A", mode: "major" }
-                : {};
+                : kind === "beatbox"
+                  ? { ...starterBeatboxState() }
+                  : kind === "studyhall"
+                    ? { ...starterAmbientState((serverNow ?? Date.now)()) }
+                    : {};
     // deeppixel: the server picks the shared game code
     await action({ action: "open", kind, state });
   }
@@ -1128,12 +1153,13 @@ export function RoomActivities({
   }
 
   // Embedded games stay mounted while collapsed so players don't drop out,
-  // and so do the synth and the bot's watch parties, so collapsing the panel
-  // doesn't cut your chord off or drop you out of the film.
+  // and so do the synth, the beatbox and the bot's watch parties, so collapsing
+  // the panel doesn't cut your chord or beat off or drop you out of the film.
   const isGame = activity?.kind === "deeppixel" || activity?.kind === "richup";
   const botActivity = activity && isBotActivity(activity.kind) ? activity.kind : null;
   const appActivity = activity?.kind === "app" ? activity : null;
-  if (!open && !isGame && !botActivity && !appActivity && activity?.kind !== "synth") return null;
+  const isMusic = activity?.kind === "synth" || activity?.kind === "beatbox" || activity?.kind === "studyhall";
+  if (!open && !isGame && !botActivity && !appActivity && !isMusic) return null;
 
   async function popOut(mode: "watch" | "reels") {
     // Opened before the request so the browser treats it as the click's window.
@@ -1323,6 +1349,10 @@ export function RoomActivities({
           update={optimistic}
           joined={Boolean(channelId) && activity.channelId === channelId}
         />
+      ) : activity.kind === "beatbox" ? (
+        <BeatboxActivity activity={activity} update={optimistic} />
+      ) : activity.kind === "studyhall" ? (
+        <StudyHallActivity activity={activity} update={optimistic} serverNow={serverNow} />
       ) : (
         <div className="draw-guess">
           <div className="draw-guess-status">

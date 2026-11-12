@@ -826,6 +826,7 @@ export function VoiceStage({
         open={activitiesOpen}
         onOpen={setActivitiesOpen}
         musicBot={botActivities}
+        serverNow={serverNow}
       />}
       {participants.some((person) => person.important && !person.muted && !person.serverMuted) && (
         <div className="voice-important-banner" role="status"><Megaphone size={16} />

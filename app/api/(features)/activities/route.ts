@@ -11,6 +11,8 @@ import {
   type RoomActivityKind,
   type TierRow,
 } from "@/lib/activities";
+import { beatboxState } from "@/lib/beatbox";
+import { ambientState } from "@/lib/study-hall";
 import { synthSettings } from "@/lib/gesture-synth";
 import { publishMessageEvent } from "@/lib/hub-client";
 import { MUSIC_BOT_MISSING, musicBotInServer } from "@/lib/music-bot";
@@ -228,6 +230,14 @@ function cleanState(
   if (kind === "synth") {
     // Only the key is shared; notes go through the hub, never this table.
     return synthSettings(input);
+  }
+  if (kind === "beatbox") {
+    // The pattern and knobs; every browser makes the sound itself.
+    return { ...beatboxState(input) };
+  }
+  if (kind === "studyhall") {
+    // Five numbers; every browser derives the same music from them.
+    return { ...ambientState(input) };
   }
   if (kind === "initiative") {
     const round = Math.max(0, Math.min(9999, Number(input.round) || 1));

@@ -8441,6 +8441,484 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   min-width: 0;
 }
 
+/* Hoffle Beatbox: transport, the step grid, the bass knobs */
+.room-activity.kind-beatbox {
+  flex: 0 1 auto;
+  max-height: none;
+}
+
+.room-activity.kind-beatbox .activity-by {
+  display: none;
+}
+
+.beatbox {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  overflow-y: auto;
+}
+
+.beatbox-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.beatbox-bar button,
+.beatbox-knob {
+  min-height: 32px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font: 700 12px/1 inherit;
+}
+
+.beatbox .beatbox-bar button {
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.beatbox-bar button:hover {
+  border-color: var(--lavender);
+}
+
+.beatbox-bar .beatbox-play {
+  min-width: 78px;
+  justify-content: center;
+  color: var(--on-accent);
+  background: var(--accent-strong);
+  border-color: transparent;
+}
+
+.beatbox-bar .beatbox-play.playing {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--coral) 22%, var(--paper));
+  border-color: var(--coral);
+}
+
+.beatbox-knob {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.beatbox-knob input[type="range"] {
+  width: 96px;
+  height: 4px;
+  accent-color: var(--lavender);
+  cursor: pointer;
+}
+
+.beatbox-knob output {
+  min-width: 52px;
+  color: var(--ink);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.beatbox-volume input[type="range"] {
+  width: 68px;
+}
+
+.beatbox-spacer {
+  flex: 1;
+}
+
+.beatbox-wave {
+  display: inline-flex;
+}
+
+.beatbox-bar .beatbox-wave button:first-child {
+  border-radius: 9px 0 0 9px;
+}
+
+.beatbox-bar .beatbox-wave button:last-child {
+  margin-left: -1px;
+  border-radius: 0 9px 9px 0;
+}
+
+.beatbox-bar .beatbox-wave button.active {
+  position: relative;
+  color: var(--ink);
+  background: var(--lavender-soft);
+  border-color: var(--lavender);
+}
+
+.beatbox-scroll {
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.beatbox-grid {
+  min-width: 560px;
+  display: grid;
+  gap: 4px;
+}
+
+.beatbox-row {
+  display: grid;
+  grid-template-columns: 62px repeat(16, minmax(0, 1fr));
+  gap: 4px;
+  align-items: center;
+}
+
+.beatbox .beatbox-cell {
+  font-size: 10px;
+  letter-spacing: -.02em;
+}
+
+/* Stays put while a narrow screen scrolls the steps sideways. */
+.beatbox-label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  background: var(--panel);
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.beatbox-ruler span {
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 4px;
+}
+
+.beatbox-ruler span.now {
+  color: var(--on-accent);
+  background: var(--accent-strong);
+}
+
+.beatbox-cell {
+  height: 30px;
+  min-width: 0;
+  padding: 0;
+  color: var(--paper);
+  background: color-mix(in srgb, var(--ink) 7%, var(--paper));
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: 800 10px/1 inherit;
+  cursor: pointer;
+  transition: background .08s ease, transform .08s ease;
+}
+
+.beatbox-cell.alt {
+  background: color-mix(in srgb, var(--ink) 13%, var(--paper));
+}
+
+.beatbox-cell:hover {
+  border-color: var(--lane);
+}
+
+.beatbox-cell:focus-visible {
+  outline: 2px solid var(--lavender);
+  outline-offset: 1px;
+}
+
+.beatbox-cell.on {
+  background: var(--lane);
+  border-color: var(--lane);
+}
+
+.beatbox-cell.now {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 55%, transparent);
+}
+
+.beatbox-cell.on.now {
+  filter: brightness(1.25);
+  transform: scale(1.06);
+}
+
+.beatbox-bass {
+  margin-top: 6px;
+}
+
+.beatbox-note-cell {
+  height: 34px;
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.beatbox-flags .beatbox-cell {
+  height: 16px;
+  border-radius: 4px;
+}
+
+.beatbox-flags .beatbox-cell:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+.beatbox-flags .beatbox-cell:disabled:hover {
+  border-color: var(--line);
+}
+
+.beatbox-hint,
+.beatbox-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.beatbox-note {
+  color: var(--coral);
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beatbox-cell {
+    transition: none;
+  }
+
+  .beatbox-cell.on.now {
+    transform: none;
+  }
+}
+
+/* Hoffle Study Hall: a rainy window, the chord, the shared knobs */
+.room-activity.kind-studyhall {
+  flex: 0 1 auto;
+  max-height: none;
+}
+
+.room-activity.kind-studyhall .activity-by {
+  display: none;
+}
+
+.study-hall {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  overflow: hidden;
+}
+
+.study-hall-window {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--lavender) 14%, transparent), transparent 70%);
+  opacity: .7;
+  transition: opacity 1.5s ease;
+}
+
+.study-hall.mood-calm .study-hall-window {
+  opacity: .35;
+}
+
+/* Rain streaks, drawn with a repeating gradient and slid down. */
+.study-hall-rain {
+  position: absolute;
+  inset: -40px 0 0;
+  background-image: repeating-linear-gradient(
+    102deg,
+    transparent 0 14px,
+    color-mix(in srgb, var(--ink) 9%, transparent) 14px 15px,
+    transparent 15px 31px
+  );
+  background-size: 100% 40px;
+  opacity: 0;
+  transition: opacity 1.5s ease;
+}
+
+.study-hall.listening.mood-rainy .study-hall-rain {
+  opacity: 1;
+  animation: study-hall-rain .7s linear infinite;
+}
+
+.study-hall.listening.mood-calm .study-hall-rain,
+.study-hall.listening.mood-focus .study-hall-rain {
+  opacity: .45;
+  animation: study-hall-rain 1.1s linear infinite;
+}
+
+@keyframes study-hall-rain {
+  to {
+    transform: translateY(40px);
+  }
+}
+
+.study-hall > :not(.study-hall-window) {
+  position: relative;
+  z-index: 1;
+}
+
+.study-hall-now {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.study-hall button,
+.study-hall-knob {
+  min-height: 32px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font: 700 12px/1 inherit;
+}
+
+.study-hall button {
+  cursor: pointer;
+}
+
+.study-hall button:hover {
+  border-color: var(--lavender);
+}
+
+.study-hall button:focus-visible {
+  outline: 2px solid var(--lavender);
+  outline-offset: 1px;
+}
+
+.study-hall .study-hall-listen {
+  min-width: 128px;
+  justify-content: center;
+  color: var(--on-accent);
+  background: var(--accent-strong);
+  border-color: transparent;
+}
+
+.study-hall .study-hall-listen.on {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--coral) 22%, var(--paper));
+  border-color: var(--coral);
+}
+
+.study-hall-chord {
+  display: flex;
+  flex-direction: column;
+  min-width: 72px;
+}
+
+.study-hall-chord strong {
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.study-hall-chord small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.study-hall-bar {
+  position: relative;
+  flex: 1;
+  min-width: 120px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.study-hall-bar span {
+  height: 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 10%, var(--paper));
+  transition: background .2s ease;
+}
+
+.study-hall-bar span.lit {
+  background: var(--lavender);
+}
+
+.study-hall-moods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.study-hall-moods button.active {
+  background: var(--lavender-soft);
+  border-color: var(--lavender);
+}
+
+.study-hall-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.study-hall-knob {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.study-hall-knob input[type="range"] {
+  width: 96px;
+  height: 4px;
+  accent-color: var(--lavender);
+  cursor: pointer;
+}
+
+.study-hall-knob output {
+  min-width: 52px;
+  color: var(--ink);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.study-hall-volume input[type="range"] {
+  width: 68px;
+}
+
+.study-hall-spacer {
+  flex: 1;
+}
+
+.study-hall-hint,
+.study-hall-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.study-hall-note {
+  color: var(--coral);
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .study-hall .study-hall-rain {
+    animation: none !important;
+  }
+
+  .study-hall-bar span {
+    transition: none;
+  }
+}
+
 /* Gesture Synth: a dark camera stage, the chord pads under it */
 .room-activity.kind-synth {
   flex: 1 1 100%;

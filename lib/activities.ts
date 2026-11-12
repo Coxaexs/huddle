@@ -9,6 +9,8 @@ export type RoomActivityKind =
   | "deeppixel"
   | "richup"
   | "synth"
+  | "beatbox"
+  | "studyhall"
   /** One a bot offers: which one is in the state (lib/bot-activities.ts). */
   | "app";
 
@@ -76,6 +78,8 @@ export const ACTIVITY_KINDS: RoomActivityKind[] = [
   "deeppixel",
   "richup",
   "synth",
+  "beatbox",
+  "studyhall",
   "app",
 ];
 
