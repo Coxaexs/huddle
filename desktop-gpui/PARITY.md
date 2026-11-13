@@ -27,7 +27,7 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | Other cards: dnd, ai, system-pin, music-stats, lyricsnow, polls, games, files, voice messages | dnd-card.tsx, music-cards.tsx, game-card.tsx, message-file-card.tsx, voice-message.tsx | ⬜ |
 | Hover card + toolbar (your quick reactions as outline icons, server emoji, add reaction, reply, edit), reaction pills, reply bar, `#channel` chips | message-row.tsx, message-reactions.tsx, outline-emoji.tsx | ✅ (reaction picker, shift-held extra actions, who-reacted popover ⬜) |
 | Editing in place (Enter saves, Esc cancels, focus ring), deleting with the confirm dialog (Shift skips) | message-row.tsx, message-parts.tsx | ✅ (moderators deleting others' messages ⬜) |
-| Message context menu | message-context-menu.tsx | ⬜ |
+| Message context menu: every item in Full mode, Pin greyed without MANAGE_MESSAGES, edit, delete/report confirms, copy text/link/ID with the notice bar, pin, bookmark with its toast, translate under the message, Esc and click-away close | message-context-menu.tsx, message-row.tsx, toast.tsx, message-translation.tsx | ✅ (Add Reaction, Forward, Create Thread and Speak open nothing yet; bot menus; Simple mode's short list ⬜) |
 | Custom `:emoji:` inline in text | message-body.tsx | ⬜ |
 | Composer: multi-line textarea (Shift-Enter, grows to 40vh), reply bar, +, chevron, emoji, GIF, voice message / send | composer.tsx | 🟡 (pickers, uploads, slash commands, voice messages ⬜) |
 | Members panel: search, online/offline groups, statuses | panels.tsx | ✅ (name plates, role groups, search ⬜) |

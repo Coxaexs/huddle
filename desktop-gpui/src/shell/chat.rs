@@ -36,6 +36,7 @@ impl Shell {
             .overflow_hidden()
             .child(self.render_header(window, cx))
             .child(self.render_messages(cx))
+            .children(self.render_notice(cx))
             .child(self.render_composer(cx)))
     }
 
@@ -348,6 +349,9 @@ impl Shell {
                 body = body.child(div().text_size(px(11.)).text_color(Theme::muted()).child(t("message.edited")));
             }
         }
+        if let Some(translation) = self.render_translation(&message.id, cx) {
+            body = body.child(div().text_size(px(16.)).line_height(px(24.8)).text_color(Theme::ink()).child(translation));
+        }
         if let Some(card) = self.render_card(message, window) {
             body = body.child(card);
         }
@@ -422,7 +426,14 @@ impl Shell {
             .child(gutter)
             .child(body)
             .child(div().flex_none().w(px(ROW_RIGHT - 47.2 - 8. - 10.)))
-            .child(self.render_actions(message, &group, forced, cx));
+            .child(self.render_actions(message, &group, forced, cx))
+            .on_mouse_down(gpui::MouseButton::Right, {
+                let id = message.id.clone();
+                cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    this.open_context_menu(id.clone(), event.position, cx);
+                })
+            });
         let row = div()
             .w_full()
             .pl(px(ROW_LEFT - 10.))
@@ -546,7 +557,13 @@ impl Shell {
                         if event.modifiers().shift {
                             this.delete_message(id.clone(), cx);
                         } else {
-                            this.confirm_delete = Some(id.clone());
+                            this.confirm = Some(super::context_menu::Confirm {
+                                title: t("message.deleteConfirmTitle"),
+                                text: t("message.deleteConfirmText"),
+                                ok: t("common.delete"),
+                                cancel: t("common.cancel"),
+                                action: super::context_menu::ConfirmAction::Delete(id.clone()),
+                            });
                             cx.notify();
                         }
                     })),

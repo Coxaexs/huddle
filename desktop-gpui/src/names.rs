@@ -526,7 +526,7 @@ fn effect_svg(text: &str, style: &NameStyle, effect: &str, family: &str, weight:
 
     let mut drawing = String::new();
     // Text-shadows sit under the text; the first one listed is drawn on top.
-    let mut shadows = |s: &mut Svg, list: &[(f32, f32, f32, Rgba)], drawing: &mut String| {
+    let shadows = |s: &mut Svg, list: &[(f32, f32, f32, Rgba)], drawing: &mut String| {
         for (dx, dy, blur, c) in list.iter().rev() {
             let filter = if *blur > 0. { format!(r#"filter="url(#{})""#, s.blur(*blur)) } else { String::new() };
             drawing.push_str(&format!(

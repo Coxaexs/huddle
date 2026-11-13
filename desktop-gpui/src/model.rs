@@ -14,6 +14,8 @@ pub struct User {
     pub color: String,
     /// The reactions in this account's message toolbar.
     pub quick_reactions: Vec<String>,
+    /// A Hoffle-wide admin: every permission in every server.
+    pub is_admin: bool,
 }
 
 impl User {
@@ -34,6 +36,22 @@ pub struct Server {
     pub is_public: bool,
     pub channels: Vec<Channel>,
     pub categories: Vec<Category>,
+    pub owner_id: Option<String>,
+    pub everyone_permissions: u64,
+    pub roles: Vec<Role>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Role {
+    pub id: String,
+    pub permissions: u64,
+}
+
+/// lib/permissions.ts flags this client checks.
+pub mod permission {
+    pub const ADMINISTRATOR: u64 = 1 << 0;
+    pub const MANAGE_MESSAGES: u64 = 1 << 21;
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -107,6 +125,7 @@ pub struct Message {
     /// On a bot-styled post: who sent it (they may delete it).
     pub sender_id: Option<String>,
     pub payload: Option<serde_json::Value>,
+    pub pinned: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -222,6 +241,8 @@ pub struct Member {
     pub avatar_frame: String,
     pub profile_style: Option<serde_json::Value>,
     pub last_seen_at: String,
+    /// Role ids by server id.
+    pub role_ids: serde_json::Value,
 }
 
 impl Member {

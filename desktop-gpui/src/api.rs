@@ -233,6 +233,70 @@ impl Client {
         read::<Value>(response, "delete message").map(|_| ())
     }
 
+    /// Pins or unpins a message (togglePin); the answer is the state it ended in.
+    pub fn pin_message(&self, message_id: &str, pinned: bool) -> Result<bool> {
+        let mut request = self.agent.patch(format!("{}/api/messages/{}", self.base, encode(message_id))).header("Origin", self.absolute(""));
+        if let Some(cookie) = self.cookie_header() {
+            request = request.header("Cookie", &cookie);
+        }
+        let response = request.send_json(json!({ "pinned": pinned }))?;
+        let reply: Value = read(response, "pin message")?;
+        Ok(reply.get("pinned").and_then(Value::as_bool).unwrap_or(pinned))
+    }
+
+    /// The ids of the messages this account bookmarked (loadSaved).
+    pub fn saved_ids(&self) -> Result<Vec<String>> {
+        let reply: Value = self.get("/api/saved")?;
+        Ok(reply
+            .get("saved")
+            .and_then(Value::as_array)
+            .map(|list| list.iter().filter_map(|e| e.get("messageId").and_then(Value::as_str).map(str::to_string)).collect())
+            .unwrap_or_default())
+    }
+
+    /// Bookmarks a message, or takes the bookmark off (toggleSaved).
+    pub fn set_saved(&self, message_id: &str, saved: bool) -> Result<()> {
+        if saved {
+            let _: Value = self.post("/api/saved", json!({ "messageId": message_id }))?;
+            return Ok(());
+        }
+        let mut request = self.agent.delete(format!("{}/api/saved?messageId={}", self.base, encode(message_id))).header("Origin", self.absolute(""));
+        if let Some(cookie) = self.cookie_header() {
+            request = request.header("Cookie", &cookie);
+        }
+        read::<Value>(request.call()?, "unsave").map(|_| ())
+    }
+
+    /// "Translate" from the message menu: the text in `to`, and the language it ended up in.
+    pub fn translate(&self, message_id: &str, to: &str) -> Result<(String, String)> {
+        let reply: Value = self.post(&format!("/api/messages/{}/translate", encode(message_id)), json!({ "to": to }))?;
+        let text = reply.get("text").and_then(Value::as_str).unwrap_or_default().to_string();
+        let to = reply.get("to").and_then(Value::as_str).unwrap_or(to).to_string();
+        Ok((text, to))
+    }
+
+    /// `https://host/hangout?server=…&channel=…&message=…` (buildMessageLink; no server for a DM).
+    pub fn message_link(&self, message_id: &str, channel_id: Option<&str>, server_id: Option<&str>) -> String {
+        let mut query = url::form_urlencoded::Serializer::new(String::new());
+        if let Some(s) = server_id {
+            query.append_pair("server", s);
+        }
+        if let Some(c) = channel_id {
+            query.append_pair("channel", c);
+        }
+        query.append_pair("message", message_id);
+        format!("{}?{}", self.base.trim_end_matches('/'), query.finish())
+    }
+
+    /// Report Message: to the server's moderators, or to the Hoffle team from a DM.
+    pub fn report(&self, server_id: Option<&str>, channel_id: Option<&str>, message_id: &str) -> Result<()> {
+        let _: Value = self.post(
+            "/api/reports",
+            json!({ "serverId": server_id, "channelId": channel_id, "messageId": message_id, "reason": "Reported from chat" }),
+        )?;
+        Ok(())
+    }
+
     pub fn mark_read(&self, channel_id: &str) -> Result<()> {
         let _: Value = self.post("/api/channels/reads", json!({ "channelId": channel_id }))?;
         Ok(())

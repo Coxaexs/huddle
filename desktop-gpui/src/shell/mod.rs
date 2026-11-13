@@ -2,6 +2,7 @@
 //! conversation and the composer. State comes from the REST API once and then from the hub socket.
 
 mod chat;
+mod context_menu;
 mod friends;
 mod members;
 mod rail;
@@ -107,6 +108,8 @@ pub struct Shell {
     mute_from_deafen: bool,
     dev_joined: bool,
     dev_edit_done: bool,
+    dev_ctx_done: bool,
+    dev_extras_done: bool,
     /// Who is typing where: (user id, name, when it was last heard).
     typing: HashMap<String, Vec<(String, String, Instant)>>,
     /// Unread counts and mentions per channel, from /api/channels/reads, kept current by the hub.
@@ -137,8 +140,18 @@ pub struct Shell {
     composer: Entity<TextArea>,
     /// The message being edited in place, and its editor.
     editing: Option<(String, Entity<TextArea>, Subscription)>,
-    /// A message waiting for "Delete message?" to be confirmed.
-    confirm_delete: Option<String>,
+    /// A question waiting for an answer (delete, report).
+    confirm: Option<context_menu::Confirm>,
+    /// The right-click menu on a message.
+    ctx_menu: Option<context_menu::CtxMenu>,
+    /// Bookmarked message ids (/api/saved).
+    saved: HashSet<String>,
+    /// The bar above the composer ("Message text copied.").
+    notice: Option<String>,
+    toasts: Vec<(u64, String)>,
+    toast_seq: u64,
+    /// Translations asked for from the message menu.
+    translations: HashMap<String, context_menu::Translation>,
     connected: bool,
     status: Option<SharedString>,
     last_typing_sent: Option<Instant>,
@@ -244,6 +257,8 @@ impl Shell {
             mute_from_deafen: false,
             dev_joined: false,
             dev_edit_done: false,
+            dev_ctx_done: false,
+            dev_extras_done: false,
             typing: HashMap::new(),
             reads: HashMap::new(),
             members: HashMap::new(),
@@ -262,7 +277,13 @@ impl Shell {
             revealed: HashSet::new(),
             composer,
             editing: None,
-            confirm_delete: None,
+            confirm: None,
+            ctx_menu: None,
+            saved: HashSet::new(),
+            notice: None,
+            toasts: Vec::new(),
+            toast_seq: 0,
+            translations: HashMap::new(),
             connected: false,
             status: Some("Loading your servers…".into()),
             last_typing_sent: None,
@@ -272,6 +293,7 @@ impl Shell {
         };
         shell.load_servers(cx);
         shell.load_side_data(cx);
+        shell.load_saved(cx);
         // Voice seat timers tick once a second.
         shell._tasks.push(cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(Duration::from_secs(1)).await;
@@ -567,7 +589,7 @@ impl Shell {
     }
 
     pub(super) fn delete_message(&mut self, message_id: String, cx: &mut Context<Self>) {
-        self.confirm_delete = None;
+        self.confirm = None;
         if let Some(channel) = self.channel_id.clone()
             && let Some(list) = self.messages.get_mut(&channel)
             && let Some(ix) = list.iter().position(|m| m.id == message_id)
@@ -578,6 +600,13 @@ impl Shell {
         let client = self.client.clone();
         cx.background_executor().spawn(async move { client.delete_message(&message_id) }).detach();
         cx.notify();
+    }
+
+    /// Measures one message's row again after it changed how it looks.
+    pub(super) fn refresh_message(&self, message_id: &str) {
+        if let Some(ix) = self.channel_id.as_ref().and_then(|c| self.messages.get(c)).and_then(|l| l.iter().position(|m| m.id == message_id)) {
+            self.list.splice(ix..ix + 1, 1);
+        }
     }
 
     /// Rows are measured once; after a change to how one looks (editing) measure them again.
@@ -875,6 +904,11 @@ impl Shell {
                         self.list.splice(ix..ix + 1, 0);
                     }
                 }
+            }
+            "message-pinned" => {
+                let id = value.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+                let pinned = value.get("pinned").and_then(Value::as_bool).unwrap_or(false);
+                self.set_pinned(&id, pinned);
             }
             "message-edited" => {
                 let id = value.get("id").and_then(Value::as_str).unwrap_or("");

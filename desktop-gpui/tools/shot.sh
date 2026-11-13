@@ -6,6 +6,11 @@
 # frame actually drawn; use HOFFLE_DEBUG=1 and the .log next to the PNG to see the real state.
 here=${0:A:h}
 out=$1; secs=${2:-3}; bin=${3:-$here/../target/debug/hoffle-lite}; name=$(basename $bin)
+# Always the QA account (claude-listener), never the session the app saved on this Mac (the owner's).
+if [ -z "$HOFFLE_SESSION" ]; then
+  export HOFFLE_SESSION="$(ssh -o ClearAllForwardings=yes home 'awk "\$6==\"hoffle_session\"{print \$7}" ~/.cache/claude-listener/cookies.txt')"
+  [ -z "$HOFFLE_SESSION" ] && { echo "no QA session"; exit 1; }
+fi
 pkill -x $name 2>/dev/null; rm -f "$out"
 (GPUI_SNAPSHOT="$out" "$bin" >"${out%.png}.log" 2>&1 &)
 sleep $secs
