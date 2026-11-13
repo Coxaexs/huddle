@@ -86,7 +86,22 @@ pub enum Span {
     Code,
     Link,
     Mention { me: bool },
+    /// `#name` naming one of this server's channels.
+    Channel,
     Spoiler,
+}
+
+thread_local! {
+    /// The open server's channels by name, so `#name` can become a chip that opens the channel.
+    static CHANNELS: std::cell::RefCell<std::collections::HashMap<String, String>> = Default::default();
+}
+
+pub fn set_channels(channels: impl IntoIterator<Item = (String, String)>) {
+    CHANNELS.with(|c| *c.borrow_mut() = channels.into_iter().collect());
+}
+
+fn channel_id(name: &str) -> Option<String> {
+    CHANNELS.with(|c| c.borrow().get(name).cloned())
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -123,11 +138,11 @@ pub fn inline(src: &str, my_username: &str) -> Inline {
             && let Some(end) = rest[1..].find('`')
             && end > 0
         {
-            // Thin spaces inside the tinted run stand in for `.inline-code`'s 5px side padding.
+            // No-break spaces inside the tinted run stand in for `.inline-code`'s side padding.
             let start = out.text.len();
-            out.text.push('\u{2009}');
+            out.text.push('\u{00A0}');
             out.text.push_str(&rest[1..1 + end]);
-            out.text.push('\u{2009}');
+            out.text.push('\u{00A0}');
             out.spans.push((start..out.text.len(), Span::Code));
             i += end + 2;
             continue;
@@ -173,10 +188,32 @@ pub fn inline(src: &str, my_username: &str) -> Inline {
             if name_len > 0 {
                 let name = rest[1..1 + name_len].trim_end_matches('.');
                 let start = out.text.len();
+                out.text.push('\u{00A0}');
                 out.text.push('@');
                 out.text.push_str(name);
+                out.text.push('\u{00A0}');
                 let me = name.eq_ignore_ascii_case(my_username) || matches!(name, "everyone" | "here");
                 out.spans.push((start..out.text.len(), Span::Mention { me }));
+                i += 1 + name.len();
+                continue;
+            }
+        }
+
+        // #channel (message-body.tsx: not after a word character, `#`, `/` or `&`; 1–32 of [a-zA-Z0-9._-]).
+        if rest.starts_with('#') && prev.is_none_or(|c| !(c.is_alphanumeric() || c == '_' || c == '#' || c == '/' || c == '&')) {
+            let len = rest[1..].find(|c: char| !(c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')).unwrap_or(rest.len() - 1).min(32);
+            let name = rest[1..1 + len].trim_end_matches('.');
+            if !name.is_empty()
+                && let Some(id) = channel_id(name)
+            {
+                // No-break spaces inside the chip stand in for `.mention`'s 3px side padding (Instrument Sans has no hair space; its space is 3.2px).
+                let start = out.text.len();
+                out.text.push('\u{00A0}');
+                out.text.push('#');
+                out.text.push_str(name);
+                out.text.push('\u{00A0}');
+                out.spans.push((start..out.text.len(), Span::Channel));
+                out.links.push((start..out.text.len(), format!("channel:{id}")));
                 i += 1 + name.len();
                 continue;
             }
@@ -205,16 +242,16 @@ pub fn inline(src: &str, my_username: &str) -> Inline {
                 }
                 let (_, span, start) = open.remove(pos);
                 if span == Span::Spoiler && start < out.text.len() {
-                    // `.spoiler` has 3px side padding: hair spaces at both ends of the block.
-                    out.text.insert(start, '\u{200A}');
-                    out.text.push('\u{200A}');
+                    // `.spoiler` has 3px side padding: no-break spaces at both ends of the block.
+                    out.text.insert(start, '\u{00A0}');
+                    out.text.push('\u{00A0}');
                     for (range, _) in out.spans.iter_mut().filter(|(r, _)| r.start >= start) {
-                        range.start += '\u{200A}'.len_utf8();
-                        range.end += '\u{200A}'.len_utf8();
+                        range.start += '\u{00A0}'.len_utf8();
+                        range.end += '\u{00A0}'.len_utf8();
                     }
                     for (range, _) in out.links.iter_mut().filter(|(r, _)| r.start >= start) {
-                        range.start += '\u{200A}'.len_utf8();
-                        range.end += '\u{200A}'.len_utf8();
+                        range.start += '\u{00A0}'.len_utf8();
+                        range.end += '\u{00A0}'.len_utf8();
                     }
                 }
                 if start < out.text.len() {
@@ -286,8 +323,8 @@ mod tests {
     #[test]
     fn code_is_literal() {
         let r = inline("run `/radio **off**` now", "me");
-        assert_eq!(r.text, "run \u{2009}/radio **off**\u{2009} now");
-        assert_eq!(r.spans, vec![(4..24, Span::Code)]);
+        assert_eq!(r.text, "run \u{00A0}/radio **off**\u{00A0} now");
+        assert_eq!(r.spans, vec![(4..22, Span::Code)]);
     }
 
     #[test]
@@ -302,15 +339,23 @@ mod tests {
     #[test]
     fn mentions() {
         let r = inline("@kiwi bekle, mail a@b.c", "kiwi");
-        assert_eq!(r.spans[0], (0..5, Span::Mention { me: true }));
+        assert_eq!(r.spans[0], (0..9, Span::Mention { me: true }));
         assert_eq!(r.spans.len(), 1);
+    }
+
+    #[test]
+    fn channel_chips_only_for_real_channels() {
+        set_channels([("genel".to_string(), "c1".to_string())]);
+        let r = inline("see #genel and #nope, not a#genel", "me");
+        assert_eq!(r.links, vec![(4..14, "channel:c1".to_string())]);
+        set_channels([]);
     }
 
     #[test]
     fn spoilers_are_tracked() {
         let r = inline("the end: ||he lives||", "me");
-        assert_eq!(r.text, "the end: \u{200A}he lives\u{200A}");
-        assert_eq!(r.spoilers, vec![9..23]);
+        assert_eq!(r.text, "the end: \u{00A0}he lives\u{00A0}");
+        assert_eq!(r.spoilers, vec![9..21]);
     }
 
     #[test]

@@ -201,6 +201,20 @@ impl Client {
         Ok(self.get::<Reads>("/api/channels/reads")?.channels)
     }
 
+    /// Adds or removes this account's reaction (the server flips it).
+    pub fn toggle_reaction(&self, message_id: &str, emoji: &str) -> Result<()> {
+        let _: Value = self.post(&format!("/api/messages/{}/reactions", encode(message_id)), json!({ "emoji": emoji }))?;
+        Ok(())
+    }
+
+    pub fn emojis(&self, server_id: &str) -> Result<Vec<crate::model::Emoji>> {
+        #[derive(Deserialize)]
+        struct Emojis {
+            emojis: Vec<crate::model::Emoji>,
+        }
+        Ok(self.get::<Emojis>(&format!("/api/emojis?serverId={}", encode(server_id)))?.emojis)
+    }
+
     pub fn mark_read(&self, channel_id: &str) -> Result<()> {
         let _: Value = self.post("/api/channels/reads", json!({ "channelId": channel_id }))?;
         Ok(())

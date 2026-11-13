@@ -252,3 +252,34 @@ mod tests {
         assert!((f32::from(w[0]) - 90.).abs() < 0.01 && (f32::from(w[1]) - 210.).abs() < 0.01);
     }
 }
+
+/// OutlineEmoji (app/components/outline-emoji.tsx): common reaction emoji drawn as coloured Lucide
+/// outlines (Tailwind's 400 shades), anything else as the emoji itself.
+pub fn outline_emoji(emoji: &str, size: f32) -> AnyElement {
+    let clean = emoji.trim().to_lowercase();
+    let clean = clean.trim_matches(':');
+    let (name, color): (&str, u32) = match clean {
+        "👍" | "+1" | "thumbsup" | "like" => ("thumbs-up", 0x34d399),
+        "👎" | "-1" | "thumbsdown" | "dislike" => ("thumbs-down", 0xfb7185),
+        "❤️" | "💖" | "💕" | "heart" | "love" => ("heart", 0xfb7185),
+        "😂" | "🤣" | "joy" | "laugh" | "lol" => ("smile", 0xfbbf24),
+        "🔥" | "fire" | "lit" => ("flame", 0xfb923c),
+        "🎉" | "tada" | "party" | "celebrate" => ("party-popper", 0xc084fc),
+        "😮" | "😲" | "open_mouth" | "wow" => ("sparkles", 0x38bdf8),
+        "⭐" | "🌟" | "star" => ("star", 0xfacc15),
+        "👀" | "eyes" | "look" => ("eye", 0x22d3ee),
+        "🚀" | "rocket" => ("rocket", 0x818cf8),
+        "💡" | "bulb" | "idea" => ("lightbulb", 0xfcd34d),
+        "⚡" | "zap" | "lightning" => ("zap", 0xfacc15),
+        "☕" | "coffee" => ("coffee", 0xf59e0b),
+        "🎮" | "gamepad" | "game" => ("gamepad-2", 0xa78bfa),
+        "💬" | "speech_balloon" | "chat" => ("message-square", 0x60a5fa),
+        "🍕" | "pizza" => ("pizza", 0xfbbf24),
+        "🌮" | "taco" => ("utensils", 0xfbbf24),
+        "😢" | "sob" | "cry" | "sad" => ("frown", 0x60a5fa),
+        "✅" | "check" | "white_check_mark" => ("check", 0x34d399),
+        "❌" | "x" | "cross" => ("x", 0xfb7185),
+        _ => return div().text_size(px(size)).line_height(px(size + 2.)).child(emoji.to_string()).into_any_element(),
+    };
+    icon(name, size, gpui::rgb(color)).into_any_element()
+}

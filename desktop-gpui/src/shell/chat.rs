@@ -177,6 +177,11 @@ impl Shell {
     }
 
     fn render_messages(&self, cx: &mut Context<Self>) -> AnyElement {
+        crate::markdown::set_channels(
+            self.server()
+                .map(|s| s.channels.iter().map(|c| (c.name.clone(), c.id.clone())).collect::<Vec<_>>())
+                .unwrap_or_default(),
+        );
         let loading = self.channel_id.as_ref().is_some_and(|c| self.loading.contains(c) && !self.messages.contains_key(c));
         if loading {
             return div()
@@ -314,7 +319,11 @@ impl Shell {
                     .text_color(Theme::ink())
                     .child({
                         let (font, size) = rich::ui_font(16.);
-                        let wrap = rich::Wrap { window, width: self.text_column_width(window), font, size };
+                        let weak = cx.weak_entity();
+                        let on_channel: Rc<dyn Fn(String, &mut App)> = Rc::new(move |id, cx| {
+                            weak.update(cx, |this, cx| this.open_channel(id, cx)).ok();
+                        });
+                        let wrap = rich::Wrap { on_channel: Some(on_channel), window, width: self.text_column_width(window), font, size };
                         rich::message_body(&message.id, &message.text, &self.me.username, revealed, on_spoiler, Some(&wrap))
                     }),
             );
@@ -327,25 +336,7 @@ impl Shell {
         }
         body = body.children(self.render_attachments(message));
         if !message.reactions.is_empty() {
-            let mut row = div().flex().flex_wrap().gap(px(4.)).mt(px(4.));
-            for reaction in &message.reactions {
-                row = row.child(
-                    div()
-                        .px(px(8.))
-                        .h(px(24.))
-                        .flex()
-                        .items_center()
-                        .gap(px(4.))
-                        .rounded(px(12.))
-                        .text_size(px(12.))
-                        .bg(if reaction.mine { Theme::lavender_soft() } else { Theme::card() })
-                        .border_1()
-                        .border_color(if reaction.mine { Theme::lavender_muted() } else { Theme::line() })
-                        .child(reaction.emoji.clone())
-                        .child(div().text_color(Theme::muted()).child(reaction.count.to_string())),
-                );
-            }
-            body = body.child(row);
+            body = body.child(self.render_reactions(message, cx));
         }
         if let Some(count) = message.thread_count.filter(|c| *c > 0) {
             body = body.child(
@@ -394,17 +385,34 @@ impl Shell {
         // message and 8px below the last.
         let last = ix + 1 == list.len();
         let pad = if continuation { 1. } else { 7. };
-        let row = div()
+        // The list's padding and the article's margin sit outside the card that lights up on hover.
+        let group = SharedString::from(format!("msg-{}", message.id));
+        // Development: HOFFLE_DEV_HOVER=1 draws the last message as hovered (screenshots get no mouse).
+        let forced = last && std::env::var_os("HOFFLE_DEV_HOVER").is_some();
+        let article = div()
+            .id(group.clone())
+            .group(group.clone())
+            .relative()
             .w_full()
-            .pl(px(ROW_LEFT))
-            .pr(px(ROW_RIGHT))
-            .pt(px(pad + if ix == 0 && self.channel_id.as_ref().is_none_or(|c| self.has_more.get(c).copied().unwrap_or(true)) { 36. } else { 0. }))
-            .pb(px(pad + if last { 8. } else { 0. }))
+            .px(px(10.))
+            .py(px(pad))
+            .rounded(px(14.))
             .flex()
             .gap(px(13.))
+            .hover(|s| s.bg(Theme::card()))
+            .when(forced, |d| d.bg(Theme::card()))
             .when(mentions_me, |d| d.bg(gpui::rgba(0xa78bfa14)).border_l_2().border_color(Theme::lavender()))
             .child(gutter)
-            .child(body);
+            .child(body)
+            .child(div().flex_none().w(px(ROW_RIGHT - 47.2 - 8. - 10.)))
+            .child(self.render_actions(message, &group, forced, cx));
+        let row = div()
+            .w_full()
+            .pl(px(ROW_LEFT - 10.))
+            .pr(px(47.2 + 8.))
+            .pt(px(if ix == 0 && self.channel_id.as_ref().is_none_or(|c| self.has_more.get(c).copied().unwrap_or(true)) { 36. } else { 0. }))
+            .pb(px(if last { 8. } else { 0. }))
+            .child(article);
         let gap = |h: f32| div().flex_none().h(px(h));
         let mut column = div().w_full().flex().flex_col();
         let channel_id = self.channel_id.clone().unwrap_or_default();
@@ -431,6 +439,143 @@ impl Shell {
             column = column.child(gap(1.));
         }
         column.child(row).child(gap(1.)).into_any_element()
+    }
+
+    /// `.message-actions`: floats over the top-right of a hovered message — quick reactions, this
+    /// server's own emoji (up to four), add reaction, reply, and edit on your own messages.
+    fn render_actions(&self, message: &Message, group: &SharedString, forced: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let quick: Vec<String> = if self.me.quick_reactions.is_empty() {
+            ["👍", "❤️", "😂"].iter().map(|s| s.to_string()).collect()
+        } else {
+            self.me.quick_reactions.clone()
+        };
+        // `.message-actions button`; quick reactions use the softer `.quick-react-outline-btn` hover.
+        let button = |id: String, quick: bool| {
+            div()
+                .id(SharedString::from(id))
+                .px(px(6.))
+                .py(px(4.))
+                .rounded(px(if quick { 6. } else { 8. }))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .text_color(Theme::muted())
+                .when(quick, |d| d.hover(|s| s.bg(gpui::rgba(0xffffff14))))
+                .when(!quick, |d| d.hover(|s| s.bg(gpui::rgba(0x5865f233)).text_color(gpui::rgb(0xc9cdfb))))
+        };
+        let mut bar = div()
+            .absolute()
+            .top(px(-25.))
+            .right(px(24.))
+            .p(px(2.))
+            .gap(px(2.))
+            .flex()
+            .items_center()
+            .rounded(px(10.))
+            .bg(Theme::panel())
+            .border_1()
+            .border_color(gpui::rgba(0xa78bfa33))
+            .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.35), offset: gpui::point(px(0.), px(4.)), blur_radius: px(16.), spread_radius: px(0.) }])
+            .when(!forced, |d| d.invisible())
+            .group_hover(group.clone(), |s| s.visible());
+        for emoji in quick {
+            let (id, e) = (message.id.clone(), emoji.clone());
+            bar = bar.child(
+                button(format!("qr-{}-{emoji}", message.id), true)
+                    .tooltip(ui::tooltip(format!("React {emoji} · Shift-click to remove")))
+                    .child(ui::outline_emoji(&emoji, 14.))
+                    .on_click(cx.listener(move |this, _, _, cx| this.toggle_reaction(id.clone(), e.clone(), cx))),
+            );
+        }
+        if !self.home
+            && let Some(list) = self.server_id.as_ref().and_then(|s| self.emojis.get(s))
+        {
+            for emoji in list.iter().take(4) {
+                let (id, code) = (message.id.clone(), format!(":{}:", emoji.name));
+                bar = bar.child(
+                    button(format!("ce-{}-{}", message.id, emoji.id), false)
+                        .tooltip(ui::tooltip(format!("React {code} · Shift-click to remove")))
+                        .child(gpui::img(self.client.absolute(&emoji.url)).size(px(18.)).object_fit(ObjectFit::Contain))
+                        .on_click(cx.listener(move |this, _, _, cx| this.toggle_reaction(id.clone(), code.clone(), cx))),
+                );
+            }
+        }
+        bar = bar.child(button(format!("add-{}", message.id), false).tooltip(ui::tooltip(t("message.addReaction"))).child(icon("smile-plus", 16., Theme::muted())));
+        let (id, author) = (message.id.clone(), message.author.clone());
+        bar = bar.child(
+            button(format!("reply-{}", message.id), false)
+                .tooltip(ui::tooltip(t("message.reply")))
+                .child(icon("reply", 16., Theme::muted()))
+                .on_click(cx.listener(move |this, _, window, cx| this.start_reply(id.clone(), author.clone(), window, cx))),
+        );
+        if message.user_id.as_deref() == Some(self.me.id.as_str()) && !message.bot {
+            bar = bar.child(button(format!("edit-{}", message.id), false).tooltip(ui::tooltip(t("message.edit"))).child(icon("pencil", 16., Theme::muted())));
+        }
+        bar
+    }
+
+    /// MessageReactions: one pill per emoji (yours lit), then the add button.
+    fn render_reactions(&self, message: &Message, cx: &mut Context<Self>) -> impl IntoElement {
+        let custom = |name: &str| {
+            let name = name.trim_matches(':');
+            self.server_id.as_ref().and_then(|s| self.emojis.get(s)).and_then(|l| l.iter().find(|e| e.name == name)).map(|e| self.client.absolute(&e.url))
+        };
+        let mut row = div().flex().flex_wrap().gap(px(5.)).mt(px(6.));
+        for reaction in &message.reactions {
+            let (id, e) = (message.id.clone(), reaction.emoji.clone());
+            let lavender: gpui::Hsla = Theme::lavender().into();
+            row = row.child(
+                div()
+                    .id(SharedString::from(format!("rx-{}-{}", message.id, reaction.emoji)))
+                    .px(px(8.))
+                    .py(px(2.))
+                    .rounded(px(6.))
+                    .border_1()
+                    .flex()
+                    .items_center()
+                    .gap(px(5.))
+                    .text_size(px(13.))
+                    .line_height(px(18.2))
+                    .cursor_pointer()
+                    .when(reaction.mine, |d| {
+                        d.border_color(lavender.opacity(0.7)).bg(lavender.opacity(0.18)).shadow(vec![gpui::BoxShadow {
+                            color: lavender.opacity(0.25),
+                            offset: gpui::point(px(0.), px(0.)),
+                            blur_radius: px(8.),
+                            spread_radius: px(0.),
+                        }])
+                    })
+                    .when(!reaction.mine, |d| d.border_color(Theme::line()).bg(Theme::panel()).hover(|s| s.bg(gpui::rgb(0x251f3b)).border_color(gpui::rgb(0x3b3259))))
+                    .child(match custom(&reaction.emoji) {
+                        Some(url) => gpui::img(url).size(px(16.)).object_fit(ObjectFit::Contain).into_any_element(),
+                        None => ui::outline_emoji(&reaction.emoji, 14.),
+                    })
+                    .child(
+                        div()
+                            .text_size(px(12.))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(if reaction.mine { gpui::white().into() } else { gpui::Hsla::from(Theme::muted()) })
+                            .child(reaction.count.to_string()),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| this.toggle_reaction(id.clone(), e.clone(), cx))),
+            );
+        }
+        row.child(
+            div()
+                .id(SharedString::from(format!("rx-add-{}", message.id)))
+                .px(px(8.))
+                .py(px(2.))
+                .rounded(px(6.))
+                .border_1()
+                .border_color(Theme::line())
+                .bg(Theme::panel())
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .tooltip(ui::tooltip("Add reaction · Shift-click to add to quick reactions"))
+                .child(icon("smile-plus", 14., Theme::muted())),
+        )
     }
 
     /// `.channel-intro`: Hoffy waving, then the pill that says where the conversation begins.
@@ -622,11 +767,41 @@ impl Shell {
                 .tooltip(ui::tooltip(title))
                 .child(icon(name, 18., Theme::quiet()))
         };
+        let reply_bar = self.reply_to.as_ref().map(|(_, author)| {
+            div()
+                .mb(px(6.))
+                .px(px(12.))
+                .py(px(6.))
+                .rounded(px(10.))
+                .bg(Theme::lavender_soft())
+                .flex()
+                .items_center()
+                .justify_between()
+                .text_size(px(13.))
+                .line_height(px(24.))
+                .text_color(Theme::ink())
+                .child(format!("Replying to {author}"))
+                .child(
+                    div()
+                        .id("cancel-reply")
+                        .px(px(4.))
+                        .cursor_pointer()
+                        .text_color(Theme::muted())
+                        .hover(|s| s.text_color(Theme::ink()))
+                        .tooltip(ui::tooltip(t("composer.cancelReply")))
+                        .child("×")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.reply_to = None;
+                            cx.notify();
+                        })),
+                )
+        });
         div()
             .flex_none()
             .pt(px(8.))
             .px(px(35.4))
             .pb(px(25.))
+            .children(reply_bar)
             .child(
                 div()
                     .h(px(52.))

@@ -115,6 +115,10 @@ pub struct Shell {
     /// Categories folded shut in the sidebar.
     collapsed: HashSet<String>,
     members_open: bool,
+    /// Each server's custom emoji.
+    emojis: HashMap<String, Vec<model::Emoji>>,
+    /// The message the composer is answering: (id, author shown).
+    reply_to: Option<(String, String)>,
     /// DMs home (the "h" button): the friends view or a DM conversation, instead of a server.
     home: bool,
     friends: model::FriendsData,
@@ -235,6 +239,8 @@ impl Shell {
             dms: Vec::new(),
             collapsed: HashSet::new(),
             members_open: true,
+            emojis: HashMap::new(),
+            reply_to: None,
             home: false,
             friends: Default::default(),
             friends_tab: friends::Tab::Online,
@@ -445,8 +451,62 @@ impl Shell {
         cx.notify();
     }
 
+    fn load_emojis(&mut self, server_id: String, cx: &mut Context<Self>) {
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let id = server_id.clone();
+            let result = cx.background_executor().spawn(async move { client.emojis(&id) }).await;
+            this.update(cx, |this, cx| {
+                if let Ok(list) = result {
+                    this.emojis.insert(server_id, list);
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// toggleReaction in use-shell-messaging.ts: flip it here at once, then tell the server; the hub's
+    /// echo of the change is ignored when it matches.
+    pub(super) fn toggle_reaction(&mut self, message_id: String, emoji: String, cx: &mut Context<Self>) {
+        let Some(channel) = self.channel_id.clone() else { return };
+        if let Some(list) = self.messages.get_mut(&channel)
+            && let Some(ix) = list.iter().position(|m| m.id == message_id)
+        {
+            let reactions = &mut list[ix].reactions;
+            match reactions.iter().position(|r| r.emoji == emoji) {
+                Some(r) if reactions[r].mine => {
+                    reactions[r].mine = false;
+                    reactions[r].count = reactions[r].count.saturating_sub(1);
+                    if reactions[r].count == 0 {
+                        reactions.remove(r);
+                    }
+                }
+                Some(r) => {
+                    reactions[r].mine = true;
+                    reactions[r].count += 1;
+                }
+                None => reactions.push(model::Reaction { emoji: emoji.clone(), count: 1, mine: true }),
+            }
+            self.list.splice(ix..ix + 1, 1);
+        }
+        let client = self.client.clone();
+        cx.background_executor().spawn(async move { client.toggle_reaction(&message_id, &emoji) }).detach();
+        cx.notify();
+    }
+
+    pub(super) fn start_reply(&mut self, message_id: String, author: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.reply_to = Some((message_id, author));
+        window.focus(&self.composer.focus_handle(cx));
+        cx.notify();
+    }
+
     fn open_server(&mut self, id: String, cx: &mut Context<Self>) {
         self.home = false;
+        if !self.emojis.contains_key(&id) {
+            self.load_emojis(id.clone(), cx);
+        }
         if !self.members.contains_key(&id) {
             self.load_members(id.clone(), cx);
         }
@@ -520,6 +580,11 @@ impl Shell {
                             *list = page.messages;
                             if this.channel_id.as_deref() == Some(&channel) {
                                 this.list.reset(list.len());
+                                if std::env::var_os("HOFFLE_DEV_HOVER").is_some()
+                                    && let Some(last) = list.last()
+                                {
+                                    this.reply_to = Some((last.id.clone(), last.author.clone()));
+                                }
                             }
                         }
                     }
@@ -552,11 +617,12 @@ impl Shell {
         self.composer.update(cx, |input, cx| input.clear(cx));
         self.last_typing_sent = None;
         let client = self.client.clone();
+        let reply = self.reply_to.take().map(|(id, _)| id);
         cx.spawn(async move |this, cx| {
             let body = text.clone();
             let result = cx
                 .background_executor()
-                .spawn(async move { client.send(&channel, &body, None) })
+                .spawn(async move { client.send(&channel, &body, reply.as_deref()) })
                 .await;
             this.update(cx, |this, cx| {
                 match result {
@@ -739,6 +805,10 @@ impl Shell {
                 let emoji = value.get("emoji").and_then(Value::as_str).unwrap_or("").to_string();
                 let added = value.get("added").and_then(Value::as_bool).unwrap_or(false);
                 let mine = value.get("userId").and_then(Value::as_str) == Some(self.me.id.as_str());
+                // Our own change was applied when we made it.
+                if mine {
+                    return;
+                }
                 if let Some(channel) = channel
                     && let Some(list) = self.messages.get_mut(&channel)
                     && let Some(ix) = list.iter().position(|m| m.id == id)

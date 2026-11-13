@@ -15,6 +15,8 @@ use crate::theme::Theme;
 /// How paragraphs wrap: the column width and the font they are set in, so lines can be broken the
 /// way Chrome's `text-wrap: pretty` does (no single word left alone on the last line).
 pub struct Wrap<'a> {
+    /// Opens a channel named in the text (`#name` chips).
+    pub on_channel: Option<Rc<dyn Fn(String, &mut App)>>,
     pub window: &'a Window,
     pub width: Pixels,
     pub font: Font,
@@ -90,6 +92,7 @@ fn line_wrapped(
     wrap: Option<&Wrap>,
 ) -> impl IntoElement {
     let mut parsed = markdown::inline(src, my_username);
+    let on_channel = wrap.and_then(|w| w.on_channel.clone());
     if let Some(wrap) = wrap {
         pretty(&mut parsed.text, wrap);
     }
@@ -110,7 +113,11 @@ fn line_wrapped(
         .child(
             InteractiveText::new(SharedString::from(id.to_string()), styled).on_click(ranges, move |ix, _, cx| {
                 if let Some(url) = urls.get(ix) {
-                    cx.open_url(url);
+                    match (url.strip_prefix("channel:"), &on_channel) {
+                        (Some(id), Some(open)) => open(id.to_string(), cx),
+                        (Some(_), None) => {}
+                        _ => cx.open_url(url),
+                    }
                 } else {
                     on_spoiler(cx);
                 }
@@ -198,6 +205,12 @@ impl Look {
                 self.background = Some(ink.opacity(0.12));
             }
             Span::Link => {}
+            Span::Channel => {
+                // `.mention.mention-channel`: measured at weight 400 (the channel rule overrides 600).
+                let lavender: Hsla = Theme::lavender().into();
+                self.background = Some(lavender.opacity(0.22));
+                self.color = Some(lavender);
+            }
             Span::Mention { me } => {
                 let lavender: Hsla = Theme::lavender().into();
                 self.background = Some(lavender.opacity(if me { 0.40 } else { 0.22 }));

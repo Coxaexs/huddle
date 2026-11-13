@@ -12,6 +12,8 @@ pub struct User {
     pub avatar: String,
     pub avatar_url: Option<String>,
     pub color: String,
+    /// The reactions in this account's message toolbar.
+    pub quick_reactions: Vec<String>,
 }
 
 impl User {
@@ -288,4 +290,13 @@ pub struct FriendsData {
     pub incoming: Vec<Friend>,
     pub outgoing: Vec<Friend>,
     pub blocked: Vec<Friend>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Emoji {
+    pub id: String,
+    pub server_id: String,
+    pub name: String,
+    pub url: String,
 }
