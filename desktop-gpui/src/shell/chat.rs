@@ -414,30 +414,32 @@ impl Shell {
                     .child(editor),
             );
             body = body.child(div().mt(px(3.)).text_size(px(11.)).line_height(px(16.5)).text_color(Theme::muted()).child("Enter to save · Esc to cancel"));
-        } else if !message.text.is_empty() {
+        } else if !message.text.is_empty() && message.kind.as_deref() != Some("lyricsnow") || (message.kind.as_deref() == Some("lyricsnow") && !super::cards::replaces_text(message)) {
             let revealed = self.revealed.contains(&message.id);
             let weak = cx.weak_entity();
             let id = message.id.clone();
             let on_spoiler: Rc<dyn Fn(&mut App)> = Rc::new(move |cx| {
                 weak.update(cx, |this, cx| this.reveal(id.clone(), cx)).ok();
             });
+            // An /ask answer sits inside its card, 30px narrower (the card's padding and edges).
+            let in_ai = message.kind.as_deref() == Some("ai");
+            let text_width = self.text_column_width(window) - if in_ai { px(32.) } else { px(0.) };
             // Message paragraphs have a 1px top margin.
-            body = body.child(
-                div()
-                    .pt(px(1.))
-                    .text_size(px(16.))
-                    .line_height(px(24.8))
-                    .text_color(Theme::ink())
-                    .child({
-                        let (font, size) = rich::ui_font(16.);
-                        let weak = cx.weak_entity();
-                        let on_channel: Rc<dyn Fn(String, &mut App)> = Rc::new(move |id, cx| {
-                            weak.update(cx, |this, cx| this.open_channel(id, cx)).ok();
-                        });
-                        let wrap = rich::Wrap { on_channel: Some(on_channel), window, width: self.text_column_width(window), font, size };
-                        rich::message_body(&message.id, &message.text, &self.me.username, revealed, on_spoiler, Some(&wrap))
-                    }),
-            );
+            let text = div()
+                .pt(px(1.))
+                .text_size(px(16.))
+                .line_height(px(24.8))
+                .text_color(Theme::ink())
+                .child({
+                    let (font, size) = rich::ui_font(16.);
+                    let weak = cx.weak_entity();
+                    let on_channel: Rc<dyn Fn(String, &mut App)> = Rc::new(move |id, cx| {
+                        weak.update(cx, |this, cx| this.open_channel(id, cx)).ok();
+                    });
+                    let wrap = rich::Wrap { on_channel: Some(on_channel), window, width: text_width, font, size };
+                    rich::message_body(&message.id, &message.text, &self.me.username, revealed, on_spoiler, Some(&wrap))
+                });
+            body = body.child(if in_ai { self.render_ai_card(message, text.into_any_element()) } else { text.into_any_element() });
             if message.edited_at.is_some() && continuation {
                 body = body.child(div().text_size(px(11.)).text_color(Theme::muted()).child(t("message.edited")));
             }
@@ -446,6 +448,11 @@ impl Shell {
             body = body.child(div().text_size(px(16.)).line_height(px(24.8)).text_color(Theme::ink()).child(translation));
         }
         if let Some(card) = self.render_card(message, window) {
+            body = body.child(card);
+        }
+        if message.kind.as_deref() == Some("lyricsnow")
+            && let Some(card) = self.render_lyrics_card(message, self.text_column_width(window), window)
+        {
             body = body.child(card);
         }
         let column = f32::from(self.text_column_width(window));

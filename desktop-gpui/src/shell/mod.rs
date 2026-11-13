@@ -1,6 +1,7 @@
 //! The signed-in window: server rail, channel sidebar (with who is in each voice room), the open
 //! conversation and the composer. State comes from the REST API once and then from the hub socket.
 
+mod cards;
 mod chat;
 mod context_menu;
 mod emoji_picker;
