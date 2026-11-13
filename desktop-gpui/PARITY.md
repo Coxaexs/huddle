@@ -33,7 +33,7 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | Author line: role colour (top role), role icon, DISCORD / NEWS / BOT tags, reply line (bold author, 340px snippet) | message-row.tsx, role-icon.tsx | ✅ (owner crown, pride badges, TTS tag ⬜) |
 | Composer: multi-line textarea (Shift-Enter, grows to 40vh), reply bar, + (pick files: staged thumbnails / file tiles with ×, pictures shrunk like shrinkImage, uploaded then sent in one message), emoji picker, send/mic | composer.tsx, use-shell-messaging.ts, shrink-image.ts | 🟡 (GIF picker, ALT text, send original, files over 40 MB, drag and drop, paste, slash commands, voice messages ⬜) |
 | Pictures in messages (column width up to 480, height by shape up to 380, filled, 10px corners) and file cards (type badge, description, Download/Open) | message-row.tsx, message-file-card.tsx, upload-sniff.ts | ✅ (galleries of several pictures, inline video/audio players, spoiler files, lightbox ⬜) |
-| Unread bar ("N new messages since … · Mark as read") | message-list.tsx | ⬜ |
+| Unread bar: a channel with unread messages opens on the first one (centred, NEW line), "N new messages since … · Mark as read" stuck on top until the newest shows | message-list.tsx, use-shell-history.ts | ✅ |
 | Members panel: search, online/offline groups, statuses | panels.tsx | ✅ (name plates, role groups, search ⬜) |
 | Name fonts (29, fetched like loadNameFont) and name effects (25, CSS painted as SVG, first frame) | lib/profile-style.ts, app/profile-style.css, cosmetics-mz.css | ✅ (hover/live animation ⬜) |
 | Avatar decorations (36, the web's own SVG via `tools/export-cosmetics.mjs`) | cosmetics.tsx | ✅ (ring-style decorations, flap/glow animation ⬜) |

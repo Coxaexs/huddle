@@ -10,6 +10,7 @@ mod members;
 mod profile_card;
 mod side_panels;
 mod stage;
+mod unread;
 
 pub use side_panels::{MentionEntry, SavedEntry, SearchResult};
 mod rail;
@@ -69,6 +70,8 @@ pub(crate) struct Lists {
     bottom: ListState,
     top: ListState,
     fits: std::cell::Cell<bool>,
+    /// A scroll to make on the next frame, once the rows above the target are measured.
+    nudge: std::cell::Cell<Option<(u8, gpui::Pixels)>>,
 }
 
 impl Lists {
@@ -77,6 +80,7 @@ impl Lists {
             bottom: ListState::new(0, ListAlignment::Bottom, px(800.)),
             top: ListState::new(0, ListAlignment::Top, px(800.)),
             fits: std::cell::Cell::new(false),
+            nudge: std::cell::Cell::new(None),
         }
     }
 
@@ -91,12 +95,14 @@ impl Lists {
         self.top.splice(range, count);
     }
 
-    /// Brings message `ix` into view, in the middle when it can be (scrollIntoView, block: center).
+    /// Brings message `ix` into view, in the middle when it can be (scrollIntoView, block: center):
+    /// to the top now, and half a view back once the rows above it have been drawn and measured.
     pub(crate) fn reveal_middle(&self, ix: usize) {
         for list in [&self.bottom, &self.top] {
-            let height = list.viewport_bounds().size.height;
-            list.scroll_to(gpui::ListOffset { item_ix: ix, offset_in_item: -(height / 2.) + px(40.) });
+            list.scroll_to(gpui::ListOffset { item_ix: ix, offset_in_item: px(0.) });
         }
+        let height = self.bottom.viewport_bounds().size.height.max(self.top.viewport_bounds().size.height);
+        self.nudge.set(Some((2, -(height / 2.) + px(40.))));
     }
 
     /// Puts message `ix` at the top of the list.
@@ -109,6 +115,16 @@ impl Lists {
     /// The list to draw now, judged from the last frame: show the top-anchored one while everything
     /// fits, the bottom-anchored one as soon as it does not.
     pub(crate) fn current(&self) -> ListState {
+        // Two frames after a reveal_middle: the rows above are measured, so scroll back by half a view.
+        if let Some((frames, by)) = self.nudge.get() {
+            if frames > 0 {
+                self.nudge.set(Some((frames - 1, by)));
+            } else {
+                self.nudge.set(None);
+                self.bottom.scroll_by(by);
+                self.top.scroll_by(by);
+            }
+        }
         let shown = if self.fits.get() { &self.top } else { &self.bottom };
         let fits = shown.max_offset_for_scrollbar().height <= px(0.5) && shown.item_count() > 0;
         self.fits.set(fits);
@@ -192,6 +208,9 @@ pub struct Shell {
     /// The emoji picker, open for a reaction or for the composer.
     picker: Option<OpenPicker>,
     picker_seq: u64,
+    /// "N new messages since …" over the list, and a channel waiting to land on its first unread.
+    unread_bar: Option<unread::UnreadBar>,
+    unread_pending: Option<(String, usize)>,
     /// Files waiting in the composer.
     pending_files: Vec<files::Pending>,
     /// Pictures whose real size has been seen (their rows measured again once).
@@ -278,6 +297,8 @@ impl Shell {
                 if event.visible_range.start < 3 {
                     weak.update(cx, |this, cx| this.load_older(cx)).ok();
                 }
+                let (end, count) = (event.visible_range.end, event.count);
+                weak.update(cx, |this, cx| this.saw_bottom(end, count, cx)).ok();
             });
         }
 
@@ -347,6 +368,8 @@ impl Shell {
             panels: Default::default(),
             stage: None,
             pending_files: Vec::new(),
+            unread_bar: None,
+            unread_pending: None,
             sized: Default::default(),
             ctx_at: gpui::Point::default(),
             connected: false,
@@ -734,6 +757,8 @@ impl Shell {
         } else {
             self.new_from.remove(&id);
         }
+        self.unread_bar = None;
+        self.unread_pending = (unread > 0).then(|| (id.clone(), unread));
         self.mark_read(&id, cx);
         if self.panels.open == Some(side_panels::Panel::Pins) {
             self.panels.open = None;
@@ -745,6 +770,8 @@ impl Shell {
         self.list.reset(count);
         if !self.messages.contains_key(&id) {
             self.fetch_messages(id, None, cx);
+        } else {
+            self.land_on_unread(&id, cx);
         }
         let name = self.channel().map(|c| c.name.clone()).unwrap_or_default();
         self.composer.update(cx, |input, cx| input.set_placeholder(crate::i18n::tv("composer.channelPlaceholder", &[("channel", &name)]), cx));
@@ -791,6 +818,9 @@ impl Shell {
                         }
                     }
                     Err(err) => this.status = Some(format!("Could not load messages: {err}").into()),
+                }
+                if before.is_none() {
+                    this.land_on_unread(&channel, cx);
                 }
                 this.continue_jump(cx);
                 cx.notify();

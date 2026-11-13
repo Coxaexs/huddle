@@ -223,8 +223,14 @@ impl Shell {
                 .child("Loading messages…")
                 .into_any_element();
         }
-        list(self.list.current(), cx.processor(|this, ix: usize, window, cx| this.render_message(ix, window, cx)))
+        div()
+            .relative()
             .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .child(list(self.list.current(), cx.processor(|this, ix: usize, window, cx| this.render_message(ix, window, cx))).flex_1())
+            .children(self.render_unread_bar(cx))
             .into_any_element()
     }
 

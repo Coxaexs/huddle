@@ -271,8 +271,12 @@ impl gpui::Render for Shell {
                     self.open_profile(&id, bounds, window, cx);
                 }
             }
-            // HOFFLE_DEV_CHANNEL=<channel id>: open that text channel (in the current server).
+            // HOFFLE_DEV_CHANNEL=<channel id>: open that text channel (in the current server), and
+            // HOFFLE_DEV_UNREAD=<n> pretends it had n unread messages.
             if let Ok(channel) = std::env::var("HOFFLE_DEV_CHANNEL") {
+                if let Some(n) = std::env::var("HOFFLE_DEV_UNREAD").ok().and_then(|v| v.parse::<u32>().ok()) {
+                    self.reads.insert(channel.clone(), crate::model::ReadState { unread: true, count: n, mentions: 0 });
+                }
                 self.open_channel(channel, cx);
             }
             // HOFFLE_DEV_STAGE=<channel id>: that voice room's stage, joined (empty rooms only).
