@@ -55,3 +55,54 @@
              lock.stop_display_link();
          }
      }
+--- a/src/platform/mac/display_link.rs
++++ b/src/platform/mac/display_link.rs
+@@ -14,6 +14,8 @@
+ pub struct DisplayLink {
+     display_link: Option<sys::DisplayLink>,
+     frame_requests: dispatch_source_t,
++    // dev patch: a timer that asks for frames while the screen is locked or asleep.
++    ticker: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+ }
+ 
+ impl DisplayLink {
+@@ -61,6 +63,7 @@
+             Ok(Self {
+                 display_link: Some(display_link),
+                 frame_requests,
++                ticker: None,
+             })
+         }
+     }
+@@ -72,6 +75,20 @@
+             });
+             self.display_link.as_mut().unwrap().start()?;
+         }
++        if std::env::var_os("GPUI_SNAPSHOT").is_some() && self.ticker.is_none() {
++            let alive = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
++            let flag = alive.clone();
++            let source = self.frame_requests as usize;
++            std::thread::spawn(move || {
++                while flag.load(std::sync::atomic::Ordering::SeqCst) {
++                    std::thread::sleep(std::time::Duration::from_millis(100));
++                    if flag.load(std::sync::atomic::Ordering::SeqCst) {
++                        unsafe { dispatch_source_merge_data(source as dispatch_source_t, 1) };
++                    }
++                }
++            });
++            self.ticker = Some(alive);
++        }
+         Ok(())
+     }
+ 
+@@ -88,6 +105,10 @@
+ 
+ impl Drop for DisplayLink {
+     fn drop(&mut self) {
++        if let Some(alive) = self.ticker.take() {
++            alive.store(false, std::sync::atomic::Ordering::SeqCst);
++            std::thread::sleep(std::time::Duration::from_millis(120));
++        }
+         self.stop().log_err();
+         // We see occasional segfaults on the CVDisplayLink thread.
+         //

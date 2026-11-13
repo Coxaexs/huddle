@@ -28,6 +28,8 @@ pub struct Server {
     pub icon: String,
     pub color: String,
     pub icon_url: Option<String>,
+    pub banner_url: Option<String>,
+    pub is_public: bool,
     pub channels: Vec<Channel>,
     pub categories: Vec<Category>,
 }
@@ -56,13 +58,14 @@ impl Channel {
     pub fn is_text(&self) -> bool {
         matches!(self.kind.as_str(), "text" | "announcement" | "" )
     }
-    pub fn glyph(&self) -> &'static str {
+    /// The Lucide icon the web uses for this kind (app/components/chat/channel-kind.tsx).
+    pub fn icon(&self) -> &'static str {
         match self.kind.as_str() {
-            "voice" => "🔊",
-            "stage" => "🎙",
-            "announcement" => "📣",
-            "forum" => "💬",
-            _ => "#",
+            "announcement" => "radio",
+            "forum" => "message-square",
+            "voice" => "volume-2",
+            "stage" => "users",
+            _ => "hash",
         }
     }
 }
@@ -98,6 +101,8 @@ pub struct Message {
     pub thread_id: Option<String>,
     pub thread_count: Option<u32>,
     pub command_text: Option<String>,
+    pub command_by: Option<String>,
+    pub payload: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -135,6 +140,8 @@ pub struct VoiceParticipant {
     pub muted: bool,
     pub deafened: bool,
     pub bot: bool,
+    /// Hub-clock ms the seat was taken.
+    pub joined_at: f64,
     pub screen_stream_id: Option<String>,
     pub camera_stream_id: Option<String>,
 }
@@ -152,32 +159,81 @@ pub struct MessagePage {
     pub has_more: bool,
 }
 
-/// Messages from one author within a few minutes read as one block, as on the web.
-pub fn continues(prev: &Message, next: &Message) -> bool {
-    if prev.author != next.author || prev.user_id != next.user_id || next.reply_preview.is_some() {
-        return false;
-    }
-    match (parse_time(&prev.created_at), parse_time(&next.created_at)) {
-        (Some(a), Some(b)) => (b - a).num_seconds().abs() < 7 * 60,
-        _ => false,
-    }
+
+/// A message's time the way the browser shows it (formatClientTime): "1:45 PM" in en-US,
+/// "13:45" in most other locales.
+pub fn client_time(value: &str) -> String {
+    let Some(t) = parse_time(value) else { return String::new() };
+    let local = t.with_timezone(&chrono::Local);
+    if twelve_hour() { local.format("%-I:%M %p").to_string() } else { local.format("%H:%M").to_string() }
+}
+
+fn twelve_hour() -> bool {
+    use std::sync::OnceLock;
+    static TWELVE: OnceLock<bool> = OnceLock::new();
+    *TWELVE.get_or_init(|| {
+        let locale = sys_locale::get_locale().unwrap_or_default().replace('_', "-");
+        ["en-US", "en-CA", "en-AU", "en-NZ", "en-IN", "en-PH"].iter().any(|l| locale.starts_with(l)) || locale == "en"
+    })
 }
 
 pub fn parse_time(value: &str) -> Option<chrono::DateTime<chrono::Utc>> {
     chrono::DateTime::parse_from_rfc3339(value).ok().map(|t| t.with_timezone(&chrono::Utc))
 }
 
-/// "14:05" today, "Yesterday 14:05", otherwise "12 Nov 14:05", in local time.
-pub fn short_time(value: &str) -> String {
-    let Some(t) = parse_time(value) else { return String::new() };
-    let local = t.with_timezone(&chrono::Local);
-    let today = chrono::Local::now().date_naive();
-    let day = local.date_naive();
-    if day == today {
-        local.format("%H:%M").to_string()
-    } else if Some(day) == today.pred_opt() {
-        local.format("Yesterday %H:%M").to_string()
-    } else {
-        local.format("%-d %b %H:%M").to_string()
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Member {
+    pub id: String,
+    pub username: String,
+    pub display_name: String,
+    pub nickname: Option<String>,
+    pub avatar: String,
+    pub avatar_url: Option<String>,
+    pub server_avatar_url: Option<String>,
+    pub banner_url: Option<String>,
+    pub color: String,
+    pub status: String,
+    pub custom_status: Option<serde_json::Value>,
+    pub tagline: String,
+    pub nameplate: String,
+    pub avatar_frame: String,
+    pub last_seen_at: String,
+}
+
+impl Member {
+    pub fn name(&self) -> &str {
+        self.nickname.as_deref().filter(|n| !n.is_empty()).unwrap_or(if self.display_name.is_empty() { &self.username } else { &self.display_name })
     }
+    pub fn picture(&self) -> Option<&str> {
+        self.server_avatar_url.as_deref().or(self.avatar_url.as_deref()).filter(|u| !u.is_empty())
+    }
+    /// The second line under an online member: their custom status text.
+    pub fn status_text(&self) -> Option<String> {
+        match &self.custom_status {
+            Some(serde_json::Value::String(s)) if !s.is_empty() => Some(s.clone()),
+            Some(serde_json::Value::Object(o)) => o.get("text").and_then(|t| t.as_str()).filter(|t| !t.is_empty()).map(str::to_string),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DmConversation {
+    pub channel_id: String,
+    pub user: User,
+    pub last_message: String,
+    pub last_at: String,
+    pub hidden: bool,
+    pub pinned: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct ReadState {
+    pub unread: bool,
+    pub count: u32,
+    pub mentions: u32,
 }

@@ -57,6 +57,8 @@ pub struct TextInput {
     content: SharedString,
     placeholder: SharedString,
     masked: bool,
+    /// Drawn inside another box (the composer): no background, border or padding of its own.
+    bare: bool,
     selected_range: Range<usize>,
     selection_reversed: bool,
     marked_range: Option<Range<usize>>,
@@ -76,6 +78,7 @@ impl TextInput {
             content: "".into(),
             placeholder: placeholder.into(),
             masked: false,
+            bare: false,
             selected_range: 0..0,
             selection_reversed: false,
             marked_range: None,
@@ -84,6 +87,15 @@ impl TextInput {
             scroll_x: px(0.),
             is_selecting: false,
         }
+    }
+
+    pub fn bare(mut self) -> Self {
+        self.bare = true;
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.content.is_empty()
     }
 
     pub fn masked(mut self) -> Self {
@@ -673,15 +685,18 @@ impl Render for TextInput {
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .w_full()
-            .h(px(40.))
-            .px_3()
-            .rounded(px(10.))
-            .bg(Theme::field())
-            .border_1()
-            .border_color(if focused { Theme::lavender_muted() } else { Theme::line() })
+            .when(!self.bare, |d| {
+                d.h(px(40.))
+                    .px_3()
+                    .rounded(px(10.))
+                    .bg(Theme::field())
+                    .border_1()
+                    .border_color(if focused { Theme::lavender_muted() } else { Theme::line() })
+            })
+            .when(self.bare, |d| d.h(px(38.)).px(px(10.)))
             .text_color(Theme::ink())
             .text_size(px(14.))
-            .line_height(px(20.))
+            .line_height(px(20.3))
             .child(TextElement { input: cx.entity() })
     }
 }

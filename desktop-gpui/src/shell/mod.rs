@@ -1,22 +1,24 @@
 //! The signed-in window: server rail, channel sidebar (with who is in each voice room), the open
 //! conversation and the composer. State comes from the REST API once and then from the hub socket.
 
+mod chat;
+mod members;
+mod rail;
+mod sidebar;
+
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    AnyElement, App, Context, Entity, EventEmitter, FocusHandle, Focusable, FontWeight, IntoElement,
-    ListAlignment, ListState, ObjectFit, Render, img, SharedString, Subscription, Task, Window, div,
-    list, prelude::*, px,
+    App, Context, Entity, EventEmitter, FocusHandle, Focusable, ListAlignment, ListState, SharedString,
+    Subscription, Task, Window, prelude::*, px,
 };
 use serde_json::{Value, json};
 
 use crate::api::Client;
 use crate::input::{InputEvent, TextInput};
-use crate::model::{self, Channel, Message, MessagePage, Server, User, VoiceParticipant};
+use crate::model::{self, Channel, DmConversation, Member, Message, MessagePage, ReadState, Server, User, VoiceParticipant};
 use crate::realtime::{self, Hub, HubEvent};
-use crate::rich;
 use crate::voice::{Voice, VoiceCmd, VoiceEvent};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -32,7 +34,6 @@ struct Call {
     /// LiveKit identities talking right now.
     speaking: HashSet<String>,
 }
-use crate::theme::{Theme, css_color};
 
 pub enum ShellEvent {
     SignedOut,
@@ -64,7 +65,20 @@ pub struct Shell {
     dev_joined: bool,
     /// Who is typing where: (user id, name, when it was last heard).
     typing: HashMap<String, Vec<(String, String, Instant)>>,
-    unread: HashSet<String>,
+    /// Unread counts and mentions per channel, from /api/channels/reads, kept current by the hub.
+    reads: HashMap<String, ReadState>,
+    /// Members of each server (members panel, presence, statuses).
+    members: HashMap<String, Vec<Member>>,
+    dms: Vec<DmConversation>,
+    /// Categories folded shut in the sidebar.
+    collapsed: HashSet<String>,
+    members_open: bool,
+    /// Room players from the hub (`ready.players`, `player` events), by voice channel id.
+    players: HashMap<String, Value>,
+    /// The small menu over the user card.
+    footer_menu: bool,
+    /// Hub clock minus ours, in ms: voice seat timers count in the hub's time.
+    clock_offset: f64,
     /// Messages whose spoilers were clicked open.
     revealed: HashSet<String>,
     composer: Entity<TextInput>,
@@ -91,7 +105,7 @@ impl Shell {
                 }
             }
         });
-        let composer = cx.new(|cx| TextInput::new("Message", cx));
+        let composer = cx.new(|cx| TextInput::new("Message", cx).bare());
         let subs = vec![cx.subscribe_in(&composer, window, |this, _, event, _window, cx| match event {
             InputEvent::Submit => this.send_composer(cx),
             InputEvent::Changed => this.note_typing(),
@@ -164,7 +178,14 @@ impl Shell {
             mute_from_deafen: false,
             dev_joined: false,
             typing: HashMap::new(),
-            unread: HashSet::new(),
+            reads: HashMap::new(),
+            members: HashMap::new(),
+            dms: Vec::new(),
+            collapsed: HashSet::new(),
+            members_open: true,
+            players: HashMap::new(),
+            footer_menu: false,
+            clock_offset: 0.,
             revealed: HashSet::new(),
             composer,
             connected: false,
@@ -175,6 +196,14 @@ impl Shell {
             _subs: { let mut subs = subs; subs.push(quit); subs },
         };
         shell.load_servers(cx);
+        shell.load_side_data(cx);
+        // Voice seat timers tick once a second.
+        shell._tasks.push(cx.spawn(async move |this, cx| loop {
+            cx.background_executor().timer(Duration::from_secs(1)).await;
+            if this.update(cx, |this, cx| if this.rooms.values().any(|r| !r.is_empty()) { cx.notify() }).is_err() {
+                break;
+            }
+        }));
         shell
     }
 
@@ -215,7 +244,76 @@ impl Shell {
         .detach();
     }
 
+    /// DMs and unread counts: once at start and after reconnecting.
+    fn load_side_data(&mut self, cx: &mut Context<Self>) {
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let fetch = client.clone();
+            let (dms, reads) = cx.background_executor().spawn(async move { (fetch.dms(), fetch.reads()) }).await;
+            this.update(cx, |this, cx| {
+                if let Ok(dms) = dms {
+                    this.dms = dms;
+                }
+                if let Ok(mut reads) = reads {
+                    // The open channel is being read right now.
+                    if let Some(open) = &this.channel_id {
+                        reads.remove(open);
+                    }
+                    this.reads = reads;
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn load_members(&mut self, server_id: String, cx: &mut Context<Self>) {
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let id = server_id.clone();
+            let result = cx.background_executor().spawn(async move { client.members(&id) }).await;
+            this.update(cx, |this, cx| {
+                if let Ok(members) = result {
+                    this.members.insert(server_id, members);
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn mark_read(&mut self, channel_id: &str, cx: &mut Context<Self>) {
+        let had = self.reads.remove(channel_id).is_some_and(|r| r.unread || r.count > 0);
+        if had {
+            let client = self.client.clone();
+            let id = channel_id.to_string();
+            cx.background_executor().spawn(async move { client.mark_read(&id) }).detach();
+        }
+    }
+
+    fn bump_unread(&mut self, channel: &str, message: &Message) {
+        if message.user_id.as_deref() == Some(self.me.id.as_str()) {
+            return;
+        }
+        let entry = self.reads.entry(channel.to_string()).or_default();
+        entry.unread = true;
+        entry.count += 1;
+        if mentions(&message.text, &self.me.username) {
+            entry.mentions += 1;
+        }
+    }
+
+    /// The hub's clock in our terms, in ms.
+    fn hub_now(&self) -> f64 {
+        chrono::Utc::now().timestamp_millis() as f64 + self.clock_offset
+    }
+
     fn open_server(&mut self, id: String, cx: &mut Context<Self>) {
+        if !self.members.contains_key(&id) {
+            self.load_members(id.clone(), cx);
+        }
         self.server_id = Some(id);
         let first_text = self.server().and_then(|s| {
             let mut channels: Vec<&Channel> = s.channels.iter().filter(|c| c.is_text()).collect();
@@ -232,7 +330,11 @@ impl Shell {
         if self.channel_id.as_deref() == Some(&id) {
             return;
         }
-        self.unread.remove(&id);
+        if let Some(previous) = self.channel_id.clone() {
+            self.reads.insert(previous.clone(), ReadState { unread: true, ..Default::default() });
+            self.mark_read(&previous, cx);
+        }
+        self.mark_read(&id, cx);
         self.channel_id = Some(id.clone());
         self.hub.send(json!({ "t": "subscribe", "channelId": id }));
         let count = self.messages.get(&id).map_or(0, Vec::len);
@@ -348,7 +450,7 @@ impl Shell {
         }
         let Some(list) = self.messages.get_mut(&channel) else {
             if self.channel_id.as_deref() != Some(&channel) {
-                self.unread.insert(channel);
+                self.bump_unread(&channel, &message);
                 cx.notify();
             }
             return;
@@ -370,7 +472,8 @@ impl Shell {
                 self.list.splice(len - 2..len - 1, 1);
             }
         } else {
-            self.unread.insert(channel);
+            let message = self.messages.get(&channel).and_then(|l| l.last()).cloned().unwrap_or_default();
+            self.bump_unread(&channel, &message);
         }
         cx.notify();
     }
@@ -397,6 +500,9 @@ impl Shell {
     }
 
     fn on_hub_event(&mut self, value: Value, cx: &mut Context<Self>) {
+        if let Some(now) = value.get("serverNow").and_then(Value::as_f64) {
+            self.clock_offset = now - chrono::Utc::now().timestamp_millis() as f64;
+        }
         let t = value.get("t").and_then(Value::as_str).unwrap_or("");
         let channel = value.get("channelId").and_then(Value::as_str).map(str::to_string);
         match t {
@@ -409,6 +515,9 @@ impl Shell {
                     self.join_voice(room, cx);
                 }
                 self.online = strings(value.get("online"));
+                if let Some(players) = value.get("players").and_then(Value::as_object) {
+                    self.players = players.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                }
                 // Development: HOFFLE_DEV_JOIN=<room name or id> joins that voice room once.
                 if self.call.is_none()
                     && let Ok(want) = std::env::var("HOFFLE_DEV_JOIN")
@@ -433,6 +542,14 @@ impl Shell {
                 }
             }
             "presence" => self.online = strings(value.get("online")),
+            "player" => {
+                if let Some(state) = value.get("state") {
+                    let room = state.get("channelId").and_then(Value::as_str).or(channel.as_deref()).map(str::to_string);
+                    if let Some(room) = room {
+                        self.players.insert(room, state.clone());
+                    }
+                }
+            }
             "voice" => {
                 if let Some(channel) = channel {
                     let list = serde_json::from_value(value["participants"].clone()).unwrap_or_default();
@@ -674,65 +791,6 @@ impl Shell {
         self.servers.iter().flat_map(|s| s.channels.iter()).find(|c| c.id == id)
     }
 
-    fn render_call(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
-        let call = self.call.as_ref()?;
-        let room = self.channel_by_id(&call.channel_id).map(|c| c.name.clone()).unwrap_or_default();
-        let (label, color) = match call.state {
-            CallState::Joining => ("Joining voice…", Theme::muted()),
-            CallState::Connected => ("Voice connected", Theme::mint()),
-            CallState::Reconnecting => ("Reconnecting…", Theme::coral()),
-        };
-        let button = |id: &'static str, text: &'static str, on: bool| {
-            div()
-                .id(id)
-                .flex_1()
-                .h(px(30.))
-                .rounded(px(8.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .text_size(px(12.))
-                .cursor_pointer()
-                .bg(if on { Theme::coral() } else { Theme::lavender_soft() })
-                .text_color(if on { Theme::paper() } else { Theme::ink() })
-                .hover(|s| s.opacity(0.85))
-                .child(text)
-        };
-        Some(
-            div()
-                .px_3()
-                .py_2()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .bg(Theme::paper())
-                .border_t_1()
-                .border_color(Theme::line())
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).text_color(color).child(label))
-                        .child(div().text_size(px(12.)).text_color(Theme::muted()).truncate().child(room)),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .gap_2()
-                        .child(
-                            button("mute", if self.muted { "Unmute" } else { "Mute" }, self.muted)
-                                .on_click(cx.listener(|this, _, _, cx| this.toggle_mute(cx))),
-                        )
-                        .child(
-                            button("deafen", if self.deafened { "Undeafen" } else { "Deafen" }, self.deafened)
-                                .on_click(cx.listener(|this, _, _, cx| this.toggle_deafen(cx))),
-                        )
-                        .child(
-                            button("leave", "Leave", false).on_click(cx.listener(|this, _, _, cx| this.leave_voice(cx))),
-                        ),
-                ),
-        )
-    }
 
     fn sign_out(&mut self, cx: &mut Context<Self>) {
         self.leave_voice(cx);
@@ -746,311 +804,10 @@ impl Shell {
 
     // ---------------------------------------------------------------- rendering
 
-    fn render_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut rail = div()
-            .id("rail")
-            .w(px(72.))
-            .h_full()
-            .flex_none()
-            .flex()
-            .flex_col()
-            .items_center()
-            .gap_2()
-            .pt(px(40.))
-            .pb_3()
-            .bg(Theme::paper())
-            .overflow_y_scroll();
-        for server in &self.servers {
-            let selected = self.server_id.as_deref() == Some(&server.id);
-            let unread = server.channels.iter().any(|c| self.unread.contains(&c.id));
-            let color = css_color(&server.color).unwrap_or(Theme::lavender_soft().into());
-            let id = server.id.clone();
-            rail = rail.child(
-                div()
-                    .relative()
-                    .flex()
-                    .items_center()
-                    .child(
-                        div()
-                            .absolute()
-                            .left(px(-14.))
-                            .w(px(4.))
-                            .h(px(if selected { 36. } else if unread { 8. } else { 0. }))
-                            .rounded(px(2.))
-                            .bg(Theme::ink()),
-                    )
-                    .child(
-                        div()
-                            .id(SharedString::from(format!("server-{}", server.id)))
-                            .size(px(46.))
-                            .rounded(px(if selected { 14. } else { 23. }))
-                            .bg(if selected { color } else { Theme::panel().into() })
-                            .border_1()
-                            .border_color(Theme::line())
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .text_size(px(if is_emojiish(&server.icon) { 22. } else { 15. }))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .cursor_pointer()
-                            .hover(|s| s.bg(Theme::lavender_muted()).rounded(px(14.)))
-                            .child(match self.picture(&server.icon_url) {
-                                Some(url) => img(url).size(px(46.)).rounded(px(if selected { 14. } else { 23. })).object_fit(ObjectFit::Cover).into_any_element(),
-                                None => server_icon(server).into_any_element(),
-                            })
-                            .tooltip(tooltip(server.name.clone()))
-                            .on_click(cx.listener(move |this, _, _, cx| this.open_server(id.clone(), cx))),
-                    ),
-            );
-        }
-        rail
-    }
 
-    fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(server) = self.server() else {
-            return div().w(px(248.)).h_full().bg(Theme::panel()).into_any_element();
-        };
-        let mut categories = server.categories.clone();
-        categories.sort_by_key(|c| c.position);
-        let mut channels: Vec<&Channel> = server.channels.iter().collect();
-        channels.sort_by_key(|c| c.position);
 
-        let mut body = div().id("channels").flex_1().overflow_y_scroll().px_2().pb_3().flex().flex_col();
-        let groups = std::iter::once((None, String::new()))
-            .chain(categories.iter().map(|c| (Some(c.id.clone()), c.name.clone())));
-        for (category, name) in groups {
-            let members: Vec<&&Channel> = channels.iter().filter(|c| c.category_id == category).collect();
-            if members.is_empty() {
-                continue;
-            }
-            if category.is_some() {
-                body = body.child(
-                    div()
-                        .pt_4()
-                        .pb_1()
-                        .px_2()
-                        .text_size(px(11.))
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(Theme::muted())
-                        .child(name.to_uppercase()),
-                );
-            }
-            for channel in members {
-                body = body.child(self.render_channel_row(channel, cx));
-                if channel.is_voice()
-                    && let Some(people) = self.rooms.get(&channel.id)
-                {
-                    for person in people {
-                        let identity = format!("{}|{}", person.id, person.connection_id);
-                        let talking = self.call.as_ref().is_some_and(|c| c.channel_id == channel.id && c.speaking.contains(&identity));
-                        let picture = self.picture(&person.avatar_url);
-                        body = body.child(render_voice_person(person, picture, talking));
-                    }
-                }
-            }
-        }
 
-        div()
-            .w(px(248.))
-            .h_full()
-            .flex_none()
-            .flex()
-            .flex_col()
-            .bg(Theme::panel())
-            .border_r_1()
-            .border_color(Theme::line())
-            .child(
-                div()
-                    .h(px(52.))
-                    .pt(px(14.))
-                    .px_4()
-                    .flex()
-                    .items_center()
-                    .border_b_1()
-                    .border_color(Theme::line())
-                    .font_weight(FontWeight::BOLD)
-                    .child(server.name.clone()),
-            )
-            .child(body)
-            .children(self.render_call(cx))
-            .child(self.render_me(cx))
-            .into_any_element()
-    }
 
-    fn render_channel_row(&self, channel: &Channel, cx: &mut Context<Self>) -> impl IntoElement {
-        let selected = self.channel_id.as_deref() == Some(&channel.id);
-        let unread = self.unread.contains(&channel.id);
-        let id = channel.id.clone();
-        let text = channel.is_text();
-        let voice = channel.is_voice();
-        let server_id = channel.server_id.clone();
-        let base = self.client.base().to_string();
-        let count = self.rooms.get(&channel.id).map_or(0, Vec::len);
-        div()
-            .id(SharedString::from(format!("channel-{}", channel.id)))
-            .h(px(32.))
-            .px_2()
-            .mt(px(1.))
-            .rounded(px(8.))
-            .flex()
-            .items_center()
-            .gap_2()
-            .cursor_pointer()
-            .text_size(px(14.))
-            .when(selected, |d| d.bg(Theme::lavender_soft()).text_color(Theme::ink()))
-            .when(!selected, |d| {
-                d.text_color(if unread { Theme::ink() } else { Theme::muted() }).hover(|s| s.bg(Theme::hover()))
-            })
-            .when(unread && !selected, |d| d.font_weight(FontWeight::SEMIBOLD))
-            .child(div().w(px(18.)).flex().justify_center().text_color(Theme::muted()).child(channel.glyph()))
-            .child(div().flex_1().truncate().child(channel.name.clone()))
-            .when(voice && count > 0, |d| {
-                d.child(div().text_size(px(11.)).text_color(Theme::mint()).child(format!("{count}")))
-            })
-            .on_click(cx.listener(move |this, _, _, cx| {
-                if text {
-                    this.open_channel(id.clone(), cx);
-                } else if voice {
-                    if this.call.as_ref().is_none_or(|c| c.channel_id != id) {
-                        this.join_voice(id.clone(), cx);
-                    }
-                } else {
-                    // Forums, boards and the other richer kinds are not native yet: hand over to the web app.
-                    cx.open_url(&format!("{base}?server={server_id}"));
-                }
-            }))
-    }
-
-    fn render_me(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .h(px(56.))
-            .px_3()
-            .flex()
-            .items_center()
-            .gap_2()
-            .bg(Theme::paper())
-            .border_t_1()
-            .border_color(Theme::line())
-            .child(avatar(self.picture(&self.me.avatar_url), &self.me.avatar, &self.me.color, self.me.name(), 32.))
-            .child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .overflow_hidden()
-                    .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).truncate().child(self.me.name().to_string()))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_1()
-                            .text_size(px(11.))
-                            .text_color(Theme::muted())
-                            .child(div().size(px(7.)).rounded_full().bg(if self.connected { Theme::mint() } else { Theme::coral() }))
-                            .child(if self.connected { "Connected" } else { "Reconnecting…" }),
-                    ),
-            )
-            .child(
-                div()
-                    .id("sign-out")
-                    .px_2()
-                    .py_1()
-                    .rounded(px(6.))
-                    .text_size(px(11.))
-                    .text_color(Theme::muted())
-                    .cursor_pointer()
-                    .hover(|s| s.bg(Theme::hover()).text_color(Theme::ink()))
-                    .child("Sign out")
-                    .on_click(cx.listener(|this, _, _, cx| this.sign_out(cx))),
-            )
-    }
-
-    fn render_conversation(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let channel = self.channel();
-        let title = channel.map(|c| c.name.clone()).unwrap_or_default();
-        let topic = channel.map(|c| c.topic.clone()).unwrap_or_default();
-        let has_topic = !topic.is_empty();
-        let online = self.online.len();
-
-        let header = div()
-            .h(px(52.))
-            .pt(px(14.))
-            .px_4()
-            .flex()
-            .flex_none()
-            .items_center()
-            .gap_2()
-            .border_b_1()
-            .border_color(Theme::line())
-            .child(div().text_color(Theme::muted()).child("#"))
-            .child(div().font_weight(FontWeight::BOLD).child(title))
-            .when(has_topic, |d| {
-                d.child(div().w(px(1.)).h(px(18.)).bg(Theme::line()))
-                    .child(div().flex_1().truncate().text_size(px(13.)).text_color(Theme::muted()).child(topic))
-            })
-            .when(!has_topic, |d| d.child(div().flex_1()))
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .text_color(Theme::muted())
-                    .child(format!("{online} online")),
-            );
-
-        let loading = self.channel_id.as_ref().is_some_and(|c| self.loading.contains(c))
-            && self.channel_id.as_ref().is_some_and(|c| !self.messages.contains_key(c));
-        let body: AnyElement = if loading {
-            div()
-                .flex_1()
-                .flex()
-                .items_center()
-                .justify_center()
-                .text_color(Theme::muted())
-                .child("Loading messages…")
-                .into_any_element()
-        } else {
-            list(
-                self.list.clone(),
-                cx.processor(|this, ix: usize, _window, cx| this.render_message(ix, cx)),
-            )
-            .flex_1()
-            .into_any_element()
-        };
-
-        let typing = self
-            .channel_id
-            .as_ref()
-            .and_then(|c| self.typing.get(c))
-            .filter(|l| !l.is_empty())
-            .map(|l| match l.as_slice() {
-                [one] => format!("{} is typing…", one.1),
-                [a, b] => format!("{} and {} are typing…", a.1, b.1),
-                _ => "Several people are typing…".to_string(),
-            });
-
-        div()
-            .flex_1()
-            .h_full()
-            .flex()
-            .flex_col()
-            .bg(Theme::chat_bg())
-            .child(header)
-            .child(body)
-            .child(
-                div()
-                    .px_4()
-                    .pb_1()
-                    .pt_2()
-                    .child(self.composer.clone())
-                    .child(
-                        div()
-                            .h(px(20.))
-                            .pt_1()
-                            .text_size(px(12.))
-                            .text_color(Theme::muted())
-                            .child(typing.or(self.status.as_ref().map(|s| s.to_string())).unwrap_or_default()),
-                    ),
-            )
-    }
 
     fn reveal(&mut self, id: String, cx: &mut Context<Self>) {
         self.revealed.insert(id.clone());
@@ -1061,146 +818,6 @@ impl Shell {
         cx.notify();
     }
 
-    fn render_message(&mut self, ix: usize, cx: &mut Context<Self>) -> AnyElement {
-        let Some(list) = self.channel_id.as_ref().and_then(|c| self.messages.get(c)) else {
-            return div().into_any_element();
-        };
-        let Some(message) = list.get(ix) else { return div().into_any_element() };
-        let continued = ix > 0 && model::continues(&list[ix - 1], message);
-        let mentions_me = mentions(&message.text, &self.me.username);
-
-        let mut text_col = div().flex_1().min_w_0().flex().flex_col();
-        if !continued {
-            let name_color = css_color(&message.color).unwrap_or(Theme::ink().into());
-            text_col = text_col.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(div().font_weight(FontWeight::SEMIBOLD).text_color(name_color).child(message.author.clone()))
-                    .when(message.bot, |d| {
-                        d.child(
-                            div()
-                                .px_1()
-                                .rounded(px(4.))
-                                .bg(Theme::lavender_muted())
-                                .text_size(px(10.))
-                                .font_weight(FontWeight::BOLD)
-                                .child("BOT"),
-                        )
-                    })
-                    .child(div().text_size(px(11.)).text_color(Theme::muted()).child(model::short_time(&message.created_at))),
-            );
-        }
-        if let Some(reply) = &message.reply_preview {
-            text_col = text_col.child(
-                div()
-                    .text_size(px(12.))
-                    .text_color(Theme::muted())
-                    .truncate()
-                    .child(format!("↪ {}: {}", reply.author, reply.text)),
-            );
-        }
-        if let Some(command) = &message.command_text {
-            text_col = text_col.child(div().text_size(px(12.)).text_color(Theme::muted()).child(format!("used {command}")));
-        }
-        if !message.text.is_empty() {
-            let revealed = self.revealed.contains(&message.id);
-            let weak = cx.weak_entity();
-            let id = message.id.clone();
-            let on_spoiler: Rc<dyn Fn(&mut App)> = Rc::new(move |cx| {
-                weak.update(cx, |this, cx| this.reveal(id.clone(), cx)).ok();
-            });
-            text_col = text_col.child(rich::message_body(&message.id, &message.text, &self.me.username, revealed, on_spoiler));
-            if message.edited_at.is_some() {
-                text_col = text_col.child(div().text_size(px(10.)).text_color(Theme::muted()).child("(edited)"));
-            }
-        } else if message.kind.is_some() {
-            text_col = text_col.child(
-                div().text_size(px(13.)).italic().text_color(Theme::muted()).child("A card the web app shows (open Hoffle in the browser to see it)."),
-            );
-        }
-        let images = message.image.iter().chain(message.images.iter()).count();
-        if images > 0 || !message.files.is_empty() {
-            let mut chips = div().flex().flex_wrap().gap_2().mt_1();
-            let base = self.client.clone();
-            for (n, url) in message.image.iter().chain(message.images.iter()).enumerate() {
-                let link = base.absolute(url);
-                let open = link.clone();
-                chips = chips.child(
-                    div()
-                        .id(SharedString::from(format!("img-{}-{n}", message.id)))
-                        .w(px(360.))
-                        .h(px(240.))
-                        .rounded(px(10.))
-                        .overflow_hidden()
-                        .bg(Theme::paper())
-                        .cursor_pointer()
-                        .child(
-                            img(link)
-                                .size_full()
-                                .object_fit(ObjectFit::Contain)
-                                .with_loading(|| div().size_full().into_any_element())
-                                .with_fallback(|| div().size_full().flex().items_center().justify_center().text_color(Theme::muted()).child("Image could not be shown").into_any_element()),
-                        )
-                        .on_click(move |_, _, cx| cx.open_url(&open)),
-                );
-            }
-            for (n, file) in message.files.iter().enumerate() {
-                let link = base.absolute(&file.url);
-                chips = chips.child(chip(format!("📎 {}", file.name), link, format!("file-{}-{n}", message.id)));
-            }
-            text_col = text_col.child(chips);
-        }
-        if !message.reactions.is_empty() {
-            let mut row = div().flex().flex_wrap().gap_1().mt_1();
-            for reaction in &message.reactions {
-                row = row.child(
-                    div()
-                        .px_2()
-                        .h(px(24.))
-                        .flex()
-                        .items_center()
-                        .gap_1()
-                        .rounded(px(12.))
-                        .text_size(px(12.))
-                        .bg(if reaction.mine { Theme::lavender_soft() } else { Theme::paper() })
-                        .border_1()
-                        .border_color(if reaction.mine { Theme::lavender_muted() } else { Theme::line() })
-                        .child(reaction.emoji.clone())
-                        .child(div().text_color(Theme::muted()).child(reaction.count.to_string())),
-                );
-            }
-            text_col = text_col.child(row);
-        }
-        if let Some(count) = message.thread_count.filter(|c| *c > 0) {
-            text_col = text_col.child(
-                div()
-                    .mt_1()
-                    .text_size(px(12.))
-                    .text_color(Theme::lavender())
-                    .child(format!("{count} {} in thread", if count == 1 { "reply" } else { "replies" })),
-            );
-        }
-
-        div()
-            .w_full()
-            .px_4()
-            .pt(px(if continued { 2. } else { 14. }))
-            .pb(px(2.))
-            .flex()
-            .gap_3()
-            .text_size(px(14.))
-            .line_height(px(20.))
-            .when(mentions_me, |d| d.bg(Theme::lavender_soft()).border_l_2().border_color(Theme::lavender()))
-            .child(if continued {
-                div().w(px(38.)).flex_none().into_any_element()
-            } else {
-                avatar(self.picture(&message.avatar_url), &message.avatar, &message.color, &message.author, 38.)
-            })
-            .child(text_col)
-            .into_any_element()
-    }
 }
 
 impl Focusable for Shell {
@@ -1209,22 +826,6 @@ impl Focusable for Shell {
     }
 }
 
-impl Render for Shell {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Typing goes to the composer unless something else has focus.
-        if window.focused(cx).is_none() {
-            window.focus(&self.composer.focus_handle(cx));
-        }
-        div()
-            .size_full()
-            .flex()
-            .bg(Theme::paper())
-            .text_color(Theme::ink())
-            .child(self.render_rail(cx))
-            .child(self.render_sidebar(cx))
-            .child(self.render_conversation(cx))
-    }
-}
 
 fn strings(value: Option<&Value>) -> HashSet<String> {
     value
@@ -1241,124 +842,11 @@ fn mentions(text: &str, username: &str) -> bool {
         .any(|(_, span)| matches!(span, crate::markdown::Span::Mention { me: true }))
 }
 
-fn is_emojiish(text: &str) -> bool {
-    text.chars().next().is_some_and(|c| !c.is_ascii())
-}
 
-fn server_icon(server: &Server) -> String {
-    if !server.icon.trim().is_empty() {
-        return server.icon.clone();
-    }
-    server
-        .name
-        .split_whitespace()
-        .filter_map(|w| w.chars().next())
-        .take(2)
-        .collect::<String>()
-        .to_uppercase()
-}
 
-/// A round avatar: the account's picture, or its emoji or initials on its colour.
-fn avatar(picture: Option<String>, avatar: &str, color: &str, name: &str, size: f32) -> AnyElement {
-    let fallback = letter_avatar(avatar, color, name, size);
-    match picture.filter(|p| !p.is_empty()) {
-        Some(url) => {
-            let (avatar, color, name) = (avatar.to_string(), color.to_string(), name.to_string());
-            img(url)
-                .size(px(size))
-                .flex_none()
-                .rounded_full()
-                .object_fit(ObjectFit::Cover)
-                .with_fallback(move || letter_avatar(&avatar, &color, &name, size))
-                .into_any_element()
-        }
-        None => fallback,
-    }
-}
 
-fn letter_avatar(avatar: &str, color: &str, name: &str, size: f32) -> AnyElement {
-    let color = css_color(color).unwrap_or(Theme::lavender_muted().into());
-    let face = if avatar.trim().is_empty() {
-        name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default()
-    } else {
-        avatar.to_string()
-    };
-    div()
-        .size(px(size))
-        .flex_none()
-        .rounded_full()
-        .bg(color.opacity(0.35))
-        .border_1()
-        .border_color(color.opacity(0.6))
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_size(px(size * 0.5))
-        .child(face)
-        .into_any_element()
-}
 
-fn render_voice_person(person: &VoiceParticipant, picture: Option<String>, talking: bool) -> impl IntoElement {
-    let face = div()
-        .rounded_full()
-        .border_2()
-        .border_color(if talking { Theme::mint() } else { gpui::transparent_black().into() })
-        .child(avatar(picture, &person.avatar, &person.color, person.name(), 20.));
-    let mut row = div()
-        .h(px(26.))
-        .pl(px(34.))
-        .pr_2()
-        .flex()
-        .items_center()
-        .gap_2()
-        .text_size(px(13.))
-        .text_color(Theme::muted())
-        .child(face)
-        .child(div().flex_1().truncate().when(talking, |d| d.text_color(Theme::ink())).child(person.name().to_string()));
-    if person.screen_stream_id.is_some() {
-        row = row.child(div().text_size(px(10.)).px_1().rounded(px(4.)).bg(Theme::coral()).text_color(Theme::paper()).child("LIVE"));
-    }
-    if person.deafened {
-        row = row.child("🔇");
-    } else if person.muted {
-        row = row.child("🎙̸");
-    }
-    row
-}
 
-fn chip(label: String, url: String, id: String) -> impl IntoElement {
-    div()
-        .id(SharedString::from(id))
-        .px_2()
-        .py_1()
-        .rounded(px(8.))
-        .bg(Theme::paper())
-        .border_1()
-        .border_color(Theme::line())
-        .text_size(px(12.))
-        .cursor_pointer()
-        .hover(|s| s.border_color(Theme::lavender_muted()))
-        .child(label)
-        .on_click(move |_, _, cx| cx.open_url(&url))
-}
 
-fn tooltip(text: String) -> impl Fn(&mut Window, &mut App) -> gpui::AnyView {
-    move |_, cx| cx.new(|_| Tooltip(text.clone().into())).into()
-}
 
-struct Tooltip(SharedString);
 
-impl Render for Tooltip {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .px_2()
-            .py_1()
-            .rounded(px(6.))
-            .bg(Theme::paper())
-            .border_1()
-            .border_color(Theme::line())
-            .text_color(Theme::ink())
-            .text_size(px(12.))
-            .child(self.0.clone())
-    }
-}

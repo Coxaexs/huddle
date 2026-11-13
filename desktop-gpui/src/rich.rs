@@ -4,12 +4,26 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, FontStyle, FontWeight, HighlightStyle, InteractiveText, IntoElement,
-    SharedString, StrikethroughStyle, StyledText, UnderlineStyle, div, prelude::*, px,
+    AnyElement, App, Font, FontStyle, FontWeight, HighlightStyle, InteractiveText, IntoElement, Pixels,
+    SharedString, StrikethroughStyle, StyledText, UnderlineStyle, Window, div, font, prelude::*, px,
 };
+use gpui::LineFragment;
 
 use crate::markdown::{self, Block, Inline, Span};
 use crate::theme::Theme;
+
+/// How paragraphs wrap: the column width and the font they are set in, so lines can be broken the
+/// way Chrome's `text-wrap: pretty` does (no single word left alone on the last line).
+pub struct Wrap<'a> {
+    pub window: &'a Window,
+    pub width: Pixels,
+    pub font: Font,
+    pub size: Pixels,
+}
+
+pub fn ui_font(size: f32) -> (Font, Pixels) {
+    (font(crate::theme::UI_FONT), px(size))
+}
 
 /// `on_spoiler` runs when a hidden spoiler is clicked (the caller remembers it as revealed).
 pub fn message_body(
@@ -18,13 +32,14 @@ pub fn message_body(
     my_username: &str,
     revealed: bool,
     on_spoiler: Rc<dyn Fn(&mut App)>,
+    wrap: Option<&Wrap>,
 ) -> AnyElement {
     let blocks = markdown::blocks(src);
     let mut col = div().w_full().flex().flex_col().gap(px(2.));
     for (n, block) in blocks.into_iter().enumerate() {
         let key = format!("{id}-{n}");
         let el: AnyElement = match block {
-            Block::Para(text) => line(&key, &text, my_username, revealed, on_spoiler.clone()).into_any_element(),
+            Block::Para(text) => line_wrapped(&key, &text, my_username, revealed, on_spoiler.clone(), wrap).into_any_element(),
             Block::Heading(level, text) => div()
                 .text_size(px(match level { 1 => 20., 2 => 17., _ => 15. }))
                 .font_weight(FontWeight::BOLD)
@@ -63,7 +78,21 @@ pub fn message_body(
 }
 
 fn line(id: &str, src: &str, my_username: &str, revealed: bool, on_spoiler: Rc<dyn Fn(&mut App)>) -> impl IntoElement {
-    let parsed = markdown::inline(src, my_username);
+    line_wrapped(id, src, my_username, revealed, on_spoiler, None)
+}
+
+fn line_wrapped(
+    id: &str,
+    src: &str,
+    my_username: &str,
+    revealed: bool,
+    on_spoiler: Rc<dyn Fn(&mut App)>,
+    wrap: Option<&Wrap>,
+) -> impl IntoElement {
+    let mut parsed = markdown::inline(src, my_username);
+    if let Some(wrap) = wrap {
+        pretty(&mut parsed.text, wrap);
+    }
     let highlights = flatten(&parsed, revealed);
     let Inline { text, links, spoilers, .. } = parsed;
     let styled = StyledText::new(SharedString::from(text)).with_highlights(highlights);
@@ -88,6 +117,31 @@ fn line(id: &str, src: &str, my_username: &str, revealed: bool, on_spoiler: Rc<d
             }),
         )
         .into_any_element()
+}
+
+/// Chrome's `text-wrap: pretty`, the part that shows: when a paragraph's last line would be a single
+/// word, the word before it moves down too. The space between them becomes a line break, which keeps
+/// every byte offset (styles, links) where it was.
+fn pretty(text: &mut String, wrap: &Wrap) {
+    let mut wrapper = wrap.window.text_system().line_wrapper(wrap.font.clone(), wrap.size);
+    let mut breaks = Vec::new();
+    let mut offset = 0;
+    for hard in text.split('\n') {
+        // A hair of slack: only break where the line surely wraps, never one that would just fit.
+        let starts: Vec<usize> = wrapper.wrap_line(&[LineFragment::text(hard)], wrap.width + px(1.)).map(|b| b.ix).collect();
+        if let Some(&last_start) = starts.last() {
+            let orphan = !hard[last_start..].trim().contains(char::is_whitespace);
+            let prev_start = starts.len().checked_sub(2).map_or(0, |i| starts[i]);
+            let prev = hard[prev_start..last_start].trim_end();
+            if orphan && let Some(space) = prev.rfind(' ') && space > 0 {
+                breaks.push(offset + prev_start + space);
+            }
+        }
+        offset += hard.len() + 1;
+    }
+    for at in breaks {
+        text.replace_range(at..at + 1, "\n");
+    }
 }
 
 /// Spans can nest (**bold *and italic***); gpui wants runs that do not overlap, so split the text

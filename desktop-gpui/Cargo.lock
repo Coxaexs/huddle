@@ -2785,6 +2785,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smol",
+ "sys-locale",
  "tokio",
  "tungstenite 0.30.0",
  "unicode-segmentation",

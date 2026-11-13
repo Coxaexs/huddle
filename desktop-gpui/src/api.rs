@@ -166,6 +166,36 @@ impl Client {
         Ok(serde_json::from_value(message)?)
     }
 
+    pub fn members(&self, server_id: &str) -> Result<Vec<crate::model::Member>> {
+        #[derive(Deserialize)]
+        struct Members {
+            members: Vec<crate::model::Member>,
+        }
+        Ok(self.get::<Members>(&format!("/api/members?serverId={}", encode(server_id)))?.members)
+    }
+
+    pub fn dms(&self) -> Result<Vec<crate::model::DmConversation>> {
+        #[derive(Deserialize)]
+        struct Dms {
+            conversations: Vec<crate::model::DmConversation>,
+        }
+        Ok(self.get::<Dms>("/api/dms")?.conversations)
+    }
+
+    /// Unread state for every channel this account can see.
+    pub fn reads(&self) -> Result<std::collections::HashMap<String, crate::model::ReadState>> {
+        #[derive(Deserialize)]
+        struct Reads {
+            channels: std::collections::HashMap<String, crate::model::ReadState>,
+        }
+        Ok(self.get::<Reads>("/api/channels/reads")?.channels)
+    }
+
+    pub fn mark_read(&self, channel_id: &str) -> Result<()> {
+        let _: Value = self.post("/api/channels/reads", json!({ "channelId": channel_id }))?;
+        Ok(())
+    }
+
     /// A LiveKit login for one voice room, tied to this app's hub connection id.
     pub fn voice_token(&self, channel_id: &str, connection_id: &str) -> Result<VoiceToken> {
         let token: VoiceToken = self.get(&format!(

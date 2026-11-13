@@ -1,6 +1,7 @@
 //! Hoffle Lite, drawn natively with GPUI instead of a web view.
 
 mod api;
+mod assets;
 mod images;
 mod input;
 mod login;
@@ -10,6 +11,7 @@ mod realtime;
 mod rich;
 mod shell;
 mod theme;
+mod ui;
 mod voice;
 
 use gpui::{
@@ -126,7 +128,7 @@ impl Render for Root {
             .size_full()
             .bg(Theme::paper())
             .text_color(Theme::ink())
-            .font_family(".SystemUIFont")
+            .font_family(theme::UI_FONT)
             .text_size(px(14.))
             // The title bar is see-through: this strip lets the window be dragged by its top edge.
             .child(
@@ -144,7 +146,8 @@ impl Render for Root {
 }
 
 fn main() {
-    Application::new().with_http_client(std::sync::Arc::new(images::Fetcher::new())).run(|cx: &mut App| {
+    Application::new().with_assets(assets::Assets).with_http_client(std::sync::Arc::new(images::Fetcher::new())).run(|cx: &mut App| {
+        assets::load_fonts(cx);
         input::bind_keys(cx);
         cx.bind_keys([
             KeyBinding::new("cmd-q", Quit, None),
