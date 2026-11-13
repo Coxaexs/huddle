@@ -21,11 +21,12 @@ import { nativePlatform } from "../lib/native-voice";
 import { cancelScreenEcho, type ScreenEcho } from "../lib/screen-echo";
 import { desktopAppAudio, shellCapturesShareAudio } from "../lib/app-audio";
 import { startScreenPreviewCapture } from "../lib/stream-preview";
-import { clampVoiceBitrate } from "@/lib/voice-quality";
+import { VOICE_BITRATE_HIFI_PEOPLE, clampVoiceBitrate, roomVoiceBitrate } from "@/lib/voice-quality";
 import { isScreenQuality, screenConstraints, type ScreenShareQuality } from "../lib/screen-quality";
-import { SFU_SCREEN_AUDIO_BITRATE, screenAudioBitrate, sfuMicBitrate, voiceBitrate } from "../lib/voice-bitrate";
+import { SFU_SCREEN_AUDIO_BITRATE, screenAudioBitrate, sfuMicPlan, voiceBitrate } from "../lib/voice-bitrate";
 import { shapeOpusSend, tuneAudioSender, tuneOpusSdp } from "../lib/opus-tuning";
-import { SELF_SPEAKER, VoiceQosMonitor, type QosSdpShape } from "../lib/voice-qos";
+import { SELF_SPEAKER, VoiceQosMonitor, readSample, type QosSdpShape } from "../lib/voice-qos";
+import { HIFI_POLL_MS, HifiLossWatch } from "../lib/voice-hifi";
 import { readSelfDeafen, readSelfMute, saveSelfDeafen, saveSelfMute } from "../lib/self-mute";
 import {
   isMusicBot,
@@ -302,10 +303,37 @@ export function useVoice({
   const isDevRef = useRef(isDev);
   isDevRef.current = isDev;
   const [channelId, setChannelId] = useState<string | null>(null);
-  const roomBitrate = clampVoiceBitrate(channelId ? roomBitrates?.[channelId] : undefined);
+  /** The channel's own setting, and how many people (bots aside) share the room. */
+  const roomSetting = clampVoiceBitrate(channelId ? roomBitrates?.[channelId] : undefined);
+  const roomPeople = channelId ? (rooms[channelId] || []).filter((person) => !person.bot).length : 0;
+  /** What the mesh may spend per copy: the setting, minus its top rates in a big room. */
+  const roomBitrate = roomVoiceBitrate(roomSetting, roomPeople);
   /** For peers set up inside callbacks, which would otherwise see a stale value. */
   const roomBitrateRef = useRef(roomBitrate);
   roomBitrateRef.current = roomBitrate;
+  /**
+   * The microphone through the media server (see sfuMicPlan). `hifiBarred` is
+   * set once this seat has had to give up the rates above 192 kbps, because
+   * the room grew past ten or its link lost packets. It holds until the seat
+   * rejoins or the channel's setting changes: every switch publishes the
+   * microphone again, so it must not go back and forth.
+   */
+  const [hifiBarred, setHifiBarred] = useState(false);
+  const micPlan = sfuMicPlan(roomSetting, roomPeople, hifiBarred);
+  const micPlanRef = useRef(micPlan);
+  micPlanRef.current = micPlan;
+  /** Whether the published microphone carries redundancy; null until it is published. */
+  const micRedundantRef = useRef<boolean | null>(null);
+  const micRepublishingRef = useRef(false);
+  const roomCrowded = roomPeople > VOICE_BITRATE_HIFI_PEOPLE;
+  // A new room, or a new setting, is a fresh start; a crowd bars the seat again at once.
+  useEffect(() => {
+    setHifiBarred(roomCrowded);
+    // Not keyed on the crowd: a room that thins out again does not lift the bar.
+  }, [channelId, roomSetting]);
+  useEffect(() => {
+    if (roomCrowded) setHifiBarred(true);
+  }, [roomCrowded]);
   const [muted, setMuted] = useState(false);
   const mutedRef = useRef(false);
   mutedRef.current = muted;
@@ -927,6 +955,70 @@ export function useVoice({
     });
   }, [channelId, rooms]);
 
+  /**
+   * Brings the microphone at the media server in line with the plan. The
+   * bitrate changes live. Redundancy is fixed when a track is published, so a
+   * change of it publishes the microphone again: a short gap in this seat's
+   * voice, which is why the plan only ever changes it for a reason that lasts.
+   */
+  const syncSfuMic = useCallback(() => {
+    const sfu = sfuRef.current;
+    const sender = sfu?.micSender();
+    if (!sfu || !sender || micRedundantRef.current === null) return;
+    const plan = micPlanRef.current;
+    if (plan.redundant === micRedundantRef.current) {
+      // Called on a timer too, so only touch the sender when the figure moved.
+      if (sender.getParameters().encodings[0]?.maxBitrate !== plan.bitrate) void tuneAudioSender(sender, plan.bitrate);
+      return;
+    }
+    if (micRepublishingRef.current) return;
+    micRepublishingRef.current = true;
+    void sfu
+      .republishMic({ bitrate: plan.bitrate, red: plan.redundant })
+      .then((done) => {
+        if (!done || sfuRef.current !== sfu) return;
+        micRedundantRef.current = plan.redundant;
+        // A mute or push-to-talk press that landed in the gap found no
+        // microphone to act on, so the gate is applied again now.
+        void sfu.setMicMuted(!micGateRef.current);
+      })
+      .catch((error) => {
+        console.warn("Huddle voice: could not republish the microphone.", error);
+      })
+      .finally(() => {
+        micRepublishingRef.current = false;
+      });
+  }, []);
+
+  // While the microphone goes out without redundancy, every lost packet is
+  // heard. So its link is watched, and one that starts losing packets takes
+  // the seat back to 192 kbps with redundancy for the rest of its stay. The
+  // same tick retries a change of plan that could not be made at once.
+  useEffect(() => {
+    if (!channelId || !sfuMode) return;
+    const watch = new HifiLossWatch();
+    let watched: RTCRtpSender | undefined;
+    const timer = window.setInterval(() => {
+      syncSfuMic();
+      const sender = sfuRef.current?.micSender();
+      if (!sender || micRedundantRef.current !== false) {
+        watched = undefined;
+        return;
+      }
+      if (sender !== watched) {
+        watch.reset();
+        watched = sender;
+      }
+      void sender
+        .getStats()
+        .then((report) => {
+          if (watched === sender && watch.absorb(readSample(report))) setHifiBarred(true);
+        })
+        .catch(() => undefined);
+    }, HIFI_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [channelId, sfuMode, syncSfuMic]);
+
   // Re-spend the uplink whenever the room or what we send changes: see
   // voiceBitrate. Encoder bitrate changes apply live, without renegotiating.
   const sendingVideo = cameraOn || screenSharing;
@@ -943,10 +1035,9 @@ export function useVoice({
       }
     }
     // Through the media server the voice is uploaded once, whoever listens,
-    // so it keeps the channel's ceiling, up to what redundancy can carry.
-    const sfuMic = sfuRef.current?.micSender();
-    if (sfuMic) void tuneAudioSender(sfuMic, sfuMicBitrate(roomBitrate));
-  }, [channelId, listenerCount, sendingVideo, roomBitrate, sfuMode, qos]);
+    // so it keeps the channel's ceiling (see sfuMicPlan).
+    syncSfuMic();
+  }, [channelId, listenerCount, sendingVideo, roomBitrate, sfuMode, qos, micPlan.bitrate, micPlan.redundant, syncSfuMic]);
 
   /**
    * Follow the server's view of this seat's microphone.
@@ -2073,7 +2164,9 @@ export function useVoice({
         });
       const mic = backgroundMicRef.current ?? localStreamRef.current?.getAudioTracks()[0];
       if (mic) {
-        await publish(mic, "mic", { bitrate: sfuMicBitrate(roomBitrateRef.current) });
+        const plan = micPlanRef.current;
+        await publish(mic, "mic", { bitrate: plan.bitrate, red: plan.redundant });
+        micRedundantRef.current = plan.redundant;
         await sfu.setMicMuted(!micGateRef.current);
       }
       for (const track of screenStreamRef.current?.getTracks() || []) {

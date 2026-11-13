@@ -386,8 +386,9 @@ export function useChannelServerActions({
       title: `Voice Bitrate for ${channel.name}`,
       message:
         `The most each speaker sends, in kbps (${VOICE_BITRATE_MIN / 1000}–${VOICE_BITRATE_MAX / 1000}). ` +
-        `64 is clear speech; go higher for music or singing. Bigger rooms automatically send ` +
-        `less per person, so nobody's upload gets swamped.`,
+        `64 is clear speech; go higher for music or singing. Above 192 is for rooms of up to ` +
+        `10 people: it carries more detail but no backup for lost packets, so anyone on a ` +
+        `shaky connection stays at 192.`,
       defaultValue: String(current),
       placeholder: String(VOICE_BITRATE_DEFAULT / 1000),
       confirmText: "Set Bitrate",

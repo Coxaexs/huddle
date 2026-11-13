@@ -189,7 +189,7 @@ export class SfuVoice {
   async publish(
     track: MediaStreamTrack,
     kind: SfuPublishKind,
-    options: { bitrate?: number; screen?: ScreenShareQuality; film?: boolean } = {},
+    options: { bitrate?: number; red?: boolean; screen?: ScreenShareQuality; film?: boolean } = {},
   ): Promise<void> {
     const enabled = track.enabled;
     let publish: TrackPublishOptions;
@@ -197,9 +197,10 @@ export class SfuVoice {
       publish = {
         source: Track.Source.Microphone,
         // Same reasoning as the mesh: no DTX, and redundant packets so a lost
-        // one is rebuilt instead of heard.
+        // one is rebuilt instead of heard. Above 192 kbps two copies no longer
+        // fit in a packet, so those rates go out without (see sfuMicPlan).
         dtx: false,
-        red: true,
+        red: options.red ?? true,
         audioPreset: { maxBitrate: options.bitrate ?? 64_000, priority: "high" },
         stopMicTrackOnMute: false,
       };
@@ -312,6 +313,32 @@ export class SfuVoice {
         micSid,
       ),
     );
+  }
+
+  /**
+   * Publishes the microphone again with other options. Redundancy is fixed
+   * when a track is published, so this is the only way to change it; the
+   * room hears a short gap. Returns false when there is nothing to republish,
+   * or mid-whisper, when the microphone must not change hands.
+   */
+  async republishMic(options: { bitrate: number; red: boolean }): Promise<boolean> {
+    const local = this.room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+    if (!local || this.whispering) return false;
+    const track = local.mediaStreamTrack;
+    const muted = local.isMuted;
+    await this.room.localParticipant.unpublishTrack(local, false);
+    // The old one is gone by now, so a refusal here must not be the end of it.
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await this.publish(track, "mic", options);
+        break;
+      } catch (error) {
+        if (attempt >= 2) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    }
+    await this.setMicMuted(muted);
+    return true;
   }
 
   /** The RTCRtpSender carrying our microphone, for live bitrate changes. */

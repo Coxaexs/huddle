@@ -1,4 +1,4 @@
-import { VOICE_BITRATE_DEFAULT } from "@/lib/voice-quality";
+import { VOICE_BITRATE_DEFAULT, VOICE_BITRATE_HIFI_PEOPLE, clampVoiceBitrate } from "@/lib/voice-quality";
 
 /**
  * Voice bitrate for a mesh of `listeners` other connections, under the
@@ -35,13 +35,34 @@ export function screenAudioBitrate(listeners: number): number {
 export const SFU_SCREEN_AUDIO_BITRATE = 192_000;
 
 /**
- * The microphone through the media server. It goes out with redundancy (each
- * packet also carries the one before), and the browser silently drops that once
- * packets get too big: at 256 kbps a lost packet is simply heard, as if there
- * were no redundancy at all. Speech gains nothing up there, so stop below it.
+ * The most the microphone can send with redundancy (each packet also carrying
+ * the one before, so a lost packet is rebuilt instead of heard). Two copies
+ * have to fit in one packet, and past this they do not. Measured in Chrome
+ * against LiveKit on a link with no loss at all: fine to 240 kbps, an
+ * occasional dropped packet at 256, and 8–10 % of the audio missing at 320,
+ * because the oversized packets never arrive. Without redundancy the same
+ * 320 kbps goes through whole.
  */
-export const SFU_MIC_BITRATE_MAX = 192_000;
+export const SFU_MIC_REDUNDANT_MAX = 192_000;
 
-export function sfuMicBitrate(room: number): number {
-  return Math.min(room, SFU_MIC_BITRATE_MAX);
+/**
+ * How the microphone goes to the media server: at what bitrate, and with
+ * redundancy or without.
+ *
+ * Up to 192 kbps it always has redundancy. A channel set higher sends its
+ * setting without it, which is all detail and no safety net, so that is only
+ * for a room of up to ten people and a seat that is not `barred` (the hook
+ * bars one whose link loses packets, or whose room grew). Everyone else stays
+ * at 192 kbps with redundancy.
+ */
+export function sfuMicPlan(
+  setting: number,
+  people: number,
+  barred: boolean,
+): { bitrate: number; redundant: boolean } {
+  const bitrate = clampVoiceBitrate(setting);
+  if (bitrate > SFU_MIC_REDUNDANT_MAX && people <= VOICE_BITRATE_HIFI_PEOPLE && !barred) {
+    return { bitrate, redundant: false };
+  }
+  return { bitrate: Math.min(bitrate, SFU_MIC_REDUNDANT_MAX), redundant: true };
 }
