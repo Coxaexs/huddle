@@ -397,3 +397,21 @@ pub fn outline_emoji(emoji: &str, size: f32) -> AnyElement {
     };
     icon(name, size, gpui::rgb(color)).into_any_element()
 }
+
+/// A CSS background (gradients, via `cssbg`) painted at whatever size its parent ends up, as an
+/// absolute layer: for backgrounds gpui cannot draw itself (radial gradients).
+pub fn css_background(css: &'static str, radius: f32) -> impl IntoElement {
+    gpui::canvas(
+        |_, _, _| {},
+        move |bounds, _, window, _| {
+            let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+            if let Some(picture) = crate::cssbg::picture(css, w.round(), h.round(), radius, window.scale_factor()) {
+                let _ = window.paint_image(bounds, gpui::Corners::all(px(radius)), picture, 0, false);
+            }
+        },
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
+}

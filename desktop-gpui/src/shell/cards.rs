@@ -14,6 +14,7 @@ pub fn replaces_text(message: &Message) -> bool {
     match message.kind.as_deref() {
         Some("lyricsnow") => message.payload.as_ref().and_then(|p| p.get("lines")).is_some_and(|l| l.is_array()),
         Some("ai") => true,
+        Some("dnd") => message.payload.as_ref().and_then(|p| p.get("type")).and_then(Value::as_str) == Some("roll"),
         _ => false,
     }
 }
@@ -223,5 +224,200 @@ impl Shell {
                 ),
             )
             .into_any_element()
+    }
+}
+
+/// The D&D card's accent for a roll: gold on a natural 20, red on a natural 1, else lavender.
+fn roll_accent(nat20: bool, nat1: bool) -> Hsla {
+    if nat20 {
+        rgb(0xd4a017).into()
+    } else if nat1 {
+        rgb(0xd9534f).into()
+    } else {
+        Theme::lavender().into()
+    }
+}
+
+impl Shell {
+    /// DndCard's RollCard (components/dnd-card.tsx): the total in a box, what was rolled, each die,
+    /// "Roll again".
+    pub(super) fn render_roll_card(&self, message: &Message) -> Option<AnyElement> {
+        let p = message.payload.as_ref()?;
+        if p.get("type").and_then(Value::as_str) != Some("roll") || p.get("secret").and_then(Value::as_bool) == Some(true) {
+            return None;
+        }
+        let dice = p.get("dice").and_then(Value::as_array).cloned().unwrap_or_default();
+        let kept_d20: Vec<i64> = dice
+            .iter()
+            .filter(|d| d.get("sides").and_then(Value::as_i64) == Some(20))
+            .flat_map(|d| d.get("rolls").and_then(Value::as_array).cloned().unwrap_or_default())
+            .filter(|r| r.get("kept").and_then(Value::as_bool).unwrap_or(true))
+            .filter_map(|r| r.get("value").and_then(Value::as_i64))
+            .collect();
+        let nat20 = kept_d20.contains(&20);
+        let nat1 = !nat20 && kept_d20.contains(&1);
+        let accent = roll_accent(nat20, nat1);
+        let muted: Hsla = Theme::muted().into();
+        let total = match p.get("total") {
+            Some(Value::Number(n)) => n.to_string(),
+            _ => String::new(),
+        };
+        let label = p.get("label").and_then(Value::as_str).filter(|s| !s.is_empty()).unwrap_or("Dice roll").to_string();
+        let roller = p.get("roller").and_then(Value::as_str).map(|r| format!(" · {r}")).unwrap_or_default();
+        let expression = p.get("expression").and_then(Value::as_str).unwrap_or_default().to_string();
+        let mode = p.get("mode").and_then(Value::as_str).filter(|m| !m.is_empty()).map(|m| format!(" · {m}")).unwrap_or_default();
+        let modifier = p.get("modifier").and_then(Value::as_i64).unwrap_or(0);
+
+        let die = |text: String, sides: Option<i64>, kept: bool, max: bool, min: bool| {
+            let (fg, bg, border): (Hsla, Hsla, Hsla) = if max {
+                (rgb(0xc8940f).into(), rgba(0xf5c84233).into(), rgb(0xd4a017).into())
+            } else if min {
+                (rgb(0xd9534f).into(), rgba(0xd9534f22).into(), rgb(0xd9534f).into())
+            } else {
+                (Theme::ink().into(), mix(accent, 0.09, Theme::panel()), accent.opacity(0.32))
+            };
+            div()
+                .flex()
+                .items_baseline()
+                .justify_center()
+                .gap(px(3.))
+                .min_w(px(34.))
+                .px(px(8.))
+                .py(px(3.))
+                .rounded(px(8.))
+                .bg(bg)
+                .border_1()
+                .border_color(border)
+                .text_size(px(15.))
+                .line_height(px(23.25))
+                .font_weight(FontWeight::EXTRA_BOLD)
+                .text_color(fg)
+                .when(!kept, |d| d.opacity(0.45).line_through())
+                .child(text)
+                .when_some(sides, |d, s| d.child(div().text_size(px(10.5)).line_height(px(16.3)).font_weight(FontWeight::BOLD).text_color(muted).child(format!("d{s}"))))
+        };
+        let mut faces = div().mt(px(6.)).flex().flex_wrap().gap(px(6.));
+        for d in &dice {
+            let sides = d.get("sides").and_then(Value::as_i64).unwrap_or(0);
+            let minus = d.get("sign").and_then(Value::as_i64) == Some(-1);
+            for roll in d.get("rolls").and_then(Value::as_array).cloned().unwrap_or_default() {
+                let value = roll.get("value").and_then(Value::as_i64).unwrap_or(0);
+                let kept = roll.get("kept").and_then(Value::as_bool).unwrap_or(true);
+                let text = format!("{}{value}", if minus { "−" } else { "" });
+                faces = faces.child(die(text, Some(sides), kept, sides == 20 && kept && value == 20, sides == 20 && kept && value == 1));
+            }
+        }
+        if modifier != 0 {
+            let text = if modifier > 0 { format!("+{modifier}") } else { format!("−{}", modifier.abs()) };
+            faces = faces.child(die(text, None, true, false, false).text_color(muted));
+        }
+        let details: Vec<String> = p.get("details").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+        let mut body = div()
+            .flex_1()
+            .min_w_0()
+            .flex()
+            .flex_col()
+            .gap(px(3.))
+            .child(div().text_size(px(11.)).line_height(px(17.05)).font_weight(FontWeight::EXTRA_BOLD).text_color(Theme::ink()).child(format!("{label}{roller}").to_uppercase()))
+            .child(div().text_size(px(13.5)).line_height(px(20.9)).text_color(muted).child(format!("{expression}{mode}")));
+        if nat20 || nat1 {
+            body = body.child(
+                div().flex().child(
+                    div()
+                        .px(px(10.))
+                        .py(px(1.))
+                        .rounded_full()
+                        .bg(accent)
+                        .text_size(px(12.))
+                        .line_height(px(18.6))
+                        .font_weight(FontWeight::EXTRA_BOLD)
+                        .text_color(gpui::white())
+                        .child(if nat20 { "NATURAL 20" } else { "NATURAL 1" }),
+                ),
+            );
+        }
+        body = if dice.is_empty() {
+            let mut chips = div().mt(px(6.)).flex().flex_wrap().gap(px(6.));
+            for detail in details {
+                chips = chips.child(
+                    div()
+                        .px(px(8.))
+                        .py(px(3.))
+                        .rounded(px(7.))
+                        .bg(accent.opacity(0.09))
+                        .border_1()
+                        .border_color(accent.opacity(0.28))
+                        .font_family(crate::theme::MONO_FONT)
+                        .text_size(px(12.5))
+                        .text_color(Theme::ink())
+                        .child(detail),
+                );
+            }
+            body.child(chips)
+        } else {
+            body.child(faces)
+        };
+        let css = if nat20 {
+            "radial-gradient(circle at 100% 0, rgba(212, 160, 23, 0.14), transparent 45%)"
+        } else if nat1 {
+            "radial-gradient(circle at 100% 0, rgba(217, 83, 79, 0.14), transparent 45%)"
+        } else {
+            "radial-gradient(circle at 100% 0, rgba(167, 139, 250, 0.14), transparent 45%)"
+        };
+        Some(
+            div()
+                .relative()
+                .mt(px(8.))
+                .max_w(px(760.))
+                .px(px(18.))
+                .py(px(16.))
+                .rounded(px(14.))
+                .bg(Theme::panel())
+                .border_1()
+                .border_color(mix(accent, 0.34, Theme::line()))
+                .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.08), offset: gpui::point(px(0.), px(10.)), blur_radius: px(30.), spread_radius: px(0.) }])
+                .child(ui::css_background(css, 13.))
+                // The total and the dice sit in the middle; "Roll again" at the top.
+                .flex()
+                .gap(px(16.))
+                .text_size(px(14.))
+                .line_height(px(21.7))
+                .child(div().flex_none().flex().items_center().child(
+                    div()
+                        .flex_none()
+                        .min_w(px(76.))
+                        .px(px(12.))
+                        .py(px(8.))
+                        .rounded(px(14.))
+                        .bg(accent.opacity(0.14))
+                        .border_1()
+                        .border_color(accent.opacity(0.4))
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap(px(2.))
+                        .child(ui::icon("dices", 18., Theme::ink()))
+                        .child(div().font_family(crate::theme::DISPLAY_FONT).text_size(px(34.)).line_height(px(34.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(total)),
+                ))
+                .child(div().flex_1().min_w_0().flex().flex_col().justify_center().child(body))
+                .when(!expression.is_empty(), |d| {
+                    d.child(
+                        div()
+                            .flex_none()
+                            .h(px(31.4))
+                            .px(px(11.))
+                            .py(px(5.))
+                            .rounded(px(9.))
+                            .border_1()
+                            .border_color(Theme::line())
+                            .text_size(px(12.5))
+                            .line_height(px(19.375))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(Theme::ink())
+                            .child("Roll again"),
+                    )
+                })
+                .into_any_element(),
+        )
     }
 }

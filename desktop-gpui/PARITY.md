@@ -25,7 +25,8 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | Markdown, mentions, spoilers, links, inline code, italics | message-body.tsx | ✅ (custom emoji, embeds, link unfurls ⬜) |
 | Now-playing card | now-playing.tsx | ✅ (live progress bar ⬜) |
 | Lyrics card (lines with times, source link), /ask answer card | lyrics-now.tsx, ai-answer-card.tsx | ✅ (live karaoke highlighting, timing nudge, follow-up chat ⬜) |
-| Other cards: dnd, system-pin, music-stats, polls, games, voice messages | dnd-card.tsx, music-cards.tsx, game-card.tsx, message-file-card.tsx, voice-message.tsx | ⬜ |
+| D&D roll card (total, dice with natural 20/1, details, Roll again) | dnd-card.tsx | ✅ (spell/monster/item lookups, V5 and Rouse rolls, secret rolls, Roll again runs nothing yet ⬜) |
+| Other cards: system-pin, music-stats, polls, games, voice messages | dnd-card.tsx, music-cards.tsx, game-card.tsx, message-file-card.tsx, voice-message.tsx | ⬜ |
 | Hover card + toolbar (your quick reactions as outline icons, server emoji, add reaction, reply, edit), reaction pills, reply bar, `#channel` chips | message-row.tsx, message-reactions.tsx, outline-emoji.tsx | ✅ (shift-held extra actions, who-reacted popover ⬜) |
 | Emoji picker: reactions (floating beside the button, toolbar kept up, Shift adds to quick reactions) and the composer's; search, category rail, Favorites (Alt stars, kept on this computer), server emoji, the web's 656 emoji, preview footer | emoji-picker.tsx, overlays.tsx, composer.tsx (`tools/export-emoji.py`) | ✅ ("Add to Quick Reactions" mode, upload button, hover scale ⬜) |
 | Editing in place (Enter saves, Esc cancels, focus ring), deleting with the confirm dialog (Shift skips) | message-row.tsx, message-parts.tsx | ✅ (moderators deleting others' messages ⬜) |

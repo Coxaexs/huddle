@@ -414,7 +414,7 @@ impl Shell {
                     .child(editor),
             );
             body = body.child(div().mt(px(3.)).text_size(px(11.)).line_height(px(16.5)).text_color(Theme::muted()).child("Enter to save · Esc to cancel"));
-        } else if !message.text.is_empty() && message.kind.as_deref() != Some("lyricsnow") || (message.kind.as_deref() == Some("lyricsnow") && !super::cards::replaces_text(message)) {
+        } else if !message.text.is_empty() && (message.kind.as_deref() == Some("ai") || !super::cards::replaces_text(message)) {
             let revealed = self.revealed.contains(&message.id);
             let weak = cx.weak_entity();
             let id = message.id.clone();
@@ -452,6 +452,11 @@ impl Shell {
         }
         if message.kind.as_deref() == Some("lyricsnow")
             && let Some(card) = self.render_lyrics_card(message, self.text_column_width(window), window)
+        {
+            body = body.child(card);
+        }
+        if message.kind.as_deref() == Some("dnd")
+            && let Some(card) = self.render_roll_card(message)
         {
             body = body.child(card);
         }
