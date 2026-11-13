@@ -1352,7 +1352,12 @@ export function RoomActivities({
       ) : activity.kind === "beatbox" ? (
         <BeatboxActivity activity={activity} update={optimistic} />
       ) : activity.kind === "studyhall" ? (
-        <StudyHallActivity activity={activity} update={optimistic} serverNow={serverNow} />
+        <StudyHallActivity
+          activity={activity}
+          update={optimistic}
+          serverNow={serverNow}
+          startedByMe={activity.createdBy === userId}
+        />
       ) : (
         <div className="draw-guess">
           <div className="draw-guess-status">

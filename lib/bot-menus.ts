@@ -3,13 +3,15 @@
  *
  * A bot lists up to ten items; each one is a label and one of its own slash
  * commands. Right-clicking one of the bot's messages shows the list, and
- * picking an item runs that command as the person who picked it, exactly as if
- * they had typed it. So a menu can do nothing a person could not already do by
- * typing, and the bot hears about it the usual way (INTERACTION_CREATE).
+ * picking an item sends that command to that bot as the person who picked it.
+ * So a menu can do nothing a person could not already do by typing, and the
+ * bot hears about it the usual way (INTERACTION_CREATE).
  *
- * Only the bot's own commands are shown. An item naming someone else's command
- * (another bot's, or one of Hoffle's) is dropped when the menu is read, so a
- * friendly label can never be a disguise for "/purge".
+ * Only the bot's own commands are shown, and a pick is delivered to that bot
+ * alone (POST /api/commands with `botId`). An item naming someone else's
+ * command is dropped when the menu is read, and a bot that names a command
+ * after one of Hoffle's own still only ever receives its own: a friendly
+ * label can never be a disguise for "/purge".
  */
 export const MAX_MENU_ITEMS = 10;
 const COMMAND = /^\/([a-z0-9_-]{1,32})(?: [^\n]{0,160})?$/;
@@ -99,14 +101,26 @@ export async function menusInServer(db: D1Database, serverId: string): Promise<P
     )
     .bind(serverId)
     .all<{ application_id: string; items: string; bot_name: string; description: string }>();
+  if (!results?.length) return [];
+  // Every command these bots have here, in one read.
+  const owned = await db
+    .prepare(
+      `SELECT c.bot_id, c.name FROM discord_commands c
+        WHERE c.type = 1 AND (c.server_id IS NULL OR c.server_id = ?)
+          AND c.bot_id IN (SELECT application_id FROM bot_menus)`,
+    )
+    .bind(serverId)
+    .all<{ bot_id: string; name: string }>();
+  const namesByBot = new Map<string, Set<string>>();
+  for (const command of owned.results || []) {
+    const names = namesByBot.get(command.bot_id) ?? new Set<string>();
+    names.add(command.name);
+    namesByBot.set(command.bot_id, names);
+  }
   const menus: PublicBotMenu[] = [];
-  for (const row of results || []) {
-    const owned = await db
-      .prepare("SELECT name FROM discord_commands WHERE bot_id = ? AND type = 1 AND (server_id IS NULL OR server_id = ?)")
-      .bind(row.application_id, serverId)
-      .all<{ name: string }>();
-    const names = new Set((owned.results || []).map((command) => command.name));
-    const items = parseItems(row.items).filter((item) => names.has(commandName(item.command)));
+  for (const row of results) {
+    const names = namesByBot.get(row.application_id);
+    const items = names ? parseItems(row.items).filter((item) => names.has(commandName(item.command))) : [];
     if (items.length) {
       menus.push({ applicationId: row.application_id, botName: row.bot_name, description: row.description || "", items });
     }

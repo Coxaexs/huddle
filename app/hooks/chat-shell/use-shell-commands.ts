@@ -505,8 +505,11 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
     });
   }
 
-  /** Runs a bot-registered command; false when no connected bot owns it. */
-  async function runBotSlashCommand(bare: string, value: string): Promise<boolean> {
+  /**
+   * Runs a bot-registered command; false when no connected bot owns it.
+   * With `botId`, only that bot's command of this name will do.
+   */
+  async function runBotSlashCommand(bare: string, value: string, botId?: string): Promise<boolean> {
     if (!activeChannelId) return false;
     try {
       const result = await apiFetch<{ ok: boolean; reason: string | null; message?: string }>(
@@ -517,6 +520,7 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
             channelId: activeChannelId,
             name: bare,
             args: value,
+            botId,
           }),
         },
       );

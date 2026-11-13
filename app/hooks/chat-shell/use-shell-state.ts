@@ -93,9 +93,15 @@ export function useShellState() {
   /** "Invite friends to <server>", landing people in channelId when set. */
   const [inviteDialog, setInviteDialog] = useState<{ channelId: string | null } | null>(null);
   const [activeServerId, setActiveServerId] = useState<string | null>(null);
-  // The bots' own right-click menus, ready before anyone right-clicks.
+  // The bots' own right-click menus, ready before anyone right-clicks, and
+  // read again whenever you come back to the window, so a bot's change shows
+  // without a reload.
   useEffect(() => {
-    if (activeServerId && activeServerId !== DM_HOME) void loadBotMenus(activeServerId);
+    if (!activeServerId || activeServerId === DM_HOME) return;
+    const load = () => void loadBotMenus(activeServerId);
+    load();
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
   }, [activeServerId]);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   /** When set, the main column shows this voice channel's stage instead of text. */

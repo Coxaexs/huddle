@@ -480,7 +480,10 @@ export function StudyHallActivity({
   activity,
   update,
   serverNow = Date.now,
+  startedByMe = false,
 }: {
+  /** You opened this Study Hall, so the music may start for you without asking. */
+  startedByMe?: boolean;
   activity: RoomActivity;
   /** Shows the state here at once and saves it to the room. */
   update: (state: Record<string, unknown>) => void;
@@ -584,15 +587,16 @@ export function StudyHallActivity({
     });
   }
 
-  // Whoever started Study Hall just clicked to do it, so their browser lets the
-  // sound start straight away. Everyone else gets the big "Listen in" button.
+  // Whoever started Study Hall just clicked to do it: they asked for the music,
+  // and their browser lets it start straight away. Everyone else chooses, with
+  // the big "Listen in" button, since it plays on top of the room's voices.
   const autoStarted = useRef(false);
   useEffect(() => {
     if (autoStarted.current) return;
     autoStarted.current = true;
     const activation = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
-    if (activation?.isActive) void toggle();
-  }, [toggle]);
+    if (startedByMe && activation?.isActive) void toggle();
+  }, [toggle, startedByMe]);
 
   function startTimer(kind: AmbientTimerKind, minutes: number) {
     share(startAmbientTimer(state, kind, minutes, clockRef.current()));

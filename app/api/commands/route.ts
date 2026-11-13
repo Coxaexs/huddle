@@ -171,6 +171,8 @@ export async function POST(request: Request) {
     channelId?: string;
     name?: string;
     args?: string;
+    /** Only this bot's command: a bot's own menu must never reach another bot's command of the same name. */
+    botId?: string;
   };
   if (!body.channelId || !body.name) {
     return Response.json({ error: "Missing channel or command" }, { status: 400 });
@@ -185,8 +187,9 @@ export async function POST(request: Request) {
   if (!access.ok) return access.response;
 
   const available = await listCommandsForServer(db, channel.server_id);
+  const onlyBot = typeof body.botId === "string" && body.botId ? body.botId : null;
   const command = available.find(
-    (entry) => entry.name === body.name!.toLowerCase(),
+    (entry) => entry.name === body.name!.toLowerCase() && (!onlyBot || entry.botId === onlyBot),
   );
   // No such bot command is not an error: the caller falls back to Hoffle's own
   // slash commands and its "I don't know that one" message.
@@ -211,6 +214,7 @@ export async function POST(request: Request) {
     userId: user.id,
     commandName: command.name,
     options,
+    botId: onlyBot ?? undefined,
   });
 
   return Response.json({

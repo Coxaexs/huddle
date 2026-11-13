@@ -143,6 +143,12 @@ img.message-image[src*="/stickers/gang/gang-"] { width: 300px; max-width: 300px;
 .voice-stage-bottom-bar.is-simple .simple-call-buttons { width: min(520px, calc(100vw - 32px)); padding: 8px; gap: 8px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .voice-stage-bottom-bar.is-simple .simple-call-buttons button { padding: 11px 4px 9px; font-size: 12.5px; }
 .mini-voice-bar .simple-call-buttons { width: 100%; box-sizing: border-box; align-self: stretch; }
+/* Five buttons on a phone: smaller words, and a long one ends in "…" instead of spilling. */
+.voice-stage-bottom-bar.is-simple .simple-call-buttons button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 480px) {
+  .voice-stage-bottom-bar.is-simple .simple-call-buttons { gap: 5px; padding: 6px; }
+  .voice-stage-bottom-bar.is-simple .simple-call-buttons button { font-size: 11px; padding-inline: 2px; }
+}
 
 /* Simple interface, settings (app/components/settings/simple-home.tsx): one
    page of picture tiles; the sixteen-tab sidebar stays out of the way. */

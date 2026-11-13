@@ -957,7 +957,7 @@ export interface RunCommandInput {
   values?: string[];
   /** For a component: the (native) message it sits on. */
   messageId?: string;
-  /** For a component: the bot that sent that message. */
+  /** For a component: the bot that sent that message. For a command: only this bot's, if set. */
   botId?: string;
 }
 
@@ -991,11 +991,12 @@ export async function runBotCommand(
           `SELECT c.* FROM discord_commands c
            LEFT JOIN applications a ON a.id = c.bot_id
            WHERE c.name = ? AND (c.server_id IS ? OR c.server_id IS NULL)
+             AND (? IS NULL OR c.bot_id = ?)
              AND (a.id IS NULL OR EXISTS (
                SELECT 1 FROM server_bots i WHERE i.application_id = a.id AND i.server_id IS ? AND i.enabled = 1))
            ORDER BY c.server_id IS NULL LIMIT 1`,
         )
-        .bind(input.commandName.toLowerCase(), serverId, serverId)
+        .bind(input.commandName.toLowerCase(), serverId, input.botId ?? null, input.botId ?? null, serverId)
         .first<CommandRow>();
   const botId = isComponent ? input.botId : command?.bot_id;
   if (!botId || (isComponent && (!input.messageId || !input.customId))) {

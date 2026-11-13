@@ -32,7 +32,7 @@ export function withShellRenderers(s: ChatShellViewState) {
     channelDragProps, deleteChannel, dmMembers, dms, dndUrl, dragServerId, folderDropProps, hub,
     inDmHome, memberFilterQuery, members, membersById, moveMember, musicDashboardUrl,
     myPermissions, myTimeoutUntil, openBotMenu, openFolders, openMusicDashboard, openUserMenu,
-    player, prepareCommand, runCommand, serverDragProps, serverDropHint, servers,
+    player, prepareCommand, runBotSlashCommand, runCommand, serverDragProps, serverDropHint, servers,
     setActiveChannelId, setActiveServerId, setChannelMenu, setFolderMenu, setMobileNav, setNotice,
     setInviteDialog, setRailMenu, setStageChannelId, stageChannelId, toggleFolderOpen, touchInput, unread, user,
     voice, voiceChannels, voiceRooms, queueStreamHover, setStageFocusRequest,
@@ -590,11 +590,22 @@ export function withShellRenderers(s: ChatShellViewState) {
       ]
       : []),
   ];
-  /** A bot's own menu: each item runs (or starts typing) one of that bot's commands. */
+  /**
+   * A bot's own menu: each item runs (or starts typing) one of that bot's
+   * commands. A pick goes straight to that bot and to nothing else: typed
+   * commands try Hoffle's own first, so a bot that named a command after one
+   * of ours could otherwise make a friendly label run it.
+   */
+  const runMenuCommand = async (menu: PublicBotMenu, command: string) => {
+    const [name, ...rest] = command.slice(1).split(" ");
+    if (!(await runBotSlashCommand(name.toLowerCase(), rest.join(" ").trim(), menu.applicationId))) {
+      setNotice(`${menu.botName} can't run that right now.`);
+    }
+  };
   const appBotActions = (menu: PublicBotMenu, onMessageMenu?: () => void): BotMenuAction[] => [
     ...menu.items.map((item) => ({
       label: item.icon ? `${item.icon} ${item.label}` : item.label,
-      onSelect: () => (item.fill ? prepareCommand(`${item.command} `) : void runCommand(item.command)),
+      onSelect: () => (item.fill ? prepareCommand(`${item.command} `) : void runMenuCommand(menu, item.command)),
     })),
     ...(onMessageMenu ? [{ label: "Message options…", onSelect: onMessageMenu }] : []),
   ];

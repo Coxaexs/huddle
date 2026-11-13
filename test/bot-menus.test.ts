@@ -24,6 +24,7 @@ import { currentUser } from "@/lib/auth";
 import { POST as createApp } from "@/app/api/applications/route";
 import { POST as authorize } from "@/app/api/oauth2/authorize/route";
 import { GET as menus } from "@/app/api/bot-menus/route";
+import { POST as runCommand } from "@/app/api/commands/route";
 import { handleDiscordRest } from "@/lib/discord/rest";
 import { snowflakeFor } from "@/lib/discord/snowflake";
 
@@ -157,6 +158,23 @@ describe("bot menus", () => {
     expect((await setMenu(bot.token, [{ label: "Two lines", command: "/quiz a\n/purge" }])).status).toBe(400);
     const many = Array.from({ length: 11 }, (_, index) => ({ label: `Item ${index}`, command: "/quiz" }));
     expect((await setMenu(bot.token, many)).status).toBe(400);
+  });
+
+  it("delivers a pick to the menu's own bot and to no other with the same command name", async () => {
+    const quiz = await makeBot("Quiz");
+    await add(quiz.id, "s1", VOICE);
+    await commands(quiz.token, ["quiz"]);
+    await db.prepare("INSERT INTO channels (id, server_id, name, kind, created_at) VALUES ('t1', 's1', 't1', 'text', ?)").bind(NOW).run();
+    signIn("member");
+    const pick = async (botId?: string) =>
+      (await (await runCommand(json({ channelId: "t1", name: "quiz", args: "", botId }))).json()) as { ok: boolean; reason: string | null };
+    // Asked for by name alone, the command is found (no gateway in tests, so it stops at dispatch).
+    expect((await pick()).reason).not.toBe("usage");
+    const other = await makeBot("Other");
+    await add(other.id, "s1", VOICE);
+    signIn("member");
+    // Other has no /quiz: a pick from Other's menu must not land on Quiz's command.
+    expect(await pick(other.id)).toEqual({ ok: false, reason: "unknown" });
   });
 
   it("lets the bot read back and clear its menu", async () => {
