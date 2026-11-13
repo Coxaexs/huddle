@@ -67,6 +67,7 @@ For detailed schemas, protocol types, and step-by-step feature recipes, see [doc
 | [`desktop-native-windows/`](desktop-native-windows/) | **Hoffle Native (Windows)**: native C++17 / Win32 / WebView2 client with WASAPI app-audio capture. |
 | [`desktop-native-linux/`](desktop-native-linux/) | **Hoffle Native (Linux)**: native C++17 / GTK3 / WebKit2GTK client with AppIndicator tray and global hotkeys. |
 | [`native-qt/`](native-qt/) | Experimental C++17 / Qt6 native client. |
+| [`desktop-gpui/`](desktop-gpui/) | **Experimental GPUI client**: Hoffle drawn natively in Rust with GPUI (no web view), chat over the REST API and hub socket, voice through the LiveKit Rust SDK. Prototype; see its README for what is missing. |
 | [`mobile/`](mobile/) | Capacitor Android & iOS mobile app with foreground voice service, CallKit, floating call bubble, and FCM push notifications. |
 | [`services/`](services/) | Companion Docker services: `music-bot` (`yt-dlp`), `dnd-bot` (5e SRD), `musicwatch` (DJ booth & Watch Together), and `party-bot` (minigames). |
 | [`discord-bridge/`](discord-bridge/) | Bi-directional channel message & attachment bridge between Discord and Hoffle. |

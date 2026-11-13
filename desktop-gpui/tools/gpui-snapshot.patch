@@ -1,0 +1,57 @@
+--- a/src/platform/mac/metal_renderer.rs
++++ b/src/platform/mac/metal_renderer.rs
+@@ -142,6 +142,8 @@
+         let layer = metal::MetalLayer::new();
+         layer.set_device(&device);
+         layer.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
++        // dev patch: frames can be read back when GPUI_SNAPSHOT is set
++        if std::env::var_os("GPUI_SNAPSHOT").is_some() { layer.set_framebuffer_only(false); }
+         layer.set_opaque(false);
+         layer.set_maximum_drawable_count(3);
+         unsafe {
+@@ -385,7 +387,23 @@
+                     let block = block.copy();
+                     command_buffer.add_completed_handler(&block);
+ 
+-                    if self.presents_with_transaction {
++                    if let Some(path) = std::env::var_os("GPUI_SNAPSHOT") {
++                        // dev patch: write every finished frame to a PNG.
++                        command_buffer.commit();
++                        command_buffer.wait_until_completed();
++                        let tex = drawable.texture();
++                        let (w, h) = (tex.width() as u32, tex.height() as u32);
++                        let mut bytes = vec![0u8; (w * h * 4) as usize];
++                        tex.get_bytes(bytes.as_mut_ptr() as *mut _, (w * 4) as u64,
++                            metal::MTLRegion { origin: metal::MTLOrigin { x: 0, y: 0, z: 0 },
++                                size: metal::MTLSize { width: w as u64, height: h as u64, depth: 1 } }, 0);
++                        for px in bytes.chunks_exact_mut(4) { px.swap(0, 2); }
++                        if let Some(img) = image::RgbaImage::from_raw(w, h, bytes) {
++                            let tmp = std::path::PathBuf::from(&path).with_extension("tmp.png");
++                            if img.save(&tmp).is_ok() { let _ = std::fs::rename(&tmp, &path); }
++                        }
++                        drawable.present();
++                    } else if self.presents_with_transaction {
+                         command_buffer.commit();
+                         command_buffer.wait_until_scheduled();
+                         drawable.present();
+--- a/src/platform/mac/window.rs
++++ b/src/platform/mac/window.rs
+@@ -476,7 +476,8 @@
+     fn start_display_link(&mut self) {
+         self.stop_display_link();
+         unsafe {
+-            if !self
++            // dev patch: keep drawing a covered window while frames are being captured.
++            if std::env::var_os("GPUI_SNAPSHOT").is_none() && !self
+                 .native_window
+                 .occlusionState()
+                 .contains(NSWindowOcclusionState::NSWindowOcclusionStateVisible)
+@@ -1915,7 +1916,7 @@
+         {
+             lock.move_traffic_light();
+             lock.start_display_link();
+-        } else {
++        } else if std::env::var_os("GPUI_SNAPSHOT").is_none() {
+             lock.stop_display_link();
+         }
+     }
