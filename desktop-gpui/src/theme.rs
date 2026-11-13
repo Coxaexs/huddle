@@ -80,3 +80,15 @@ pub fn css_color(value: &str) -> Option<Hsla> {
 pub fn on_color(bg: Hsla) -> Hsla {
     if bg.l > 0.62 { rgb(0x48424a).into() } else { Theme::ink().into() }
 }
+
+/// CSS `color-mix(in srgb, a p, b)`: premultiplied, so mixing with `transparent` fades.
+pub fn mix(a: impl Into<Hsla>, p: f32, b: impl Into<Hsla>) -> Hsla {
+    let (a, b) = (gpui::Rgba::from(a.into()), gpui::Rgba::from(b.into()));
+    let q = 1. - p;
+    let alpha = a.a * p + b.a * q;
+    if alpha <= 0. {
+        return gpui::hsla(0., 0., 0., 0.);
+    }
+    let ch = |x: f32, y: f32| (x * a.a * p + y * b.a * q) / alpha;
+    gpui::Rgba { r: ch(a.r, b.r), g: ch(a.g, b.g), b: ch(a.b, b.b), a: alpha }.into()
+}

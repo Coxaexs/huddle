@@ -248,6 +248,12 @@ pub struct Member {
     pub last_seen_at: String,
     /// Role ids by server id.
     pub role_ids: serde_json::Value,
+    pub bio: String,
+    pub pronouns: Option<String>,
+    pub created_at: String,
+    pub is_admin: bool,
+    pub global_name: Option<String>,
+    pub profile_frame: Option<String>,
 }
 
 impl Member {
@@ -327,4 +333,21 @@ pub struct Emoji {
     pub server_id: String,
     pub name: String,
     pub url: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Mutuals {
+    pub servers: Vec<MutualServer>,
+    pub friends: Vec<User>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MutualServer {
+    pub id: String,
+    pub name: String,
+    pub icon: String,
+    pub icon_url: Option<String>,
+    pub color: String,
 }

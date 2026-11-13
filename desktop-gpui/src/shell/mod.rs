@@ -6,6 +6,7 @@ mod context_menu;
 mod emoji_picker;
 mod friends;
 mod members;
+mod profile_card;
 mod rail;
 mod sidebar;
 
@@ -176,6 +177,9 @@ pub struct Shell {
     /// The emoji picker, open for a reaction or for the composer.
     picker: Option<OpenPicker>,
     picker_seq: u64,
+    /// The profile card that is open.
+    profile: Option<profile_card::OpenProfile>,
+    profile_seq: u64,
     /// Where the last message menu was opened (its Add Reaction places the picker there).
     ctx_at: gpui::Point<gpui::Pixels>,
     /// Translations asked for from the message menu.
@@ -314,6 +318,8 @@ impl Shell {
             translations: HashMap::new(),
             picker: None,
             picker_seq: 0,
+            profile: None,
+            profile_seq: 0,
             ctx_at: gpui::Point::default(),
             connected: false,
             status: Some("Loading your servers…".into()),

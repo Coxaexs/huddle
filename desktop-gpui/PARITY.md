@@ -48,7 +48,8 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | DM conversation: header (Chrome's flex-shrink reproduced), start banner, NEW line, participants panel, day labels in the system locale | chat-header.tsx, message-list.tsx, app/lib/chat/format.ts | ✅ (calls from the header, pin/close actions ⬜) |
 | Voice stage (the room view), tiles, bottom bar, soundboard | voice-stage*, voice-stage/* | ⬜ (joining works from the list) |
 | Screen share and camera, watching streams | voice-stage, floating-screen-preview.tsx | ⬜ |
-| Profile cards, user menu | user-profile-card.tsx, user-menu.tsx | ⬜ |
+| Profile card (from message names/avatars and member rows): tinted by the member's colour, banner, avatar + presence + decoration, status bubble, name + member tag (Owner/Admin/Mod/role), @username • pronouns, tagline, bio (3-line clamp), roles, mutual servers/friends, private note (saves on Enter/blur), member since, friend/DM/Mention/Block, self tiles | user-profile-card.tsx, profile-look.ts, cosmetics.css | 🟡 (styled cards (theme/finish/pattern/edge), profile frames and effects, badges shelf, achievements, social links, Spotify/activity, role editing ⬜) |
+| User menu (right-click on a person) | user-menu.tsx | ⬜ |
 | Settings (all tabs), server settings | settings-dialog.tsx, settings/*, server-settings* | ⬜ |
 | Threads, pins, saved, mentions, search, achievements panels | side-panels.tsx, achievements-panel.tsx | ⬜ |
 | Events, forums, polls | events-panel.tsx, forum-board.tsx | ⬜ |

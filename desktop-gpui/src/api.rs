@@ -306,6 +306,50 @@ impl Client {
         read::<Value>(request.send_json(json!({ "quickReactions": list }))?, "quick reactions").map(|_| ())
     }
 
+    /// What you have in common with someone (`/api/users/{id}/mutuals`).
+    pub fn mutuals(&self, user_id: &str) -> Result<crate::model::Mutuals> {
+        self.get(&format!("/api/users/{}/mutuals", encode(user_id)))
+    }
+
+    /// Your private note about someone.
+    pub fn note(&self, user_id: &str) -> Result<String> {
+        let reply: Value = self.get(&format!("/api/users/{}/note", encode(user_id)))?;
+        Ok(reply.get("note").and_then(Value::as_str).unwrap_or_default().to_string())
+    }
+
+    pub fn set_note(&self, user_id: &str, note: &str) -> Result<String> {
+        let mut request = self.agent.put(format!("{}/api/users/{}/note", self.base, encode(user_id))).header("Origin", self.absolute(""));
+        if let Some(cookie) = self.cookie_header() {
+            request = request.header("Cookie", &cookie);
+        }
+        let reply: Value = read(request.send_json(json!({ "note": note }))?, "note")?;
+        Ok(reply.get("note").and_then(Value::as_str).unwrap_or_default().to_string())
+    }
+
+    pub fn add_friend(&self, username: &str) -> Result<()> {
+        let _: Value = self.post("/api/friends", json!({ "username": username }))?;
+        Ok(())
+    }
+
+    pub fn accept_friend(&self, user_id: &str) -> Result<()> {
+        let _: Value = self.post("/api/friends/accept", json!({ "requesterId": user_id }))?;
+        Ok(())
+    }
+
+    /// Unfriends, or unblocks (the same call on the web).
+    pub fn remove_friend(&self, user_id: &str) -> Result<()> {
+        let mut request = self.agent.delete(format!("{}/api/friends?id={}", self.base, encode(user_id))).header("Origin", self.absolute(""));
+        if let Some(cookie) = self.cookie_header() {
+            request = request.header("Cookie", &cookie);
+        }
+        read::<Value>(request.call()?, "friends").map(|_| ())
+    }
+
+    pub fn block(&self, user_id: &str) -> Result<()> {
+        let _: Value = self.post("/api/friends/block", json!({ "targetId": user_id }))?;
+        Ok(())
+    }
+
     pub fn mark_read(&self, channel_id: &str) -> Result<()> {
         let _: Value = self.post("/api/channels/reads", json!({ "channelId": channel_id }))?;
         Ok(())

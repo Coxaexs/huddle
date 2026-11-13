@@ -298,6 +298,12 @@ impl Shell {
                 } else {
                     None
                 };
+            // `.clickable-name` when they are someone we know.
+            let name_target = message
+                .user_id
+                .clone()
+                .filter(|id| author.is_some() || dm_author.is_some() || *id == self.me.id)
+                .map(|id| (id, super::profile_card::spot()));
             let display = author
                 .map(|a| a.name().to_string())
                 .or(dm_author.as_ref().map(|u| u.name().to_string()))
@@ -310,6 +316,13 @@ impl Shell {
                     .child(
                         // The name's line is 24px; a styled name's own box can be taller and hangs over it.
                         div()
+                            .id(SharedString::from(format!("nm-{}", message.id)))
+                            .relative()
+                            .when_some(name_target.clone(), |d, (id, spot)| {
+                                d.cursor_pointer()
+                                    .child(super::profile_card::track(&spot))
+                                    .on_click(cx.listener(move |this, _, window, cx| this.open_profile(&id, spot.get(), window, cx)))
+                            })
                             .h(px(24.))
                             .flex()
                             .items_center()
@@ -452,7 +465,22 @@ impl Shell {
                 let frame = message.user_id.as_ref().map(|id| self.avatar_frame(id)).unwrap_or_default();
                 crate::cosmetics::decorate(ui::avatar(picture.map(|p| self.client.absolute(&p)), &glyph, &color, &message.author, 36.), &frame, 36.)
             };
-            div().flex_none().child(face).into_any_element()
+            // The avatar opens their card too.
+            match message.user_id.clone().filter(|id| author.is_some() || dm_author.is_some() || *id == self.me.id) {
+                Some(id) => {
+                    let spot = super::profile_card::spot();
+                    div()
+                        .id(SharedString::from(format!("av-{}", message.id)))
+                        .relative()
+                        .flex_none()
+                        .cursor_pointer()
+                        .child(face)
+                        .child(super::profile_card::track(&spot))
+                        .on_click(cx.listener(move |this, _, window, cx| this.open_profile(&id, spot.get(), window, cx)))
+                        .into_any_element()
+                }
+                None => div().flex_none().child(face).into_any_element(),
+            }
         };
 
         // `article.message`: 1px margins; 7px padding at a group start, 1px on a continuation; a new

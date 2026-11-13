@@ -61,6 +61,32 @@ pub fn square(url: String) -> gpui::ImageSource {
     }))
 }
 
+/// An avatar whose letter is set in its own size, weight and colour (the profile card's 68px one
+/// keeps the 16px regular letter in the card's text colour).
+pub fn avatar_with(picture: Option<String>, glyph: &str, color: &str, name: &str, size: f32, font: f32, weight: gpui::FontWeight, text: Hsla) -> AnyElement {
+    match picture.filter(|p| !p.is_empty()) {
+        Some(url) => avatar(Some(url), glyph, color, name, size),
+        None => {
+            let bg: Hsla = css_color(color).unwrap_or(Theme::lavender_soft().into());
+            let face = if glyph.trim().is_empty() { name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default() } else { glyph.to_string() };
+            div()
+                .size(px(size))
+                .flex_none()
+                .rounded_full()
+                .bg(bg)
+                .text_color(text)
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_size(px(font))
+                .line_height(px(font))
+                .font_weight(weight)
+                .child(face)
+                .into_any_element()
+        }
+    }
+}
+
 pub fn avatar(picture: Option<String>, glyph: &str, color: &str, name: &str, size: f32) -> AnyElement {
     match picture.filter(|p| !p.is_empty()) {
         Some(url) => {
