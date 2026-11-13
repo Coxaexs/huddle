@@ -423,6 +423,7 @@ pub struct VoiceToken {
     pub url: String,
     pub token: String,
     pub identity: String,
+    pub region: Option<String>,
 }
 
 fn signed_in_or_second_factor(reply: Value) -> Result<LoginOutcome> {

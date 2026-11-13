@@ -256,3 +256,35 @@ mod tests {
         }
     }
 }
+
+/// A CSS background painted into a picture of `w`×`h` with `radius` corners (cached by all of it).
+pub fn picture(css: &str, w: f32, h: f32, radius: f32, scale: f32) -> Option<std::sync::Arc<gpui::RenderImage>> {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    thread_local! {
+        static CACHE: RefCell<HashMap<String, Option<std::sync::Arc<gpui::RenderImage>>>> = RefCell::new(HashMap::new());
+    }
+    let key = format!("{css}|{w}|{h}|{radius}|{scale}");
+    if let Some(hit) = CACHE.with(|c| c.borrow().get(&key).cloned()) {
+        return hit;
+    }
+    let paint = || -> Option<std::sync::Arc<gpui::RenderImage>> {
+        let (defs, draw) = to_svg(css, &Box2 { x: 0., y: 0., w, h }, "bg");
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}"><defs>{defs}<clipPath id="round"><rect width="{w}" height="{h}" rx="{radius}"/></clipPath></defs><g clip-path="url(#round)">{draw}</g></svg>"#
+        );
+        let tree = resvg::usvg::Tree::from_str(&svg, &resvg::usvg::Options::default()).ok()?;
+        let (pw, ph) = ((w * scale).ceil() as u32, (h * scale).ceil() as u32);
+        let mut pixmap = resvg::tiny_skia::Pixmap::new(pw.max(1), ph.max(1))?;
+        resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
+        let mut data = Vec::with_capacity((pw * ph * 4) as usize);
+        for p in pixmap.pixels() {
+            let c = p.demultiply();
+            data.extend_from_slice(&[c.blue(), c.green(), c.red(), c.alpha()]);
+        }
+        Some(std::sync::Arc::new(gpui::RenderImage::new(vec![image::Frame::new(image::RgbaImage::from_raw(pw, ph, data)?)])))
+    };
+    let result = paint();
+    CACHE.with(|c| c.borrow_mut().insert(key, result.clone()));
+    result
+}

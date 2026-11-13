@@ -3,7 +3,7 @@
 
 use gpui::{AnyElement, Context, FontWeight, IntoElement, SharedString, div, prelude::*, px, rgb};
 
-use super::{CallState, Shell};
+use super::Shell;
 use crate::model::{Channel, VoiceParticipant};
 use crate::i18n::t;
 use crate::theme::{DISPLAY_FONT, Theme};
@@ -169,6 +169,7 @@ impl Shell {
             .bg(Theme::panel())
             .child(header)
             .child(nav)
+            .children(self.render_mini_voice_bar(window, cx))
             .into_any_element()
     }
 
@@ -176,7 +177,8 @@ impl Shell {
         if channel.is_voice() {
             return self.render_voice_room(channel, window, cx);
         }
-        let selected = self.channel_id.as_deref() == Some(&channel.id);
+        // Under a voice room's stage no text channel is the one open.
+        let selected = self.channel_id.as_deref() == Some(&channel.id) && self.stage.is_none();
         let unread = !selected && self.reads.get(&channel.id).is_some_and(|r| r.unread);
         let mentions = self.reads.get(&channel.id).map_or(0, |r| r.mentions);
         let id = channel.id.clone();
@@ -243,7 +245,7 @@ impl Shell {
             .text_color(Theme::quiet())
             .hover(|s| s.bg(Theme::hover()).text_color(Theme::ink()))
             .when(connected, |d| d.bg(Theme::lavender_soft()))
-            .tooltip(ui::tooltip(title))
+            .tooltip(ui::tooltip(title.clone()))
             .child(icon(channel.icon(), 16., if connected { Theme::mint() } else { Theme::quiet() }))
             .child(div().flex_1().min_w_0().truncate().when(connected, |d| d.text_color(Theme::lavender_light())).child(channel.name.clone()))
             .when(connected, |d| {
@@ -276,32 +278,89 @@ impl Shell {
                         .child(t("voiceStage.live")),
                 )
             })
-            .on_click(cx.listener(move |this, _, _, cx| {
-                if this.call.as_ref().is_none_or(|c| c.channel_id != id) {
-                    this.join_voice(id.clone(), cx);
-                }
-            }));
+            .on_click(cx.listener(move |this, _, window, cx| this.open_stage(id.clone(), window, cx)));
 
+        if connected {
+            // `.voice-room-wrapper.voice-active-contour`: the joined room as a card, its name in the
+            // light accent (wrapping), "N active" in green, the seats under it.
+            let room = div()
+                .id(SharedString::from(format!("room-{}", channel.id)))
+                .flex_none()
+                .min_h(px(38.))
+                .px(px(4.))
+                .py(px(2.))
+                .rounded(px(12.))
+                .flex()
+                .items_center()
+                .gap(px(9.))
+                .cursor_pointer()
+                .text_size(px(13.))
+                .line_height(px(19.5))
+                .font_weight(FontWeight::SEMIBOLD)
+                .tooltip(ui::tooltip(title.clone()))
+                .child(icon(channel.icon(), 16., gpui::rgb(0x9a96a0)))
+                .child(div().flex_1().min_w_0().text_color(gpui::rgb(0xc4b5fd)).child(channel.name.clone()))
+                .child(
+                    div()
+                        .flex_none()
+                        .max_w(px(42.5))
+                        .px(px(6.))
+                        .py(px(1.))
+                        .rounded(px(6.))
+                        .bg(gpui::rgba(0x10b98126))
+                        .border_1()
+                        .border_color(gpui::rgba(0x10b9814d))
+                        .text_size(px(10.))
+                        .line_height(px(15.))
+                        .text_color(gpui::rgb(0x34d399))
+                        .child(format!("{} active", people.len().max(1))),
+                )
+                .on_click({
+                    let id = channel.id.clone();
+                    cx.listener(move |this, _, window, cx| this.open_stage(id.clone(), window, cx))
+                });
+            let mut seats = div().flex().flex_col().pt(px(3.)).pb(px(7.)).pl(px(6.));
+            for person in people {
+                seats = seats.child(self.render_voice_member(person, true, 28., window, cx));
+            }
+            return div()
+                .flex_none()
+                .mx(px(7.))
+                .my(px(4.))
+                .p(px(8.))
+                .rounded(px(12.))
+                .bg(gpui::rgba(0x252040e0))
+                .border_1()
+                .border_color(gpui::rgba(0xffffff12))
+                .shadow(vec![
+                    gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.25), offset: gpui::point(px(0.), px(4.)), blur_radius: px(14.), spread_radius: px(0.) },
+                    gpui::BoxShadow { color: gpui::rgba(0x10b98133).into(), offset: gpui::point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(1.) },
+                ])
+                .child(room)
+                .child(seats)
+                .into_any_element();
+        }
+        let _ = &row;
         let mut wrapper = div().flex().flex_col().flex_none().child(row);
         if !people.is_empty() {
             // Measured: the first seat sits 3px under the room, the next channel 8px under the last seat.
             let mut list = div().flex().flex_col().pt(px(3.)).pb(px(8.)).pl(px(36.)).pr(px(1.));
             for person in people {
-                list = list.child(self.render_voice_member(person, connected, window, cx));
+                list = list.child(self.render_voice_member(person, connected, 33., window, cx));
             }
             wrapper = wrapper.child(list);
         }
         wrapper.into_any_element()
     }
 
-    fn render_voice_member(&self, person: &VoiceParticipant, in_this_room: bool, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_voice_member(&self, person: &VoiceParticipant, in_this_room: bool, height: f32, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let identity = format!("{}|{}", person.id, person.connection_id);
         let speaking = in_this_room && self.call.as_ref().is_some_and(|c| c.speaking.contains(&identity));
         let me = self.connection_id.as_deref() == Some(person.connection_id.as_str());
         let elapsed = ((self.hub_now() - person.joined_at) / 1000.).max(0.) as u64;
         let picture = self.picture(&person.avatar_url);
         div()
-            .h(px(33.))
+            .h(px(height))
             .flex()
             .items_center()
             .gap(px(8.))
@@ -359,19 +418,14 @@ impl Shell {
 
     /// `.discord-user-footer`: avatar, name, status, then mic, headphones and settings.
     pub(super) fn render_footer(&self, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let status = if !self.connected {
-            "Reconnecting…".to_string()
-        } else if let Some(call) = &self.call {
-            let room = self.channel_by_id(&call.channel_id).map(|c| c.name.clone()).unwrap_or_default();
-            match call.state {
-                CallState::Joining => "Joining voice…".into(),
-                CallState::Reconnecting => "Voice reconnecting…".into(),
-                CallState::Connected => format!("Voice · {room}"),
+        // user-footer.tsx: your custom status, else your presence (also while in a call).
+        let status = match &self.me.custom_status {
+            Some(serde_json::Value::String(text)) if !text.is_empty() => text.clone(),
+            Some(serde_json::Value::Object(o)) if o.get("text").and_then(|v| v.as_str()).is_some_and(|t| !t.is_empty()) => {
+                o["text"].as_str().unwrap_or_default().to_string()
             }
-        } else {
-            t("presence.online")
+            _ => t("presence.online"),
         };
-        let in_call = self.call.is_some();
         let control = |id: &'static str, name: &'static str, off: bool| {
             div()
                 .id(id)
@@ -436,7 +490,7 @@ impl Shell {
                             .truncate()
                             .text_size(px(11.))
                             .line_height(px(13.2))
-                            .text_color(if in_call { Theme::mint() } else { Theme::muted() })
+                            .text_color(Theme::muted())
                             .child(status),
                     ),
             )
@@ -461,7 +515,7 @@ impl Shell {
 }
 
 /// `VoiceDuration`: 8:04, or 1:02:03 past an hour.
-fn duration(secs: u64) -> String {
+pub(super) fn duration(secs: u64) -> String {
     let (h, m, s) = (secs / 3600, secs / 60 % 60, secs % 60);
     if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m}:{s:02}") }
 }

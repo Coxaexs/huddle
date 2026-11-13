@@ -16,6 +16,7 @@ pub struct User {
     pub quick_reactions: Vec<String>,
     /// A Hoffle-wide admin: every permission in every server.
     pub is_admin: bool,
+    pub custom_status: Option<serde_json::Value>,
 }
 
 impl User {

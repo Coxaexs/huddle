@@ -271,6 +271,10 @@ impl gpui::Render for Shell {
                     self.open_profile(&id, bounds, window, cx);
                 }
             }
+            // HOFFLE_DEV_STAGE=<channel id>: that voice room's stage, joined (empty rooms only).
+            if let Ok(room) = std::env::var("HOFFLE_DEV_STAGE") {
+                self.open_stage(room, window, cx);
+            }
             // HOFFLE_DEV_PANEL=pins | saved | mentions | search:<query>
             if let Ok(which) = std::env::var("HOFFLE_DEV_PANEL") {
                 use super::side_panels::Panel;
@@ -366,7 +370,7 @@ impl gpui::Render for Shell {
                 )
             })
             .when(!(self.home && self.channel_id.is_none()), |d| d.child(self.render_chat_panel(window, cx)))
-            .when(members_open && (!self.home || self.channel_id.is_some()), |d| d.child(self.render_members(window, cx)))
+            .when(members_open && (!self.home || self.channel_id.is_some()) && self.stage.is_none(), |d| d.child(self.render_members(window, cx)))
             .children(self.render_panel(window, cx))
             .children(self.render_profile(window, cx))
             .children(self.render_picker(window, cx))

@@ -19,7 +19,7 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | Sidebar header: eyebrow, Fraunces name, ••• | panels.tsx | ✅ (server menu ⬜) |
 | Channel list: label, events chip, rows by kind, selected, unread pill, mention count, categories fold | panels.tsx, chat-shell-renderers.tsx | ✅ (banner header, kind picker, drag, channel menu ⬜) |
 | Voice rooms in the list: LIVE, seats with timers, bot bars, mute/deafen, speaking ring | chat-shell-renderers.tsx | ✅ (stream hover card, drag to move ⬜) |
-| User card: avatar, presence, name, status, mic/headphones/settings | panels.tsx `.discord-user-footer` | 🟡 (device menus, status picker, settings ⬜) |
+| User card: avatar, presence, name, custom status or presence, mic/headphones/settings | user-footer.tsx | 🟡 (device menus, status picker, settings ⬜) |
 | Header: kind icon, Fraunces name, topic, 7 tools | chat-header.tsx | 🟡 (tools open nothing yet) |
 | Messages: grouping rules, day dividers, command lines, bot tags, `text-wrap: pretty`, 1px rhythm | message-row.tsx, message-list.tsx | ✅ |
 | Markdown, mentions, spoilers, links, inline code, italics | message-body.tsx | ✅ (custom emoji, embeds, link unfurls ⬜) |
@@ -46,7 +46,7 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | Simple mode | panels.tsx SimpleRooms, easy.css | ⬜ |
 | DMs home: sidebar (search, friends, DM rows), friends view (tabs, search, counts, Hoffy empty states) | panels.tsx, friends-view.tsx | ✅ (add-friend form submit, accept/ignore/block actions, active-now panel ⬜) |
 | DM conversation: header (Chrome's flex-shrink reproduced), start banner, NEW line, participants panel, day labels in the system locale | chat-header.tsx, message-list.tsx, app/lib/chat/format.ts | ✅ (calls from the header, pin/close actions ⬜) |
-| Voice stage (the room view), tiles, bottom bar, soundboard | voice-stage*, voice-stage/* | ⬜ (joining works from the list) |
+| Voice stage: opens (and joins) from the room, header (speaker, name, "· N in call", grid/table/map, chat toggle), avatar tiles (glow, caption with seat time, green speaking pulse), control bar (mic, deafen, leave work), the room's own chat (system lines, messages, composer), joined room card and "voice connected · region" bar in the sidebar | voice-stage.tsx, voice-stage/*, voice-chat-panel.tsx, mini-voice-bar.tsx | 🟡 (table and map views, soundboard, seat picker, device settings, camera/screen buttons, pop-out, fullscreen, games ⬜) |
 | Screen share and camera, watching streams | voice-stage, floating-screen-preview.tsx | ⬜ |
 | Profile card (from message names/avatars and member rows): tinted by the member's colour, banner, avatar + presence + decoration, status bubble, name + member tag (Owner/Admin/Mod/role), @username • pronouns, tagline, bio (3-line clamp), roles, mutual servers/friends, private note (saves on Enter/blur), member since, friend/DM/Mention/Block, self tiles | user-profile-card.tsx, profile-look.ts, cosmetics.css | 🟡 (styled cards (theme/finish/pattern/edge), profile frames and effects, badges shelf, achievements, social links, Spotify/activity, role editing ⬜) |
 | User menu (right-click on a person) | user-menu.tsx | ⬜ |

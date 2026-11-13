@@ -8,6 +8,7 @@ mod friends;
 mod members;
 mod profile_card;
 mod side_panels;
+mod stage;
 
 pub use side_panels::{MentionEntry, SavedEntry, SearchResult};
 mod rail;
@@ -54,6 +55,8 @@ enum CallState {
 struct Call {
     channel_id: String,
     state: CallState,
+    /// Where the media server is ("nl" or "de"), once the token said.
+    region: Option<String>,
     /// LiveKit identities talking right now.
     speaking: HashSet<String>,
 }
@@ -188,6 +191,8 @@ pub struct Shell {
     /// The emoji picker, open for a reaction or for the composer.
     picker: Option<OpenPicker>,
     picker_seq: u64,
+    /// The voice room being looked at.
+    stage: Option<stage::Stage>,
     /// Pins, saved, mentions and search.
     panels: side_panels::Panels,
     /// The profile card that is open.
@@ -297,7 +302,8 @@ impl Shell {
             voice,
             call: None,
             connection_id: None,
-            muted: false,
+            // Development: HOFFLE_DEV_MUTED=1 joins with the mic closed.
+            muted: std::env::var_os("HOFFLE_DEV_MUTED").is_some(),
             deafened: false,
             mute_from_deafen: false,
             dev_joined: false,
@@ -334,6 +340,7 @@ impl Shell {
             profile: None,
             profile_seq: 0,
             panels: Default::default(),
+            stage: None,
             ctx_at: gpui::Point::default(),
             connected: false,
             status: Some("Loading your servers…".into()),
@@ -724,6 +731,7 @@ impl Shell {
         if self.panels.open == Some(side_panels::Panel::Pins) {
             self.panels.open = None;
         }
+        self.stage = None;
         self.channel_id = Some(id.clone());
         self.hub.send(json!({ "t": "subscribe", "channelId": id }));
         let count = self.messages.get(&id).map_or(0, Vec::len);
@@ -1065,7 +1073,7 @@ impl Shell {
             cx.notify();
             return;
         };
-        self.call = Some(Call { channel_id: channel_id.clone(), state: CallState::Joining, speaking: HashSet::new() });
+        self.call = Some(Call { channel_id: channel_id.clone(), state: CallState::Joining, region: None, speaking: HashSet::new() });
         // Take the seat first: the token is tied to this connection, and other people's apps only
         // trust a LiveKit identity they can find in the room's roster.
         self.hub.send(json!({
@@ -1094,7 +1102,14 @@ impl Shell {
                 }
                 crate::trace(format!("voice token: {}", token.as_ref().map(|t| t.identity.clone()).unwrap_or_else(|e| e.to_string())));
                 match token {
-                    Ok(token) => this.voice.send(VoiceCmd::Join { url: token.url, token: token.token, bitrate, muted, deafened }),
+                    Ok(token) => {
+                        // connectSfu: the grant's region, else read off the server's address.
+                        let region = token.region.clone().unwrap_or_else(|| if token.url.contains("-de.") { "de".into() } else { "nl".into() });
+                        if let Some(call) = this.call.as_mut() {
+                            call.region = Some(region);
+                        }
+                        this.voice.send(VoiceCmd::Join { url: token.url, token: token.token, bitrate, muted, deafened })
+                    }
                     Err(err) => {
                         this.status = Some(format!("Could not join voice: {err}").into());
                         this.leave_voice(cx);
@@ -1109,6 +1124,7 @@ impl Shell {
     }
 
     fn leave_voice(&mut self, cx: &mut Context<Self>) {
+        self.close_stage();
         if self.call.take().is_some() {
             self.voice.send(VoiceCmd::Leave(None));
             self.hub.send(json!({ "t": "voice-leave" }));

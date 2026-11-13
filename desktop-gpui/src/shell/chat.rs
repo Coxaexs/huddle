@@ -37,22 +37,28 @@ impl Shell {
             .overflow_hidden()
             .child(self.render_header(window, cx))
             .children(self.render_search(cx))
-            .child(self.render_messages(cx))
-            .children(self.render_notice(cx))
-            .child(self.render_composer(cx)))
+            .map(|d| match self.render_stage_body(window, cx) {
+                Some(stage) => d.child(stage),
+                None => d.child(self.render_messages(cx)).children(self.render_notice(cx)).child(self.render_composer(cx)),
+            }))
     }
 
     fn render_header(&self, window: &gpui::Window, cx: &mut Context<Self>) -> AnyElement {
         if let Some(dm) = self.channel_id.as_ref().and_then(|c| self.dm(c)) {
             return self.render_dm_header(dm.clone(), window, cx).into_any_element();
         }
-        let channel = self.channel();
+        // In a voice room's stage: its speaker icon and name, "· N in call", and the stage controls.
+        let staged = self.stage.as_ref().and_then(|s| self.channel_by_id(&s.channel_id));
+        let channel = staged.or(self.channel());
         let name = channel.map(|c| c.name.clone()).unwrap_or_default();
         // An empty topic shows the default line, as chat-header.tsx does.
-        let topic = channel
-            .map(|c| if c.topic.trim().is_empty() { tv("header.channelDefaultTopic", &[("name", &c.name)]) } else { c.topic.clone() })
-            .unwrap_or_default();
-        let kind_icon = channel.map(|c| c.icon()).unwrap_or("hash");
+        let topic = match self.stage_subtitle() {
+            Some(line) => line,
+            None => channel
+                .map(|c| if c.topic.trim().is_empty() { tv("header.channelDefaultTopic", &[("name", &c.name)]) } else { c.topic.clone() })
+                .unwrap_or_default(),
+        };
+        let kind_icon = if staged.is_some() { "volume-2" } else { channel.map(|c| c.icon()).unwrap_or("hash") };
         let tools: [(&'static str, &'static str); 6] = [
             ("user-plus", "header.findUsers"),
             ("search", "header.searchMessages"),
@@ -61,7 +67,7 @@ impl Shell {
             ("bookmark", "header.savedMessages"),
             ("award", "header.achievements"),
         ];
-        let mut right = div().flex().items_center().gap(px(3.));
+        let mut right = div().flex().items_center().gap(px(3.)).children(self.render_stage_controls(cx));
         for (name, title) in tools {
             let active = match name {
                 "search" => self.panels.search.is_some(),
@@ -812,7 +818,7 @@ impl Shell {
     }
 
     pub(super) fn chat_panel_width(&self, window: &gpui::Window) -> gpui::Pixels {
-        let members = self.members_open && (!self.home || self.channel_id.is_some());
+        let members = self.members_open && (!self.home || self.channel_id.is_some()) && self.stage.is_none();
         window.bounds().size.width - px(300.) - if members { px(250.) } else { px(10.) }
     }
 
