@@ -199,6 +199,19 @@ impl Shell {
                                 .child(count.to_string()),
                         )
                     })
+                    // `.dm-row-actions`: pin and close, shown on the open (or hovered) row.
+                    .when(selected, |d| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .right(px(10.))
+                                .top(px(12.))
+                                .flex()
+                                .gap(px(11.))
+                                .child(icon("pin", 12., Theme::muted()))
+                                .child(icon("x", 13., Theme::muted())),
+                        )
+                    })
                     .on_click(cx.listener(move |this, _, _, cx| this.open_dm(id.clone(), cx))),
             );
         }

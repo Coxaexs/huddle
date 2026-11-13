@@ -4,8 +4,8 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, Font, FontStyle, FontWeight, HighlightStyle, InteractiveText, IntoElement, Pixels,
-    SharedString, StrikethroughStyle, StyledText, UnderlineStyle, Window, div, font, prelude::*, px,
+    AnyElement, App, Font, FontStyle, FontWeight, Hsla, InteractiveText, IntoElement, Pixels, SharedString,
+    StrikethroughStyle, StyledText, TextRun, UnderlineStyle, Window, div, font, prelude::*, px,
 };
 use gpui::LineFragment;
 
@@ -93,9 +93,9 @@ fn line_wrapped(
     if let Some(wrap) = wrap {
         pretty(&mut parsed.text, wrap);
     }
-    let highlights = flatten(&parsed, revealed);
+    let runs = flatten(&parsed, revealed);
     let Inline { text, links, spoilers, .. } = parsed;
-    let styled = StyledText::new(SharedString::from(text)).with_highlights(highlights);
+    let styled = StyledText::new(SharedString::from(text)).with_runs(runs);
     let mut ranges: Vec<Range<usize>> = links.iter().map(|(r, _)| r.clone()).collect();
     let hidden = !revealed && !spoilers.is_empty();
     if hidden {
@@ -146,60 +146,88 @@ fn pretty(text: &mut String, wrap: &Wrap) {
 
 /// Spans can nest (**bold *and italic***); gpui wants runs that do not overlap, so split the text
 /// at every span edge and merge the styles that cover each piece.
-fn flatten(parsed: &Inline, revealed: bool) -> Vec<(Range<usize>, HighlightStyle)> {
+fn flatten(parsed: &Inline, revealed: bool) -> Vec<TextRun> {
+    // Every span edge splits the text; each piece gets the styles of all spans covering it
+    // (spans nest: **bold *and italic***), and the gaps get the plain message style.
     let mut edges: Vec<usize> = parsed.spans.iter().flat_map(|(r, _)| [r.start, r.end]).collect();
+    edges.push(0);
+    edges.push(parsed.text.len());
     edges.sort_unstable();
     edges.dedup();
-    let mut out = Vec::new();
+    let mut runs = Vec::new();
     for pair in edges.windows(2) {
         let (start, end) = (pair[0], pair[1]);
         if start >= end {
             continue;
         }
-        let mut style = HighlightStyle::default();
-        let mut any = false;
+        let mut look = Look::default();
         for (range, span) in &parsed.spans {
             if range.start <= start && end <= range.end {
-                any = true;
-                apply(&mut style, *span, revealed);
+                look.apply(*span, revealed);
             }
         }
-        if any {
-            out.push((start..end, style));
-        }
+        runs.push(look.run(end - start));
     }
-    out
+    runs
 }
 
-fn apply(style: &mut HighlightStyle, span: Span, revealed: bool) {
-    match span {
-        Span::Bold => style.font_weight = Some(FontWeight::BOLD),
-        Span::Italic => style.font_style = Some(FontStyle::Italic),
-        Span::Underline => {
-            style.underline = Some(UnderlineStyle { thickness: px(1.), color: None, wavy: false })
-        }
-        Span::Strike => style.strikethrough = Some(StrikethroughStyle { thickness: px(1.), color: None }),
-        Span::Code => {
-            style.background_color = Some(Theme::paper().into());
-            style.color = Some(Theme::coral().into());
-        }
-        Span::Link => {
-            style.color = Some(Theme::lavender().into());
-            style.underline = Some(UnderlineStyle { thickness: px(1.), color: None, wavy: false });
-        }
-        Span::Mention { me } => {
-            style.background_color = Some(if me { Theme::lavender_muted() } else { Theme::lavender_soft() }.into());
-            style.color = Some(Theme::lavender().into());
-            style.font_weight = Some(FontWeight::MEDIUM);
-        }
-        Span::Spoiler => {
-            if revealed {
-                style.background_color = Some(Theme::hover().into());
-            } else {
-                // Hidden: text painted in the block's own colour until clicked.
-                style.background_color = Some(Theme::lavender_muted().into());
-                style.color = Some(Theme::lavender_muted().into());
+/// The web's inline styles (app/globals.css): `.mention` 22% lavender (40% when it is you), weight
+/// 600; `.inline-code` monospace on 12% ink; `.spoiler` 82% ink with clear text, 10% once revealed;
+/// links are plain message text.
+#[derive(Default)]
+struct Look {
+    weight: Option<FontWeight>,
+    italic: bool,
+    mono: bool,
+    color: Option<Hsla>,
+    background: Option<Hsla>,
+    underline: bool,
+    strike: bool,
+}
+
+impl Look {
+    fn apply(&mut self, span: Span, revealed: bool) {
+        let ink: Hsla = Theme::ink().into();
+        match span {
+            Span::Bold => self.weight = Some(FontWeight::BOLD),
+            Span::Italic => self.italic = true,
+            Span::Underline => self.underline = true,
+            Span::Strike => self.strike = true,
+            Span::Code => {
+                self.mono = true;
+                self.background = Some(ink.opacity(0.12));
             }
+            Span::Link => {}
+            Span::Mention { me } => {
+                let lavender: Hsla = Theme::lavender().into();
+                self.background = Some(lavender.opacity(if me { 0.40 } else { 0.22 }));
+                self.color = Some(lavender);
+                self.weight = Some(FontWeight::SEMIBOLD);
+            }
+            Span::Spoiler => {
+                if revealed {
+                    self.background = Some(ink.opacity(0.10));
+                } else {
+                    self.background = Some(ink.opacity(0.82));
+                    self.color = Some(gpui::transparent_black());
+                }
+            }
+        }
+    }
+
+    fn run(&self, len: usize) -> TextRun {
+        let mut face = font(if self.mono { "Menlo" } else { crate::theme::UI_FONT });
+        face.weight = self.weight.unwrap_or(FontWeight::NORMAL);
+        if self.italic {
+            face.style = FontStyle::Italic;
+        }
+        TextRun {
+            len,
+            font: face,
+            color: self.color.unwrap_or(Theme::ink().into()),
+            background_color: self.background,
+            underline: self.underline.then_some(UnderlineStyle { thickness: px(1.), color: None, wavy: false }),
+            strikethrough: self.strike.then_some(StrikethroughStyle { thickness: px(1.), color: None }),
         }
     }
 }

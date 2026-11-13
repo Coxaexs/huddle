@@ -26,12 +26,17 @@ pub fn avatar(picture: Option<String>, glyph: &str, color: &str, name: &str, siz
     match picture.filter(|p| !p.is_empty()) {
         Some(url) => {
             let (glyph, color, name) = (glyph.to_string(), color.to_string(), name.to_string());
-            img(url)
+            // In a sized box: lists measure rows once, so the size must hold before the picture loads.
+            div()
                 .size(px(size))
                 .flex_none()
-                .rounded_full()
-                .object_fit(ObjectFit::Cover)
-                .with_fallback(move || letter_avatar(&glyph, &color, &name, size))
+                .child(
+                    img(url)
+                        .size(px(size))
+                        .rounded_full()
+                        .object_fit(ObjectFit::Cover)
+                        .with_fallback(move || letter_avatar(&glyph, &color, &name, size)),
+                )
                 .into_any_element()
         }
         None => letter_avatar(glyph, color, name, size),
@@ -158,4 +163,66 @@ pub fn fit(window: &Window, text: &str, weight: gpui::FontWeight, size: f32, max
         if width(&candidate) <= max_width { lo = mid } else { hi = mid - 1 }
     }
     if lo == 0 { "…".into() } else { format!("{}…", text[..chars[lo - 1].0 + chars[lo - 1].1.len_utf8()].trim_end()) }
+}
+
+/// Width of one line of UI text.
+pub fn text_width(window: &Window, text: &str, weight: gpui::FontWeight, size: f32) -> gpui::Pixels {
+    let mut face = gpui::font(crate::theme::UI_FONT);
+    face.weight = weight;
+    let run = gpui::TextRun { len: text.len(), font: face, color: gpui::black(), background_color: None, underline: None, strikethrough: None };
+    window.text_system().shape_line(gpui::SharedString::from(text.to_string()), px(size), &[run], None).width
+}
+
+/// CSS flex-shrink for items with `flex: 0 1 auto`: when the natural widths overflow `available`, each
+/// gives up space in proportion to its natural width, never below its minimum (then the rest share
+/// what remains), which is how Chrome sizes a crowded header row.
+pub fn css_shrink(natural: &[gpui::Pixels], least: &[gpui::Pixels], available: gpui::Pixels) -> Vec<gpui::Pixels> {
+    let mut widths = natural.to_vec();
+    let mut frozen = vec![false; natural.len()];
+    for _ in 0..natural.len() + 1 {
+        let total: f32 = widths.iter().map(|w| f32::from(*w)).sum();
+        let overflow = total - f32::from(available);
+        if overflow <= 0.5 {
+            break;
+        }
+        let weight: f32 = natural.iter().zip(&frozen).filter(|(_, f)| !**f).map(|(n, _)| f32::from(*n)).sum();
+        if weight <= 0. {
+            break;
+        }
+        let mut clamped = false;
+        for i in 0..natural.len() {
+            if frozen[i] {
+                continue;
+            }
+            let want = f32::from(widths[i]) - overflow * f32::from(natural[i]) / weight;
+            if want < f32::from(least[i]) {
+                widths[i] = least[i];
+                frozen[i] = true;
+                clamped = true;
+            } else {
+                widths[i] = px(want);
+            }
+        }
+        if !clamped {
+            break;
+        }
+    }
+    widths
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shrinks_in_proportion() {
+        let w = css_shrink(&[px(100.), px(300.)], &[px(0.), px(0.)], px(300.));
+        assert!((f32::from(w[0]) - 75.).abs() < 0.01 && (f32::from(w[1]) - 225.).abs() < 0.01);
+    }
+
+    #[test]
+    fn respects_minimums() {
+        let w = css_shrink(&[px(100.), px(300.)], &[px(90.), px(0.)], px(300.));
+        assert!((f32::from(w[0]) - 90.).abs() < 0.01 && (f32::from(w[1]) - 210.).abs() < 0.01);
+    }
 }

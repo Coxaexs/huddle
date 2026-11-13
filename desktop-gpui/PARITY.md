@@ -22,7 +22,7 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | User card: avatar, presence, name, status, mic/headphones/settings | panels.tsx `.discord-user-footer` | 🟡 (device menus, status picker, settings ⬜) |
 | Header: kind icon, Fraunces name, topic, 7 tools | chat-header.tsx | 🟡 (tools open nothing yet) |
 | Messages: grouping rules, day dividers, command lines, bot tags, `text-wrap: pretty`, 1px rhythm | message-row.tsx, message-list.tsx | ✅ |
-| Markdown, mentions, spoilers, links | message-body.tsx | 🟡 (custom emoji, embeds, link unfurls ⬜) |
+| Markdown, mentions, spoilers, links, inline code, italics | message-body.tsx | ✅ (custom emoji, embeds, link unfurls ⬜) |
 | Now-playing card | now-playing.tsx | ✅ (live progress bar ⬜) |
 | Other cards: dnd, ai, system-pin, music-stats, lyricsnow, polls, games, files, voice messages | dnd-card.tsx, music-cards.tsx, game-card.tsx, message-file-card.tsx, voice-message.tsx | ⬜ |
 | Hover toolbar (quick reactions, react, reply, more), context menus | message-row.tsx, message-context-menu.tsx, menus.tsx | ⬜ |
@@ -37,7 +37,7 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | Sign-in, two-factor | auth-gate.tsx | 🟡 (passkeys, sign-up ⬜) |
 | Simple mode | panels.tsx SimpleRooms, easy.css | ⬜ |
 | DMs home: sidebar (search, friends, DM rows), friends view (tabs, search, counts, Hoffy empty states) | panels.tsx, friends-view.tsx | ✅ (add-friend form submit, accept/ignore/block actions, active-now panel ⬜) |
-| DM conversation (header, call buttons, profile side) | chat-header.tsx | 🟡 (messages work; DM header ⬜) |
+| DM conversation: header (Chrome's flex-shrink reproduced), start banner, NEW line, participants panel, day labels in the system locale | chat-header.tsx, message-list.tsx, app/lib/chat/format.ts | ✅ (calls from the header, pin/close actions ⬜) |
 | Voice stage (the room view), tiles, bottom bar, soundboard | voice-stage*, voice-stage/* | ⬜ (joining works from the list) |
 | Screen share and camera, watching streams | voice-stage, floating-screen-preview.tsx | ⬜ |
 | Profile cards, user menu | user-profile-card.tsx, user-menu.tsx | ⬜ |

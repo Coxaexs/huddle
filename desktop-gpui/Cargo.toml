@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.104"
-chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std", "unstable-locales"] }
 dirs = "7.0.0"
 gpui = { version = "0.2.2", features = ["runtime_shaders"] }
 livekit = { version = "0.10.1", features = ["rustls-tls-webpki-roots"] }

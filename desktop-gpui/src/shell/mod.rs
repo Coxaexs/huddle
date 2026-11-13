@@ -36,6 +36,45 @@ struct Call {
     speaking: HashSet<String>,
 }
 
+/// The message list, kept twice in step: anchored at the bottom (a long conversation opens at its
+/// newest message and follows new ones) and at the top (one shorter than the window starts at the
+/// top, as on the web). `fits` says which one shows.
+pub(crate) struct Lists {
+    bottom: ListState,
+    top: ListState,
+    fits: std::cell::Cell<bool>,
+}
+
+impl Lists {
+    fn new() -> Self {
+        Self {
+            bottom: ListState::new(0, ListAlignment::Bottom, px(800.)),
+            top: ListState::new(0, ListAlignment::Top, px(800.)),
+            fits: std::cell::Cell::new(false),
+        }
+    }
+
+    fn reset(&self, count: usize) {
+        self.bottom.reset(count);
+        self.top.reset(count);
+        self.fits.set(false);
+    }
+
+    fn splice(&self, range: std::ops::Range<usize>, count: usize) {
+        self.bottom.splice(range.clone(), count);
+        self.top.splice(range, count);
+    }
+
+    /// The list to draw now, judged from the last frame: show the top-anchored one while everything
+    /// fits, the bottom-anchored one as soon as it does not.
+    pub(crate) fn current(&self) -> ListState {
+        let shown = if self.fits.get() { &self.top } else { &self.bottom };
+        let fits = shown.max_offset_for_scrollbar().height <= px(0.5) && shown.item_count() > 0;
+        self.fits.set(fits);
+        if fits { self.top.clone() } else { self.bottom.clone() }
+    }
+}
+
 pub enum ShellEvent {
     SignedOut,
 }
@@ -49,8 +88,10 @@ pub struct Shell {
     channel_id: Option<String>,
     messages: HashMap<String, Vec<Message>>,
     has_more: HashMap<String, bool>,
+    /// How many messages were unread when a channel was opened: the "New" line sits above them.
+    new_from: HashMap<String, usize>,
     loading: HashSet<String>,
-    list: ListState,
+    list: Lists,
     online: HashSet<String>,
     /// Who sits in each voice room, from the hub.
     rooms: HashMap<String, Vec<VoiceParticipant>>,
@@ -145,14 +186,18 @@ impl Shell {
             }
         });
 
-        let list = ListState::new(0, ListAlignment::Bottom, px(800.));
-        let weak = cx.weak_entity();
-        list.set_scroll_handler(move |event, _window, cx| {
-            // Near the top of what is loaded: fetch the page before it.
-            if event.visible_range.start < 3 {
-                weak.update(cx, |this, cx| this.load_older(cx)).ok();
-            }
-        });
+        // Bottom-anchored: opens at the newest message and keeps following while you are at the end.
+        // A conversation shorter than the window sits at the top instead (see render_messages).
+        let list = Lists::new();
+        for state in [&list.bottom, &list.top] {
+            let weak = cx.weak_entity();
+            state.set_scroll_handler(move |event, _window, cx| {
+                // Near the top of what is loaded: fetch the page before it.
+                if event.visible_range.start < 3 {
+                    weak.update(cx, |this, cx| this.load_older(cx)).ok();
+                }
+            });
+        }
 
         // Cmd-Q while in a room: leave properly, so nobody sees a ghost seat until LiveKit times it out.
         let quit = cx.on_app_quit(|this: &mut Self, _cx| {
@@ -172,6 +217,7 @@ impl Shell {
             channel_id: None,
             messages: HashMap::new(),
             has_more: HashMap::new(),
+            new_from: HashMap::new(),
             loading: HashSet::new(),
             list,
             online: HashSet::new(),
@@ -249,7 +295,13 @@ impl Shell {
                         if !keep {
                             let first = this.servers.first().map(|s| s.id.clone());
                             if let Some(id) = first {
-                                this.open_server(id, cx);
+                                if this.home {
+                                    // Already in the DMs home (a DM opened first): just remember the server.
+                                    this.server_id = Some(id.clone());
+                                    this.load_members(id, cx);
+                                } else {
+                                    this.open_server(id, cx);
+                                }
                             }
                         }
                     }
@@ -271,6 +323,12 @@ impl Shell {
             this.update(cx, |this, cx| {
                 if let Ok(dms) = dms {
                     this.dms = dms;
+                    // Development: HOFFLE_DEV_DM=<name> opens that DM once the list is in.
+                    if let Ok(want) = std::env::var("HOFFLE_DEV_DM")
+                        && let Some(id) = this.dms.iter().find(|d| d.user.username == want || d.user.display_name == want).map(|d| d.channel_id.clone())
+                    {
+                        this.open_dm(id, cx);
+                    }
                 }
                 if let Ok(mut reads) = reads {
                     // The open channel is being read right now.
@@ -339,7 +397,7 @@ impl Shell {
         self.open_channel(channel_id, cx);
         // DM placeholders: "Message @name", or the note-to-self line in your own chat.
         if let Some((mine, name)) = name {
-            let text = if mine { crate::i18n::t("composer.notePlaceholder") } else { crate::i18n::tv("composer.dmPlaceholder", &[("channel", &format!("@{name}"))]) };
+            let text = if mine { crate::i18n::t("composer.notePlaceholder") } else { crate::i18n::tv("composer.dmPlaceholder", &[("channel", &name)]) };
             self.composer.update(cx, |input, cx| input.set_placeholder(text, cx));
         }
     }
@@ -411,6 +469,12 @@ impl Shell {
         if let Some(previous) = self.channel_id.clone() {
             self.reads.insert(previous.clone(), ReadState { unread: true, ..Default::default() });
             self.mark_read(&previous, cx);
+        }
+        let unread = self.reads.get(&id).map_or(0, |r| r.count as usize);
+        if unread > 0 {
+            self.new_from.insert(id.clone(), unread);
+        } else {
+            self.new_from.remove(&id);
         }
         self.mark_read(&id, cx);
         self.channel_id = Some(id.clone());

@@ -172,9 +172,26 @@ fn twelve_hour() -> bool {
     use std::sync::OnceLock;
     static TWELVE: OnceLock<bool> = OnceLock::new();
     *TWELVE.get_or_init(|| {
-        let locale = sys_locale::get_locale().unwrap_or_default().replace('_', "-");
+        let locale = std::env::var("HOFFLE_LOCALE").ok().or_else(sys_locale::get_locale).unwrap_or_default().replace('_', "-");
         ["en-US", "en-CA", "en-AU", "en-NZ", "en-IN", "en-PH"].iter().any(|l| locale.starts_with(l)) || locale == "en"
     })
+}
+
+/// toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" [, year] }) in the
+/// system's locale, for the languages Hoffle ships.
+pub fn long_date(when: &chrono::DateTime<chrono::Local>, with_year: bool) -> String {
+    let locale = std::env::var("HOFFLE_LOCALE").ok().or_else(sys_locale::get_locale).unwrap_or_default().replace('_', "-");
+    let base = locale.split('-').next().unwrap_or("en").to_string();
+    let (chrono_locale, pattern, year_pattern) = match base.as_str() {
+        "tr" => (chrono::Locale::tr_TR, "%-d %B %A", "%-d %B %Y %A"),
+        "de" => (chrono::Locale::de_DE, "%A, %-d. %B", "%A, %-d. %B %Y"),
+        "fr" => (chrono::Locale::fr_FR, "%A %-d %B", "%A %-d %B %Y"),
+        "es" => (chrono::Locale::es_ES, "%A, %-d de %B", "%A, %-d de %B de %Y"),
+        "pt" => (chrono::Locale::pt_BR, "%A, %-d de %B", "%A, %-d de %B de %Y"),
+        "nl" => (chrono::Locale::nl_NL, "%A %-d %B", "%A %-d %B %Y"),
+        _ => (chrono::Locale::en_US, "%A, %B %-d", "%A, %B %-d, %Y"),
+    };
+    when.format_localized(if with_year { year_pattern } else { pattern }, chrono_locale).to_string()
 }
 
 pub fn parse_time(value: &str) -> Option<chrono::DateTime<chrono::Utc>> {

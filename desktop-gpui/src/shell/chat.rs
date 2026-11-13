@@ -20,7 +20,7 @@ const ROW_LEFT: f32 = 47.2 + 8. + 10.;
 const ROW_RIGHT: f32 = 47.2 + 8. + 10. + 14.6;
 
 impl Shell {
-    pub(super) fn render_chat_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_chat_panel(&self, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         // `.chat-panel` sits 10px below the window top and runs to the bottom edge.
         div().flex_1().min_w_0().h_full().pt(px(10.)).flex().flex_col().child(
         div()
@@ -34,12 +34,15 @@ impl Shell {
             .border_color(Theme::line())
             .shadow(card_shadow())
             .overflow_hidden()
-            .child(self.render_header(cx))
+            .child(self.render_header(window, cx))
             .child(self.render_messages(cx))
             .child(self.render_composer(cx)))
     }
 
-    fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_header(&self, window: &gpui::Window, cx: &mut Context<Self>) -> AnyElement {
+        if let Some(dm) = self.channel_id.as_ref().and_then(|c| self.dm(c)) {
+            return self.render_dm_header(dm.clone(), window, cx).into_any_element();
+        }
         let channel = self.channel();
         let name = channel.map(|c| c.name.clone()).unwrap_or_default();
         // An empty topic shows the default line, as chat-header.tsx does.
@@ -94,6 +97,83 @@ impl Shell {
                     .child(topic),
             )
             .child(right)
+            .into_any_element()
+    }
+
+    /// chat-header.tsx in a DM: @ (a note in your own chat), "Just you and …", keep-on-top and the
+    /// two call buttons, then the narrower tool buttons.
+    fn render_dm_header(&self, dm: crate::model::DmConversation, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let mine = dm.user.id == self.me.id;
+        let subtitle = if mine { t("header.dmNotes") } else { tv("header.dmJustYouAnd", &[("name", dm.user.name())]) };
+        let labels = [t(if dm.pinned { "header.pinned" } else { "header.pin" }), t("header.startCall"), t("header.videoCall")];
+        // Chrome's flexbox outcome, computed here (GPUI's layout shrinks these differently): the
+        // subtitle and the three buttons share what the icon, gaps and tools leave, each shrinking in
+        // proportion to its natural width, buttons no narrower than their longest word.
+        let measure = |text: &str, weight: FontWeight| ui::text_width(window, text, weight, 13.);
+        let chrome = 2. + 26. + 15. + 6.;
+        let header_inner = self.chat_panel_width(window) - px(2.) - px(26.) - px(18.);
+        let fixed = px(20. + 25. + 8. * 4. + (28. * 5. + 3. * 4.));
+        let mut natural = vec![measure(&subtitle, FontWeight::NORMAL)];
+        let mut least = vec![px(0.)];
+        for label in &labels {
+            natural.push(measure(label, FontWeight::BOLD) + px(chrome));
+            let longest = label.split_whitespace().map(|w| measure(w, FontWeight::BOLD)).fold(px(0.), |a, b| a.max(b));
+            least.push(longest + px(chrome));
+        }
+        let widths = if mine { natural.clone() } else { ui::css_shrink(&natural, &least, header_inner - fixed) };
+        let call_button = |id: &'static str, glyph: &'static str, label: String, width: gpui::Pixels| {
+            div()
+                .id(id)
+                .flex_none()
+                .w(width)
+                .px(px(13.))
+                .py(px(7.))
+                .rounded(px(10.))
+                .bg(gpui::rgba(0x1a1628d1))
+                .border_1()
+                .border_color(Theme::line())
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .cursor_pointer()
+                .hover(|s| s.bg(Theme::lavender_soft()))
+                .text_size(px(13.))
+                .line_height(px(19.5))
+                .font_weight(FontWeight::BOLD)
+                .text_color(Theme::ink())
+                .child(icon(glyph, 15., Theme::ink()))
+                .child(div().min_w_0().child(label))
+        };
+        let mut right = div().flex().items_center().gap(px(3.));
+        for (name, title) in [("at-sign", "header.mentions"), ("pin", "header.pinnedMessages"), ("bookmark", "header.savedMessages"), ("award", "header.achievements")] {
+            right = right.child(header_button(name, title, false).w(px(28.)));
+        }
+        right = right.child(
+            header_button("users", "header.toggleMemberList", self.members_open).w(px(28.)).on_click(cx.listener(|this, _, _, cx| {
+                this.members_open = !this.members_open;
+                cx.notify();
+            })),
+        );
+        div()
+            .h(px(73.))
+            .flex_none()
+            .pl(px(26.))
+            .pr(px(18.))
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .child(icon(if mine { "sticky-note" } else { "at-sign" }, 20., gpui::rgb(0xa39fa7)))
+            // The subtitle's box shrinks but its text does not wrap: like the web, the buttons may
+            // overlap its end rather than cut it.
+            .child(div().flex_none().w(widths[0]).ml(px(17.)).whitespace_nowrap().text_size(px(13.)).text_color(Theme::quiet()).child(subtitle))
+            .child(div().flex_1())
+            .when(!mine, |d| {
+                let [pin, call, video] = labels.clone();
+                d.child(call_button("dm-pin", "arrow-up-to-line", pin, widths[1]).tooltip(ui::tooltip(t("header.pinConversation"))))
+                    .child(call_button("dm-call", "phone-call", call, widths[2]).tooltip(ui::tooltip(t("header.startVoiceCall"))))
+                    .child(call_button("dm-video", "video", video, widths[3]).tooltip(ui::tooltip(t("header.startVideoCall"))))
+            })
+            .child(right.flex_none())
     }
 
     fn render_messages(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -108,7 +188,7 @@ impl Shell {
                 .child("Loading messages…")
                 .into_any_element();
         }
-        list(self.list.clone(), cx.processor(|this, ix: usize, window, cx| this.render_message(ix, window, cx)))
+        list(self.list.current(), cx.processor(|this, ix: usize, window, cx| this.render_message(ix, window, cx)))
             .flex_1()
             .into_any_element()
     }
@@ -123,6 +203,11 @@ impl Shell {
         let continuation = day.is_none() && prev.is_some_and(|p| continues(p, message));
         let mentions_me = super::mentions(&message.text, &self.me.username);
         let author = message.user_id.as_ref().and_then(|id| self.member(id));
+        // In a DM the author is one of its two people: their current name and picture.
+        let dm_author = message.user_id.as_ref().and_then(|id| {
+            let dm = self.channel_id.as_ref().and_then(|c| self.dm(c))?;
+            if *id == dm.user.id { Some(dm.user.clone()) } else if *id == self.me.id { Some(self.me.clone()) } else { None }
+        });
 
         let mut body = div().flex_1().min_w_0().flex().flex_col();
         if let Some(command) = &message.command_text {
@@ -166,7 +251,10 @@ impl Shell {
             );
         }
         if !continuation {
-            let display = author.map(|a| a.name().to_string()).unwrap_or_else(|| message.author.clone());
+            let display = author
+                .map(|a| a.name().to_string())
+                .or(dm_author.as_ref().map(|u| u.name().to_string()))
+                .unwrap_or_else(|| message.author.clone());
             body = body.child(
                 div()
                     .flex()
@@ -200,7 +288,11 @@ impl Shell {
                             .line_height(px(18.))
                             .text_color(Theme::muted())
                             .child(model::client_time(&message.created_at)),
-                    ),
+                    )
+                    // `.edited-tag`, beside the time.
+                    .when(message.edited_at.is_some(), |d| {
+                        d.child(div().text_size(px(11.)).line_height(px(16.5)).text_color(Theme::muted()).child(t("message.edited")))
+                    }),
             );
         }
         if !message.text.is_empty() {
@@ -223,8 +315,8 @@ impl Shell {
                         rich::message_body(&message.id, &message.text, &self.me.username, revealed, on_spoiler, Some(&wrap))
                     }),
             );
-            if message.edited_at.is_some() {
-                body = body.child(div().text_size(px(10.)).text_color(Theme::muted()).child(t("message.edited")));
+            if message.edited_at.is_some() && continuation {
+                body = body.child(div().text_size(px(11.)).text_color(Theme::muted()).child(t("message.edited")));
             }
         }
         if let Some(card) = self.render_card(message, window) {
@@ -265,7 +357,11 @@ impl Shell {
         let gutter: AnyElement = if continuation {
             div().w(px(36.)).flex_none().into_any_element()
         } else {
-            let picture = author.and_then(|a| a.picture()).map(str::to_string).or(message.avatar_url.clone());
+            let picture = author
+                .and_then(|a| a.picture())
+                .map(str::to_string)
+                .or(dm_author.as_ref().and_then(|u| u.avatar_url.clone()))
+                .or(message.avatar_url.clone());
             let face = if message.bot {
                 // `.bot-avatar`: the bot's glyph on the soft accent, light accent text.
                 div()
@@ -282,8 +378,8 @@ impl Shell {
                     .child(message.avatar.clone())
                     .into_any_element()
             } else {
-                let glyph = author.map(|a| a.avatar.clone()).unwrap_or(message.avatar.clone());
-                let color = author.map(|a| a.color.clone()).unwrap_or(message.color.clone());
+                let glyph = author.map(|a| a.avatar.clone()).or(dm_author.as_ref().map(|u| u.avatar.clone())).unwrap_or(message.avatar.clone());
+                let color = author.map(|a| a.color.clone()).or(dm_author.as_ref().map(|u| u.color.clone())).unwrap_or(message.color.clone());
                 ui::avatar(picture.map(|p| self.client.absolute(&p)), &glyph, &color, &message.author, 36.)
             };
             div().flex_none().child(face).into_any_element()
@@ -298,7 +394,7 @@ impl Shell {
             .w_full()
             .pl(px(ROW_LEFT))
             .pr(px(ROW_RIGHT))
-            .pt(px(pad + if ix == 0 { 36. } else { 0. }))
+            .pt(px(pad + if ix == 0 && self.channel_id.as_ref().is_none_or(|c| self.has_more.get(c).copied().unwrap_or(true)) { 36. } else { 0. }))
             .pb(px(pad + if last { 8. } else { 0. }))
             .flex()
             .gap(px(13.))
@@ -307,6 +403,13 @@ impl Shell {
             .child(body);
         let gap = |h: f32| div().flex_none().h(px(h));
         let mut column = div().w_full().flex().flex_col();
+        let channel_id = self.channel_id.clone().unwrap_or_default();
+        if ix == 0 && !self.has_more.get(&channel_id).copied().unwrap_or(true) {
+            column = column.child(self.render_intro(&channel_id));
+        }
+        if self.new_from.get(&channel_id).is_some_and(|&n| n > 0 && ix + n == list.len()) {
+            column = column.child(new_divider());
+        }
         if let Some(label) = day {
             column = column.child(
                 div()
@@ -326,11 +429,57 @@ impl Shell {
         column.child(row).child(gap(1.)).into_any_element()
     }
 
+    /// `.channel-intro`: Hoffy waving, then the pill that says where the conversation begins.
+    fn render_intro(&self, channel_id: &str) -> impl IntoElement {
+        let (glyph, text) = match self.dm(channel_id) {
+            Some(dm) if dm.user.id == self.me.id => ("sticky-note", "This is your personal space for notes, drafts, and reminders.".to_string()),
+            Some(dm) => ("at-sign", format!("This is the beginning of your conversation with {}", dm.user.name())),
+            None => {
+                let channel = self.channel();
+                let name = channel.map(|c| c.name.clone()).unwrap_or_default();
+                let topic = channel.map(|c| c.topic.clone()).unwrap_or_default();
+                ("hash", if topic.is_empty() { format!("Welcome to #{name}") } else { format!("Welcome to #{name} — {topic}") })
+            }
+        };
+        // Measured: Hoffy's top is 40px under the list's top, the first day line 12px under the pill.
+        div()
+            .pl(px(ROW_LEFT - 24.))
+            .flex()
+            .flex_col()
+            .items_start()
+            .child(div().flex_none().h(px(40.)))
+            // A sized box, so the row's height is right before the picture has loaded.
+            .child(div().flex_none().size(px(64.)).child(gpui::img("images/hoffy-happy-wave.svg").size(px(64.))))
+            .child(div().h(px(5.)))
+            .child(
+                div()
+                    .ml(px(6.))
+                    .px(px(16.))
+                    .py(px(8.))
+                    .rounded(px(16.))
+                    .bg(Theme::card())
+                    .border_1()
+                    .border_color(gpui::rgba(0xa78bfa1f))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(icon(glyph, 13., Theme::lavender()))
+                    .child(div().text_size(px(12.)).line_height(px(18.)).font_weight(FontWeight::SEMIBOLD).text_color(Theme::ink()).child(text)),
+            )
+            // The first day line follows 26px under the pill (it is not centred in its 40px there).
+            .child(div().flex_none().h(px(6.)))
+    }
+
+    /// The conversation card's outer width: the window less the rail and sidebar, and less the
+    /// members panel when it shows.
+    fn chat_panel_width(&self, window: &gpui::Window) -> gpui::Pixels {
+        let members = self.members_open && (!self.home || self.channel_id.is_some());
+        window.bounds().size.width - px(300.) - if members { px(250.) } else { px(10.) }
+    }
+
     /// Width of a message's text column: 434px when the conversation card is 630px wide.
     fn text_column_width(&self, window: &gpui::Window) -> gpui::Pixels {
-        let window_width = window.bounds().size.width;
-        let side = px(300.) + if self.members_open { px(250.) } else { px(0.) };
-        (window_width - side - px(2.) - px(ROW_LEFT) - px(ROW_RIGHT) - px(36.) - px(13.)).max(px(120.))
+        (self.chat_panel_width(window) - px(2.) - px(ROW_LEFT) - px(ROW_RIGHT) - px(36.) - px(13.)).max(px(120.))
     }
 
     /// Rich cards by message kind. Only the now-playing card is native so far.
@@ -563,7 +712,12 @@ impl Shell {
             )
     }
 
+    /// Who wrote a message, as this server knows them (nickname, server avatar). In DMs there is no
+    /// server, so messages show the account's own name.
     pub(super) fn member(&self, user_id: &str) -> Option<&crate::model::Member> {
+        if self.home {
+            return None;
+        }
         let server = self.server_id.as_ref()?;
         self.members.get(server)?.iter().find(|m| m.id == user_id)
     }
@@ -597,21 +751,57 @@ fn continues(prev: &Message, next: &Message) -> bool {
     same_author && close && next.reply_preview.is_none() && (next.command_text.is_none() || next.bot) && plain(next) && plain(prev)
 }
 
-/// "Today", "Yesterday" or the date, when a message starts a new day.
+/// dayDividerLabel() in app/lib/chat/format.ts: nothing within a day; the first message loaded gets a
+/// line only when it is not from today; "Today" and "Yesterday" in English (the web does not translate
+/// them); otherwise the browser locale's long date, with the year only for other years.
 fn day_label(prev: Option<&Message>, message: &Message) -> Option<String> {
-    let day = model::parse_time(&message.created_at)?.with_timezone(&chrono::Local).date_naive();
-    if let Some(prev) = prev {
-        let before = model::parse_time(&prev.created_at)?.with_timezone(&chrono::Local).date_naive();
-        if before == day {
-            return None;
-        }
-    }
+    let when = model::parse_time(&message.created_at)?.with_timezone(&chrono::Local);
+    let day = when.date_naive();
     let today = chrono::Local::now().date_naive();
+    match prev {
+        Some(prev) => {
+            let before = model::parse_time(&prev.created_at)?.with_timezone(&chrono::Local).date_naive();
+            if before == day {
+                return None;
+            }
+        }
+        None if day == today => return None,
+        None => {}
+    }
     Some(if day == today {
-        t("message.today")
+        "Today".into()
     } else if Some(day) == today.pred_opt() {
-        t("message.yesterday")
+        "Yesterday".into()
     } else {
-        day.format("%B %-d, %Y").to_string()
+        model::long_date(&when, chrono::Datelike::year(&day) != chrono::Datelike::year(&today))
     })
+}
+
+/// `.unread-divider`: a rose line with the "New" badge at its right end.
+fn new_divider() -> impl IntoElement {
+    let rose = gpui::rgb(0xf43f5e);
+    div()
+        .h(px(24.))
+        .pl(px(ROW_LEFT - 2.))
+        .pr(px(ROW_RIGHT - 2.))
+        .relative()
+        .flex()
+        .items_center()
+        .child(div().flex_1().h(px(1.)).bg(rose))
+        .child(
+            div()
+                .absolute()
+                .right(px(ROW_RIGHT - 2.))
+                .top(px(4.))
+                .px(px(6.4))
+                .h(px(16.))
+                .rounded(px(4.))
+                .bg(rose)
+                .flex()
+                .items_center()
+                .text_size(px(10.4))
+                .font_weight(FontWeight::BOLD)
+                .text_color(gpui::white())
+                .child("NEW"),
+        )
 }

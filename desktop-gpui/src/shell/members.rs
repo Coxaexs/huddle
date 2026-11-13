@@ -11,8 +11,26 @@ use crate::ui;
 
 impl Shell {
     fn render_members(&self, _cx: &mut Context<Self>) -> AnyElement {
-        let Some(server_id) = self.server_id.as_ref() else { return div().into_any_element() };
-        let all: &[Member] = self.members.get(server_id).map(|m| m.as_slice()).unwrap_or(&[]);
+        // In a DM the panel lists the conversation's two people.
+        let dm_people: Vec<Member>;
+        let all: &[Member] = if self.home {
+            let Some(dm) = self.channel_id.as_ref().and_then(|c| self.dm(c)) else { return div().into_any_element() };
+            let me = &self.me;
+            let as_member = |u: &crate::model::User| Member {
+                id: u.id.clone(),
+                username: u.username.clone(),
+                display_name: u.display_name.clone(),
+                avatar: u.avatar.clone(),
+                avatar_url: u.avatar_url.clone(),
+                color: u.color.clone(),
+                ..Default::default()
+            };
+            dm_people = if dm.user.id == me.id { vec![as_member(me)] } else { vec![as_member(me), as_member(&dm.user)] };
+            &dm_people
+        } else {
+            let Some(server_id) = self.server_id.as_ref() else { return div().into_any_element() };
+            self.members.get(server_id).map(|m| m.as_slice()).unwrap_or(&[])
+        };
         let (online, offline): (Vec<&Member>, Vec<&Member>) =
             all.iter().partition(|m| self.presence_of(&m.id) != "offline");
 
@@ -212,8 +230,8 @@ impl gpui::Render for Shell {
                     ),
                 )
             })
-            .when(!(self.home && self.channel_id.is_none()), |d| d.child(self.render_chat_panel(cx)))
-            .when(members_open && !self.home, |d| d.child(self.render_members(cx)))
+            .when(!(self.home && self.channel_id.is_none()), |d| d.child(self.render_chat_panel(window, cx)))
+            .when(members_open && (!self.home || self.channel_id.is_some()), |d| d.child(self.render_members(cx)))
     }
 }
 

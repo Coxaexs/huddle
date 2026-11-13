@@ -1,39 +1,110 @@
 --- a/src/platform/mac/metal_renderer.rs
 +++ b/src/platform/mac/metal_renderer.rs
-@@ -142,6 +142,8 @@
-         let layer = metal::MetalLayer::new();
-         layer.set_device(&device);
-         layer.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
-+        // dev patch: frames can be read back when GPUI_SNAPSHOT is set
-+        if std::env::var_os("GPUI_SNAPSHOT").is_some() { layer.set_framebuffer_only(false); }
-         layer.set_opaque(false);
-         layer.set_maximum_drawable_count(3);
-         unsafe {
-@@ -385,7 +387,23 @@
-                     let block = block.copy();
-                     command_buffer.add_completed_handler(&block);
+@@ -357,6 +357,40 @@
+             (viewport_size.width.ceil() as i32).into(),
+             (viewport_size.height.ceil() as i32).into(),
+         );
++        // dev patch: with GPUI_SNAPSHOT set, render into an offscreen texture and write it to a PNG,
++        // so frames come out even while the screen is locked or the window is covered.
++        if let Some(path) = std::env::var_os("GPUI_SNAPSHOT") {
++            let desc = metal::TextureDescriptor::new();
++            desc.set_pixel_format(MTLPixelFormat::BGRA8Unorm);
++            desc.set_width(i32::from(viewport_size.width).max(1) as u64);
++            desc.set_height(i32::from(viewport_size.height).max(1) as u64);
++            desc.set_usage(metal::MTLTextureUsage::RenderTarget | metal::MTLTextureUsage::ShaderRead);
++            desc.set_storage_mode(metal::MTLStorageMode::Managed);
++            let texture = self.device.new_texture(&desc);
++            let mut instance_buffer = self.instance_buffer_pool.lock().acquire(&self.device);
++            if let Ok(command_buffer) = self.draw_primitives(scene, &mut instance_buffer, &texture, viewport_size) {
++                let blit = command_buffer.new_blit_command_encoder();
++                blit.synchronize_resource(&texture);
++                blit.end_encoding();
++                command_buffer.commit();
++                command_buffer.wait_until_completed();
++                let (w, h) = (texture.width() as u32, texture.height() as u32);
++                let mut bytes = vec![0u8; (w * h * 4) as usize];
++                texture.get_bytes(bytes.as_mut_ptr() as *mut _, (w * 4) as u64,
++                    metal::MTLRegion { origin: metal::MTLOrigin { x: 0, y: 0, z: 0 },
++                        size: metal::MTLSize { width: w as u64, height: h as u64, depth: 1 } }, 0);
++                for px in bytes.chunks_exact_mut(4) { px.swap(0, 2); }
++                if let Some(img) = image::RgbaImage::from_raw(w, h, bytes) {
++                    let tmp = std::path::PathBuf::from(&path).with_extension("tmp.png");
++                    if img.save(&tmp).is_ok() { let _ = std::fs::rename(&tmp, &path); }
++                }
++            }
++            self.instance_buffer_pool.lock().release(instance_buffer);
++            // Also draw the window itself when it can be drawn (screen awake), so it is not black.
++            if !layer_can_draw(&layer) {
++                return;
++            }
++        }
+         let drawable = if let Some(drawable) = layer.next_drawable() {
+             drawable
+         } else {
+@@ -371,7 +405,7 @@
+             let mut instance_buffer = self.instance_buffer_pool.lock().acquire(&self.device);
  
--                    if self.presents_with_transaction {
-+                    if let Some(path) = std::env::var_os("GPUI_SNAPSHOT") {
-+                        // dev patch: write every finished frame to a PNG.
-+                        command_buffer.commit();
-+                        command_buffer.wait_until_completed();
-+                        let tex = drawable.texture();
-+                        let (w, h) = (tex.width() as u32, tex.height() as u32);
-+                        let mut bytes = vec![0u8; (w * h * 4) as usize];
-+                        tex.get_bytes(bytes.as_mut_ptr() as *mut _, (w * 4) as u64,
-+                            metal::MTLRegion { origin: metal::MTLOrigin { x: 0, y: 0, z: 0 },
-+                                size: metal::MTLSize { width: w as u64, height: h as u64, depth: 1 } }, 0);
-+                        for px in bytes.chunks_exact_mut(4) { px.swap(0, 2); }
-+                        if let Some(img) = image::RgbaImage::from_raw(w, h, bytes) {
-+                            let tmp = std::path::PathBuf::from(&path).with_extension("tmp.png");
-+                            if img.save(&tmp).is_ok() { let _ = std::fs::rename(&tmp, &path); }
-+                        }
-+                        drawable.present();
-+                    } else if self.presents_with_transaction {
-                         command_buffer.commit();
-                         command_buffer.wait_until_scheduled();
-                         drawable.present();
+             let command_buffer =
+-                self.draw_primitives(scene, &mut instance_buffer, drawable, viewport_size);
++                self.draw_primitives(scene, &mut instance_buffer, drawable.texture(), viewport_size);
+ 
+             match command_buffer {
+                 Ok(command_buffer) => {
+@@ -420,7 +454,7 @@
+         &mut self,
+         scene: &Scene,
+         instance_buffer: &mut InstanceBuffer,
+-        drawable: &metal::MetalDrawableRef,
++        target: &metal::TextureRef,
+         viewport_size: Size<DevicePixels>,
+     ) -> Result<metal::CommandBuffer> {
+         let command_queue = self.command_queue.clone();
+@@ -430,7 +464,7 @@
+ 
+         let mut command_encoder = new_command_encoder(
+             command_buffer,
+-            drawable,
++            target,
+             viewport_size,
+             |color_attachment| {
+                 color_attachment.set_load_action(metal::MTLLoadAction::Clear);
+@@ -467,7 +501,7 @@
+ 
+                     command_encoder = new_command_encoder(
+                         command_buffer,
+-                        drawable,
++                        target,
+                         viewport_size,
+                         |color_attachment| {
+                             color_attachment.set_load_action(metal::MTLLoadAction::Load);
+@@ -1158,7 +1192,7 @@
+ 
+ fn new_command_encoder<'a>(
+     command_buffer: &'a metal::CommandBufferRef,
+-    drawable: &'a metal::MetalDrawableRef,
++    target: &'a metal::TextureRef,
+     viewport_size: Size<DevicePixels>,
+     configure_color_attachment: impl Fn(&RenderPassColorAttachmentDescriptorRef),
+ ) -> &'a metal::RenderCommandEncoderRef {
+@@ -1167,7 +1201,7 @@
+         .color_attachments()
+         .object_at(0)
+         .unwrap();
+-    color_attachment.set_texture(Some(drawable.texture()));
++    color_attachment.set_texture(Some(target));
+     color_attachment.set_store_action(metal::MTLStoreAction::Store);
+     configure_color_attachment(color_attachment);
+ 
+@@ -1353,3 +1387,9 @@
+     pub bounds: Bounds<ScaledPixels>,
+     pub content_mask: ContentMask<ScaledPixels>,
+ }
++
++/// dev patch: whether the layer is on a screen that is awake enough to hand out drawables.
++fn layer_can_draw(layer: &metal::MetalLayer) -> bool {
++    let size = layer.drawable_size();
++    size.width > 0.0 && size.height > 0.0 && std::env::var_os("GPUI_SNAPSHOT_ONLY").is_none()
++}
 --- a/src/platform/mac/window.rs
 +++ b/src/platform/mac/window.rs
 @@ -476,7 +476,8 @@
@@ -46,7 +117,15 @@
                  .native_window
                  .occlusionState()
                  .contains(NSWindowOcclusionState::NSWindowOcclusionStateVisible)
-@@ -1915,7 +1916,7 @@
+@@ -485,6 +486,7 @@
+             }
+         }
+         let display_id = unsafe { display_id_for_screen(self.native_window.screen()) };
++        if std::env::var_os("GPUI_TRACE_STEP").is_some() { eprintln!("start_display_link display={display_id}"); }
+         if let Some(mut display_link) =
+             DisplayLink::new(display_id, self.native_view.as_ptr() as *mut c_void, step).log_err()
+         {
+@@ -1915,7 +1917,7 @@
          {
              lock.move_traffic_light();
              lock.start_display_link();
@@ -55,6 +134,14 @@
              lock.stop_display_link();
          }
      }
+@@ -2152,6 +2154,7 @@
+ }
+ 
+ unsafe extern "C" fn step(view: *mut c_void) {
++    if std::env::var_os("GPUI_TRACE_STEP").is_some() { eprintln!("step"); }
+     let view = view as id;
+     let window_state = unsafe { get_window_state(&*view) };
+     let mut lock = window_state.lock();
 --- a/src/platform/mac/display_link.rs
 +++ b/src/platform/mac/display_link.rs
 @@ -14,6 +14,8 @@
@@ -66,18 +153,37 @@
  }
  
  impl DisplayLink {
-@@ -61,6 +63,7 @@
+@@ -52,15 +54,21 @@
+             );
+             dispatch_source_set_event_handler_f(frame_requests, Some(callback));
+ 
+-            let display_link = sys::DisplayLink::new(
++            let display_link = match sys::DisplayLink::new(
+                 display_id,
+                 display_link_callback,
+                 frame_requests as *mut c_void,
+-            )?;
++            ) {
++                Ok(link) => Some(link),
++                // dev patch: a sleeping display has no display link; the snapshot ticker stands in.
++                Err(_) if std::env::var_os("GPUI_SNAPSHOT").is_some() => None,
++                Err(err) => return Err(err),
++            };
+ 
              Ok(Self {
-                 display_link: Some(display_link),
+-                display_link: Some(display_link),
++                display_link,
                  frame_requests,
 +                ticker: None,
              })
          }
      }
-@@ -72,6 +75,20 @@
+@@ -70,8 +78,24 @@
+             dispatch_resume(crate::dispatch_sys::dispatch_object_t {
+                 _ds: self.frame_requests,
              });
-             self.display_link.as_mut().unwrap().start()?;
-         }
+-            self.display_link.as_mut().unwrap().start()?;
++        }
 +        if std::env::var_os("GPUI_SNAPSHOT").is_some() && self.ticker.is_none() {
 +            let alive = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
 +            let flag = alive.clone();
@@ -91,11 +197,25 @@
 +                }
 +            });
 +            self.ticker = Some(alive);
+         }
++        if let Some(link) = self.display_link.as_mut() {
++            unsafe { link.start()? };
 +        }
          Ok(())
      }
  
-@@ -88,6 +105,10 @@
+@@ -80,7 +104,9 @@
+             dispatch_suspend(crate::dispatch_sys::dispatch_object_t {
+                 _ds: self.frame_requests,
+             });
+-            self.display_link.as_mut().unwrap().stop()?;
++            if let Some(link) = self.display_link.as_mut() {
++                link.stop()?;
++            }
+         }
+         Ok(())
+     }
+@@ -88,6 +114,10 @@
  
  impl Drop for DisplayLink {
      fn drop(&mut self) {

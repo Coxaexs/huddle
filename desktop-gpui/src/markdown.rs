@@ -123,8 +123,11 @@ pub fn inline(src: &str, my_username: &str) -> Inline {
             && let Some(end) = rest[1..].find('`')
             && end > 0
         {
+            // Thin spaces inside the tinted run stand in for `.inline-code`'s 5px side padding.
             let start = out.text.len();
+            out.text.push('\u{2009}');
             out.text.push_str(&rest[1..1 + end]);
+            out.text.push('\u{2009}');
             out.spans.push((start..out.text.len(), Span::Code));
             i += end + 2;
             continue;
@@ -201,6 +204,19 @@ pub fn inline(src: &str, my_username: &str) -> Inline {
                     continue;
                 }
                 let (_, span, start) = open.remove(pos);
+                if span == Span::Spoiler && start < out.text.len() {
+                    // `.spoiler` has 3px side padding: hair spaces at both ends of the block.
+                    out.text.insert(start, '\u{200A}');
+                    out.text.push('\u{200A}');
+                    for (range, _) in out.spans.iter_mut().filter(|(r, _)| r.start >= start) {
+                        range.start += '\u{200A}'.len_utf8();
+                        range.end += '\u{200A}'.len_utf8();
+                    }
+                    for (range, _) in out.links.iter_mut().filter(|(r, _)| r.start >= start) {
+                        range.start += '\u{200A}'.len_utf8();
+                        range.end += '\u{200A}'.len_utf8();
+                    }
+                }
                 if start < out.text.len() {
                     out.spans.push((start..out.text.len(), span));
                     if span == Span::Spoiler {
@@ -270,8 +286,8 @@ mod tests {
     #[test]
     fn code_is_literal() {
         let r = inline("run `/radio **off**` now", "me");
-        assert_eq!(r.text, "run /radio **off** now");
-        assert_eq!(r.spans, vec![(4..18, Span::Code)]);
+        assert_eq!(r.text, "run \u{2009}/radio **off**\u{2009} now");
+        assert_eq!(r.spans, vec![(4..24, Span::Code)]);
     }
 
     #[test]
@@ -293,8 +309,8 @@ mod tests {
     #[test]
     fn spoilers_are_tracked() {
         let r = inline("the end: ||he lives||", "me");
-        assert_eq!(r.text, "the end: he lives");
-        assert_eq!(r.spoilers, vec![9..17]);
+        assert_eq!(r.text, "the end: \u{200A}he lives\u{200A}");
+        assert_eq!(r.spoilers, vec![9..23]);
     }
 
     #[test]

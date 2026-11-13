@@ -177,13 +177,21 @@ fn main() {
                     }),
                     window_min_size: Some(size(px(760.), px(480.))),
                     app_id: Some("online.hoffle.gpui".into()),
+                    // Test runs (GPUI_SNAPSHOT) render offscreen for screenshots: keep them off the screen.
+                    show: std::env::var_os("GPUI_SNAPSHOT").is_none(),
+                    focus: std::env::var_os("GPUI_SNAPSHOT").is_none(),
                     ..Default::default()
                 },
                 |window, cx| cx.new(|cx| Root::new(window, cx)),
             )
             .unwrap();
         window
-            .update(cx, |_, _, cx| cx.activate(true))
+            .update(cx, |_, _, cx| {
+                // Test runs (screenshots) open without taking focus from whatever is in front.
+                if std::env::var_os("GPUI_SNAPSHOT").is_none() {
+                    cx.activate(true);
+                }
+            })
             .ok();
     });
 }
