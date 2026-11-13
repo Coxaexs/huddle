@@ -240,7 +240,9 @@ impl Shell {
 
     /// What each item does: the handlers message-row.tsx passes to the menu.
     fn run_item(&mut self, item: Item, id: String, window: &mut Window, cx: &mut Context<Self>) {
-        self.ctx_menu = None;
+        if let Some(menu) = self.ctx_menu.take() {
+            self.ctx_at = menu.at;
+        }
         let Some(message) = self.find_message(&id) else {
             cx.notify();
             return;
@@ -287,8 +289,14 @@ impl Shell {
             Item::Pin => self.toggle_pin(message, cx),
             Item::Bookmark => self.toggle_saved(id, cx),
             Item::Translate => self.translate(id, cx),
-            // Not built yet here: the reaction picker, forwarding, threads, read-aloud.
-            Item::AddReaction | Item::Forward | Item::Thread | Item::Speak | Item::Apps => {}
+            // The picker opens as if from the hover bar's react button: 48px in from the card's right
+            // edge, level with the right-click.
+            Item::AddReaction => {
+                let at = gpui::point(px(self.article_right(window) - 48.), self.ctx_at.y);
+                self.open_reaction_picker(id, at, window, cx);
+            }
+            // Not built yet here: forwarding, threads, read-aloud.
+            Item::Forward | Item::Thread | Item::Speak | Item::Apps => {}
         }
         cx.notify();
     }

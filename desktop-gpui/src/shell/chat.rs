@@ -485,6 +485,7 @@ impl Shell {
     /// `.message-actions`: floats over the top-right of a hovered message — quick reactions, this
     /// server's own emoji (up to four), add reaction, reply, and edit on your own messages.
     fn render_actions(&self, message: &Message, group: &SharedString, forced: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let picking = self.picker.as_ref().is_some_and(|p| matches!(&p.target, super::PickerTarget::Reaction { message_id, .. } if *message_id == message.id));
         let quick: Vec<String> = if self.me.quick_reactions.is_empty() {
             ["👍", "❤️", "😂"].iter().map(|s| s.to_string()).collect()
         } else {
@@ -518,7 +519,8 @@ impl Shell {
             .border_1()
             .border_color(gpui::rgba(0xa78bfa33))
             .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.35), offset: gpui::point(px(0.), px(4.)), blur_radius: px(16.), spread_radius: px(0.) }])
-            .when(!forced, |d| d.invisible())
+            // `.reaction-picker-active` keeps it up while its picker is open.
+            .when(!forced && !picking, |d| d.invisible())
             .group_hover(group.clone(), |s| s.visible());
         for emoji in quick {
             let (id, e) = (message.id.clone(), emoji.clone());
@@ -542,7 +544,23 @@ impl Shell {
                 );
             }
         }
-        bar = bar.child(button(format!("add-{}", message.id), false).tooltip(ui::tooltip(t("message.addReaction"))).child(icon("smile-plus", 16., Theme::muted())));
+        // The picker opens beside this button, so keep where it was drawn.
+        let at = std::rc::Rc::new(std::cell::Cell::new(gpui::Point::default()));
+        bar = bar.child({
+            let (id, seen) = (message.id.clone(), at.clone());
+            button(format!("add-{}", message.id), false)
+                .tooltip(ui::tooltip(t("message.addReaction")))
+                // `.add-reaction-action-btn.active` while its picker is open.
+                .when(picking, |d| d.bg(gpui::rgba(0x5865f24d)))
+                .child(icon("smile-plus", 16., if picking { gpui::rgb(0x5865f2) } else { Theme::muted() }))
+                .child(
+                    gpui::canvas(move |bounds, _, _| at.set(bounds.origin), |_, _, _, _| {})
+                        .absolute()
+                        .size_full(),
+                )
+                .relative()
+                .on_click(cx.listener(move |this, _, window, cx| this.open_reaction_picker(id.clone(), seen.get(), window, cx)))
+        });
         let (id, author) = (message.id.clone(), message.author.clone());
         bar = bar.child(
             button(format!("reply-{}", message.id), false)
@@ -691,7 +709,12 @@ impl Shell {
 
     /// The conversation card's outer width: the window less the rail and sidebar, and less the
     /// members panel when it shows.
-    fn chat_panel_width(&self, window: &gpui::Window) -> gpui::Pixels {
+    /// The right edge of a message's card, in window coordinates.
+    pub(super) fn article_right(&self, window: &gpui::Window) -> f32 {
+        299. + f32::from(self.chat_panel_width(window)) - (ROW_RIGHT - 10.)
+    }
+
+    pub(super) fn chat_panel_width(&self, window: &gpui::Window) -> gpui::Pixels {
         let members = self.members_open && (!self.home || self.channel_id.is_some());
         window.bounds().size.width - px(300.) - if members { px(250.) } else { px(10.) }
     }
@@ -910,7 +933,22 @@ impl Shell {
                     // The textarea: 9px 10px padding, growing to 40% of the window.
                     .child(div().flex_1().min_w_0().px(px(10.)).py(px(9.)).child(self.composer.clone()))
                     .child(small("chevron-up", t("composer.moreTools")))
-                    .child(small("smile", t("composer.openEmojiPicker")))
+                    // `.composer-emoji-btn`: 6px corners; on hover a 10% ink square and a lavender face.
+                    .child(
+                        div()
+                            .id("smile")
+                            .group("composer-emoji")
+                            .size(px(28.))
+                            .rounded(px(6.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .hover(|s| s.bg(gpui::Hsla::from(Theme::ink()).opacity(0.1)))
+                            .tooltip(ui::tooltip(t("composer.openEmojiPicker")))
+                            .child(icon("smile", 18., Theme::quiet()).group_hover("composer-emoji", |s| s.text_color(Theme::lavender())))
+                            .on_click(cx.listener(|this, _, window, cx| this.toggle_composer_picker(window, cx))),
+                    )
                     .child(
                         div()
                             .id("gif")

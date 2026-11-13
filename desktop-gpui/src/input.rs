@@ -46,6 +46,15 @@ pub fn bind_keys(cx: &mut App) {
     ]);
 }
 
+#[derive(Clone, Copy)]
+pub struct Look {
+    pub size: f32,
+    pub line_height: f32,
+    pub height: f32,
+    pub color: gpui::Hsla,
+    pub placeholder: gpui::Hsla,
+}
+
 pub enum InputEvent {
     Submit,
     Changed,
@@ -62,6 +71,8 @@ pub struct TextInput {
     /// Text size; the placeholder is drawn at half the muted colour's strength when `faint`.
     size: f32,
     faint_placeholder: bool,
+    /// A field with its own look (the emoji picker's search): text size, line, height, colours.
+    look: Option<Look>,
     selected_range: Range<usize>,
     selection_reversed: bool,
     marked_range: Option<Range<usize>>,
@@ -84,6 +95,7 @@ impl TextInput {
             bare: false,
             size: 14.,
             faint_placeholder: false,
+            look: None,
             selected_range: 0..0,
             selection_reversed: false,
             marked_range: None,
@@ -103,6 +115,14 @@ impl TextInput {
     pub fn small(mut self) -> Self {
         self.size = 12.;
         self.faint_placeholder = true;
+        self
+    }
+
+    /// Bare, with this text size, height and colours.
+    pub fn look(mut self, look: Look) -> Self {
+        self.bare = true;
+        self.size = look.size;
+        self.look = Some(look);
         self
     }
 
@@ -562,7 +582,12 @@ impl Element for TextElement {
 
         let (display_text, text_color) = if content.is_empty() {
             let muted: gpui::Hsla = Theme::muted().into();
-            (input.placeholder.clone(), if input.faint_placeholder { muted.opacity(0.5) } else { muted })
+            let color = match input.look {
+                Some(look) => look.placeholder,
+                None if input.faint_placeholder => muted.opacity(0.5),
+                None => muted,
+            };
+            (input.placeholder.clone(), color)
         } else {
             (content, style.color)
         };
@@ -706,10 +731,11 @@ impl Render for TextInput {
                     .border_1()
                     .border_color(if focused { Theme::lavender_muted() } else { Theme::line() })
             })
-            .when(self.bare, |d| d.h(px(38.)).px(px(10.)))
-            .text_color(Theme::ink())
+            .when(self.bare && self.look.is_none(), |d| d.h(px(38.)).px(px(10.)))
+            .when_some(self.look, |d, look| d.h(px(look.height)))
+            .text_color(self.look.map(|l| l.color).unwrap_or_else(|| Theme::ink().into()))
             .text_size(px(self.size))
-            .line_height(px(if self.size < 14. { 16. } else { 20.3 }))
+            .line_height(px(self.look.map(|l| l.line_height).unwrap_or(if self.size < 14. { 16. } else { 20.3 })))
             .child(TextElement { input: cx.entity() })
     }
 }

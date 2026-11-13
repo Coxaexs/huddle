@@ -297,6 +297,15 @@ impl Client {
         Ok(())
     }
 
+    /// The reactions in this account's message toolbar (`PATCH /api/settings/profile`).
+    pub fn set_quick_reactions(&self, list: &[String]) -> Result<()> {
+        let mut request = self.agent.patch(format!("{}/api/settings/profile", self.base)).header("Origin", self.absolute(""));
+        if let Some(cookie) = self.cookie_header() {
+            request = request.header("Cookie", &cookie);
+        }
+        read::<Value>(request.send_json(json!({ "quickReactions": list }))?, "quick reactions").map(|_| ())
+    }
+
     pub fn mark_read(&self, channel_id: &str) -> Result<()> {
         let _: Value = self.post("/api/channels/reads", json!({ "channelId": channel_id }))?;
         Ok(())

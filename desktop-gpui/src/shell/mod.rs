@@ -3,6 +3,7 @@
 
 mod chat;
 mod context_menu;
+mod emoji_picker;
 mod friends;
 mod members;
 mod rail;
@@ -23,6 +24,21 @@ use crate::textarea::{AreaEvent, TextArea};
 use crate::model::{self, Channel, DmConversation, Member, Message, MessagePage, ReadState, Server, User, VoiceParticipant};
 use crate::realtime::{self, Hub, HubEvent};
 use crate::voice::{Voice, VoiceCmd, VoiceEvent};
+
+/// Where the emoji picker's choice goes.
+#[derive(Clone, PartialEq)]
+enum PickerTarget {
+    /// A reaction on this message; the picker opens beside the point it was asked from.
+    Reaction { message_id: String, left: f32, top: f32 },
+    Composer,
+}
+
+struct OpenPicker {
+    target: PickerTarget,
+    entity: Entity<emoji_picker::EmojiPicker>,
+    key: u64,
+    _sub: Subscription,
+}
 
 #[derive(Clone, Copy, PartialEq)]
 enum CallState {
@@ -150,6 +166,11 @@ pub struct Shell {
     notice: Option<String>,
     toasts: Vec<(u64, String)>,
     toast_seq: u64,
+    /// The emoji picker, open for a reaction or for the composer.
+    picker: Option<OpenPicker>,
+    picker_seq: u64,
+    /// Where the last message menu was opened (its Add Reaction places the picker there).
+    ctx_at: gpui::Point<gpui::Pixels>,
     /// Translations asked for from the message menu.
     translations: HashMap<String, context_menu::Translation>,
     connected: bool,
@@ -284,6 +305,9 @@ impl Shell {
             toasts: Vec::new(),
             toast_seq: 0,
             translations: HashMap::new(),
+            picker: None,
+            picker_seq: 0,
+            ctx_at: gpui::Point::default(),
             connected: false,
             status: Some("Loading your servers…".into()),
             last_typing_sent: None,

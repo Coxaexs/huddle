@@ -258,6 +258,21 @@ impl gpui::Render for Shell {
             if let Ok(text) = std::env::var("HOFFLE_DEV_TOAST") {
                 self.toast(text, cx);
             }
+            // HOFFLE_DEV_PICKER=composer, or x,y: the reaction picker for your last message as if
+            // its react button were there.
+            if let Ok(at) = std::env::var("HOFFLE_DEV_PICKER") {
+                if at == "composer" {
+                    self.toggle_composer_picker(window, cx);
+                } else {
+                    let own = self.channel_id.as_ref().and_then(|c| self.messages.get(c)).and_then(|l| {
+                        l.iter().rev().find(|m| m.user_id.as_deref() == Some(self.me.id.as_str())).map(|m| m.id.clone())
+                    });
+                    let mut xy = at.split(',').filter_map(|v| v.trim().parse::<f32>().ok());
+                    if let (Some(id), Some(x), Some(y)) = (own, xy.next(), xy.next()) {
+                        self.open_reaction_picker(id, gpui::point(px(x), px(y)), window, cx);
+                    }
+                }
+            }
             if let Ok(text) = std::env::var("HOFFLE_DEV_TRANSLATE") {
                 let own = self.channel_id.as_ref().and_then(|c| self.messages.get(c)).and_then(|l| {
                     l.iter().rev().find(|m| m.user_id.as_deref() == Some(self.me.id.as_str())).map(|m| m.id.clone())
@@ -306,6 +321,7 @@ impl gpui::Render for Shell {
             })
             .when(!(self.home && self.channel_id.is_none()), |d| d.child(self.render_chat_panel(window, cx)))
             .when(members_open && (!self.home || self.channel_id.is_some()), |d| d.child(self.render_members(window, cx)))
+            .children(self.render_picker(window, cx))
             .children(self.render_context_menu(window, cx))
             .children(self.render_toasts(cx))
             .children(self.render_confirm(cx))
