@@ -417,6 +417,16 @@ impl Client {
         Ok(self.get::<Results>(&format!("/api/messages/search?serverId={}&q={}", encode(server_id), encode(query)))?.results)
     }
 
+    /// A link's preview card (`/api/unfurl`), or none.
+    pub fn unfurl(&self, url: &str) -> Result<Option<crate::shell::Preview>> {
+        #[derive(serde::Deserialize, Default)]
+        #[serde(default)]
+        struct Reply {
+            preview: Option<crate::shell::Preview>,
+        }
+        Ok(self.get::<Reply>(&format!("/api/unfurl?url={}", encode(url)))?.preview)
+    }
+
     pub fn mark_read(&self, channel_id: &str) -> Result<()> {
         let _: Value = self.post("/api/channels/reads", json!({ "channelId": channel_id }))?;
         Ok(())

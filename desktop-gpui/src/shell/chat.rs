@@ -414,7 +414,11 @@ impl Shell {
                     .child(editor),
             );
             body = body.child(div().mt(px(3.)).text_size(px(11.)).line_height(px(16.5)).text_color(Theme::muted()).child("Enter to save · Esc to cancel"));
-        } else if !message.text.is_empty() && (message.kind.as_deref() == Some("ai") || !super::cards::replaces_text(message)) {
+        } else if !message.text.is_empty()
+            && (message.kind.as_deref() == Some("ai") || !super::cards::replaces_text(message))
+            // A message that is only a picture's link shows just the picture.
+            && !(crate::markdown::is_image_url(message.text.trim()) && !message.text.trim().contains(char::is_whitespace))
+        {
             let revealed = self.revealed.contains(&message.id);
             let weak = cx.weak_entity();
             let id = message.id.clone();
@@ -462,6 +466,7 @@ impl Shell {
         }
         let column = f32::from(self.text_column_width(window));
         body = body.children(self.render_attachments(message, column, window, cx));
+        body = body.children(self.render_link_extras(message, column, window, cx));
         if !message.reactions.is_empty() {
             body = body.child(self.render_reactions(message, cx));
         }

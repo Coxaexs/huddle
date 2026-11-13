@@ -6,6 +6,7 @@ mod chat;
 mod context_menu;
 mod emoji_picker;
 mod files;
+mod links;
 mod friends;
 mod members;
 mod profile_card;
@@ -13,6 +14,7 @@ mod side_panels;
 mod stage;
 mod unread;
 
+pub use links::Preview;
 pub use side_panels::{MentionEntry, SavedEntry, SearchResult};
 mod rail;
 mod sidebar;
@@ -212,6 +214,9 @@ pub struct Shell {
     /// "N new messages since …" over the list, and a channel waiting to land on its first unread.
     unread_bar: Option<unread::UnreadBar>,
     unread_pending: Option<(String, usize)>,
+    /// Link previews by URL (none when there is no card), and the ones on their way.
+    unfurls: std::cell::RefCell<HashMap<String, Option<links::Preview>>>,
+    unfurl_pending: std::cell::RefCell<HashSet<String>>,
     /// Files waiting in the composer.
     pending_files: Vec<files::Pending>,
     /// Pictures whose real size has been seen (their rows measured again once).
@@ -369,6 +374,8 @@ impl Shell {
             panels: Default::default(),
             stage: None,
             pending_files: Vec::new(),
+            unfurls: Default::default(),
+            unfurl_pending: Default::default(),
             unread_bar: None,
             unread_pending: None,
             sized: Default::default(),

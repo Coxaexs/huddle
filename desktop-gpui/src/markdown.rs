@@ -140,6 +140,60 @@ pub struct Inline {
     pub spoilers: Vec<Range<usize>>,
     /// Custom emoji: where each one's slot starts in `text`, and its image.
     pub emojis: Vec<(usize, String)>,
+    /// Picture links taken out of the text.
+    pub images: Vec<String>,
+}
+
+/// isImageUrl: our own uploads and stickers, or a link whose path ends in a picture's extension.
+pub fn is_image_url(url: &str) -> bool {
+    let url = url.trim();
+    if url.starts_with("/hangout/api/uploads/") || url.starts_with("/hangout/stickers/") {
+        return true;
+    }
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return false;
+    }
+    let path = url.split(['?', '#']).next().unwrap_or(url).to_lowercase();
+    [".gif", ".png", ".jpg", ".jpeg", ".webp", ".avif"].iter().any(|e| path.ends_with(e))
+}
+
+/// The links in a message the web turns into pictures and preview cards: picture links (in order)
+/// and the others (once each, not inside code, not written as `<link>`).
+pub fn link_parts(src: &str) -> (Vec<String>, Vec<String>) {
+    let (mut images, mut links) = (Vec::new(), Vec::new());
+    for (n, segment) in src.split("```").enumerate() {
+        if n % 2 == 1 {
+            continue;
+        }
+        let mut in_code = false;
+        let mut i = 0;
+        let bytes = segment.as_bytes();
+        while i < segment.len() {
+            let rest = &segment[i..];
+            if rest.starts_with('`') {
+                in_code = !in_code;
+                i += 1;
+                continue;
+            }
+            let prev = segment[..i].chars().next_back();
+            if !in_code && (rest.starts_with("https://") || rest.starts_with("http://")) && prev.is_none_or(|c| !c.is_alphanumeric()) {
+                let end = rest.find(|c: char| c.is_whitespace() || matches!(c, '<' | '>' | '"' | '\'')).unwrap_or(rest.len());
+                let url = &rest[..end];
+                if is_image_url(url) {
+                    images.push(url.to_string());
+                } else {
+                    let suppressed = prev == Some('<') && bytes.get(i + end) == Some(&b'>');
+                    if !suppressed && !links.iter().any(|l| l == url) {
+                        links.push(url.to_string());
+                    }
+                }
+                i += end.max(1);
+                continue;
+            }
+            i += rest.chars().next().map_or(1, char::len_utf8);
+        }
+    }
+    (images, links)
 }
 
 const TOGGLES: [(&str, Span); 6] = [
@@ -194,13 +248,16 @@ pub fn inline(src: &str, my_username: &str) -> Inline {
             }
         }
 
-        // Bare links.
+        // Bare links (message-body.tsx: `https?://` up to whitespace, < > " or '). A picture's link is
+        // not text: the picture shows under the message instead.
         if (rest.starts_with("https://") || rest.starts_with("http://")) && prev.is_none_or(|c| !c.is_alphanumeric()) {
-            let mut end = rest.find(|c: char| c.is_whitespace() || c == '<' || c == '>').unwrap_or(rest.len());
-            while end > 0 && matches!(rest.as_bytes()[end - 1], b'.' | b',' | b')' | b'!' | b'?' | b':' | b';' | b'\'' | b'"') {
-                end -= 1;
-            }
+            let end = rest.find(|c: char| c.is_whitespace() || matches!(c, '<' | '>' | '"' | '\'')).unwrap_or(rest.len());
             let url = &rest[..end];
+            if is_image_url(url) {
+                out.images.push(url.to_string());
+                i += end;
+                continue;
+            }
             let start = out.text.len();
             out.text.push_str(url);
             out.spans.push((start..out.text.len(), Span::Link));
@@ -378,8 +435,14 @@ mod tests {
 
     #[test]
     fn links_and_trailing_punctuation() {
+        // As on the web, a link runs to the next space: the full stop is part of it.
         let r = inline("see https://hoffle.online/docs.", "me");
-        assert_eq!(r.links, vec![(4..30, "https://hoffle.online/docs".to_string())]);
+        assert_eq!(r.links, vec![(4..31, "https://hoffle.online/docs.".to_string())]);
+        // A picture's link leaves the text and shows as the picture.
+        let r = inline("look https://x.com/a.gif ok", "me");
+        assert_eq!(r.text, "look  ok");
+        assert_eq!(r.images, vec!["https://x.com/a.gif".to_string()]);
+        assert_eq!(link_parts("a <https://q.com/x> `https://c.com` https://y.com https://y.com https://z.com/p.png"), (vec!["https://z.com/p.png".to_string()], vec!["https://y.com".to_string()]));
         let r = inline("[docs](https://hoffle.online) here", "me");
         assert_eq!(r.text, "docs here");
         assert_eq!(r.links[0].1, "https://hoffle.online");

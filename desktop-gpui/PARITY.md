@@ -22,7 +22,8 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | User card: avatar, presence, name, custom status or presence, mic/headphones/settings | user-footer.tsx | 🟡 (device menus, status picker, settings ⬜) |
 | Header: kind icon, Fraunces name, topic, 7 tools | chat-header.tsx | 🟡 (tools open nothing yet) |
 | Messages: grouping rules, day dividers, command lines, bot tags, `text-wrap: pretty`, 1px rhythm | message-row.tsx, message-list.tsx | ✅ |
-| Markdown, mentions, spoilers, links, inline code, italics | message-body.tsx | ✅ (custom emoji, embeds, link unfurls ⬜) |
+| Markdown, mentions, spoilers, links, inline code, italics | message-body.tsx | ✅ |
+| Links: picture links shown as the picture (proxied, 320 max), Tenor/Giphy pages as their GIF, YouTube card (thumbnail, play opens YouTube), preview cards from /api/unfurl (3 at most) | message-body.tsx, link-preview.tsx, lib/unfurl.ts | 🟡 (in-app players for YouTube/Spotify/SoundCloud…, message-link cards, invite cards ⬜) |
 | Now-playing card | now-playing.tsx | ✅ (live progress bar ⬜) |
 | Lyrics card (lines with times, source link), /ask answer card | lyrics-now.tsx, ai-answer-card.tsx | ✅ (live karaoke highlighting, timing nudge, follow-up chat ⬜) |
 | D&D roll card (total, dice with natural 20/1, details, Roll again) | dnd-card.tsx | ✅ (spell/monster/item lookups, V5 and Rouse rolls, secret rolls, Roll again runs nothing yet ⬜) |
