@@ -59,6 +59,9 @@ pub struct TextInput {
     masked: bool,
     /// Drawn inside another box (the composer): no background, border or padding of its own.
     bare: bool,
+    /// Text size; the placeholder is drawn at half the muted colour's strength when `faint`.
+    size: f32,
+    faint_placeholder: bool,
     selected_range: Range<usize>,
     selection_reversed: bool,
     marked_range: Option<Range<usize>>,
@@ -79,6 +82,8 @@ impl TextInput {
             placeholder: placeholder.into(),
             masked: false,
             bare: false,
+            size: 14.,
+            faint_placeholder: false,
             selected_range: 0..0,
             selection_reversed: false,
             marked_range: None,
@@ -91,6 +96,13 @@ impl TextInput {
 
     pub fn bare(mut self) -> Self {
         self.bare = true;
+        self
+    }
+
+    /// Small text with a faint placeholder, like the web's `text-xs placeholder-[var(--muted)]/50` fields.
+    pub fn small(mut self) -> Self {
+        self.size = 12.;
+        self.faint_placeholder = true;
         self
     }
 
@@ -549,7 +561,8 @@ impl Element for TextElement {
         let style = window.text_style();
 
         let (display_text, text_color) = if content.is_empty() {
-            (input.placeholder.clone(), Theme::muted().into())
+            let muted: gpui::Hsla = Theme::muted().into();
+            (input.placeholder.clone(), if input.faint_placeholder { muted.opacity(0.5) } else { muted })
         } else {
             (content, style.color)
         };
@@ -695,8 +708,8 @@ impl Render for TextInput {
             })
             .when(self.bare, |d| d.h(px(38.)).px(px(10.)))
             .text_color(Theme::ink())
-            .text_size(px(14.))
-            .line_height(px(20.3))
+            .text_size(px(self.size))
+            .line_height(px(if self.size < 14. { 16. } else { 20.3 }))
             .child(TextElement { input: cx.entity() })
     }
 }

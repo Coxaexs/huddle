@@ -5,6 +5,7 @@ use gpui::{AnyElement, Context, FontWeight, IntoElement, SharedString, div, prel
 
 use super::{CallState, Shell};
 use crate::model::{Channel, VoiceParticipant};
+use crate::i18n::t;
 use crate::theme::{DISPLAY_FONT, Theme};
 use crate::ui::{self, card_shadow, icon};
 
@@ -27,7 +28,7 @@ impl Shell {
                     .line_height(px(13.5))
                     .font_weight(FontWeight::EXTRA_BOLD)
                     .text_color(Theme::lavender())
-                    .child(if server.is_public { "PUBLIC SPACE" } else { "PRIVATE SPACE" }),
+                    .child(t(if server.is_public { "sidebar.publicSpace" } else { "sidebar.privateSpace" })),
             )
             .child(
                 div()
@@ -55,7 +56,7 @@ impl Shell {
                     .text_color(Theme::quiet())
                     .cursor_pointer()
                     .hover(|s| s.bg(Theme::hover()).text_color(Theme::ink()))
-                    .tooltip(ui::tooltip("Server menu"))
+                    .tooltip(ui::tooltip(t("sidebar.serverMenu")))
                     .child("•••"),
             );
 
@@ -84,7 +85,7 @@ impl Shell {
                     .line_height(px(18.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(Theme::muted())
-                    .child("Channels"),
+                    .child(t("sidebar.channels")),
             )
             .child(
                 div().flex_none().h(px(39.)).pb(px(5.)).px(px(9.)).child(
@@ -102,7 +103,7 @@ impl Shell {
                     .text_color(Theme::ink())
                     .hover(|s| s.bg(Theme::hover()))
                     .child(icon("calendar-days", 15., Theme::quiet()))
-                    .child(div().text_size(px(13.)).line_height(px(15.6)).font_weight(FontWeight::BOLD).child("Events")),
+                    .child(div().text_size(px(13.)).line_height(px(15.6)).font_weight(FontWeight::BOLD).child(t("sidebar.events"))),
             ));
 
         let mut categories = server.categories.clone();
@@ -270,7 +271,7 @@ impl Shell {
                         .font_weight(FontWeight::BLACK)
                         .flex()
                         .items_center()
-                        .child("LIVE"),
+                        .child(t("voiceStage.live")),
                 )
             })
             .on_click(cx.listener(move |this, _, _, cx| {
@@ -361,7 +362,7 @@ impl Shell {
                 CallState::Connected => format!("Voice · {room}"),
             }
         } else {
-            "Online".into()
+            t("presence.online")
         };
         let in_call = self.call.is_some();
         let control = |id: &'static str, name: &'static str, off: bool| {
@@ -433,18 +434,18 @@ impl Shell {
             .child(
                 control("mic", if self.muted { "mic-off" } else { "mic" }, self.muted)
                     .child(icon("chevron-down", 12., Theme::muted()))
-                    .tooltip(ui::tooltip(if self.muted { "Unmute" } else { "Mute" }))
+                    .tooltip(ui::tooltip(t(if self.muted { "footer.unmute" } else { "footer.mute" })))
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_mute(cx))),
             )
             .child(
                 control("deafen", if self.deafened { "headphone-off" } else { "headphones" }, self.deafened)
                     .child(icon("chevron-down", 12., Theme::muted()))
-                    .tooltip(ui::tooltip(if self.deafened { "Undeafen" } else { "Deafen" }))
+                    .tooltip(ui::tooltip(t(if self.deafened { "footer.undeafen" } else { "footer.deafen" })))
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_deafen(cx))),
             )
             .child(
                 control("settings", "settings", false)
-                    .tooltip(ui::tooltip("User settings"))
+                    .tooltip(ui::tooltip(t("footer.userSettings")))
                     .on_click(cx.listener(|this, _, _, cx| this.sign_out_menu(cx))),
             )
     }

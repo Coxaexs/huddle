@@ -2,6 +2,7 @@
 
 mod api;
 mod assets;
+mod i18n;
 mod images;
 mod input;
 mod login;

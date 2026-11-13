@@ -2,6 +2,7 @@
 //! conversation and the composer. State comes from the REST API once and then from the hub socket.
 
 mod chat;
+mod friends;
 mod members;
 mod rail;
 mod sidebar;
@@ -73,6 +74,11 @@ pub struct Shell {
     /// Categories folded shut in the sidebar.
     collapsed: HashSet<String>,
     members_open: bool,
+    /// DMs home (the "h" button): the friends view or a DM conversation, instead of a server.
+    home: bool,
+    friends: model::FriendsData,
+    friends_tab: friends::Tab,
+    friends_search: Entity<TextInput>,
     /// Room players from the hub (`ready.players`, `player` events), by voice channel id.
     players: HashMap<String, Value>,
     /// The small menu over the user card.
@@ -183,6 +189,10 @@ impl Shell {
             dms: Vec::new(),
             collapsed: HashSet::new(),
             members_open: true,
+            home: false,
+            friends: Default::default(),
+            friends_tab: friends::Tab::Online,
+            friends_search: cx.new(|cx| TextInput::new(crate::i18n::t("friends.searchPlaceholder"), cx).bare().small()),
             players: HashMap::new(),
             footer_menu: false,
             clock_offset: 0.,
@@ -208,6 +218,9 @@ impl Shell {
     }
 
     fn server(&self) -> Option<&Server> {
+        if self.home {
+            return None;
+        }
         let id = self.server_id.as_ref()?;
         self.servers.iter().find(|s| &s.id == id)
     }
@@ -226,6 +239,11 @@ impl Shell {
                     Ok(servers) => {
                         crate::trace(format!("servers loaded: {}", servers.len()));
                         this.servers = servers;
+                        // Development: HOFFLE_DEV_HOME=1 starts on the DMs home.
+                        if std::env::var_os("HOFFLE_DEV_HOME").is_some() && this.server_id.is_none() {
+                            this.server_id = this.servers.first().map(|s| s.id.clone());
+                            this.open_home(cx);
+                        }
                         this.status = None;
                         let keep = this.server_id.as_ref().is_some_and(|id| this.servers.iter().any(|s| &s.id == id));
                         if !keep {
@@ -310,7 +328,67 @@ impl Shell {
         chrono::Utc::now().timestamp_millis() as f64 + self.clock_offset
     }
 
+    pub(super) fn dm(&self, channel_id: &str) -> Option<&DmConversation> {
+        self.dms.iter().find(|d| d.channel_id == channel_id)
+    }
+
+    fn open_dm(&mut self, channel_id: String, cx: &mut Context<Self>) {
+        self.home = true;
+        let name = self.dm(&channel_id).map(|d| (d.user.id == self.me.id, d.user.name().to_string()));
+        self.channel_id = None;
+        self.open_channel(channel_id, cx);
+        // DM placeholders: "Message @name", or the note-to-self line in your own chat.
+        if let Some((mine, name)) = name {
+            let text = if mine { crate::i18n::t("composer.notePlaceholder") } else { crate::i18n::tv("composer.dmPlaceholder", &[("channel", &format!("@{name}"))]) };
+            self.composer.update(cx, |input, cx| input.set_placeholder(text, cx));
+        }
+    }
+
+    fn open_dm_with(&mut self, user_id: String, cx: &mut Context<Self>) {
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let fetch = client.clone();
+            let opened = cx.background_executor().spawn(async move { fetch.open_dm(&user_id).map(|id| (id, fetch.dms())) }).await;
+            this.update(cx, |this, cx| match opened {
+                Ok((id, dms)) => {
+                    if let Ok(dms) = dms {
+                        this.dms = dms;
+                    }
+                    this.open_dm(id, cx);
+                }
+                Err(err) => {
+                    this.status = Some(err.to_string().into());
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// The "h" button: friends and direct messages.
+    fn open_home(&mut self, cx: &mut Context<Self>) {
+        self.home = true;
+        if self.channel_id.as_ref().is_some_and(|c| !self.dms.iter().any(|d| &d.channel_id == c)) {
+            self.channel_id = None;
+        }
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let data = cx.background_executor().spawn(async move { client.friends() }).await;
+            this.update(cx, |this, cx| {
+                if let Ok(data) = data {
+                    this.friends = data;
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
     fn open_server(&mut self, id: String, cx: &mut Context<Self>) {
+        self.home = false;
         if !self.members.contains_key(&id) {
             self.load_members(id.clone(), cx);
         }
@@ -343,7 +421,7 @@ impl Shell {
             self.fetch_messages(id, None, cx);
         }
         let name = self.channel().map(|c| c.name.clone()).unwrap_or_default();
-        self.composer.update(cx, |input, cx| input.set_placeholder(format!("Message #{name}"), cx));
+        self.composer.update(cx, |input, cx| input.set_placeholder(crate::i18n::tv("composer.channelPlaceholder", &[("channel", &name)]), cx));
         cx.notify();
     }
 

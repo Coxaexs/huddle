@@ -9,6 +9,7 @@ use serde_json::Value;
 use super::Shell;
 use crate::model::{self, Message};
 use crate::rich;
+use crate::i18n::{t, tv};
 use crate::theme::{DISPLAY_FONT, MONO_FONT, Theme};
 use crate::ui::{self, card_shadow, icon};
 
@@ -41,22 +42,25 @@ impl Shell {
     fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let channel = self.channel();
         let name = channel.map(|c| c.name.clone()).unwrap_or_default();
-        let topic = channel.map(|c| c.topic.clone()).unwrap_or_default();
+        // An empty topic shows the default line, as chat-header.tsx does.
+        let topic = channel
+            .map(|c| if c.topic.trim().is_empty() { tv("header.channelDefaultTopic", &[("name", &c.name)]) } else { c.topic.clone() })
+            .unwrap_or_default();
         let kind_icon = channel.map(|c| c.icon()).unwrap_or("hash");
         let tools: [(&'static str, &'static str); 6] = [
-            ("user-plus", "Invite people"),
-            ("search", "Search"),
-            ("at-sign", "Mentions"),
-            ("pin", "Pinned messages"),
-            ("bookmark", "Saved messages"),
-            ("award", "Achievements"),
+            ("user-plus", "header.findUsers"),
+            ("search", "header.searchMessages"),
+            ("at-sign", "header.mentions"),
+            ("pin", "header.pinnedMessages"),
+            ("bookmark", "header.savedMessages"),
+            ("award", "header.achievements"),
         ];
         let mut right = div().flex().items_center().gap(px(3.));
         for (name, title) in tools {
             right = right.child(header_button(name, title, false));
         }
         right = right.child(
-            header_button("users", "Members", self.members_open).on_click(cx.listener(|this, _, _, cx| {
+            header_button("users", "header.toggleMemberList", self.members_open).on_click(cx.listener(|this, _, _, cx| {
                 this.members_open = !this.members_open;
                 cx.notify();
             })),
@@ -133,8 +137,8 @@ impl Shell {
                     .line_height(px(18.))
                     .text_color(Theme::muted())
                     .child(div().text_color(Theme::lavender()).child("↩"))
-                    .child(div().font_weight(FontWeight::MEDIUM).child(message.command_by.clone().unwrap_or_else(|| "someone".into())))
-                    .child("used")
+                    .child(div().font_weight(FontWeight::MEDIUM).child(message.command_by.clone().unwrap_or_else(|| t("message.someone"))))
+                    .child(t("message.commandUsed"))
                     .child(
                         div()
                             .min_w_0()
@@ -220,7 +224,7 @@ impl Shell {
                     }),
             );
             if message.edited_at.is_some() {
-                body = body.child(div().text_size(px(10.)).text_color(Theme::muted()).child("(edited)"));
+                body = body.child(div().text_size(px(10.)).text_color(Theme::muted()).child(t("message.edited")));
             }
         }
         if let Some(card) = self.render_card(message, window) {
@@ -452,7 +456,7 @@ impl Shell {
             });
         let note = typing.or(self.status.as_ref().map(|s| s.to_string())).unwrap_or_default();
         let empty = self.composer.read(cx).is_empty();
-        let small = |name: &'static str, title: &'static str| {
+        let small = |name: &'static str, title: String| {
             div()
                 .id(name)
                 .size(px(28.))
@@ -502,12 +506,12 @@ impl Shell {
                             .text_color(Theme::quiet())
                             .cursor_pointer()
                             .hover(|s| s.bg(Theme::hover()).text_color(Theme::ink()))
-                            .tooltip(ui::tooltip("Upload a file"))
+                            .tooltip(ui::tooltip(t("composer.attachFiles")))
                             .child("+"),
                     )
                     .child(div().flex_1().min_w_0().child(self.composer.clone()))
-                    .child(small("chevron-up", "More"))
-                    .child(small("smile", "Emoji"))
+                    .child(small("chevron-up", t("composer.moreTools")))
+                    .child(small("smile", t("composer.openEmojiPicker")))
                     .child(
                         div()
                             .id("gif")
@@ -537,7 +541,7 @@ impl Shell {
                             .justify_center()
                             .cursor_pointer()
                             .hover(|s| s.opacity(0.9))
-                            .tooltip(ui::tooltip(if empty { "Record a voice message" } else { "Send" }))
+                            .tooltip(ui::tooltip(if empty { "Record a voice message".to_string() } else { t("composer.sendMessage") }))
                             .child(icon(if empty { "mic" } else { "send" }, 16., gpui::white()))
                             .on_click(cx.listener(|this, _, _, cx| this.send_composer(cx))),
                     ),
@@ -576,7 +580,7 @@ fn header_button(name: &'static str, title: &'static str, active: bool) -> gpui:
         .cursor_pointer()
         .when(active, |d| d.bg(Theme::lavender_soft()))
         .hover(|s| s.bg(Theme::hover()))
-        .tooltip(ui::tooltip(title))
+        .tooltip(ui::tooltip(t(title)))
         .child(icon(name, 18., if active { Theme::lavender() } else { Theme::quiet() }))
 }
 
@@ -604,9 +608,9 @@ fn day_label(prev: Option<&Message>, message: &Message) -> Option<String> {
     }
     let today = chrono::Local::now().date_naive();
     Some(if day == today {
-        "Today".into()
+        t("message.today")
     } else if Some(day) == today.pred_opt() {
-        "Yesterday".into()
+        t("message.yesterday")
     } else {
         day.format("%B %-d, %Y").to_string()
     })

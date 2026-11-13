@@ -5,6 +5,7 @@ use gpui::{AnyElement, Context, FontWeight, IntoElement, SharedString, Window, d
 
 use super::Shell;
 use crate::model::Member;
+use crate::i18n::{t, tv};
 use crate::theme::Theme;
 use crate::ui;
 
@@ -22,14 +23,14 @@ impl Shell {
             .overflow_y_scroll()
             .flex()
             .flex_col()
-            .child(group_label(format!("Online — {}", online.len())))
+            .child(group_label(tv("members.online", &[("count", &online.len().to_string())])))
             .child(div().flex_none().h(px(11.)));
         for member in &online {
             list = list.child(self.render_member(member, true));
         }
         list = list
             .child(div().flex_none().h(px(23.)))
-            .child(group_label(format!("Offline — {}", offline.len())))
+            .child(group_label(tv("members.offline", &[("count", &offline.len().to_string())])))
             .child(div().flex_none().h(px(11.)));
         for member in &offline {
             list = list.child(self.render_member(member, false));
@@ -58,7 +59,7 @@ impl Shell {
                     .items_center()
                     .text_size(px(13.))
                     .text_color(Theme::quiet())
-                    .child("Search members..."),
+                    .child(t("members.search")),
             )
             .child(div().flex_none().h(px(32.)))
             .child(list)
@@ -70,12 +71,12 @@ impl Shell {
         let picture = member.picture().map(|p| self.client.absolute(p));
         let status = self.presence_of(&member.id);
         let line = if member.id == self.me.id {
-            "Here now".to_string()
+            t("members.hereNow")
         } else {
             member.status_text().unwrap_or_else(|| match status.as_str() {
-                "idle" => "Idle".into(),
-                "dnd" => "Do not disturb".into(),
-                _ => "Online".into(),
+                "idle" => t("presence.idle"),
+                "dnd" => t("presence.dnd"),
+                _ => t("presence.online"),
             })
         };
         let face = div()
@@ -192,12 +193,27 @@ impl gpui::Render for Shell {
                     .flex_none()
                     .flex()
                     .child(self.render_rail(cx))
-                    .child(self.render_sidebar(cx))
+                    .child(if self.home { self.render_home_sidebar(cx).into_any_element() } else { self.render_sidebar(cx).into_any_element() })
                     .child(self.render_footer(cx))
                     .child(self.render_footer_menu(cx)),
             )
-            .child(self.render_chat_panel(cx))
-            .when(members_open, |d| d.child(self.render_members(cx)))
+            .when(self.home && self.channel_id.is_none(), |d| {
+                // The friends view sits in the same card, with a 10px gap on the right (no members panel).
+                d.child(
+                    div().flex_1().min_w_0().h_full().pt(px(10.)).pr(px(10.)).child(
+                        div()
+                            .size_full()
+                            .rounded_t(px(16.))
+                            .bg(Theme::chat_bg())
+                            .border_1()
+                            .border_color(Theme::line())
+                            .overflow_hidden()
+                            .child(self.render_friends_view(cx)),
+                    ),
+                )
+            })
+            .when(!(self.home && self.channel_id.is_none()), |d| d.child(self.render_chat_panel(cx)))
+            .when(members_open && !self.home, |d| d.child(self.render_members(cx)))
     }
 }
 

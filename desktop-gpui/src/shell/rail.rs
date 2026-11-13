@@ -4,6 +4,7 @@
 use gpui::{AnyElement, Context, FontWeight, IntoElement, ObjectFit, SharedString, div, img, prelude::*, px, rgb};
 
 use super::Shell;
+use crate::i18n::t;
 use crate::theme::{Theme, css_color};
 use crate::ui::{self, icon, rail_badge};
 
@@ -33,8 +34,9 @@ impl Shell {
             .overflow_y_scroll();
 
         // Hoffle home (direct messages).
+        let home = self.home;
         rail = rail.child(rail_item(
-            false,
+            home,
             false,
             div()
                 .id("brand")
@@ -52,15 +54,16 @@ impl Shell {
                 .text_color(Theme::lavender())
                 .cursor_pointer()
                 .hover(|s| s.bg(Theme::lavender_muted()))
-                .tooltip(ui::tooltip("Direct messages"))
+                                .tooltip(ui::tooltip(t("rail.dms")))
+                .on_click(cx.listener(|this, _, _, cx| this.open_home(cx)))
                 .child("h")
-                .when(dm_unread > 0, |d| d.child(div().absolute().right(px(-2.)).bottom(px(-2.)).child(rail_badge(dm_unread))))
+                .when(dm_unread > 0 && !home, |d| d.child(div().absolute().right(px(-2.)).bottom(px(-2.)).child(rail_badge(dm_unread))))
                 .into_any_element(),
         ));
         rail = rail.child(divider());
 
         for server in &self.servers {
-            let active = self.server_id.as_deref() == Some(&server.id);
+            let active = !self.home && self.server_id.as_deref() == Some(&server.id);
             let unread = !active && server.channels.iter().any(|c| self.reads.get(&c.id).is_some_and(|r| r.unread));
             let mentions: u32 = server.channels.iter().map(|c| self.reads.get(&c.id).map_or(0, |r| r.mentions)).sum();
             let occupied: Vec<String> = server
@@ -124,7 +127,7 @@ impl Shell {
             .child(rail_item(
                 false,
                 false,
-                square_button("add-server", "Add a server")
+                square_button("add-server", t("rail.createServer"))
                     .text_size(px(24.))
                     .font_weight(FontWeight::EXTRA_BOLD)
                     .text_color(Theme::muted())
@@ -134,7 +137,7 @@ impl Shell {
             .child(rail_item(
                 false,
                 false,
-                square_button("explore", "Explore public spaces")
+                square_button("explore", t("rail.explore"))
                     .child(icon("compass", 16., Theme::muted()))
                     .into_any_element(),
             ));
@@ -148,6 +151,7 @@ impl Shell {
             let count = self.reads.get(&dm.channel_id).map_or(0, |r| r.count);
             let status = self.presence_of(&dm.user.id);
             let in_call = self.rooms.get(&dm.channel_id).is_some_and(|r| !r.is_empty());
+            let open = dm.channel_id.clone();
             let title = if count > 0 { format!("{} · {count} new", dm.user.name()) } else { dm.user.name().to_string() };
             rail = rail.child(rail_item(
                 false,
@@ -162,6 +166,7 @@ impl Shell {
                     .child(div().absolute().right_0().bottom_0().child(ui::rail_presence_dot(&status, 10., rgb(0x0f0d18))))
                     .when(in_call, |d| d.child(div().absolute().top_0().right_0().size(px(10.)).rounded_full().bg(Theme::mint())))
                     .when(count > 0, |d| d.child(div().absolute().right(px(-2.)).bottom(px(-2.)).child(rail_badge(count))))
+                    .on_click(cx.listener(move |this, _, _, cx| this.open_dm(open.clone(), cx)))
                     .into_any_element(),
             ));
         }
@@ -220,7 +225,7 @@ fn divider() -> impl IntoElement {
     div().w(px(32.)).h(px(1.)).flex_none().bg(Theme::divider())
 }
 
-fn square_button(id: &'static str, title: &'static str) -> gpui::Stateful<gpui::Div> {
+fn square_button(id: &'static str, title: String) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
         .size(px(44.))

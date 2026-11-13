@@ -12,7 +12,9 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 
 | Area | Web source | Status |
 | --- | --- | --- |
-| Fonts (Instrument Sans, Fraunces at Chrome's optical size, JetBrains Mono), Lucide icons | globals.css, lucide-react 1.27 | ✅ |
+| Fonts (Instrument Sans, Fraunces at Chrome's optical size, JetBrains Mono, Nunito), Lucide icons | globals.css, lucide-react 1.27 | ✅ |
+| UI strings in all 7 languages, resolved like lib/i18n.ts (`tools/export-i18n.mjs`) | lib/i18n.ts, lib/i18n-catalog | ✅ (strings not yet ported stay English) |
+| Hoffy mascot, every face × pose (`tools/export-hoffy.mjs`) | lib/hoffy-svg.ts | ✅ (idle/wave motion ⬜) |
 | Rail: home + DM badge, servers, active/unread pills, mention badge, voice badge, add, explore, 4 DMs with presence | chat/rail.tsx | ✅ (folders, drag to reorder, right-click menu ⬜) |
 | Sidebar header: eyebrow, Fraunces name, ••• | panels.tsx | ✅ (server menu ⬜) |
 | Channel list: label, events chip, rows by kind, selected, unread pill, mention count, categories fold | panels.tsx, chat-shell-renderers.tsx | ✅ (banner header, kind picker, drag, channel menu ⬜) |
@@ -34,7 +36,8 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | --- | --- | --- |
 | Sign-in, two-factor | auth-gate.tsx | 🟡 (passkeys, sign-up ⬜) |
 | Simple mode | panels.tsx SimpleRooms, easy.css | ⬜ |
-| DMs home, friends, requests | friends-view.tsx, requests-tab.tsx | ⬜ |
+| DMs home: sidebar (search, friends, DM rows), friends view (tabs, search, counts, Hoffy empty states) | panels.tsx, friends-view.tsx | ✅ (add-friend form submit, accept/ignore/block actions, active-now panel ⬜) |
+| DM conversation (header, call buttons, profile side) | chat-header.tsx | 🟡 (messages work; DM header ⬜) |
 | Voice stage (the room view), tiles, bottom bar, soundboard | voice-stage*, voice-stage/* | ⬜ (joining works from the list) |
 | Screen share and camera, watching streams | voice-stage, floating-screen-preview.tsx | ⬜ |
 | Profile cards, user menu | user-profile-card.tsx, user-menu.tsx | ⬜ |

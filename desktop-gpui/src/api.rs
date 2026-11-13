@@ -174,6 +174,16 @@ impl Client {
         Ok(self.get::<Members>(&format!("/api/members?serverId={}", encode(server_id)))?.members)
     }
 
+    pub fn friends(&self) -> Result<crate::model::FriendsData> {
+        self.get("/api/friends")
+    }
+
+    /// Finds or opens the direct message with someone; returns its channel id.
+    pub fn open_dm(&self, user_id: &str) -> Result<String> {
+        let reply: Value = self.post("/api/dms", json!({ "userId": user_id }))?;
+        reply.get("channelId").and_then(Value::as_str).map(str::to_string).ok_or_else(|| anyhow!("No conversation came back."))
+    }
+
     pub fn dms(&self) -> Result<Vec<crate::model::DmConversation>> {
         #[derive(Deserialize)]
         struct Dms {

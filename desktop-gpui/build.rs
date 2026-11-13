@@ -9,7 +9,7 @@ fn main() {
 
     // Icons and fonts are compiled in: one list of (path, bytes) for gpui's asset source.
     let mut entries = String::from("pub static ASSETS: &[(&str, &[u8])] = &[\n");
-    for dir in ["icons", "fonts"] {
+    for dir in ["icons", "fonts", "images", "i18n"] {
         let root = Path::new("resources").join(dir);
         println!("cargo:rerun-if-changed={}", root.display());
         let mut files: Vec<_> = fs::read_dir(&root).unwrap().flatten().map(|e| e.path()).collect();

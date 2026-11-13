@@ -237,3 +237,37 @@ pub struct ReadState {
     pub count: u32,
     pub mentions: u32,
 }
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Friend {
+    pub id: String,
+    pub username: String,
+    pub display_name: String,
+    pub avatar: String,
+    pub avatar_url: Option<String>,
+    pub color: String,
+    pub custom_status: Option<serde_json::Value>,
+}
+
+impl Friend {
+    pub fn name(&self) -> &str {
+        if self.display_name.is_empty() { &self.username } else { &self.display_name }
+    }
+    pub fn status_text(&self) -> Option<String> {
+        match &self.custom_status {
+            Some(serde_json::Value::String(s)) if !s.is_empty() => Some(s.clone()),
+            Some(serde_json::Value::Object(o)) => o.get("text").and_then(|t| t.as_str()).filter(|t| !t.is_empty()).map(str::to_string),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct FriendsData {
+    pub friends: Vec<Friend>,
+    pub incoming: Vec<Friend>,
+    pub outgoing: Vec<Friend>,
+    pub blocked: Vec<Friend>,
+}
