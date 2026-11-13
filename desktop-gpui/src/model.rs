@@ -45,7 +45,12 @@ pub struct Server {
 #[serde(rename_all = "camelCase", default)]
 pub struct Role {
     pub id: String,
+    pub name: String,
     pub permissions: u64,
+    pub color: String,
+    pub position: i64,
+    /// An emoji, or an image URL (lib/role-icon.ts).
+    pub icon: Option<String>,
 }
 
 /// lib/permissions.ts flags this client checks.

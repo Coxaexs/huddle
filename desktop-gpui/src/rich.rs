@@ -97,19 +97,23 @@ fn line_wrapped(
         pretty(&mut parsed.text, wrap);
     }
     let runs = flatten(&parsed, revealed);
-    let Inline { text, links, spoilers, .. } = parsed;
+    let Inline { text, links, spoilers, emojis, .. } = parsed;
     let styled = StyledText::new(SharedString::from(text)).with_runs(runs);
+    // Custom emoji: their slots are in the text; the images are painted over them.
+    let painter = (!emojis.is_empty()).then(|| emoji_painter(styled.layout().clone(), emojis));
     let mut ranges: Vec<Range<usize>> = links.iter().map(|(r, _)| r.clone()).collect();
     let hidden = !revealed && !spoilers.is_empty();
     if hidden {
         ranges.extend(spoilers.iter().cloned());
     }
     if ranges.is_empty() {
-        return div().w_full().child(styled).into_any_element();
+        return div().relative().w_full().child(styled).children(painter).into_any_element();
     }
     let urls: Vec<String> = links.into_iter().map(|(_, u)| u).collect();
     div()
+        .relative()
         .w_full()
+        .children(painter)
         .child(
             InteractiveText::new(SharedString::from(id.to_string()), styled).on_click(ranges, move |ix, _, cx| {
                 if let Some(url) = urls.get(ix) {
@@ -124,6 +128,44 @@ fn line_wrapped(
             }),
         )
         .into_any_element()
+}
+
+/// `.custom-emoji`: 1.35em square, `object-fit: contain`, its bottom 0.3em under the baseline, drawn
+/// where the text left room for it.
+fn emoji_painter(layout: gpui::TextLayout, emojis: Vec<(usize, String)>) -> impl IntoElement {
+    gpui::canvas(
+        |_, _, _| {},
+        move |_, _, window, cx| {
+            let style = window.text_style();
+            let rem = window.rem_size();
+            let size = f32::from(style.font_size.to_pixels(rem));
+            let line_height = f32::from(style.line_height_in_pixels(rem));
+            let (ascent, descent) = crate::fonts::bytes(crate::theme::UI_FONT)
+                .map(|b| crate::fonts::vertical_metrics(&b))
+                .unwrap_or((0.95, 0.25));
+            // The CSS baseline: half the leading above the font's own box.
+            let baseline = (line_height - (ascent + descent) * size) / 2. + ascent * size;
+            let side = 1.35 * size;
+            let slot = crate::markdown::EMOJI_SLOT.chars().count() as f32 * 0.2 * size;
+            for (ix, url) in &emojis {
+                let Some(at) = layout.position_for_index(*ix) else { continue };
+                let source = gpui::Resource::Uri(url.clone().into());
+                let Some(Ok(image)) = window.use_asset::<gpui::ImgResourceLoader>(&source, cx) else { continue };
+                let natural = image.size(0);
+                let (w, h) = (f32::from(natural.width.0 as f32), f32::from(natural.height.0 as f32));
+                let scale = if w > 0. && h > 0. { (side / w).min(side / h) } else { 1. };
+                let (dw, dh) = (w * scale, h * scale);
+                let top = f32::from(at.y) + baseline + 0.3 * size - side + (side - dh) / 2.;
+                let left = f32::from(at.x) + (slot - side) / 2. + (side - dw) / 2.;
+                let bounds = gpui::Bounds::new(gpui::point(px(left), px(top)), gpui::size(px(dw), px(dh)));
+                let _ = window.paint_image(bounds, gpui::Corners::default(), image, 0, false);
+            }
+        },
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
 }
 
 /// Chrome's `text-wrap: pretty`, the part that shows: when a paragraph's last line would be a single

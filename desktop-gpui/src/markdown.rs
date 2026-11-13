@@ -96,6 +96,33 @@ thread_local! {
     static CHANNELS: std::cell::RefCell<std::collections::HashMap<String, String>> = Default::default();
 }
 
+thread_local! {
+    /// The open server's custom emoji by name, so `:name:` can draw the image.
+    static EMOJIS: std::cell::RefCell<std::collections::HashMap<String, String>> = Default::default();
+}
+
+pub fn set_emojis(emojis: impl IntoIterator<Item = (String, String)>) {
+    EMOJIS.with(|e| *e.borrow_mut() = emojis.into_iter().collect());
+}
+
+/// lib/emoji-shortcodes.ts resolveEmojiShortcode: `tada` → 🎉 (exported by tools/export-shortcodes.mjs).
+pub fn shortcode(name: &str) -> Option<&'static str> {
+    use std::sync::OnceLock;
+    static TABLE: OnceLock<std::collections::HashMap<String, String>> = OnceLock::new();
+    let table = TABLE.get_or_init(|| {
+        crate::assets::ASSETS
+            .iter()
+            .find(|(p, _)| *p == "emoji/shortcodes.json")
+            .and_then(|(_, b)| serde_json::from_slice(b).ok())
+            .unwrap_or_default()
+    });
+    table.get(&name.to_lowercase()).map(String::as_str)
+}
+
+/// The space a custom emoji takes in the text: `.custom-emoji` is 1.35em wide with 1px either side;
+/// seven no-break spaces (0.2em each in Instrument Sans) come closest.
+pub const EMOJI_SLOT: &str = "\u{00A0}\u{00A0}\u{00A0}\u{00A0}\u{00A0}\u{00A0}\u{00A0}";
+
 pub fn set_channels(channels: impl IntoIterator<Item = (String, String)>) {
     CHANNELS.with(|c| *c.borrow_mut() = channels.into_iter().collect());
 }
@@ -111,6 +138,8 @@ pub struct Inline {
     /// Clickable ranges in `text` and what they open.
     pub links: Vec<(Range<usize>, String)>,
     pub spoilers: Vec<Range<usize>>,
+    /// Custom emoji: where each one's slot starts in `text`, and its image.
+    pub emojis: Vec<(usize, String)>,
 }
 
 const TOGGLES: [(&str, Span); 6] = [
@@ -197,6 +226,26 @@ pub fn inline(src: &str, my_username: &str) -> Inline {
                 i += 1 + name.len();
                 continue;
             }
+        }
+
+        // :name: (message-body.tsx, case-insensitive [a-z0-9_]{1,32}): this server's emoji as an image,
+        // else a standard shortcode as its emoji, else the text as written.
+        if rest.starts_with(':')
+            && let Some(len) = rest[1..].find(':')
+            && (1..=32).contains(&len)
+            && rest[1..1 + len].bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        {
+            let name = &rest[1..1 + len];
+            if let Some(url) = EMOJIS.with(|e| e.borrow().get(name).cloned()) {
+                out.emojis.push((out.text.len(), url));
+                out.text.push_str(EMOJI_SLOT);
+                i += len + 2;
+                continue;
+            }
+            // An unknown name stays as written, all of it (the web moves past the whole token).
+            out.text.push_str(shortcode(name).unwrap_or(&rest[..len + 2]));
+            i += len + 2;
+            continue;
         }
 
         // #channel (message-body.tsx: not after a word character, `#`, `/` or `&`; 1–32 of [a-zA-Z0-9._-]).

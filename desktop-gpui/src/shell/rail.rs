@@ -78,7 +78,7 @@ impl Shell {
             let color = css_color(&server.color).unwrap_or(Theme::lavender().into());
             let id = server.id.clone();
             let face: AnyElement = match self.picture(&server.icon_url) {
-                Some(url) => img(url).size(px(42.)).rounded(px(14.)).object_fit(ObjectFit::Cover).into_any_element(),
+                Some(url) => img(crate::ui::square(url)).size(px(42.)).rounded(px(14.)).object_fit(ObjectFit::Cover).into_any_element(),
                 None => div()
                     .text_size(px(15.))
                     .font_weight(FontWeight::EXTRA_BOLD)

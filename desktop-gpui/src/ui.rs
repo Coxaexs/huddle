@@ -22,6 +22,45 @@ pub fn card_shadow() -> Vec<BoxShadow> {
 
 /// A round avatar: picture when there is one, otherwise the emoji or letter on the account colour
 /// (`.avatar-base`: weight 800, text at about 36% of the size).
+/// A picture cut to its centre square (every frame of a GIF), so a round avatar stays round: gpui's
+/// `ObjectFit::Cover` paints the whole scaled picture and rounds its corners instead of clipping.
+pub fn square(url: String) -> gpui::ImageSource {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    thread_local! {
+        static SQUARES: RefCell<HashMap<String, Arc<gpui::RenderImage>>> = RefCell::new(HashMap::new());
+    }
+    gpui::ImageSource::Custom(Arc::new(move |window, cx| {
+        if let Some(done) = SQUARES.with(|s| s.borrow().get(&url).cloned()) {
+            return Some(Ok(done));
+        }
+        let full = match window.use_asset::<gpui::ImgResourceLoader>(&gpui::Resource::Uri(url.clone().into()), cx)? {
+            Ok(full) => full,
+            Err(e) => return Some(Err(e)),
+        };
+        let size = full.size(0);
+        let (w, h) = (size.width.0 as u32, size.height.0 as u32);
+        let side = w.min(h);
+        let result = if side == 0 || w == h {
+            full
+        } else {
+            let (x, y) = ((w - side) / 2, (h - side) / 2);
+            let frames: Vec<image::Frame> = (0..full.frame_count())
+                .filter_map(|i| {
+                    let bytes = full.as_bytes(i)?;
+                    let buffer = image::RgbaImage::from_raw(w, h, bytes.to_vec())?;
+                    let cut = image::imageops::crop_imm(&buffer, x, y, side, side).to_image();
+                    Some(image::Frame::from_parts(cut, 0, 0, full.delay(i)))
+                })
+                .collect();
+            if frames.is_empty() { full } else { Arc::new(gpui::RenderImage::new(frames)) }
+        };
+        SQUARES.with(|s| s.borrow_mut().insert(url.clone(), result.clone()));
+        Some(Ok(result))
+    }))
+}
+
 pub fn avatar(picture: Option<String>, glyph: &str, color: &str, name: &str, size: f32) -> AnyElement {
     match picture.filter(|p| !p.is_empty()) {
         Some(url) => {
@@ -31,7 +70,7 @@ pub fn avatar(picture: Option<String>, glyph: &str, color: &str, name: &str, siz
                 .size(px(size))
                 .flex_none()
                 .child(
-                    img(url)
+                    img(square(url))
                         .size(px(size))
                         .rounded_full()
                         .object_fit(ObjectFit::Cover)
@@ -46,7 +85,7 @@ pub fn avatar(picture: Option<String>, glyph: &str, color: &str, name: &str, siz
 /// An offline member's avatar: the web greys these out (`filter: grayscale(1)`).
 pub fn grey_avatar(picture: Option<String>, glyph: &str, color: &str, name: &str, size: f32) -> AnyElement {
     match picture.filter(|p| !p.is_empty()) {
-        Some(url) => img(url).size(px(size)).flex_none().rounded_full().object_fit(ObjectFit::Cover).grayscale(true).into_any_element(),
+        Some(url) => img(square(url)).size(px(size)).flex_none().rounded_full().object_fit(ObjectFit::Cover).grayscale(true).into_any_element(),
         None => grey_letter_avatar(glyph, color, name, size),
     }
 }

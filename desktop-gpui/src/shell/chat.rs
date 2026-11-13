@@ -179,6 +179,14 @@ impl Shell {
     }
 
     fn render_messages(&self, cx: &mut Context<Self>) -> AnyElement {
+        // emojiMap: the last opened server's custom emoji (the web keeps them while in DMs too).
+        crate::markdown::set_emojis(
+            self.server_id
+                .as_ref()
+                .and_then(|s| self.emojis.get(s))
+                .map(|list| list.iter().map(|e| (e.name.clone(), self.client.absolute(&e.url))).collect::<Vec<_>>())
+                .unwrap_or_default(),
+        );
         crate::markdown::set_channels(
             self.server()
                 .map(|s| s.channels.iter().map(|c| (c.name.clone(), c.id.clone())).collect::<Vec<_>>())
@@ -248,16 +256,48 @@ impl Shell {
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(5.))
+                    .gap(px(6.))
+                    .pb(px(2.))
                     .text_size(px(12.))
                     .line_height(px(18.))
                     .text_color(Theme::muted())
                     .child(div().text_color(Theme::lavender()).child("↩"))
-                    .child(div().font_weight(FontWeight::MEDIUM).child(reply.author.clone()))
-                    .child(div().min_w_0().truncate().child(reply.text.clone())),
+                    .child(div().font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(reply.author.clone()))
+                    // `.reply-snippet`: one line, at most 340px, at 85%.
+                    .child(div().min_w_0().max_w(px(340.)).truncate().opacity(0.85).child(reply.text.clone())),
             );
         }
         if !continuation {
+            // roleColorFor: the colour of their highest role here that has one.
+            let held = |m: &crate::model::Member, server: &crate::model::Server| -> Vec<String> {
+                m.role_ids.get(&server.id).and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default()
+            };
+            let top_role = |want_icon: bool| -> Option<crate::model::Role> {
+                let (m, server) = (author?, self.server()?);
+                let ids = held(m, server);
+                server
+                    .roles
+                    .iter()
+                    .filter(|r| ids.contains(&r.id) && (!want_icon || r.icon.as_deref().is_some_and(|i| !i.is_empty())))
+                    .max_by_key(|r| r.position)
+                    .cloned()
+            };
+            let name_color: gpui::Hsla = top_role(false)
+                .and_then(|r| crate::theme::css_color(&r.color))
+                .unwrap_or_else(|| Theme::ink().into());
+            let role_icon = top_role(true).and_then(|r| r.icon);
+            // A Discord post's tag, a followed channel's NEWS, or BOT.
+            let payload = message.payload.as_ref();
+            let tag: Option<(String, gpui::Hsla, gpui::Hsla)> =
+                if payload.and_then(|p| p.pointer("/bridge/platform")).and_then(|v| v.as_str()) == Some("discord") {
+                    Some(("DISCORD".into(), gpui::rgb(0x5865f2).into(), gpui::white()))
+                } else if payload.and_then(|p| p.get("followedFrom")).is_some_and(|v| !v.is_null()) {
+                    Some((t("message.followedTag"), Theme::lavender().into(), Theme::lavender_light().into()))
+                } else if message.bot {
+                    Some(("BOT".into(), Theme::lavender_soft().into(), Theme::lavender_light().into()))
+                } else {
+                    None
+                };
             let display = author
                 .map(|a| a.name().to_string())
                 .or(dm_author.as_ref().map(|u| u.name().to_string()))
@@ -268,28 +308,41 @@ impl Shell {
                     .items_center()
                     .gap(px(6.))
                     .child(
+                        // The name's line is 24px; a styled name's own box can be taller and hangs over it.
                         div()
+                            .h(px(24.))
+                            .flex()
+                            .items_center()
                             .text_size(px(16.))
                             .line_height(px(24.))
                             .font_weight(FontWeight::BOLD)
-                            .text_color(Theme::ink())
+                            .text_color(name_color)
                             .child({
                                 let style = message.user_id.as_ref().and_then(|id| self.name_style(id));
-                                crate::names::styled_name(&display, style.as_ref(), 16., FontWeight::BOLD, Theme::ink().into(), window, cx)
+                                crate::names::styled_name(&display, style.as_ref(), 16., FontWeight::BOLD, name_color, window, cx)
                             }),
                     )
-                    .when(message.bot, |d| {
+                    // RoleIcon: the top role with an icon, 16px, 4px further in.
+                    .when_some(role_icon, |d, icon| {
+                        let glyph = if icon.starts_with("http") || icon.starts_with('/') {
+                            gpui::img(self.client.absolute(&icon)).size(px(16.)).object_fit(ObjectFit::Contain).into_any_element()
+                        } else {
+                            div().text_size(px(14.)).line_height(px(14.)).child(icon).into_any_element()
+                        };
+                        d.child(div().ml(px(4.)).size(px(16.)).flex().items_center().justify_center().child(glyph))
+                    })
+                    .when_some(tag, |d, (label, bg, fg)| {
                         d.child(
                             div()
                                 .px(px(5.))
                                 .py(px(3.))
                                 .rounded(px(4.))
-                                .bg(Theme::lavender_soft())
-                                .text_color(Theme::lavender_light())
+                                .bg(bg)
+                                .text_color(fg)
                                 .text_size(px(8.))
                                 .line_height(px(12.))
                                 .font_weight(FontWeight::BLACK)
-                                .child("BOT"),
+                                .child(label),
                         )
                     })
                     .child(

@@ -283,6 +283,14 @@ impl gpui::Render for Shell {
                 }
             }
         }
+        // HOFFLE_DEV_SCROLL_TO=<message id prefix>: that message at the top of the list, every frame
+        // (pages loading above it would move it otherwise).
+        if let Ok(prefix) = std::env::var("HOFFLE_DEV_SCROLL_TO") {
+            let ix = self.channel_id.as_ref().and_then(|c| self.messages.get(c)).and_then(|l| l.iter().position(|m| m.id.starts_with(&prefix)));
+            if let Some(ix) = ix {
+                self.list.scroll_to_item(ix);
+            }
+        }
         let members_open = self.members_open;
         // The composer grows to 40% of the window (`max-height: 40vh`), less its padding.
         let cap = f32::from(window.bounds().size.height) * 0.4 - 18.;

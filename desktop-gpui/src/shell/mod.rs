@@ -83,6 +83,13 @@ impl Lists {
         self.top.splice(range, count);
     }
 
+    /// Puts message `ix` at the top of the list.
+    pub(crate) fn scroll_to_item(&self, ix: usize) {
+        for list in [&self.bottom, &self.top] {
+            list.scroll_to(gpui::ListOffset { item_ix: ix, offset_in_item: px(0.) });
+        }
+    }
+
     /// The list to draw now, judged from the last frame: show the top-anchored one while everything
     /// fits, the bottom-anchored one as soon as it does not.
     pub(crate) fn current(&self) -> ListState {
