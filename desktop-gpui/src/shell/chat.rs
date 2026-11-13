@@ -39,7 +39,7 @@ impl Shell {
             .children(self.render_search(cx))
             .map(|d| match self.render_stage_body(window, cx) {
                 Some(stage) => d.child(stage),
-                None => d.child(self.render_messages(cx)).children(self.render_notice(cx)).child(self.render_composer(cx)),
+                None => d.child(self.render_messages(cx)).children(self.render_notice(cx)).child(self.render_composer(window, cx)),
             }))
     }
 
@@ -913,7 +913,7 @@ impl Shell {
         out
     }
 
-    fn render_composer(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_composer(&self, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let typing = self
             .channel_id
             .as_ref()
@@ -973,6 +973,8 @@ impl Shell {
             .pt(px(8.))
             .px(px(35.4))
             .pb(px(25.))
+            // The composer's padding is clamp(18px, 3vw, 36px) each side.
+            .children(self.render_gif_picker(f32::from(self.chat_panel_width(window)) - 2. - 2. * (f32::from(window.viewport_size().width) * 0.03).clamp(18., 36.), window, cx))
             .children(self.render_staged(cx))
             .children(reply_bar)
             .child(
@@ -1046,7 +1048,8 @@ impl Shell {
                             .text_color(Theme::lavender())
                             .cursor_pointer()
                             .tooltip(ui::tooltip("GIFs"))
-                            .child("GIF"),
+                            .child("GIF")
+                            .on_click(cx.listener(|this, _, window, cx| this.toggle_gif_picker(window, cx))),
                     )
                     .child(
                         div()

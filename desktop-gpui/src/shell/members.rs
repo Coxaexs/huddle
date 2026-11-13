@@ -283,6 +283,13 @@ impl gpui::Render for Shell {
             if let Ok(room) = std::env::var("HOFFLE_DEV_STAGE") {
                 self.open_stage(room, window, cx);
             }
+            // HOFFLE_DEV_GIF=hoffy | gifs: the media picker on that tab.
+            if let Ok(tab) = std::env::var("HOFFLE_DEV_GIF") {
+                self.toggle_gif_picker(window, cx);
+                if tab == "gifs" {
+                    self.dev_gif_tab(cx);
+                }
+            }
             // HOFFLE_DEV_PANEL=pins | saved | mentions | search:<query>
             if let Ok(which) = std::env::var("HOFFLE_DEV_PANEL") {
                 use super::side_panels::Panel;

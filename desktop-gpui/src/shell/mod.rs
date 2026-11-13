@@ -6,6 +6,7 @@ mod chat;
 mod context_menu;
 mod emoji_picker;
 mod files;
+mod gif_picker;
 mod links;
 mod friends;
 mod members;
@@ -14,6 +15,7 @@ mod side_panels;
 mod stage;
 mod unread;
 
+pub use gif_picker::MediaItem;
 pub use links::Preview;
 pub use side_panels::{MentionEntry, SavedEntry, SearchResult};
 mod rail;
@@ -217,6 +219,8 @@ pub struct Shell {
     /// Link previews by URL (none when there is no card), and the ones on their way.
     unfurls: std::cell::RefCell<HashMap<String, Option<links::Preview>>>,
     unfurl_pending: std::cell::RefCell<HashSet<String>>,
+    /// The GIF / sticker picker over the composer.
+    gif_picker: Option<gif_picker::GifPicker>,
     /// Files waiting in the composer.
     pending_files: Vec<files::Pending>,
     /// Pictures whose real size has been seen (their rows measured again once).
@@ -374,6 +378,7 @@ impl Shell {
             panels: Default::default(),
             stage: None,
             pending_files: Vec::new(),
+            gif_picker: None,
             unfurls: Default::default(),
             unfurl_pending: Default::default(),
             unread_bar: None,

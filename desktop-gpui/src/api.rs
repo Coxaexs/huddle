@@ -427,6 +427,25 @@ impl Client {
         Ok(self.get::<Reply>(&format!("/api/unfurl?url={}", encode(url)))?.preview)
     }
 
+    /// Klipy GIFs or stickers for a search (`/api/gifs`, `/api/stickers`), and the setup hint when
+    /// search is not configured.
+    pub fn media(&self, kind: &str, query: &str) -> Result<(Vec<crate::shell::MediaItem>, String)> {
+        let reply: Value = self.get(&format!("/api/{kind}?q={}", encode(query)))?;
+        let items = reply.get(kind).cloned().map(serde_json::from_value).transpose()?.unwrap_or_default();
+        let hint = if reply.get("configured").and_then(Value::as_bool) == Some(false) {
+            reply.get("hint").and_then(Value::as_str).unwrap_or_default().to_string()
+        } else {
+            String::new()
+        };
+        Ok((items, hint))
+    }
+
+    pub fn server_stickers(&self, server_id: &str) -> Result<(Vec<crate::shell::MediaItem>, String)> {
+        let reply: Value = self.get(&format!("/api/stickers/packs?serverId={}", encode(server_id)))?;
+        let items = reply.get("stickers").cloned().map(serde_json::from_value).transpose()?.unwrap_or_default();
+        Ok((items, String::new()))
+    }
+
     pub fn mark_read(&self, channel_id: &str) -> Result<()> {
         let _: Value = self.post("/api/channels/reads", json!({ "channelId": channel_id }))?;
         Ok(())
