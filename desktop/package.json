@@ -1,6 +1,6 @@
 {
   "name": "huddle-desktop",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "private": true,
   "description": "Hoffle desktop app (Electron shell around chat.hoffle.online)",
   "author": "coxaexs",
@@ -9,7 +9,7 @@
     "start": "electron .",
     "dist:mac": "node native/build.js mac && electron-builder --mac --publish never",
     "dist:win": "node native/build.js win && electron-builder --win --publish never",
-    "dist:linux": "electron-builder --linux --publish never",
+    "dist:linux": "node native/build.js linux && electron-builder --linux --publish never",
     "pack": "electron-builder --dir"
   },
   "devDependencies": {
@@ -106,6 +106,12 @@
       "category": "Network",
       "target": [
         "AppImage"
+      ],
+      "extraResources": [
+        {
+          "from": "native/bin/hoffle-app-audio-linux",
+          "to": "hoffle-app-audio-linux"
+        }
       ]
     }
   },

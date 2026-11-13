@@ -279,7 +279,7 @@ function supportsLoopbackAudio() {
 let appAudio = null;
 
 function appAudioHelper() {
-  const name = { win32: "hoffle-app-audio.exe", darwin: "hoffle-app-audio" }[process.platform];
+  const name = { win32: "hoffle-app-audio.exe", darwin: "hoffle-app-audio", linux: "hoffle-app-audio-linux" }[process.platform];
   if (!name) return null;
   const file = app.isPackaged
     ? path.join(process.resourcesPath, name)

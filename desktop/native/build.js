@@ -15,7 +15,7 @@ const path = require("path");
 
 const dir = __dirname;
 const bin = path.join(dir, "bin");
-const target = process.argv[2] || (process.platform === "darwin" ? "mac" : "win");
+const target = process.argv[2] || (process.platform === "darwin" ? "mac" : process.platform === "linux" ? "linux" : "win");
 fs.mkdirSync(bin, { recursive: true });
 
 let out;
@@ -47,6 +47,31 @@ if (target === "mac") {
   for (const f of fs.readdirSync(bin)) {
     if (f.endsWith(".pdb") || f.endsWith(".lib")) fs.rmSync(path.join(bin, f));
   }
+} else if (target === "linux") {
+  const linuxDir = path.join(dir, "linux");
+  out = path.join(bin, "hoffle-app-audio-linux");
+  const sources = [
+    "ring_buffer.cpp",
+    "stream_mixer.cpp",
+    "backend_manager.cpp",
+    "pw_dlopen.cpp",
+    "pa_dlopen.cpp",
+    "pipewire_backend.cpp",
+    "pulseaudio_backend.cpp",
+    "x11_pid_resolver.cpp",
+    "app-audio-linux.cpp",
+  ].map((f) => path.join(linuxDir, "src", f));
+  execFileSync(
+    "g++",
+    [
+      "-O2", "-std=c++17", "-Wall", "-Wextra",
+      "-I" + path.join(linuxDir, "include"),
+      ...sources,
+      "-ldl", "-pthread",
+      "-o", out,
+    ],
+    { stdio: "inherit" },
+  );
 } else {
   throw new Error(`unknown target "${target}": use win or mac`);
 }
