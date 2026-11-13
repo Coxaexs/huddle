@@ -26,9 +26,10 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | Now-playing card | now-playing.tsx | ✅ (live progress bar ⬜) |
 | Other cards: dnd, ai, system-pin, music-stats, lyricsnow, polls, games, files, voice messages | dnd-card.tsx, music-cards.tsx, game-card.tsx, message-file-card.tsx, voice-message.tsx | ⬜ |
 | Hover card + toolbar (your quick reactions as outline icons, server emoji, add reaction, reply, edit), reaction pills, reply bar, `#channel` chips | message-row.tsx, message-reactions.tsx, outline-emoji.tsx | ✅ (reaction picker, shift-held extra actions, who-reacted popover ⬜) |
-| Editing and deleting messages, context menu | message-row.tsx, message-context-menu.tsx | ⬜ |
+| Editing in place (Enter saves, Esc cancels, focus ring), deleting with the confirm dialog (Shift skips) | message-row.tsx, message-parts.tsx | ✅ (moderators deleting others' messages ⬜) |
+| Message context menu | message-context-menu.tsx | ⬜ |
 | Custom `:emoji:` inline in text | message-body.tsx | ⬜ |
-| Composer: +, multi-line, chevron, emoji, GIF, voice message / send | composer.tsx, emoji-picker.tsx, gif-picker.tsx | 🟡 (looks right; single line, pickers, upload, slash commands ⬜) |
+| Composer: multi-line textarea (Shift-Enter, grows to 40vh), reply bar, +, chevron, emoji, GIF, voice message / send | composer.tsx | 🟡 (pickers, uploads, slash commands, voice messages ⬜) |
 | Members panel: search, online/offline groups, statuses | panels.tsx | ✅ (name plates, role groups, search ⬜) |
 | Name fonts (29, fetched like loadNameFont) and name effects (25, CSS painted as SVG, first frame) | lib/profile-style.ts, app/profile-style.css, cosmetics-mz.css | ✅ (hover/live animation ⬜) |
 | Avatar decorations (36, the web's own SVG via `tools/export-cosmetics.mjs`) | cosmetics.tsx | ✅ (ring-style decorations, flap/glow animation ⬜) |

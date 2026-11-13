@@ -104,6 +104,8 @@ pub struct Message {
     pub thread_count: Option<u32>,
     pub command_text: Option<String>,
     pub command_by: Option<String>,
+    /// On a bot-styled post: who sent it (they may delete it).
+    pub sender_id: Option<String>,
     pub payload: Option<serde_json::Value>,
 }
 

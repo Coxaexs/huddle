@@ -15,6 +15,7 @@ mod names;
 mod realtime;
 mod rich;
 mod shell;
+mod textarea;
 mod theme;
 mod ui;
 mod voice;
@@ -154,6 +155,7 @@ fn main() {
     Application::new().with_assets(assets::Assets).with_http_client(std::sync::Arc::new(images::Fetcher::new())).run(|cx: &mut App| {
         assets::load_fonts(cx);
         input::bind_keys(cx);
+        textarea::bind_keys(cx);
         cx.bind_keys([
             KeyBinding::new("cmd-q", Quit, None),
             KeyBinding::new("cmd-m", Minimize, None),

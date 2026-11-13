@@ -303,7 +303,24 @@ impl Shell {
                     }),
             );
         }
-        if !message.text.is_empty() {
+        let editing = self.editing.as_ref().filter(|(id, _, _)| *id == message.id).map(|(_, editor, _)| editor.clone());
+        if let Some(editor) = editing {
+            // message-parts.tsx: the text in a textarea in its place, and the hint under it.
+            body = body.child(
+                div()
+                    .mt(px(1.))
+                    .px(px(10.))
+                    .py(px(8.))
+                    .rounded(px(10.))
+                    .bg(Theme::paper())
+                    .border_1()
+                    .border_color(Theme::line())
+                    // The focus ring: `box-shadow: 0 0 0 3px` lavender at 32%.
+                    .shadow(vec![gpui::BoxShadow { color: gpui::Hsla::from(Theme::lavender()).opacity(0.32), offset: gpui::point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(3.) }])
+                    .child(editor),
+            );
+            body = body.child(div().mt(px(3.)).text_size(px(11.)).line_height(px(16.5)).text_color(Theme::muted()).child("Enter to save · Esc to cancel"));
+        } else if !message.text.is_empty() {
             let revealed = self.revealed.contains(&message.id);
             let weak = cx.weak_entity();
             let id = message.id.clone();
@@ -509,8 +526,31 @@ impl Shell {
                 .child(icon("reply", 16., Theme::muted()))
                 .on_click(cx.listener(move |this, _, window, cx| this.start_reply(id.clone(), author.clone(), window, cx))),
         );
-        if message.user_id.as_deref() == Some(self.me.id.as_str()) && !message.bot {
-            bar = bar.child(button(format!("edit-{}", message.id), false).tooltip(ui::tooltip(t("message.edit"))).child(icon("pencil", 16., Theme::muted())));
+        let mine = message.user_id.as_deref() == Some(self.me.id.as_str());
+        if mine && !message.bot {
+            let (id, text) = (message.id.clone(), message.text.clone());
+            bar = bar.child(
+                button(format!("edit-{}", message.id), false)
+                    .tooltip(ui::tooltip(t("message.edit")))
+                    .child(icon("pencil", 16., Theme::muted()))
+                    .on_click(cx.listener(move |this, _, window, cx| this.start_edit(id.clone(), text.clone(), window, cx))),
+            );
+        }
+        if mine || message.sender_id.as_deref() == Some(self.me.id.as_str()) {
+            let id = message.id.clone();
+            bar = bar.child(
+                button(format!("delete-{}", message.id), false)
+                    .tooltip(ui::tooltip(t("message.delete")))
+                    .child(icon("trash-2", 16., Theme::muted()))
+                    .on_click(cx.listener(move |this, event: &gpui::ClickEvent, _, cx| {
+                        if event.modifiers().shift {
+                            this.delete_message(id.clone(), cx);
+                        } else {
+                            this.confirm_delete = Some(id.clone());
+                            cx.notify();
+                        }
+                    })),
+            );
         }
         bar
     }
@@ -804,7 +844,7 @@ impl Shell {
             .children(reply_bar)
             .child(
                 div()
-                    .h(px(52.))
+                    .min_h(px(52.))
                     .pl(px(7.))
                     .pr(px(6.))
                     .py(px(5.))
@@ -837,7 +877,8 @@ impl Shell {
                             .tooltip(ui::tooltip(t("composer.attachFiles")))
                             .child("+"),
                     )
-                    .child(div().flex_1().min_w_0().child(self.composer.clone()))
+                    // The textarea: 9px 10px padding, growing to 40% of the window.
+                    .child(div().flex_1().min_w_0().px(px(10.)).py(px(9.)).child(self.composer.clone()))
                     .child(small("chevron-up", t("composer.moreTools")))
                     .child(small("smile", t("composer.openEmojiPicker")))
                     .child(

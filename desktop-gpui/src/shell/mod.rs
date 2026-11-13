@@ -17,7 +17,8 @@ use gpui::{
 use serde_json::{Value, json};
 
 use crate::api::Client;
-use crate::input::{InputEvent, TextInput};
+use crate::input::TextInput;
+use crate::textarea::{AreaEvent, TextArea};
 use crate::model::{self, Channel, DmConversation, Member, Message, MessagePage, ReadState, Server, User, VoiceParticipant};
 use crate::realtime::{self, Hub, HubEvent};
 use crate::voice::{Voice, VoiceCmd, VoiceEvent};
@@ -105,6 +106,7 @@ pub struct Shell {
     /// The mic was closed by deafening, so undeafening opens it again.
     mute_from_deafen: bool,
     dev_joined: bool,
+    dev_edit_done: bool,
     /// Who is typing where: (user id, name, when it was last heard).
     typing: HashMap<String, Vec<(String, String, Instant)>>,
     /// Unread counts and mentions per channel, from /api/channels/reads, kept current by the hub.
@@ -132,7 +134,11 @@ pub struct Shell {
     clock_offset: f64,
     /// Messages whose spoilers were clicked open.
     revealed: HashSet<String>,
-    composer: Entity<TextInput>,
+    composer: Entity<TextArea>,
+    /// The message being edited in place, and its editor.
+    editing: Option<(String, Entity<TextArea>, Subscription)>,
+    /// A message waiting for "Delete message?" to be confirmed.
+    confirm_delete: Option<String>,
     connected: bool,
     status: Option<SharedString>,
     last_typing_sent: Option<Instant>,
@@ -156,11 +162,15 @@ impl Shell {
                 }
             }
         });
-        let composer = cx.new(|cx| TextInput::new("Message", cx).bare());
+        let composer = cx.new(|cx| TextArea::new("Message", cx).text(14., 20.3).placeholder_color(gpui::rgb(0x5a5275)));
         let subs = vec![cx.subscribe_in(&composer, window, |this, _, event, _window, cx| match event {
-            InputEvent::Submit => this.send_composer(cx),
-            InputEvent::Changed => this.note_typing(),
-            InputEvent::Escape => {}
+            AreaEvent::Submit => this.send_composer(cx),
+            AreaEvent::Changed => this.note_typing(),
+            AreaEvent::Escape => {
+                if this.reply_to.take().is_some() {
+                    cx.notify();
+                }
+            }
         })];
 
         let hub_task = cx.spawn(async move |this, cx| {
@@ -233,6 +243,7 @@ impl Shell {
             deafened: false,
             mute_from_deafen: false,
             dev_joined: false,
+            dev_edit_done: false,
             typing: HashMap::new(),
             reads: HashMap::new(),
             members: HashMap::new(),
@@ -250,6 +261,8 @@ impl Shell {
             clock_offset: 0.,
             revealed: HashSet::new(),
             composer,
+            editing: None,
+            confirm_delete: None,
             connected: false,
             status: Some("Loading your servers…".into()),
             last_typing_sent: None,
@@ -496,6 +509,84 @@ impl Shell {
         cx.notify();
     }
 
+    /// beginEdit: the message's text in an editor in its place; Enter saves, Escape cancels.
+    pub(super) fn start_edit(&mut self, message_id: String, text: String, window: &mut Window, cx: &mut Context<Self>) {
+        let editor = cx.new(|cx| {
+            let mut area = TextArea::new("", cx).text(16., 24.).min_height(54.);
+            area.set_value(text, cx);
+            area
+        });
+        let id = message_id.clone();
+        let sub = cx.subscribe_in(&editor, window, move |this, editor, event, window, cx| match event {
+            AreaEvent::Submit => {
+                let content = editor.read(cx).value();
+                this.save_edit(id.clone(), content, window, cx);
+            }
+            AreaEvent::Escape => {
+                this.editing = None;
+                window.focus(&this.composer.focus_handle(cx));
+                cx.notify();
+            }
+            AreaEvent::Changed => {}
+        });
+        window.focus(&editor.focus_handle(cx));
+        self.editing = Some((message_id, editor, sub));
+        self.refresh_message_rows();
+        cx.notify();
+    }
+
+    fn save_edit(&mut self, message_id: String, content: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.editing = None;
+        window.focus(&self.composer.focus_handle(cx));
+        if let Some(channel) = self.channel_id.clone()
+            && let Some(list) = self.messages.get_mut(&channel)
+            && let Some(m) = list.iter_mut().find(|m| m.id == message_id)
+        {
+            if m.text == content {
+                self.refresh_message_rows();
+                cx.notify();
+                return;
+            }
+            m.text = content.clone();
+            m.edited_at = Some(chrono::Utc::now().to_rfc3339());
+        }
+        self.refresh_message_rows();
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.edit_message(&message_id, &content) }).await;
+            if let Err(err) = result {
+                this.update(cx, |this, cx| {
+                    this.status = Some(format!("Not saved: {err}").into());
+                    cx.notify();
+                })
+                .ok();
+            }
+        })
+        .detach();
+        cx.notify();
+    }
+
+    pub(super) fn delete_message(&mut self, message_id: String, cx: &mut Context<Self>) {
+        self.confirm_delete = None;
+        if let Some(channel) = self.channel_id.clone()
+            && let Some(list) = self.messages.get_mut(&channel)
+            && let Some(ix) = list.iter().position(|m| m.id == message_id)
+        {
+            list.remove(ix);
+            self.list.splice(ix..ix + 1, 0);
+        }
+        let client = self.client.clone();
+        cx.background_executor().spawn(async move { client.delete_message(&message_id) }).detach();
+        cx.notify();
+    }
+
+    /// Rows are measured once; after a change to how one looks (editing) measure them again.
+    fn refresh_message_rows(&self) {
+        if let Some(list) = self.channel_id.as_ref().and_then(|c| self.messages.get(c)) {
+            self.list.splice(0..list.len(), list.len());
+        }
+    }
+
     pub(super) fn start_reply(&mut self, message_id: String, author: String, window: &mut Window, cx: &mut Context<Self>) {
         self.reply_to = Some((message_id, author));
         window.focus(&self.composer.focus_handle(cx));
@@ -610,7 +701,7 @@ impl Shell {
 
     fn send_composer(&mut self, cx: &mut Context<Self>) {
         let Some(channel) = self.channel_id.clone() else { return };
-        let text = self.composer.read(cx).text();
+        let text = self.composer.read(cx).value();
         if text.trim().is_empty() {
             return;
         }
@@ -631,7 +722,7 @@ impl Shell {
                     Ok(message) => this.add_message(message, cx),
                     Err(err) => {
                         this.status = Some(format!("Not sent: {err}").into());
-                        this.composer.update(cx, |input, cx| input.set_text(text, cx));
+                        this.composer.update(cx, |input, cx| input.set_value(text, cx));
                     }
                 }
                 cx.notify();

@@ -215,6 +215,24 @@ impl Client {
         Ok(self.get::<Emojis>(&format!("/api/emojis?serverId={}", encode(server_id)))?.emojis)
     }
 
+    pub fn edit_message(&self, message_id: &str, content: &str) -> Result<()> {
+        let mut request = self.agent.patch(format!("{}/api/messages/{}", self.base, encode(message_id))).header("Origin", self.absolute(""));
+        if let Some(cookie) = self.cookie_header() {
+            request = request.header("Cookie", &cookie);
+        }
+        let response = request.send_json(json!({ "content": content }))?;
+        read::<Value>(response, "edit message").map(|_| ())
+    }
+
+    pub fn delete_message(&self, message_id: &str) -> Result<()> {
+        let mut request = self.agent.delete(format!("{}/api/messages/{}", self.base, encode(message_id))).header("Origin", self.absolute(""));
+        if let Some(cookie) = self.cookie_header() {
+            request = request.header("Cookie", &cookie);
+        }
+        let response = request.call()?;
+        read::<Value>(response, "delete message").map(|_| ())
+    }
+
     pub fn mark_read(&self, channel_id: &str) -> Result<()> {
         let _: Value = self.post("/api/channels/reads", json!({ "channelId": channel_id }))?;
         Ok(())

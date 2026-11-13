@@ -12,18 +12,26 @@ const { build } = createRequire(join(process.cwd(), "package.json"))("esbuild");
 
 const out = process.argv[2] || "desktop-gpui/resources/i18n";
 const entry = `
-  import { translate } from "./lib/i18n";
-  import * as enCatalog from "./lib/i18n-catalog/en";
-  export { translate, enCatalog };
+  import { translate, __EN } from "./lib/i18n";
+  export { translate, __EN };
 `;
 const bundle = join(process.env.TMPDIR || "/tmp", `hoffle-i18n-${process.pid}.mjs`);
 await build({
   stdin: { contents: entry, resolveDir: process.cwd(), loader: "ts" },
   bundle: true, format: "esm", platform: "node", outfile: bundle, logLevel: "error",
   alias: { "@": process.cwd() },
+  // English (every key) is module-private in lib/i18n.ts: expose it in this throwaway bundle only.
+  plugins: [{
+    name: "expose-en",
+    setup(b) {
+      b.onLoad({ filter: /lib\/i18n\.ts$/ }, async (args) => {
+        const { readFile } = await import("node:fs/promises");
+        return { contents: (await readFile(args.path, "utf8")) + "\nexport { en as __EN };\n", loader: "ts" };
+      });
+    },
+  }],
 });
-const { translate, enCatalog } = await import(pathToFileURL(bundle).href);
-const en = Object.assign({}, ...Object.values(enCatalog).filter((v) => v && typeof v === "object"));
+const { translate, __EN: en } = await import(pathToFileURL(bundle).href);
 const keys = Object.keys(en).sort();
 mkdirSync(out, { recursive: true });
 for (const locale of ["en", "tr", "es", "de", "fr", "pt-BR", "nl"]) {

@@ -201,6 +201,89 @@ impl Shell {
         self.member_anywhere(user_id).map(|m| m.avatar_frame.clone()).unwrap_or_default()
     }
 
+    /// showCustomConfirm for a delete: dimmed backdrop, card, title with ×, text, Cancel and Delete.
+    fn render_confirm_delete(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let id = self.confirm_delete.clone()?;
+        let cancel = cx.listener(|this, _, _, cx| {
+            this.confirm_delete = None;
+            cx.notify();
+        });
+        Some(
+            div()
+                .absolute()
+                .inset_0()
+                .p(px(16.))
+                .bg(gpui::rgba(0x000000bf))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .id("confirm-delete")
+                        .w(px(440.))
+                        .p(px(24.))
+                        .rounded(px(16.))
+                        .bg(Theme::paper())
+                        .border_1()
+                        .border_color(Theme::line())
+                        .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.6), offset: gpui::point(px(0.), px(20.)), blur_radius: px(50.), spread_radius: px(0.) }])
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .child(div().text_size(px(18.)).line_height(px(27.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(t("message.deleteConfirmTitle")))
+                                .child(div().id("confirm-x").cursor_pointer().child(ui::icon("x", 18., Theme::muted())).on_click(cx.listener(|this, _, _, cx| {
+                                    this.confirm_delete = None;
+                                    cx.notify();
+                                }))),
+                        )
+                        .child(div().mt(px(16.)).text_size(px(14.)).line_height(px(21.)).text_color(Theme::muted()).child(t("message.deleteConfirmText")))
+                        .child(
+                            div()
+                                .mt(px(24.))
+                                .flex()
+                                .justify_end()
+                                .gap(px(10.))
+                                .child(
+                                    div()
+                                        .id("confirm-cancel")
+                                        .px(px(18.))
+                                        .py(px(10.))
+                                        .rounded(px(8.))
+                                        .text_size(px(14.))
+                                        .line_height(px(21.))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(Theme::ink())
+                                        .cursor_pointer()
+                                        .hover(|s| s.bg(Theme::hover()))
+                                        .child(t("common.cancel"))
+                                        .on_click(cancel),
+                                )
+                                .child(
+                                    div()
+                                        .id("confirm-ok")
+                                        .px(px(18.))
+                                        .py(px(10.))
+                                        .rounded(px(10.))
+                                        .bg(Theme::coral())
+                                        .text_size(px(14.))
+                                        .line_height(px(21.))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(gpui::white())
+                                        .cursor_pointer()
+                                        .hover(|s| s.opacity(0.9))
+                                        .child(t("common.delete"))
+                                        .on_click(cx.listener(move |this, _, _, cx| this.delete_message(id.clone(), cx))),
+                                ),
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
     pub(super) fn sign_out_menu(&mut self, cx: &mut Context<Self>) {
         self.footer_menu = !self.footer_menu;
         cx.notify();
@@ -225,7 +308,20 @@ impl gpui::Render for Shell {
         if window.focused(cx).is_none() {
             window.focus(&self.composer.focus_handle(cx));
         }
+        // Development: HOFFLE_DEV_EDIT=1 opens the editor on your own last message once it is loaded.
+        if std::env::var_os("HOFFLE_DEV_EDIT").is_some() && !self.dev_edit_done {
+            let own = self.channel_id.as_ref().and_then(|c| self.messages.get(c)).and_then(|l| {
+                l.iter().rev().find(|m| m.user_id.as_deref() == Some(self.me.id.as_str())).map(|m| (m.id.clone(), m.text.clone()))
+            });
+            if let Some((id, text)) = own {
+                self.dev_edit_done = true;
+                self.start_edit(id, text, window, cx);
+            }
+        }
         let members_open = self.members_open;
+        // The composer grows to 40% of the window (`max-height: 40vh`), less its padding.
+        let cap = f32::from(window.bounds().size.height) * 0.4 - 18.;
+        self.composer.update(cx, |c, _| c.set_max_height(cap));
         div()
             .size_full()
             .flex()
@@ -260,6 +356,7 @@ impl gpui::Render for Shell {
             })
             .when(!(self.home && self.channel_id.is_none()), |d| d.child(self.render_chat_panel(window, cx)))
             .when(members_open && (!self.home || self.channel_id.is_some()), |d| d.child(self.render_members(window, cx)))
+            .children(self.render_confirm_delete(cx))
     }
 }
 
