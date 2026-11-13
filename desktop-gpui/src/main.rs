@@ -2,12 +2,16 @@
 
 mod api;
 mod assets;
+mod cosmetics;
+mod cssbg;
+mod fonts;
 mod i18n;
 mod images;
 mod input;
 mod login;
 mod markdown;
 mod model;
+mod names;
 mod realtime;
 mod rich;
 mod shell;

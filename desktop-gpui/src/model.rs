@@ -216,6 +216,7 @@ pub struct Member {
     pub tagline: String,
     pub nameplate: String,
     pub avatar_frame: String,
+    pub profile_style: Option<serde_json::Value>,
     pub last_seen_at: String,
 }
 

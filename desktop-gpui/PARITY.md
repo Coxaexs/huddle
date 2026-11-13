@@ -28,7 +28,10 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | Hover toolbar (quick reactions, react, reply, more), context menus | message-row.tsx, message-context-menu.tsx, menus.tsx | ⬜ |
 | Composer: +, multi-line, chevron, emoji, GIF, voice message / send | composer.tsx, emoji-picker.tsx, gif-picker.tsx | 🟡 (looks right; single line, pickers, upload, slash commands ⬜) |
 | Members panel: search, online/offline groups, statuses | panels.tsx | ✅ (name plates, role groups, search ⬜) |
-| Cosmetics: name plates, name fonts and effects, avatar frames, profile effects | cosmetics*.tsx, profile-fx-*.ts | ⬜ |
+| Name fonts (29, fetched like loadNameFont) and name effects (25, CSS painted as SVG, first frame) | lib/profile-style.ts, app/profile-style.css, cosmetics-mz.css | ✅ (hover/live animation ⬜) |
+| Avatar decorations (36, the web's own SVG via `tools/export-cosmetics.mjs`) | cosmetics.tsx | ✅ (ring-style decorations, flap/glow animation ⬜) |
+| Nameplates (42: CSS backgrounds via `cssbg.rs` + art, `tools/extract-nameplates.py`) | cosmetics*.css, cosmetics.tsx | ✅ in the member list (user card, profile card ⬜) |
+| Profile effects, voice rings, join flourishes, pride badges | cosmetics.tsx, profile-fx-*.ts | ⬜ |
 
 ## Other screens
 

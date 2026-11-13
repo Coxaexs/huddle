@@ -44,11 +44,37 @@ pub fn avatar(picture: Option<String>, glyph: &str, color: &str, name: &str, siz
 }
 
 /// An offline member's avatar: the web greys these out (`filter: grayscale(1)`).
-pub fn grey_avatar(picture: Option<String>, glyph: &str, name: &str, size: f32) -> AnyElement {
+pub fn grey_avatar(picture: Option<String>, glyph: &str, color: &str, name: &str, size: f32) -> AnyElement {
     match picture.filter(|p| !p.is_empty()) {
         Some(url) => img(url).size(px(size)).flex_none().rounded_full().object_fit(ObjectFit::Cover).grayscale(true).into_any_element(),
-        None => letter_avatar(glyph, "#8a8a8a", name, size),
+        None => grey_letter_avatar(glyph, color, name, size),
     }
+}
+
+/// CSS `filter: grayscale(1)` on a letter avatar: colour and letter both turned to their luminance.
+fn grey_letter_avatar(glyph: &str, color: &str, name: &str, size: f32) -> AnyElement {
+    let bg: Hsla = css_color(color).unwrap_or(Theme::lavender_soft().into());
+    let grey = |c: Hsla| {
+        let rgb = c.to_rgb();
+        // The filter's matrix (sRGB weights as CSS defines grayscale()).
+        let l = 0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b;
+        Hsla::from(gpui::Rgba { r: l, g: l, b: l, a: rgb.a })
+    };
+    let face = if glyph.trim().is_empty() { name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_default() } else { glyph.to_string() };
+    div()
+        .size(px(size))
+        .flex_none()
+        .rounded_full()
+        .bg(grey(bg))
+        .text_color(grey(on_color(bg)))
+        .flex()
+        .items_center()
+        .justify_center()
+        .text_size(px((size * 0.38).round()))
+        .line_height(px((size * 0.38).round()))
+        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+        .child(face)
+        .into_any_element()
 }
 
 pub fn letter_avatar(glyph: &str, color: &str, name: &str, size: f32) -> AnyElement {

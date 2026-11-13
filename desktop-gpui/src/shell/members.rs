@@ -10,7 +10,7 @@ use crate::theme::Theme;
 use crate::ui;
 
 impl Shell {
-    fn render_members(&self, _cx: &mut Context<Self>) -> AnyElement {
+    fn render_members(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         // In a DM the panel lists the conversation's two people.
         let dm_people: Vec<Member>;
         let all: &[Member] = if self.home {
@@ -25,7 +25,9 @@ impl Shell {
                 color: u.color.clone(),
                 ..Default::default()
             };
-            dm_people = if dm.user.id == me.id { vec![as_member(me)] } else { vec![as_member(me), as_member(&dm.user)] };
+            // Their cosmetics (nameplate, frame, name style) come with their server membership.
+            let person = |u: &crate::model::User| self.member_anywhere(&u.id).cloned().unwrap_or_else(|| as_member(u));
+            dm_people = if dm.user.id == me.id { vec![person(me)] } else { vec![person(me), person(&dm.user)] };
             &dm_people
         } else {
             let Some(server_id) = self.server_id.as_ref() else { return div().into_any_element() };
@@ -44,14 +46,14 @@ impl Shell {
             .child(group_label(tv("members.online", &[("count", &online.len().to_string())])))
             .child(div().flex_none().h(px(11.)));
         for member in &online {
-            list = list.child(self.render_member(member, true));
+            list = list.child(self.render_member(member, true, window, cx));
         }
         list = list
             .child(div().flex_none().h(px(23.)))
             .child(group_label(tv("members.offline", &[("count", &offline.len().to_string())])))
             .child(div().flex_none().h(px(11.)));
         for member in &offline {
-            list = list.child(self.render_member(member, false));
+            list = list.child(self.render_member(member, false, window, cx));
         }
 
         div()
@@ -84,7 +86,10 @@ impl Shell {
             .into_any_element()
     }
 
-    fn render_member(&self, member: &Member, online: bool) -> impl IntoElement {
+    fn render_member(&self, member: &Member, online: bool, window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let style = self.name_style(&member.id);
+        // Styled names in the list come out at 8px for a 0.92 font (an 8.7px base), as on the web.
+        let name = crate::names::styled_name(member.name(), style.as_ref(), if style.is_some() { 8.7 } else { 11. }, if online { FontWeight::BOLD } else { FontWeight::MEDIUM }, if online { Theme::ink().into() } else { Theme::muted().into() }, window, cx);
         let size = if online { 34. } else { 28. };
         let picture = member.picture().map(|p| self.client.absolute(p));
         let status = self.presence_of(&member.id);
@@ -101,25 +106,34 @@ impl Shell {
             .relative()
             .flex_none()
             .when(!online, |d| d.opacity(0.45))
-            .child(if online {
-                ui::avatar(picture, &member.avatar, &member.color, member.name(), size)
-            } else {
-                ui::grey_avatar(picture, &member.avatar, member.name(), size)
-            })
+            .child(crate::cosmetics::decorate_grey(
+                if online { ui::avatar(picture, &member.avatar, &member.color, member.name(), size) } else { ui::grey_avatar(picture, &member.avatar, &member.color, member.name(), size) },
+                &member.avatar_frame,
+                size,
+                !online,
+            ))
             .when(online, |d| {
                 d.child(div().absolute().right(px(-2.)).bottom(px(-2.)).child(ui::presence_dot(&status, 17., Theme::panel())))
             });
+        // `.member.has-nameplate`: the plate behind the row, 6px side padding, names in white.
+        let height = if online { 47. } else { 34. };
+        let plate = crate::cosmetics::has_nameplate(&member.nameplate)
+            .then(|| crate::cosmetics::nameplate(&member.nameplate, 217., height, window.scale_factor()))
+            .flatten();
+        let plated = plate.is_some();
         div()
             .id(SharedString::from(format!("member-{}", member.id)))
+            .relative()
             .flex_none()
-            .h(px(if online { 47. } else { 34. }))
-            .px(px(3.))
+            .h(px(height))
+            .px(px(if plated { 6. } else { 3. }))
             .rounded(px(8.))
             .flex()
             .items_center()
-            .gap(px(10.))
+            .gap(px(if plated { 7. } else { 10. }))
             .cursor_pointer()
-            .hover(|s| s.bg(Theme::hover()))
+            .when(!plated, |d| d.hover(|s| s.bg(Theme::hover())))
+            .children(plate)
             .child(face)
             .child(
                 div()
@@ -134,7 +148,7 @@ impl Shell {
                             .line_height(px(16.5))
                             .font_weight(if online { FontWeight::BOLD } else { FontWeight::MEDIUM })
                             .text_color(if online { Theme::ink() } else { Theme::muted() })
-                            .child(member.name().to_string()),
+                            .child(name),
                     )
                     .when(online, |d| {
                         d.child(div().truncate().text_size(px(8.)).line_height(px(12.)).text_color(Theme::muted()).child(line))
@@ -171,6 +185,20 @@ impl Shell {
                     .on_click(cx.listener(|this, _, _, cx| this.sign_out(cx))),
             )
             .into_any_element()
+    }
+
+    /// The display-name style someone picked, from any server's member list we have.
+    /// This person as any server we know them from (name style, decorations).
+    pub(super) fn member_anywhere(&self, user_id: &str) -> Option<&Member> {
+        self.members.values().flat_map(|m| m.iter()).find(|m| m.id == user_id)
+    }
+
+    pub(super) fn name_style(&self, user_id: &str) -> Option<crate::names::NameStyle> {
+        crate::names::NameStyle::from_profile(self.member_anywhere(user_id)?.profile_style.as_ref())
+    }
+
+    pub(super) fn avatar_frame(&self, user_id: &str) -> String {
+        self.member_anywhere(user_id).map(|m| m.avatar_frame.clone()).unwrap_or_default()
     }
 
     pub(super) fn sign_out_menu(&mut self, cx: &mut Context<Self>) {
@@ -211,7 +239,7 @@ impl gpui::Render for Shell {
                     .flex_none()
                     .flex()
                     .child(self.render_rail(cx))
-                    .child(if self.home { self.render_home_sidebar(cx).into_any_element() } else { self.render_sidebar(cx).into_any_element() })
+                    .child(if self.home { self.render_home_sidebar(cx).into_any_element() } else { self.render_sidebar(window, cx).into_any_element() })
                     .child(self.render_footer(cx))
                     .child(self.render_footer_menu(cx)),
             )
@@ -231,7 +259,7 @@ impl gpui::Render for Shell {
                 )
             })
             .when(!(self.home && self.channel_id.is_none()), |d| d.child(self.render_chat_panel(window, cx)))
-            .when(members_open && (!self.home || self.channel_id.is_some()), |d| d.child(self.render_members(cx)))
+            .when(members_open && (!self.home || self.channel_id.is_some()), |d| d.child(self.render_members(window, cx)))
     }
 }
 

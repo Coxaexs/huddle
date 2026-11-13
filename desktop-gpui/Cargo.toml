@@ -8,12 +8,15 @@ anyhow = "1.0.104"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std", "unstable-locales"] }
 dirs = "7.0.0"
 gpui = { version = "0.2.2", features = ["runtime_shaders"] }
+image = "0.25"
 livekit = { version = "0.10.1", features = ["rustls-tls-webpki-roots"] }
+resvg = "0.45.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 smol = "2.0.2"
 sys-locale = "0.3.2"
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "macros"] }
+ttf-parser = "0.25"
 tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
 unicode-segmentation = "1.13.3"
 ureq = { version = "3.5.2", features = ["json"] }

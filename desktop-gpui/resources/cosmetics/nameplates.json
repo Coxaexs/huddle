@@ -1,0 +1,176 @@
+{
+ "arcade": {
+  "art": "repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px), radial-gradient(70% 120% at 80% 50%, rgba(92, 255, 176, 0.12), transparent 70%), linear-gradient(100deg, #05050c, #0d0b1f)",
+  "base": "#05050c",
+  "box-shadow": "inset 0 0 0 1px rgba(92, 255, 176, 0.3)"
+ },
+ "aurora": {
+  "art": "linear-gradient(100deg, #04121c, #0a2a3a 60%, #102040)",
+  "base": "#061a24"
+ },
+ "bat-swarm": {
+  "art": "linear-gradient(100deg, #1a0206, #7a0a1c 55%, #c0102a)",
+  "base": "#3a0510"
+ },
+ "bi-pride": {
+  "art": "linear-gradient(100deg, rgba(214, 2, 112, 0.32), rgba(155, 79, 150, 0.32) 50%, rgba(0, 56, 168, 0.38)), linear-gradient(#140f22, #140f22)",
+  "base": "#140f22"
+ },
+ "blossom": {
+  "art": "radial-gradient(circle at 12% 30%, rgba(255, 255, 255, .35) 0 3px, transparent 4px), radial-gradient(circle at 70% 70%, rgba(255, 255, 255, .3) 0 3px, transparent 4px), linear-gradient(100deg, #e86aa6, #b43f7e 70%)",
+  "base": "#5a2342"
+ },
+ "boba": {
+  "art": "radial-gradient(circle at 3px 3px, rgba(255, 255, 255, 0.4) 1.2px, transparent 1.7px) 0 0 / 10px 10px, linear-gradient(100deg, #ffb6c8, #ffd6b8)",
+  "base": "#ffc2c8"
+ },
+ "campfire": {
+  "art": "radial-gradient(60% 130% at 82% 115%, rgba(255, 120, 40, 0.5), transparent 60%), linear-gradient(100deg, #0b1020, #141a33 60%, #241a2e)",
+  "base": "#0b1020"
+ },
+ "candy": {
+  "art": "repeating-linear-gradient(120deg, rgba(255, 255, 255, 0.35) 0 10px, transparent 10px 20px), linear-gradient(100deg, #ff8fc2, #ffb3e0)",
+  "base": "#ff9ccb"
+ },
+ "cat-beans": {
+  "art": "radial-gradient(circle at 2px 2px, rgba(255, 255, 255, 0.14) 1px, transparent 1.6px) 0 0 / 8px 8px, linear-gradient(100deg, #3b1f78, #5b2aa8 70%, #6d33c4)",
+  "base": "#3a1d6e"
+ },
+ "coffin": {
+  "art": "radial-gradient(70% 120% at 80% 100%, rgba(255, 160, 60, 0.3), transparent 60%), linear-gradient(100deg, #0e0612, #2a1030 70%)",
+  "base": "#14081a"
+ },
+ "cyber-city": {
+  "art": "radial-gradient(50% 100% at 85% 20%, rgba(255, 60, 172, 0.35), transparent 70%), linear-gradient(100deg, #0a0618, #1d0b3a 60%, #3a0f55)",
+  "base": "#0a0618"
+ },
+ "dead-city": {
+  "art": "linear-gradient(180deg, #273621, #3a4e2d 70%, #4f6339)",
+  "base": "#1c2418"
+ },
+ "deep-sea": {
+  "art": "radial-gradient(80% 90% at 70% 0%, rgba(120, 220, 255, 0.35), transparent 70%), linear-gradient(180deg, #0b4f7a, #062a4a)",
+  "base": "#062a4a"
+ },
+ "diamond-mine": {
+  "art": "linear-gradient(100deg, #18181c, #2a2a30 60%, #36363d)",
+  "base": "#26262b",
+  "box-shadow": "inset 0 0 0 1px rgba(92, 225, 230, 0.28)"
+ },
+ "dunes": {
+  "art": "linear-gradient(180deg, #ffa36b 0%, #ff6f7a 55%, #b8487a 100%)",
+  "base": "#b8487a"
+ },
+ "embers": {
+  "art": "radial-gradient(80% 140% at 80% 120%, rgba(255, 90, 20, 0.55), transparent 60%), linear-gradient(100deg, #1a0503, #3a0a05 60%, #5a1206)",
+  "base": "#1a0503"
+ },
+ "forest": {
+  "art": "radial-gradient(60% 80% at 15% 0%, rgba(140, 220, 100, .55), transparent 60%), linear-gradient(100deg, #1f6b3a, #0f3b24)",
+  "base": "#12331f"
+ },
+ "frost": {
+  "art": "linear-gradient(120deg, rgba(255, 255, 255, .35) 0%, transparent 30%), linear-gradient(100deg, #4aa8e0, #8fd3f4 55%, #2f78b4)",
+  "base": "#1c4a6e"
+ },
+ "galaxy": {
+  "art": "radial-gradient(1.5px 1.5px at 20% 30%, #fff, transparent), radial-gradient(1.5px 1.5px at 60% 70%, #fff, transparent), radial-gradient(1px 1px at 85% 25%, #fff, transparent), radial-gradient(70% 90% at 80% 20%, rgba(180, 90, 255, .6), transparent 70%), linear-gradient(100deg, #1b1055, #2d1273 55%, #0d0a2b)",
+  "base": "#120a2e"
+ },
+ "gold": {
+  "art": "linear-gradient(100deg, #8a6a14 0%, #e9c65a 35%, #fff1b0 50%, #d9a93a 65%, #7a5a10 100%)",
+  "base": "#4a3508"
+ },
+ "grid": {
+  "art": "repeating-linear-gradient(0deg, rgba(255, 60, 200, .35) 0 1px, transparent 1px 8px), repeating-linear-gradient(90deg, rgba(60, 220, 255, .3) 0 1px, transparent 1px 12px), linear-gradient(100deg, #2a0f55, #0f1a4a)",
+  "base": "#1a0a33"
+ },
+ "holo": {
+  "art": "linear-gradient(100deg, #ffd1f0, #c8d8ff 20%, #c8fff0 40%, #fff3c8 60%, #ffd1f0 80%, #c8d8ff)",
+  "base": "#e8dcff"
+ },
+ "koi": {
+  "art": "radial-gradient(80% 140% at 90% 50%, rgba(26, 163, 184, 0.7) 0%, transparent 60%), linear-gradient(100deg, #0b2f3d, #0e5266)",
+  "base": "#0b3b4a"
+ },
+ "lava": {
+  "art": "radial-gradient(70% 90% at 85% 110%, #ffb347 0%, transparent 60%), linear-gradient(100deg, #8a1c0a, #d9431a 60%, #4a0f06)",
+  "base": "#3a0d06"
+ },
+ "lava-lamp": {
+  "art": "linear-gradient(100deg, #2a0820, #6e0e42 55%, #a8205a)",
+  "base": "#3a0a2a"
+ },
+ "lofi": {
+  "art": "radial-gradient(50% 120% at 40% 120%, rgba(255, 211, 107, 0.18), transparent 70%), linear-gradient(100deg, #231a42, #3f2864 55%, #5e3874)",
+  "base": "#2a1f4a"
+ },
+ "mainframe": {
+  "art": "radial-gradient(60% 120% at 80% 50%, rgba(92, 255, 138, 0.14), transparent 70%), linear-gradient(100deg, #020a05, #04170c 60%, #072615)",
+  "base": "#020a05",
+  "box-shadow": "inset 0 0 0 1px rgba(92, 255, 138, 0.25)"
+ },
+ "meadow": {
+  "art": "linear-gradient(180deg, #13284a 0%, #1f4a5a 70%, #2a5a4a)",
+  "base": "#13284a"
+ },
+ "nether": {
+  "art": "radial-gradient(70% 120% at 80% 110%, rgba(255, 110, 20, 0.45), transparent 60%), linear-gradient(100deg, #240505, #430c0c 60%, #631313)",
+  "base": "#3a0c0c"
+ },
+ "ocean": {
+  "art": "radial-gradient(120% 90% at 100% 100%, #17b6c9 0%, transparent 60%), linear-gradient(100deg, #0a4d7a, #063a52 70%)",
+  "base": "#06324a"
+ },
+ "overworld": {
+  "art": "linear-gradient(180deg, #3a7bcc, #6aa9ea 65%, #8cc4fb)",
+  "base": "#2f6fb8"
+ },
+ "pride": {
+  "art": "linear-gradient(100deg, rgba(228, 3, 3, 0.2), rgba(255, 140, 0, 0.2) 20%, rgba(255, 237, 0, 0.14) 40%, rgba(0, 128, 38, 0.2) 60%, rgba(0, 77, 255, 0.22) 80%, rgba(117, 7, 135, 0.28)), linear-gradient(#17121f, #17121f)",
+  "base": "#17121f"
+ },
+ "quarantine": {
+  "art": "repeating-linear-gradient(135deg, rgba(245, 196, 0, 0.13) 0 8px, transparent 8px 16px), linear-gradient(100deg, #121210, #1f1e14)",
+  "base": "#151510",
+  "box-shadow": "inset 0 0 0 1px rgba(245, 196, 0, 0.35)"
+ },
+ "rainy-night": {
+  "art": "radial-gradient(60% 120% at 85% 120%, rgba(92, 200, 255, 0.22), transparent 60%), linear-gradient(100deg, #0d0f24, #1c1840 55%, #2a1d4f)",
+  "base": "#12112a"
+ },
+ "sakura-night": {
+  "art": "radial-gradient(40% 100% at 80% 30%, rgba(255, 246, 224, 0.18), transparent 70%), linear-gradient(100deg, #10163a, #2a2050 60%, #4a2a5e)",
+  "base": "#10163a"
+ },
+ "storm": {
+  "art": "linear-gradient(180deg, #161a2a, #262d4a)",
+  "base": "#1a1d2e"
+ },
+ "strawberry": {
+  "art": "linear-gradient(90deg, rgba(255, 255, 255, 0.32) 50%, transparent 50%) 0 0 / 12px 12px, linear-gradient(rgba(255, 255, 255, 0.32) 50%, transparent 50%) 0 0 / 12px 12px, linear-gradient(100deg, #ff9fb8, #ffc2d1)",
+  "base": "#ffb3c4"
+ },
+ "sunset": {
+  "art": "linear-gradient(100deg, #ff8a3d 0%, #ff4d6d 45%, #7a2a8f 100%)",
+  "base": "#3b1233"
+ },
+ "trans-pride": {
+  "art": "linear-gradient(100deg, rgba(91, 206, 250, 0.28), rgba(245, 169, 184, 0.28) 50%, rgba(255, 255, 255, 0.1)), linear-gradient(#161a26, #161a26)",
+  "base": "#161a26"
+ },
+ "vampire": {
+  "art": "radial-gradient(80% 120% at 85% 30%, rgba(200, 20, 50, 0.55), transparent 65%), linear-gradient(100deg, #120106, #3a0510 60%, #5a0815)",
+  "base": "#1a0208",
+  "box-shadow": "inset 0 0 0 1px rgba(192, 16, 42, 0.45)"
+ },
+ "void": {
+  "art": "radial-gradient(80% 120% at 100% 50%, rgba(140, 70, 255, .45), transparent 65%), linear-gradient(100deg, #07050d, #170d2e)",
+  "base": "#07050d",
+  "box-shadow": "inset 0 0 0 1px rgba(150, 90, 255, .5)"
+ },
+ "winter-cabin": {
+  "art": "linear-gradient(180deg, #16254a, #36507e 80%, #4a6694)",
+  "base": "#1b2a4a"
+ }
+}

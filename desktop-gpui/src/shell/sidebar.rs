@@ -10,7 +10,7 @@ use crate::theme::{DISPLAY_FONT, Theme};
 use crate::ui::{self, card_shadow, icon};
 
 impl Shell {
-    pub(super) fn render_sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_sidebar(&self, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(server) = self.server() else {
             return div().w(px(240.)).h_full().flex_none().bg(Theme::panel()).into_any_element();
         };
@@ -112,7 +112,7 @@ impl Shell {
         channels.sort_by_key(|c| c.position);
 
         for channel in channels.iter().filter(|c| c.category_id.is_none()) {
-            nav = nav.child(self.render_channel(channel, cx));
+            nav = nav.child(self.render_channel(channel, window, cx));
         }
         for category in &categories {
             let members: Vec<&&Channel> = channels.iter().filter(|c| c.category_id.as_deref() == Some(&category.id)).collect();
@@ -153,7 +153,7 @@ impl Shell {
             );
             if !collapsed {
                 for channel in members {
-                    nav = nav.child(self.render_channel(channel, cx));
+                    nav = nav.child(self.render_channel(channel, window, cx));
                 }
             }
         }
@@ -170,9 +170,9 @@ impl Shell {
             .into_any_element()
     }
 
-    fn render_channel(&self, channel: &Channel, cx: &mut Context<Self>) -> AnyElement {
+    fn render_channel(&self, channel: &Channel, window: &gpui::Window, cx: &mut Context<Self>) -> AnyElement {
         if channel.is_voice() {
-            return self.render_voice_room(channel, cx);
+            return self.render_voice_room(channel, window, cx);
         }
         let selected = self.channel_id.as_deref() == Some(&channel.id);
         let unread = !selected && self.reads.get(&channel.id).is_some_and(|r| r.unread);
@@ -219,7 +219,7 @@ impl Shell {
             .into_any_element()
     }
 
-    fn render_voice_room(&self, channel: &Channel, cx: &mut Context<Self>) -> AnyElement {
+    fn render_voice_room(&self, channel: &Channel, window: &gpui::Window, cx: &mut Context<Self>) -> AnyElement {
         let people: &[VoiceParticipant] = self.rooms.get(&channel.id).map(|v| v.as_slice()).unwrap_or(&[]);
         let connected = self.call.as_ref().is_some_and(|c| c.channel_id == channel.id);
         let id = channel.id.clone();
@@ -285,14 +285,14 @@ impl Shell {
             // Measured: the first seat sits 3px under the room, the next channel 8px under the last seat.
             let mut list = div().flex().flex_col().pt(px(3.)).pb(px(8.)).pl(px(36.)).pr(px(1.));
             for person in people {
-                list = list.child(self.render_voice_member(person, connected));
+                list = list.child(self.render_voice_member(person, connected, window, cx));
             }
             wrapper = wrapper.child(list);
         }
         wrapper.into_any_element()
     }
 
-    fn render_voice_member(&self, person: &VoiceParticipant, in_this_room: bool) -> impl IntoElement {
+    fn render_voice_member(&self, person: &VoiceParticipant, in_this_room: bool, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let identity = format!("{}|{}", person.id, person.connection_id);
         let speaking = in_this_room && self.call.as_ref().is_some_and(|c| c.speaking.contains(&identity));
         let me = self.connection_id.as_deref() == Some(person.connection_id.as_str());
@@ -315,12 +315,17 @@ impl Shell {
                     .border_color(if speaking { gpui::rgba(0x10b981cc) } else { gpui::rgba(0x00000000) })
                     .child(ui::avatar(picture, &person.avatar, &person.color, person.name(), 24.)),
             )
-            .child(
+            .child({
+                // StyledName for everyone but you ("You" is plain), then " (speaking)".
+                let style = if me { None } else { self.name_style(&person.id) };
+                let shown = if me { "You".to_string() } else { person.name().to_string() };
                 div()
                     .min_w_0()
-                    .truncate()
-                    .child(if me { "You".to_string() } else { person.name().to_string() } + if speaking { " (speaking)" } else { "" }),
-            )
+                    .flex()
+                    .items_center()
+                    .child(crate::names::styled_name(&shown, style.as_ref(), 12., FontWeight::SEMIBOLD, if speaking { Theme::ink().into() } else { Theme::quiet().into() }, window, cx))
+                    .when(speaking, |d| d.child(" (speaking)"))
+            })
             .child(
                 div()
                     .text_size(px(11.))

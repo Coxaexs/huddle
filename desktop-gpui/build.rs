@@ -9,15 +9,21 @@ fn main() {
 
     // Icons and fonts are compiled in: one list of (path, bytes) for gpui's asset source.
     let mut entries = String::from("pub static ASSETS: &[(&str, &[u8])] = &[\n");
-    for dir in ["icons", "fonts", "images", "i18n"] {
-        let root = Path::new("resources").join(dir);
-        println!("cargo:rerun-if-changed={}", root.display());
-        let mut files: Vec<_> = fs::read_dir(&root).unwrap().flatten().map(|e| e.path()).collect();
+    fn walk(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+        println!("cargo:rerun-if-changed={}", dir.display());
+        for entry in fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() { walk(&path, out) } else { out.push(path) }
+        }
+    }
+    for dir in ["icons", "fonts", "images", "i18n", "cosmetics"] {
+        let mut files = Vec::new();
+        walk(&Path::new("resources").join(dir), &mut files);
         files.sort();
         for path in files {
-            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            let rel = path.strip_prefix("resources").unwrap().to_string_lossy().replace('\\', "/");
             let abs = fs::canonicalize(&path).unwrap();
-            entries.push_str(&format!("    (\"{dir}/{name}\", include_bytes!({:?})),\n", abs.display().to_string()));
+            entries.push_str(&format!("    (\"{rel}\", include_bytes!({:?})),\n", abs.display().to_string()));
         }
     }
     entries.push_str("];\n");

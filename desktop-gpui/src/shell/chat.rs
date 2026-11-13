@@ -266,7 +266,10 @@ impl Shell {
                             .line_height(px(24.))
                             .font_weight(FontWeight::BOLD)
                             .text_color(Theme::ink())
-                            .child(display),
+                            .child({
+                                let style = message.user_id.as_ref().and_then(|id| self.name_style(id));
+                                crate::names::styled_name(&display, style.as_ref(), 16., FontWeight::BOLD, Theme::ink().into(), window, cx)
+                            }),
                     )
                     .when(message.bot, |d| {
                         d.child(
@@ -380,7 +383,8 @@ impl Shell {
             } else {
                 let glyph = author.map(|a| a.avatar.clone()).or(dm_author.as_ref().map(|u| u.avatar.clone())).unwrap_or(message.avatar.clone());
                 let color = author.map(|a| a.color.clone()).or(dm_author.as_ref().map(|u| u.color.clone())).unwrap_or(message.color.clone());
-                ui::avatar(picture.map(|p| self.client.absolute(&p)), &glyph, &color, &message.author, 36.)
+                let frame = message.user_id.as_ref().map(|id| self.avatar_frame(id)).unwrap_or_default();
+                crate::cosmetics::decorate(ui::avatar(picture.map(|p| self.client.absolute(&p)), &glyph, &color, &message.author, 36.), &frame, 36.)
             };
             div().flex_none().child(face).into_any_element()
         };
