@@ -1,58 +1,65 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  AMBIENT_BEATS,
-  AMBIENT_BPM_MAX,
-  AMBIENT_BPM_MIN,
+  AMBIENT_GAP_MS,
   AMBIENT_TIMER_DONE_MS,
   AMBIENT_TIMER_MAX_MINUTES,
-  ambientBar,
-  ambientBarMs,
-  ambientChord,
-  ambientPosition,
+  ambientLapMs,
+  ambientOrder,
+  ambientPlaying,
   ambientState,
   ambientTimerStatus,
+  ambientUpNext,
   mulberry32,
-  retimeAmbient,
+  reshuffleAmbient,
+  skipAmbientTrack,
   startAmbientTimer,
   starterAmbientState,
   stopAmbientTimer,
   type AmbientState,
 } from "@/lib/study-hall";
+import { STUDY_RAIN_FILE, STUDY_TRACKS, type StudyTrack } from "@/lib/study-hall-tracks";
 
 const base: AmbientState = {
   seed: 12345,
   startedAt: 1_700_000_000_000,
   intensity: "rainy",
-  bpm: 74,
-  chordIndex: 0,
   timerEndsAt: 0,
   timerKind: "focus",
   timerMinutes: 25,
 };
 
+/** Four short tracks, so the sums are easy to follow. */
+const FOUR: StudyTrack[] = [
+  { id: "a", title: "A", ms: 10_000 },
+  { id: "b", title: "B", ms: 20_000 },
+  { id: "c", title: "C", ms: 30_000 },
+  { id: "d", title: "D", ms: 40_000 },
+];
+
 describe("ambientState", () => {
   it("fills in a complete default from nothing", () => {
-    const state = ambientState(null, 5000);
-    expect(state).toEqual({
+    expect(ambientState(null, 5000)).toEqual({
       seed: 1,
       startedAt: 5000,
       intensity: "rainy",
-      bpm: 74,
-      chordIndex: 0,
       timerEndsAt: 0,
       timerKind: "focus",
       timerMinutes: 25,
     });
   });
 
-  it("clamps what is out of range", () => {
-    const state = ambientState({ seed: -7.9, startedAt: "x", intensity: "loud", bpm: 400, chordIndex: -3 }, 10);
+  it("cleans what is out of range", () => {
+    const state = ambientState({ seed: -7.9, startedAt: "x", intensity: "loud" }, 10);
     expect(state.seed).toBe(7);
     expect(state.startedAt).toBe(10);
     expect(state.intensity).toBe("rainy");
-    expect(state.bpm).toBe(AMBIENT_BPM_MAX);
-    expect(state.chordIndex).toBe(0);
-    expect(ambientState({ bpm: 1 }).bpm).toBe(AMBIENT_BPM_MIN);
+  });
+
+  it("reads a room saved by the synthesised version", () => {
+    const old = { seed: 9, startedAt: 1000, intensity: "focus", bpm: 88, chordIndex: 4 };
+    expect(ambientState(old, 2000)).toEqual({ ...base, seed: 9, startedAt: 1000, intensity: "calm" });
   });
 
   it("starts a session now with a 32-bit seed", () => {
@@ -84,7 +91,7 @@ describe("the room's timer", () => {
     const running = startAmbientTimer(base, "focus", 50, NOW);
     const back = ambientState(JSON.parse(JSON.stringify(running)), NOW + 1000);
     expect(back).toEqual(running);
-    expect(ambientBar(back, 3)).toEqual(ambientBar(base, 3));
+    expect(ambientPlaying(back, NOW + 90_000)).toEqual(ambientPlaying(base, NOW + 90_000));
   });
 
   it("refuses a timer longer than the longest allowed, or one set for the far future", () => {
@@ -98,71 +105,140 @@ describe("the room's timer", () => {
   });
 });
 
-describe("the score", () => {
-  it("is the same on every device for the same state and bar", () => {
-    for (const bar of [0, 1, 17, 9001]) {
-      expect(ambientBar({ ...base }, bar)).toEqual(ambientBar(JSON.parse(JSON.stringify(base)), bar));
+describe("the track list", () => {
+  it("has usable, distinct tracks", () => {
+    expect(STUDY_TRACKS.length).toBeGreaterThanOrEqual(10);
+    expect(new Set(STUDY_TRACKS.map((track) => track.id)).size).toBe(STUDY_TRACKS.length);
+    for (const track of STUDY_TRACKS) {
+      expect(track.id).toMatch(/^[a-z0-9-]+$/);
+      expect(track.title.length).toBeGreaterThan(0);
+      expect(track.ms).toBeGreaterThan(60_000);
+      expect(track.ms).toBeLessThan(10 * 60_000);
     }
   });
 
-  it("differs between seeds", () => {
-    const chords = (seed: number) => Array.from({ length: 32 }, (_, bar) => ambientChord({ ...base, seed }, bar).name).join();
-    expect(chords(1)).not.toBe(chords(2));
-  });
-
-  it("keeps every event inside its bar and in range", () => {
-    for (const intensity of ["calm", "rainy", "focus"] as const) {
-      for (let bar = 0; bar < 64; bar += 1) {
-        for (const event of ambientBar({ ...base, intensity }, bar).events) {
-          expect(event.beat).toBeGreaterThanOrEqual(0);
-          expect(event.beat).toBeLessThan(AMBIENT_BEATS);
-          expect(event.velocity).toBeGreaterThan(0);
-          expect(event.velocity).toBeLessThanOrEqual(1);
-          if (event.voice === "keys" || event.voice === "bass") {
-            expect(event.midi).toBeGreaterThanOrEqual(24);
-            expect(event.midi).toBeLessThanOrEqual(96);
-          }
-        }
-      }
+  it("has a file for every track, and the rain", () => {
+    const folder = join(process.cwd(), "public", "study-hall");
+    for (const name of [...STUDY_TRACKS.map((track) => `${track.id}.mp3`), STUDY_RAIN_FILE]) {
+      expect(existsSync(join(folder, name)), name).toBe(true);
     }
-  });
-
-  it("only adds drums in focus", () => {
-    const voices = (intensity: AmbientState["intensity"]) =>
-      new Set(ambientBar({ ...base, intensity }, 3).events.map((event) => event.voice));
-    expect(voices("focus").has("kick")).toBe(true);
-    expect(voices("rainy").has("kick")).toBe(false);
-    expect(voices("calm").has("hat")).toBe(false);
-  });
-
-  it("keeps the chord when the mood changes", () => {
-    const chordNotes = (intensity: AmbientState["intensity"]) =>
-      ambientBar({ ...base, intensity }, 5).events.filter((event) => event.voice === "keys" && event.beat < 0.5);
-    expect(chordNotes("calm")).toEqual(chordNotes("focus"));
-  });
-
-  it("skipping a chord moves the whole song along by one", () => {
-    expect(ambientChord({ ...base, chordIndex: 1 }, 4)).toEqual(ambientChord(base, 5));
   });
 });
 
-describe("the clock", () => {
-  it("finds the bar and beat from the start time", () => {
-    const bar = ambientBarMs(base);
-    const position = ambientPosition(base, base.startedAt + bar * 3 + bar / 2);
-    expect(position.bar).toBe(3);
-    expect(position.beat).toBeCloseTo(2, 6);
-    expect(ambientPosition(base, base.startedAt - 1).bar).toBe(-1);
+describe("the order", () => {
+  it("plays every track once per lap", () => {
+    for (const lap of [0, 1, 7, 9001]) {
+      const order = ambientOrder(base.seed, lap);
+      expect([...order].sort((a, b) => a - b)).toEqual(STUDY_TRACKS.map((_, index) => index));
+    }
   });
 
-  it("keeps the room's place when the tempo changes", () => {
-    const now = base.startedAt + ambientBarMs(base) * 10.25;
-    const faster = retimeAmbient(base, 88, now);
-    expect(faster.bpm).toBe(88);
-    const before = ambientPosition(base, now);
-    const after = ambientPosition(faster, now);
-    expect(after.bar).toBe(before.bar);
-    expect(after.beat).toBeCloseTo(before.beat, 1);
+  it("is the same on every device, and differs between seeds and laps", () => {
+    expect(ambientOrder(77, 3)).toEqual(ambientOrder(77, 3));
+    expect(ambientOrder(77, 3)).not.toEqual(ambientOrder(78, 3));
+    expect(ambientOrder(77, 3)).not.toEqual(ambientOrder(77, 4));
+  });
+
+  it("never opens a lap with the track the last one closed on", () => {
+    for (let seed = 1; seed <= 300; seed += 1) {
+      for (let lap = 1; lap <= 4; lap += 1) {
+        const before = ambientOrder(seed, lap - 1, 3);
+        expect(ambientOrder(seed, lap, 3)[0]).not.toBe(before[before.length - 1]);
+      }
+    }
+  });
+});
+
+describe("what is playing", () => {
+  const lap = ambientLapMs(FOUR);
+  const order = ambientOrder(base.seed, 0, FOUR.length);
+
+  it("adds a pause after every track to make a lap", () => {
+    expect(lap).toBe(100_000 + 4 * AMBIENT_GAP_MS);
+  });
+
+  it("starts on the first track of the order", () => {
+    const playing = ambientPlaying(base, base.startedAt, FOUR);
+    expect(playing.index).toBe(order[0]);
+    expect(playing.offsetMs).toBe(0);
+    expect(playing.startsAt).toBe(base.startedAt);
+    expect(playing.endsAt).toBe(base.startedAt + FOUR[order[0]].ms + AMBIENT_GAP_MS);
+  });
+
+  it("walks the order, one track after another with no holes", () => {
+    let at = base.startedAt;
+    for (let step = 0; step < 12; step += 1) {
+      const playing = ambientPlaying(base, at, FOUR);
+      expect(playing.startsAt).toBe(at);
+      expect(playing.index).toBe(ambientOrder(base.seed, Math.floor(step / 4), 4)[step % 4]);
+      // One millisecond before the next track it is still this one, in its pause.
+      const last = ambientPlaying(base, playing.endsAt - 1, FOUR);
+      expect(last.index).toBe(playing.index);
+      expect(last.offsetMs).toBeGreaterThan(playing.track.ms);
+      at = playing.endsAt;
+    }
+    expect(at).toBe(base.startedAt + 3 * lap);
+  });
+
+  it("finds a place hundreds of laps in without walking there", () => {
+    const now = base.startedAt + 500 * lap + 12_345;
+    const playing = ambientPlaying(base, now, FOUR);
+    expect(playing.startsAt).toBeLessThanOrEqual(now);
+    expect(playing.endsAt).toBeGreaterThan(now);
+    expect(playing.offsetMs).toBe(now - playing.startsAt);
+  });
+
+  it("waits on the first track when the clock is before the start", () => {
+    const playing = ambientPlaying(base, base.startedAt - 5000, FOUR);
+    expect(playing.index).toBe(order[0]);
+    expect(playing.offsetMs).toBe(0);
+  });
+
+  it("names the track that comes next, across the end of a lap too", () => {
+    expect(ambientUpNext(base, base.startedAt, FOUR)).toBe(FOUR[order[1]]);
+    const lastOfLap = base.startedAt + lap - 1;
+    expect(ambientUpNext(base, lastOfLap, FOUR)).toBe(FOUR[ambientOrder(base.seed, 1, 4)[0]]);
+  });
+
+  it("works for the real track list", () => {
+    const now = base.startedAt + 3 * 3600_000;
+    const playing = ambientPlaying(base, now);
+    expect(STUDY_TRACKS[playing.index]).toBe(playing.track);
+    expect(playing.offsetMs).toBeLessThan(playing.track.ms + AMBIENT_GAP_MS);
+  });
+});
+
+describe("the room's controls", () => {
+  it("skips to the top of the next track and keeps the order", () => {
+    const now = base.startedAt + 4321;
+    const next = ambientUpNext(base, now, FOUR);
+    const skipped = skipAmbientTrack(base, now, FOUR);
+    const playing = ambientPlaying(skipped, now, FOUR);
+    expect(playing.track).toBe(next);
+    expect(playing.offsetMs).toBe(0);
+    expect(skipped.seed).toBe(base.seed);
+  });
+
+  it("skips track after track through the whole order", () => {
+    let state = base;
+    const now = base.startedAt + 100;
+    const heard: string[] = [];
+    for (let step = 0; step < 8; step += 1) {
+      heard.push(ambientPlaying(state, now, FOUR).track.id);
+      state = skipAmbientTrack(state, now, FOUR);
+    }
+    const laps = [0, 1].flatMap((index) => ambientOrder(base.seed, index, 4).map((track) => FOUR[track].id));
+    expect(heard).toEqual(laps);
+  });
+
+  it("shuffles into a new order that starts now", () => {
+    const now = base.startedAt + 77_000;
+    const fresh = reshuffleAmbient(base, now, () => 0.25);
+    expect(fresh.seed).toBe(1073741824);
+    expect(fresh.startedAt).toBe(now);
+    expect(ambientPlaying(fresh, now, FOUR).offsetMs).toBe(0);
+    // The mood and the timer are the room's, not the playlist's.
+    expect(fresh.intensity).toBe(base.intensity);
   });
 });
 

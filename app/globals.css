@@ -8769,15 +8769,10 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   transition: opacity 1.5s ease;
 }
 
-.study-hall.listening.mood-rainy .study-hall-rain {
+.study-hall.listening.mood-rainy .study-hall-rain,
+.study-hall.listening.mood-rain .study-hall-rain {
   opacity: 1;
   animation: study-hall-rain .7s linear infinite;
-}
-
-.study-hall.listening.mood-calm .study-hall-rain,
-.study-hall.listening.mood-focus .study-hall-rain {
-  opacity: .45;
-  animation: study-hall-rain 1.1s linear infinite;
 }
 
 @keyframes study-hall-rain {
@@ -8791,7 +8786,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   z-index: 1;
 }
 
-/* What is playing: a record, the chord, and the four beats of this bar. */
+/* What is playing: a record, the track, and how far into it the room is. */
 .study-hall-playing {
   display: flex;
   align-items: center;
@@ -8828,41 +8823,46 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   }
 }
 
-.study-hall-chord {
+.study-hall-track {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  min-width: 92px;
+  gap: 3px;
 }
 
-.study-hall-chord strong {
+.study-hall-track strong,
+.study-hall-track small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.study-hall-track strong {
   color: var(--ink);
-  font-size: 26px;
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
+  font-size: 22px;
+  line-height: 1.15;
 }
 
-.study-hall-chord small {
+.study-hall-track small {
   color: var(--muted);
   font-size: 12px;
 }
 
-.study-hall-bar {
-  flex: 1;
-  min-width: 90px;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
-}
-
-.study-hall-bar span {
-  height: 8px;
-  border-radius: 4px;
+.study-hall-progress {
+  height: 4px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 2px;
   background: color-mix(in srgb, var(--ink) 10%, var(--paper));
-  transition: background .2s ease;
 }
 
-.study-hall-bar span.lit {
+.study-hall-progress span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
   background: var(--lavender);
+  transition: width .25s linear;
 }
 
 /* Buttons and knobs. The sizes are spelled out one by one: the `font`
@@ -9054,7 +9054,7 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
     animation: none !important;
   }
 
-  .study-hall-bar span {
+  .study-hall-progress span {
     transition: none;
   }
 }

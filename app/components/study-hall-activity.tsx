@@ -1,60 +1,82 @@
 "use client";
 
 /**
- * Hoffle Study Hall: an endless lofi backdrop a voice room listens to together.
+ * Hoffle Study Hall: a lofi radio a voice room listens to together, with rain
+ * on the window if the room wants it and a focus timer everyone shares.
  *
- * Nothing is streamed. The room shares a seed, a start time, a mood, a tempo
- * and a chord offset (lib/study-hall.ts); every bar is a pure function of
- * those, and each browser works out where the room is from the hub's clock
- * and synthesises the rain, the vinyl and the Rhodes itself.
+ * Nothing is streamed between people. The room shares a seed, a start time
+ * and a mood (lib/study-hall.ts); what is playing is a pure function of those,
+ * and each browser works out where the room is from the hub's clock and plays
+ * the same recorded track from the same second (public/study-hall).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CloudRain, Coffee, Dices, Focus, Headphones, SkipForward, Square, Timer, Volume2, X } from "lucide-react";
+import { CloudRain, Droplets, Headphones, Music, Shuffle, SkipForward, Square, Timer, Volume2, X } from "lucide-react";
 import type { RoomActivity } from "@/lib/activities";
 import {
-  AMBIENT_BEATS,
-  AMBIENT_BPM_MAX,
-  AMBIENT_BPM_MIN,
-  ambientBar,
-  ambientBarMs,
-  ambientBarStart,
-  ambientChord,
-  ambientPosition,
+  ambientPlaying,
   ambientState,
   ambientTimerStatus,
-  retimeAmbient,
+  ambientUpNext,
+  reshuffleAmbient,
+  skipAmbientTrack,
   startAmbientTimer,
   stopAmbientTimer,
-  type AmbientEvent,
   type AmbientIntensity,
   type AmbientState,
   type AmbientTimerKind,
 } from "@/lib/study-hall";
+import { STUDY_ARTIST, STUDY_RAIN_FILE } from "@/lib/study-hall-tracks";
+import { basePath } from "../lib/client";
 import { TIMER_WORKER_SOURCE } from "../lib/worker-timers";
 
 /* ------------------------------------------------------------------ */
 /* Sound                                                               */
 /* ------------------------------------------------------------------ */
 
-const LOOKAHEAD_MS = 50;
-/** How far ahead of the audio clock notes are booked, in seconds. */
-const SCHEDULE_AHEAD = 0.35;
-/** The shared clock and the audio clock are re-lined up if they drift this far apart. */
-const MAX_DRIFT = 0.06;
+const TICK_MS = 250;
+/** The track is moved back to the room's place if it is this far off it, in seconds. */
+const MAX_DRIFT = 0.4;
+/** The next track's file is fetched this long before it is due. */
+const WARM_AHEAD_MS = 25_000;
+/** How long to wait before asking again for a file that would not download. */
+const RETRY_MS = 5000;
+/** How long one pass of the rain loop fades into the next, in seconds. */
+const RAIN_FADE = 3;
 
-/** Per mood: rain, the vinyl's hiss, and the keys. */
-const MIX: Record<AmbientIntensity, { rain: number; hiss: number; keys: number }> = {
-  calm: { rain: 0.18, hiss: 0.05, keys: 0.95 },
-  rainy: { rain: 0.6, hiss: 0.06, keys: 0.75 },
-  focus: { rain: 0.22, hiss: 0.07, keys: 0.8 },
+/** Per mood: how loud the music and the rain are. The files are levelled, so these are the mix. */
+const LEVELS: Record<AmbientIntensity, { music: number; rain: number }> = {
+  calm: { music: 1, rain: 0 },
+  rainy: { music: 0.9, rain: 1 },
+  rain: { music: 0, rain: 2 },
 };
 
-function midiHz(note: number): number {
-  return 440 * 2 ** ((note - 69) / 12);
+/** Equal-power fades, so two passes of the rain crossing over stay as loud as one. */
+const FADE_IN = Float32Array.from({ length: 64 }, (_, index) => Math.sin((Math.PI / 2) * (index / 63)));
+const FADE_OUT = Float32Array.from({ length: 64 }, (_, index) => Math.cos((Math.PI / 2) * (index / 63)));
+
+/** A twentieth of a second of silence, as a WAV file. */
+function silentClip(): Blob {
+  const samples = 400;
+  const bytes = new Uint8Array(44 + samples).fill(128);
+  const view = new DataView(bytes.buffer);
+  const text = (at: number, value: string) => [...value].forEach((char, index) => view.setUint8(at + index, char.charCodeAt(0)));
+  text(0, "RIFF");
+  view.setUint32(4, 36 + samples, true);
+  text(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 8000, true);
+  view.setUint32(28, 8000, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
+  text(36, "data");
+  view.setUint32(40, samples, true);
+  return new Blob([bytes], { type: "audio/wav" });
 }
 
-/** Calls back every 50 ms from a worker, which keeps time in a background tab. */
+/** Calls back every 250 ms from a worker, which keeps time in a background tab. */
 function startTicker(callback: () => void): () => void {
   let worker: Worker | null = null;
   let url = "";
@@ -62,14 +84,14 @@ function startTicker(callback: () => void): () => void {
   const fallback = () => {
     worker?.terminate();
     worker = null;
-    if (native === null) native = window.setInterval(callback, LOOKAHEAD_MS);
+    if (native === null) native = window.setInterval(callback, TICK_MS);
   };
   try {
     url = URL.createObjectURL(new Blob([TIMER_WORKER_SOURCE], { type: "text/javascript" }));
     worker = new Worker(url);
     worker.onmessage = () => callback();
     worker.onerror = fallback;
-    worker.postMessage({ op: "set", id: 1, delay: LOOKAHEAD_MS, repeat: true });
+    worker.postMessage({ op: "set", id: 1, delay: TICK_MS, repeat: true });
   } catch {
     fallback();
   }
@@ -83,135 +105,78 @@ function startTicker(callback: () => void): () => void {
 }
 
 /**
- * Rain, vinyl and a Rhodes, all from oscillators and noise.
+ * Plays what the room is playing: the track, from the room's place in it, and
+ * the rain over it.
  *
- * The scheduler books every event of the shared score that falls in the next
- * 350 ms, converting the room's clock (epoch ms on the hub) to the audio clock.
- * Because it books by time, not by "the next bar", a mood or tempo change from
- * someone else is picked up mid-bar with nothing dropped or doubled.
+ * A track is downloaded whole (about 3 MB) and handed to an ordinary audio
+ * element from memory. Hoffle's server does not answer requests for part of a
+ * file, and without those Safari will not play a file by its address at all,
+ * while every browser can jump anywhere in one it already holds. Four times a
+ * second the player compares the element with the shared clock: the next
+ * track is fetched ahead of time and swapped in when the room moves on, and
+ * the element is put back in place if it has drifted (a laptop that slept).
+ * The rain is one short recording, looped by fading each pass into the next,
+ * which hides both the loop point and the gap an MP3 has at its ends.
  */
-export class StudyHallEngine {
+export class StudyHallPlayer {
   private readonly out: GainNode;
-  private readonly keysBus: GainNode;
-  private readonly drumBus: GainNode;
+  private readonly musicGain: GainNode;
   private readonly rainGain: GainNode;
-  private readonly hissGain: GainNode;
-  private readonly wow: GainNode;
-  private readonly white: AudioBuffer;
-  private readonly sources: AudioScheduledSourceNode[] = [];
+  private readonly element: HTMLAudioElement;
+  /** Downloaded tracks, as addresses the element can play: this one and the next. */
+  private readonly files = new Map<string, Promise<string>>();
+  private readonly failedAt = new Map<string, number>();
+  private readonly silence = URL.createObjectURL(silentClip());
+  /** Whether the track runs through Web Audio (it always should; if not, the element's own volume is used). */
+  private readonly wired: boolean;
 
   private playing = false;
   private stopTicker: (() => void) | null = null;
-  /** The audio time that matches an epoch time on the shared clock. */
-  private anchor = { audio: 0, epoch: 0 };
-  /** Everything before this epoch ms has been booked. */
-  private bookedUntil = 0;
+  private volume = 0.7;
   private mood: AmbientIntensity | null = null;
+  /** The track the room is on, and the one the element holds. */
+  private wanted: string | null = null;
+  private loaded: string | null = null;
+  private unlocked = false;
+  private disposed = false;
+  /** Audio time after which a silenced track may be paused. */
+  private musicQuietAt = Number.POSITIVE_INFINITY;
+
+  private rainBuffer: AudioBuffer | null = null;
+  private rainState: "idle" | "loading" | "failed" = "idle";
+  /** Audio time at which the next pass of the rain starts. */
+  private rainNextAt = 0;
+  private readonly rainSources = new Set<AudioBufferSourceNode>();
 
   constructor(
-    private readonly ctx: BaseAudioContext,
+    private readonly ctx: AudioContext,
     private readonly read: () => AmbientState,
     private readonly clock: () => number,
+    /** Where the files are, without a trailing slash. */
+    private readonly base: string,
+    /** The browser refused to start the sound. */
+    private readonly onBlocked: () => void = () => {},
   ) {
-    // Master: a gentle top-end roll-off for the dusty sound, then a glue compressor.
-    const tone = ctx.createBiquadFilter();
-    tone.type = "lowpass";
-    tone.frequency.value = 7000;
-    tone.Q.value = 0.5;
-    const glue = ctx.createDynamicsCompressor();
-    glue.threshold.value = -16;
-    glue.knee.value = 10;
-    glue.ratio.value = 3;
-    glue.attack.value = 0.01;
-    glue.release.value = 0.25;
     this.out = ctx.createGain();
-    this.out.gain.value = 0.7;
-    this.out.connect(tone).connect(glue).connect(ctx.destination);
-
-    const rate = ctx.sampleRate;
-    this.white = ctx.createBuffer(1, rate * 2, rate);
-    const white = this.white.getChannelData(0);
-    for (let index = 0; index < white.length; index += 1) white[index] = Math.random() * 2 - 1;
-
-    // Keys: a soft low-pass, a slow tremolo, and a small room.
-    this.keysBus = ctx.createGain();
-    const warm = ctx.createBiquadFilter();
-    warm.type = "lowpass";
-    warm.frequency.value = 2600;
-    const tremolo = ctx.createGain();
-    tremolo.gain.value = 0.85;
-    const tremoloLfo = this.loop(ctx.createOscillator());
-    tremoloLfo.frequency.value = 4.2;
-    const tremoloDepth = ctx.createGain();
-    tremoloDepth.gain.value = 0.12;
-    tremoloLfo.connect(tremoloDepth).connect(tremolo.gain);
-    this.keysBus.connect(warm).connect(tremolo);
-    tremolo.connect(this.out);
-    const room = ctx.createConvolver();
-    room.buffer = this.impulse(2.4);
-    const send = ctx.createGain();
-    send.gain.value = 0.32;
-    tremolo.connect(send).connect(room).connect(this.out);
-
-    // Tape wow: a slow pitch wobble every key and bass note is wired to.
-    const wowLfo = this.loop(ctx.createOscillator());
-    wowLfo.frequency.value = 0.35;
-    this.wow = ctx.createGain();
-    this.wow.gain.value = 7;
-    wowLfo.connect(this.wow);
-
-    this.drumBus = ctx.createGain();
-    const muffle = ctx.createBiquadFilter();
-    muffle.type = "lowpass";
-    muffle.frequency.value = 3800;
-    this.drumBus.connect(muffle).connect(this.out);
-
-    // Rain: brown noise for the wash, high-passed white noise for the patter,
-    // each swelling on its own slow wave so it never sounds like a loop.
+    this.out.gain.value = this.volume;
+    this.out.connect(ctx.destination);
+    this.musicGain = ctx.createGain();
+    this.musicGain.gain.value = 0;
+    this.musicGain.connect(this.out);
     this.rainGain = ctx.createGain();
     this.rainGain.gain.value = 0;
     this.rainGain.connect(this.out);
-    const brown = ctx.createBuffer(1, rate * 4, rate);
-    const brownData = brown.getChannelData(0);
-    let last = 0;
-    for (let index = 0; index < brownData.length; index += 1) {
-      last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
-      brownData[index] = last * 3.5;
-    }
-    const wash = this.loop(this.noise(brown));
-    const washFilter = ctx.createBiquadFilter();
-    washFilter.type = "lowpass";
-    washFilter.frequency.value = 900;
-    const washGain = ctx.createGain();
-    washGain.gain.value = 0.9;
-    wash.connect(washFilter).connect(washGain).connect(this.rainGain);
-    const patter = this.loop(this.noise(this.white));
-    const patterFilter = ctx.createBiquadFilter();
-    patterFilter.type = "bandpass";
-    patterFilter.frequency.value = 3200;
-    patterFilter.Q.value = 0.6;
-    const patterGain = ctx.createGain();
-    patterGain.gain.value = 0.16;
-    patter.connect(patterFilter).connect(patterGain).connect(this.rainGain);
-    for (const [gain, speed, depth] of [
-      [washGain, 0.07, 0.25],
-      [patterGain, 0.13, 0.06],
-    ] as const) {
-      const swell = this.loop(ctx.createOscillator());
-      swell.frequency.value = speed;
-      const amount = ctx.createGain();
-      amount.gain.value = depth;
-      swell.connect(amount).connect(gain.gain);
-    }
 
-    // Vinyl hiss under the crackle.
-    this.hissGain = ctx.createGain();
-    this.hissGain.gain.value = 0;
-    const hiss = this.loop(this.noise(this.white));
-    const hissFilter = ctx.createBiquadFilter();
-    hissFilter.type = "highpass";
-    hissFilter.frequency.value = 5000;
-    hiss.connect(hissFilter).connect(this.hissGain).connect(this.out);
+    this.element = new Audio();
+    this.element.preload = "auto";
+    let wired = false;
+    try {
+      ctx.createMediaElementSource(this.element).connect(this.musicGain);
+      wired = true;
+    } catch {
+      // The element then plays on its own, and takes its level from `volume`.
+    }
+    this.wired = wired;
   }
 
   get isPlaying(): boolean {
@@ -219,16 +184,26 @@ export class StudyHallEngine {
   }
 
   setVolume(volume: number): void {
-    this.out.gain.setTargetAtTime(Math.max(0, Math.min(1, volume)), this.ctx.currentTime, 0.05);
+    this.volume = Math.max(0, Math.min(1, volume));
+    this.out.gain.setTargetAtTime(this.volume, this.ctx.currentTime, 0.05);
+    this.levelElement();
   }
 
+  /** Must be called from inside a click: that is what lets the track start. */
   start(): void {
     if (this.playing) return;
     this.playing = true;
-    this.lineUp();
-    // Join where the room is: anything that started before now is skipped.
-    this.bookedUntil = this.clock();
     this.mood = null;
+    this.wanted = null;
+    this.loaded = null;
+    if (!this.unlocked) {
+      // Safari lets an element make sound only if it was first played from
+      // inside a click. The track is still downloading at that point, so the
+      // click plays a moment of silence, and the element stays allowed.
+      this.unlocked = true;
+      this.element.src = this.silence;
+      this.play();
+    }
     this.stopTicker = startTicker(this.tick);
     this.tick();
   }
@@ -238,228 +213,199 @@ export class StudyHallEngine {
     this.playing = false;
     this.stopTicker?.();
     this.stopTicker = null;
+    this.element.pause();
     const now = this.ctx.currentTime;
-    for (const gain of [this.rainGain, this.hissGain, this.keysBus, this.drumBus]) {
+    for (const gain of [this.musicGain, this.rainGain]) {
       gain.gain.cancelScheduledValues(now);
-      gain.gain.setTargetAtTime(0, now, 0.15);
+      gain.gain.setTargetAtTime(0, now, 0.1);
     }
+    for (const source of this.rainSources) {
+      try {
+        source.stop(now + 0.6);
+      } catch {
+        // Already ended.
+      }
+    }
+    this.rainNextAt = 0;
     this.mood = null;
   }
 
   dispose(): void {
     this.stop();
-    for (const source of this.sources) {
-      try {
-        source.stop();
-      } catch {
-        // Already stopped with its context.
-      }
-    }
+    this.disposed = true;
+    this.element.removeAttribute("src");
+    this.element.load();
+    this.wanted = null;
+    this.loaded = null;
+    for (const file of this.files.values()) void file.then((url) => URL.revokeObjectURL(url), () => undefined);
+    this.files.clear();
+    URL.revokeObjectURL(this.silence);
     this.out.disconnect();
   }
 
-  /** Epoch ms on the shared clock as a time on the audio clock. */
-  private toAudio(epoch: number): number {
-    return this.anchor.audio + (epoch - this.anchor.epoch) / 1000;
+  /** A track's file, downloaded once and kept while it is this track or the next. */
+  private fetchTrack(id: string): Promise<string> | null {
+    const known = this.files.get(id);
+    if (known) return known;
+    if (Date.now() - (this.failedAt.get(id) ?? Number.NEGATIVE_INFINITY) < RETRY_MS) return null;
+    const file = fetch(this.file(`${id}.mp3`))
+      .then((response) => {
+        if (!response.ok) throw new Error(`${id}: ${response.status}`);
+        return response.blob();
+      })
+      .then((blob) => URL.createObjectURL(blob));
+    this.files.set(id, file);
+    file.catch(() => {
+      // Asked for again in a few seconds, by whichever tick still wants it.
+      this.files.delete(id);
+      this.failedAt.set(id, Date.now());
+    });
+    return file;
   }
 
-  private lineUp(): void {
-    this.anchor = { audio: this.ctx.currentTime, epoch: this.clock() };
+  /** Lets go of every downloaded track but these. */
+  private keepOnly(ids: string[]): void {
+    for (const [id, file] of this.files) {
+      if (ids.includes(id)) continue;
+      this.files.delete(id);
+      void file.then((url) => URL.revokeObjectURL(url), () => undefined);
+    }
+  }
+
+  private file(name: string): string {
+    return `${this.base}/${name}`;
   }
 
   private readonly tick = (): void => {
     if (!this.playing) return;
     const state = this.read();
-    const audioNow = this.ctx.currentTime;
-    const epochNow = this.clock();
-    // The two clocks drift, and the hub's offset can jump when it reconnects.
-    if (Math.abs(this.toAudio(epochNow) - audioNow) > MAX_DRIFT) this.lineUp();
-    // After a stall (a sleeping laptop) pick up from now, don't fire the backlog.
-    if (this.bookedUntil < epochNow - 200) this.bookedUntil = epochNow;
     if (state.intensity !== this.mood) this.setMood(state.intensity);
-
-    const until = epochNow + SCHEDULE_AHEAD * 1000;
-    const from = this.bookedUntil;
-    if (until <= from) return;
-    const beatMs = ambientBarMs(state) / AMBIENT_BEATS;
-    const first = ambientPosition(state, from).bar;
-    const last = ambientPosition(state, until).bar;
-    for (let bar = first; bar <= last; bar += 1) {
-      const start = ambientBarStart(state, bar);
-      for (const event of ambientBar(state, bar).events) {
-        const at = start + event.beat * beatMs;
-        if (at < from || at >= until) continue;
-        this.play(event, Math.max(audioNow, this.toAudio(at)), (event.beats * beatMs) / 1000);
-      }
-    }
-    this.bookedUntil = until;
+    this.music(state, this.clock());
+    this.rain(state);
   };
 
   private setMood(mood: AmbientIntensity): void {
     this.mood = mood;
     const now = this.ctx.currentTime;
-    const mix = MIX[mood];
-    // Long fades, so a mood change washes in instead of switching.
-    this.rainGain.gain.setTargetAtTime(mix.rain, now, 1.5);
-    this.hissGain.gain.setTargetAtTime(mix.hiss, now, 1);
-    this.keysBus.gain.setTargetAtTime(mix.keys, now, 0.6);
-    this.drumBus.gain.setTargetAtTime(mood === "focus" ? 0.55 : 0, now, 0.4);
+    const level = LEVELS[mood];
+    // Fades, so joining and changing the mood wash in instead of switching.
+    this.musicGain.gain.setTargetAtTime(level.music, now, 0.5);
+    this.rainGain.gain.setTargetAtTime(level.rain, now, 1.2);
+    this.musicQuietAt = level.music === 0 ? now + 2.5 : Number.POSITIVE_INFINITY;
+    this.levelElement();
   }
 
-  private play(event: AmbientEvent, time: number, seconds: number): void {
-    if (event.voice === "keys") this.rhodes(event.midi, event.velocity, time, seconds);
-    else if (event.voice === "bass") this.bass(event.midi, event.velocity, time, seconds);
-    else if (event.voice === "kick") this.kick(event.velocity, time);
-    else if (event.voice === "snare") this.rim(event.velocity, time);
-    else if (event.voice === "hat") this.hat(event.velocity, time);
-    else this.crackle(event.velocity, time);
+  /** Without Web Audio in the path, the element's own volume does the work. */
+  private levelElement(): void {
+    if (this.wired) return;
+    this.element.volume = this.volume * (this.mood ? LEVELS[this.mood].music : 1);
   }
 
-  /**
-   * An electric piano by FM: a sine tine modulated at its own pitch, bright
-   * on the attack and mellowing as the modulation decays, plus a short
-   * high bell partial for the "tine" click.
-   */
-  private rhodes(midi: number, velocity: number, time: number, seconds: number): void {
-    const { ctx } = this;
-    const frequency = midiHz(midi);
-    const end = time + seconds + 1.2;
-    const carrier = ctx.createOscillator();
-    carrier.frequency.value = frequency;
-    this.wow.connect(carrier.detune);
-    const modulator = ctx.createOscillator();
-    modulator.frequency.value = frequency;
-    const index = ctx.createGain();
-    index.gain.setValueAtTime(frequency * (0.8 + velocity * 1.4), time);
-    index.gain.setTargetAtTime(frequency * 0.15, time, 0.35);
-    modulator.connect(index).connect(carrier.frequency);
-    const bell = ctx.createOscillator();
-    bell.frequency.value = frequency * 14;
-    const bellIndex = ctx.createGain();
-    bellIndex.gain.setValueAtTime(frequency * velocity * 0.9, time);
-    bellIndex.gain.setTargetAtTime(0, time, 0.04);
-    bell.connect(bellIndex).connect(carrier.frequency);
-
-    const amp = ctx.createGain();
-    amp.gain.setValueAtTime(0, time);
-    amp.gain.linearRampToValueAtTime(velocity * 0.22, time + 0.006);
-    amp.gain.setTargetAtTime(velocity * 0.08, time + 0.006, 1.1);
-    amp.gain.setTargetAtTime(0, time + seconds, 0.35);
-    carrier.connect(amp).connect(this.keysBus);
-    for (const osc of [carrier, modulator, bell]) {
-      osc.start(time);
-      osc.stop(end);
+  private music(state: AmbientState, now: number): void {
+    const element = this.element;
+    if (state.intensity === "rain") {
+      // Rain alone: the track stops once it has faded, and nothing is downloaded.
+      if (!element.paused && this.ctx.currentTime >= this.musicQuietAt) element.pause();
+      return;
     }
-    carrier.onended = () => this.wow.disconnect(carrier.detune);
+    const playing = ambientPlaying(state, now);
+    const id = playing.track.id;
+    const next = ambientPlaying(state, playing.endsAt).track.id;
+    if (this.wanted !== id) {
+      // The room moved on: the last track has ended, or is cut off here.
+      this.wanted = id;
+      this.keepOnly([id, next]);
+      if (!element.paused) element.pause();
+    }
+    if (this.loaded !== id) {
+      void this.fetchTrack(id)?.then((url) => {
+        if (this.disposed || this.wanted !== id || this.loaded === id) return;
+        this.loaded = id;
+        element.src = url;
+      }, () => undefined);
+      return;
+    }
+    if (playing.endsAt - now < WARM_AHEAD_MS) this.fetchTrack(next)?.catch(() => undefined);
+
+    const at = playing.offsetMs / 1000;
+    if (at >= playing.track.ms / 1000 - 0.05) {
+      // The pause between two tracks.
+      if (!element.paused) element.pause();
+      return;
+    }
+    // Nothing is known about the file yet, or a jump is still under way.
+    if (element.readyState < 1 || element.seeking) return;
+    if (Math.abs(element.currentTime - at) > MAX_DRIFT) {
+      // Joining part-way through, or drifted: go to the room's place first.
+      element.currentTime = at;
+      return;
+    }
+    // An element that reached its end stays there: playing it again would start it over.
+    if (element.paused && !element.ended) this.play();
   }
 
-  private bass(midi: number, velocity: number, time: number, seconds: number): void {
+  private play(): void {
+    const started = this.element.play();
+    // A change of track interrupts the last play(), which is not a refusal.
+    started?.catch((error: unknown) => {
+      if ((error as DOMException | null)?.name === "NotAllowedError" && this.playing) this.onBlocked();
+    });
+  }
+
+  private rain(state: AmbientState): void {
+    if (LEVELS[state.intensity].rain <= 0) return;
+    const buffer = this.rainBuffer;
+    if (!buffer) {
+      this.loadRain();
+      return;
+    }
+    const now = this.ctx.currentTime;
+    // The first pass, or the first after the rain was off for longer than one.
+    if (this.rainNextAt < now) this.rainNextAt = now + 0.05;
+    while (this.rainNextAt - now < 1) {
+      this.rainPass(buffer, this.rainNextAt);
+      this.rainNextAt += Math.max(1, buffer.duration - RAIN_FADE);
+    }
+  }
+
+  /** One pass of the recording, fading in over the end of the pass before it. */
+  private rainPass(buffer: AudioBuffer, at: number): void {
     const { ctx } = this;
-    const osc = ctx.createOscillator();
-    osc.type = "triangle";
-    osc.frequency.value = midiHz(midi);
-    this.wow.connect(osc.detune);
-    const low = ctx.createBiquadFilter();
-    low.type = "lowpass";
-    low.frequency.value = 380;
-    const amp = ctx.createGain();
-    amp.gain.setValueAtTime(0, time);
-    amp.gain.linearRampToValueAtTime(velocity * 0.5, time + 0.02);
-    amp.gain.setTargetAtTime(velocity * 0.3, time + 0.02, 0.5);
-    amp.gain.setTargetAtTime(0, time + seconds, 0.12);
-    osc.connect(low).connect(amp).connect(this.keysBus);
-    osc.start(time);
-    osc.stop(time + seconds + 0.8);
-    osc.onended = () => this.wow.disconnect(osc.detune);
-  }
-
-  /** A soft, rounded kick: a sine dropping from 110 to 45 Hz. */
-  private kick(velocity: number, time: number): void {
-    const { ctx } = this;
-    const osc = ctx.createOscillator();
-    osc.frequency.setValueAtTime(110, time);
-    osc.frequency.exponentialRampToValueAtTime(45, time + 0.12);
-    const amp = ctx.createGain();
-    amp.gain.setValueAtTime(velocity, time);
-    amp.gain.exponentialRampToValueAtTime(0.001, time + 0.45);
-    osc.connect(amp).connect(this.drumBus);
-    osc.start(time);
-    osc.stop(time + 0.5);
-  }
-
-  /** A rimshot-ish snare: a short knock and a breath of band-passed noise. */
-  private rim(velocity: number, time: number): void {
-    const { ctx } = this;
-    const knock = ctx.createOscillator();
-    knock.type = "triangle";
-    knock.frequency.setValueAtTime(420, time);
-    knock.frequency.exponentialRampToValueAtTime(240, time + 0.04);
-    const knockGain = ctx.createGain();
-    knockGain.gain.setValueAtTime(velocity * 0.35, time);
-    knockGain.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
-    knock.connect(knockGain).connect(this.drumBus);
-    knock.start(time);
-    knock.stop(time + 0.1);
-    this.noiseHit(velocity * 0.4, time, 0.16, "bandpass", 1900, 1.2, this.drumBus);
-  }
-
-  private hat(velocity: number, time: number): void {
-    this.noiseHit(velocity * 0.22, time, 0.05, "highpass", 7000, 0.7, this.drumBus);
-  }
-
-  /** A vinyl pop: a click a couple of milliseconds long. */
-  private crackle(velocity: number, time: number): void {
-    this.noiseHit(velocity * 0.35, time, 0.006, "highpass", 1800, 0.7, this.out);
-  }
-
-  private noiseHit(
-    level: number,
-    time: number,
-    decay: number,
-    type: BiquadFilterType,
-    frequency: number,
-    q: number,
-    to: AudioNode,
-  ): void {
-    const { ctx } = this;
-    const source = this.noise(this.white);
-    const filter = ctx.createBiquadFilter();
-    filter.type = type;
-    filter.frequency.value = frequency;
-    filter.Q.value = q;
-    const amp = ctx.createGain();
-    amp.gain.setValueAtTime(level, time);
-    amp.gain.exponentialRampToValueAtTime(0.0005, time + decay);
-    source.connect(filter).connect(amp).connect(to);
-    source.start(time, Math.random() * 1.5);
-    source.stop(time + decay + 0.02);
-  }
-
-  private noise(buffer: AudioBuffer): AudioBufferSourceNode {
-    const source = this.ctx.createBufferSource();
+    const fade = Math.min(RAIN_FADE, buffer.duration / 3);
+    const source = ctx.createBufferSource();
     source.buffer = buffer;
-    source.loop = true;
-    return source;
+    const envelope = ctx.createGain();
+    envelope.gain.value = 0;
+    envelope.gain.setValueCurveAtTime(FADE_IN, at, fade);
+    envelope.gain.setValueCurveAtTime(FADE_OUT, at + buffer.duration - fade, fade);
+    source.connect(envelope).connect(this.rainGain);
+    source.start(at);
+    this.rainSources.add(source);
+    source.onended = () => {
+      envelope.disconnect();
+      this.rainSources.delete(source);
+    };
   }
 
-  /** Starts a source that runs for the engine's whole life. */
-  private loop<T extends AudioScheduledSourceNode>(source: T): T {
-    source.start();
-    this.sources.push(source);
-    return source;
-  }
-
-  /** A stereo burst of decaying noise: the reverb's room. */
-  private impulse(seconds: number): AudioBuffer {
-    const rate = this.ctx.sampleRate;
-    const buffer = this.ctx.createBuffer(2, Math.floor(rate * seconds), rate);
-    for (let channel = 0; channel < 2; channel += 1) {
-      const data = buffer.getChannelData(channel);
-      for (let index = 0; index < data.length; index += 1) {
-        data[index] = (Math.random() * 2 - 1) * (1 - index / data.length) ** 3;
-      }
-    }
-    return buffer;
+  private loadRain(): void {
+    if (this.rainState !== "idle") return;
+    this.rainState = "loading";
+    fetch(this.file(STUDY_RAIN_FILE))
+      .then((response) => {
+        if (!response.ok) throw new Error(`rain: ${response.status}`);
+        return response.arrayBuffer();
+      })
+      .then((bytes) => this.ctx.decodeAudioData(bytes))
+      .then(
+        (buffer) => {
+          this.rainBuffer = buffer;
+          this.rainState = "idle";
+        },
+        () => {
+          // No rain, then. The music does not depend on it.
+          this.rainState = "failed";
+        },
+      );
   }
 }
 
@@ -468,13 +414,10 @@ export class StudyHallEngine {
 /* ------------------------------------------------------------------ */
 
 const MOODS: Array<{ mood: AmbientIntensity; name: string; icon: React.ReactNode; hint: string }> = [
-  { mood: "calm", name: "Calm", icon: <Coffee size={14} />, hint: "Soft keys, a little rain" },
-  { mood: "rainy", name: "Rainy", icon: <CloudRain size={14} />, hint: "Rain on the window" },
-  { mood: "focus", name: "Focus", icon: <Focus size={14} />, hint: "Adds a slow beat" },
+  { mood: "calm", name: "Music", icon: <Music size={14} />, hint: "Just the music" },
+  { mood: "rainy", name: "Rainy", icon: <CloudRain size={14} />, hint: "Music with rain on the window" },
+  { mood: "rain", name: "Rain only", icon: <Droplets size={14} />, hint: "No music, just the rain" },
 ];
-
-/** How long the tempo slider waits after you let go before telling the room. */
-const TEMPO_DELAY_MS = 300;
 
 export function StudyHallActivity({
   activity,
@@ -497,14 +440,14 @@ export function StudyHallActivity({
   clockRef.current = serverNow;
 
   const audioRef = useRef<AudioContext | null>(null);
-  const engineRef = useRef<StudyHallEngine | null>(null);
+  const playerRef = useRef<StudyHallPlayer | null>(null);
   const [listening, setListening] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [volume, setVolume] = useState(0.7);
   const volumeRef = useRef(volume);
   volumeRef.current = volume;
 
-  // A clock for the display only; the sound runs off the audio clock.
+  // A clock for the display only; the sound keeps its own time.
   const [now, setNow] = useState(() => serverNow());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(clockRef.current()), 250);
@@ -513,8 +456,8 @@ export function StudyHallActivity({
 
   useEffect(
     () => () => {
-      engineRef.current?.dispose();
-      engineRef.current = null;
+      playerRef.current?.dispose();
+      playerRef.current = null;
       void audioRef.current?.close().catch(() => {});
       audioRef.current = null;
     },
@@ -522,69 +465,54 @@ export function StudyHallActivity({
   );
 
   const toggle = useCallback(async () => {
-    if (engineRef.current?.isPlaying) {
-      engineRef.current.stop();
+    if (playerRef.current?.isPlaying) {
+      playerRef.current.stop();
       setListening(false);
       return;
     }
+    const refused = () => {
+      playerRef.current?.stop();
+      setListening(false);
+      setBlocked(true);
+    };
     try {
       if (!audioRef.current) {
         const audio = new AudioContext({ latencyHint: "playback" });
         audioRef.current = audio;
-        engineRef.current = new StudyHallEngine(audio, () => stateRef.current, () => clockRef.current());
-        engineRef.current.setVolume(volumeRef.current);
+        playerRef.current = new StudyHallPlayer(
+          audio,
+          () => stateRef.current,
+          () => clockRef.current(),
+          `${basePath}/study-hall`,
+          refused,
+        );
+        playerRef.current.setVolume(volumeRef.current);
       }
       const audio = audioRef.current;
-      const engine = engineRef.current;
-      await audio.resume();
-      // Unmounted while the browser was waking the audio up.
-      if (!engine || engineRef.current !== engine) return;
+      const player = playerRef.current;
+      if (!player) return;
+      // The track is started before the wait below, while this still counts as
+      // the click: Safari only lets a page start sound from inside one.
+      const awake = audio.resume();
+      player.start();
       setBlocked(false);
-      engine.start();
       setListening(true);
+      await awake;
     } catch {
-      setBlocked(true);
+      refused();
     }
   }, []);
 
   function changeVolume(next: number) {
     setVolume(next);
-    engineRef.current?.setVolume(next);
+    playerRef.current?.setVolume(next);
   }
 
   function share(next: AmbientState) {
+    // The display's clock is up to a quarter of a second old, and a skip seen
+    // through it would show the old track finishing first.
+    setNow(clockRef.current());
     update({ ...next });
-  }
-
-  // Tempo: the slider moves here at once and tells the room once you settle.
-  const [bpmDraft, setBpmDraft] = useState<number | null>(null);
-  const tempoTimer = useRef<number | null>(null);
-  useEffect(() => () => {
-    if (tempoTimer.current !== null) window.clearTimeout(tempoTimer.current);
-  }, []);
-  function changeTempo(bpm: number) {
-    setBpmDraft(bpm);
-    if (tempoTimer.current !== null) window.clearTimeout(tempoTimer.current);
-    tempoTimer.current = window.setTimeout(() => {
-      tempoTimer.current = null;
-      setBpmDraft(null);
-      if (bpm !== stateRef.current.bpm) share(retimeAmbient(stateRef.current, bpm, clockRef.current()));
-    }, TEMPO_DELAY_MS);
-  }
-
-  function skipChord() {
-    share({ ...state, chordIndex: state.chordIndex + 1 });
-  }
-
-  function reshuffle() {
-    // A new song from the next bar on: the room keeps its place in time.
-    const { bar } = ambientPosition(state, clockRef.current());
-    share({
-      ...state,
-      seed: Math.floor(Math.random() * 4294967296),
-      startedAt: Math.round(ambientBarStart(state, bar + 1)),
-      chordIndex: 0,
-    });
   }
 
   // Whoever started Study Hall just clicked to do it: they asked for the music,
@@ -602,11 +530,10 @@ export function StudyHallActivity({
     share(startAmbientTimer(state, kind, minutes, clockRef.current()));
   }
 
-  const position = ambientPosition(state, now);
-  const playingBar = Math.max(0, position.bar);
-  const chord = ambientChord(state, playingBar);
-  const nextChord = ambientChord(state, playingBar + 1);
-  const shownBpm = bpmDraft ?? state.bpm;
+  const musicOn = state.intensity !== "rain";
+  const playing = ambientPlaying(state, now);
+  const upNext = ambientUpNext(state, now);
+  const progress = Math.max(0, Math.min(1, playing.offsetMs / playing.track.ms));
   const timer = ambientTimerStatus(state, now);
 
   // A soft two-note chime when the room's timer runs out, for those listening.
@@ -640,21 +567,21 @@ export function StudyHallActivity({
 
         <div className="study-hall-playing">
           <span className="study-hall-vinyl" aria-hidden="true" />
-          <div className="study-hall-chord" aria-live="off">
-            <strong>{chord.name}</strong>
-            <small>next {nextChord.name}</small>
-          </div>
-          <div
-            className="study-hall-bar"
-            role="progressbar"
-            aria-label="This bar"
-            aria-valuemin={0}
-            aria-valuemax={AMBIENT_BEATS}
-            aria-valuenow={Math.floor(position.beat)}
-          >
-            {Array.from({ length: AMBIENT_BEATS }, (_, beat) => (
-              <span key={beat} className={beat <= position.beat && position.bar >= 0 ? "lit" : ""} />
-            ))}
+          <div className="study-hall-track">
+            <strong>{musicOn ? playing.track.title : "Rain on the window"}</strong>
+            <small>{musicOn ? `${STUDY_ARTIST} · next: ${upNext.title}` : "The music is off for the room"}</small>
+            {musicOn && (
+              <div
+                className="study-hall-progress"
+                role="progressbar"
+                aria-label="This track"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(progress * 100)}
+              >
+                <span style={{ width: `${progress * 100}%` }} />
+              </div>
+            )}
           </div>
         </div>
 
@@ -666,7 +593,9 @@ export function StudyHallActivity({
             <small>
               {blocked
                 ? "Your browser didn’t let the sound start. Press Listen in again."
-                : "The room’s music is playing. Press to hear it."}
+                : musicOn
+                  ? "The room’s music is playing. Press to hear it."
+                  : "The room is listening to rain. Press to hear it."}
             </small>
           </div>
         )}
@@ -738,24 +667,24 @@ export function StudyHallActivity({
             </button>
           ))}
         </div>
-        <label className="study-hall-knob">
-          Tempo
-          <input
-            type="range"
-            min={AMBIENT_BPM_MIN}
-            max={AMBIENT_BPM_MAX}
-            step={1}
-            value={shownBpm}
-            onChange={(event) => changeTempo(Number(event.target.value))}
-          />
-          <output>{shownBpm} BPM</output>
-        </label>
-        <button type="button" onClick={skipChord} title="Everyone moves on to the next chord">
-          <SkipForward size={14} /> Skip chord
-        </button>
-        <button type="button" onClick={reshuffle} title="A new progression for the room, from the next bar">
-          <Dices size={14} /> New song
-        </button>
+        {musicOn && (
+          <>
+            <button
+              type="button"
+              onClick={() => share(skipAmbientTrack(state, clockRef.current()))}
+              title="Everyone moves on to the next track"
+            >
+              <SkipForward size={14} /> Next track
+            </button>
+            <button
+              type="button"
+              onClick={() => share(reshuffleAmbient(state, clockRef.current()))}
+              title="A new order of tracks for the room"
+            >
+              <Shuffle size={14} /> Shuffle
+            </button>
+          </>
+        )}
         <span className="study-hall-spacer" />
         {listening && (
           <>
@@ -779,7 +708,7 @@ export function StudyHallActivity({
       </div>
 
       <p className="study-hall-hint">
-        Mood, tempo, chords and the timer change for the whole room. Listening and volume are yours alone.
+        The mood, the track and the timer change for the whole room. Listening and volume are yours alone.
       </p>
     </div>
   );

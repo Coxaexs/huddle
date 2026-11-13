@@ -150,7 +150,7 @@ const ACTIVITY_CHOICES: Array<{
     kind: "studyhall",
     icon: <BookOpen size={20} />,
     name: "Study Hall",
-    description: "Rain, vinyl and lofi keys everyone hears in sync",
+    description: "Lofi music and rain everyone hears in sync, with a shared focus timer",
   },
 ];
 
