@@ -67,7 +67,7 @@ impl Shell {
             .overflow_y_scroll()
             .pt(px(4.))
             .px(px(10.))
-            .pb(px(super::rail::FOOTER_ROOM))
+            .pb(px(20.))
             .flex()
             .flex_col()
             .gap(px(2.));
@@ -158,12 +158,14 @@ impl Shell {
             }
         }
 
+        // `aside.sidebar` keeps 70px under the list for the user card; the list scrolls above it.
         div()
             .w(px(240.))
             .h_full()
             .flex_none()
             .flex()
             .flex_col()
+            .pb(px(super::rail::FOOTER_ROOM))
             .bg(Theme::panel())
             .child(header)
             .child(nav)
@@ -356,7 +358,7 @@ impl Shell {
     }
 
     /// `.discord-user-footer`: avatar, name, status, then mic, headphones and settings.
-    pub(super) fn render_footer(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_footer(&self, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let status = if !self.connected {
             "Reconnecting…".to_string()
         } else if let Some(call) = &self.call {
@@ -419,13 +421,15 @@ impl Shell {
                     .flex()
                     .flex_col()
                     .child(
+                        // `.user-footer-name` is 96px here; the ellipsis is measured at its 800 weight.
                         div()
-                            .truncate()
+                            .whitespace_nowrap()
+                            .overflow_hidden()
                             .text_size(px(13.))
                             .line_height(px(15.6))
                             .font_weight(FontWeight::EXTRA_BOLD)
                             .text_color(Theme::ink())
-                            .child(self.me.name().to_string()),
+                            .child(ui::fit(window, self.me.name(), FontWeight::EXTRA_BOLD, 13., px(96.))),
                     )
                     .child(
                         div()

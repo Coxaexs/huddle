@@ -13,11 +13,12 @@ use crate::i18n::{t, tv};
 use crate::theme::{DISPLAY_FONT, MONO_FONT, Theme};
 use crate::ui::{self, card_shadow, icon};
 
-/// `.messages` padding is 36px 47.2px 8px; each `article.message` adds an 8px margin and 10px
-/// padding on both sides; its grid is a 36px avatar, a 13px gap, the 434px body (at 1180 wide) and
-/// 14.6px to spare on the right.
+/// `.messages` padding is 36px 47.2px 8px, with `scrollbar-gutter: stable` keeping a 15px scrollbar
+/// lane on the right; each `article.message` adds an 8px margin and 10px padding on both sides; its
+/// grid is the avatar, a 13px gap and the body (433.6px at 1180 wide).
+const GUTTER: f32 = 15.;
 const ROW_LEFT: f32 = 47.2 + 8. + 10.;
-const ROW_RIGHT: f32 = 47.2 + 8. + 10. + 14.6;
+const ROW_RIGHT: f32 = 47.2 + 8. + 10. + GUTTER;
 
 impl Shell {
     pub(super) fn render_chat_panel(&self, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -425,7 +426,6 @@ impl Shell {
             .when(mentions_me, |d| d.bg(gpui::rgba(0xa78bfa14)).border_l_2().border_color(Theme::lavender()))
             .child(gutter)
             .child(body)
-            .child(div().flex_none().w(px(ROW_RIGHT - 47.2 - 8. - 10.)))
             .child(self.render_actions(message, &group, forced, cx))
             .on_mouse_down(gpui::MouseButton::Right, {
                 let id = message.id.clone();
@@ -437,36 +437,49 @@ impl Shell {
         let row = div()
             .w_full()
             .pl(px(ROW_LEFT - 10.))
-            .pr(px(47.2 + 8.))
-            .pt(px(if ix == 0 && self.channel_id.as_ref().is_none_or(|c| self.has_more.get(c).copied().unwrap_or(true)) { 36. } else { 0. }))
-            .pb(px(if last { 8. } else { 0. }))
+            .pr(px(ROW_RIGHT - 10.))
             .child(article);
         let gap = |h: f32| div().flex_none().h(px(h));
         let mut column = div().w_full().flex().flex_col();
         let channel_id = self.channel_id.clone().unwrap_or_default();
-        if ix == 0 && !self.has_more.get(&channel_id).copied().unwrap_or(true) {
+        let has_more = self.has_more.get(&channel_id).copied().unwrap_or(true);
+        if ix == 0 && !has_more {
             column = column.child(self.render_intro(&channel_id));
+        } else if ix == 0 {
+            // `.messages` padding-top.
+            column = column.child(gap(36.));
         }
         if self.new_from.get(&channel_id).is_some_and(|&n| n > 0 && ix + n == list.len()) {
             column = column.child(new_divider());
         }
+        // Articles have 1px margins that collapse into one between neighbours; a new day's article
+        // has 40px instead, with the date drawn 32px above it (refresh.css `[data-day]::before`):
+        // a 20px line, the rules running in from each edge to 96px short of the middle.
         if let Some(label) = day {
+            let width = f32::from(self.chat_panel_width(window)) - 2. - ROW_LEFT - ROW_RIGHT;
+            let rule = (width / 2. - 96.).max(0.);
             column = column.child(
-                div()
-                    .h(px(40.))
-                    .pl(px(ROW_LEFT))
-                    .pr(px(ROW_RIGHT))
-                    .flex()
-                    .items_center()
-                    .gap(px(12.))
-                    .child(div().flex_1().h(px(1.)).bg(Theme::line()))
-                    .child(div().text_size(px(11.)).font_weight(FontWeight::BOLD).text_color(Theme::muted()).child(label))
-                    .child(div().flex_1().h(px(1.)).bg(Theme::line())),
+                div().h(px(40.)).pt(px(8.)).pl(px(ROW_LEFT)).pr(px(ROW_RIGHT)).child(
+                    div()
+                        .relative()
+                        .h(px(20.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(div().absolute().left_0().top(px(9.5)).w(px(rule)).h(px(1.)).bg(Theme::line()))
+                        .child(div().absolute().right_0().top(px(9.5)).w(px(rule)).h(px(1.)).bg(Theme::line()))
+                        .child(div().text_size(px(11.)).font_weight(FontWeight::BOLD).text_color(Theme::muted()).child(label)),
+                ),
             );
         } else {
             column = column.child(gap(1.));
         }
-        column.child(row).child(gap(1.)).into_any_element()
+        column = column.child(row);
+        if last {
+            // The last margin and `.messages` padding-bottom.
+            column = column.child(gap(1. + 8.));
+        }
+        column.into_any_element()
     }
 
     /// `.message-actions`: floats over the top-right of a hovered message — quick reactions, this

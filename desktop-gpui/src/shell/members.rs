@@ -74,11 +74,13 @@ impl Shell {
                     .rounded(px(10.))
                     .bg(Theme::card())
                     .border_1()
-                    .border_color(Theme::line())
+                    .border_color(gpui::rgba(0xffffff12))
                     .flex()
                     .items_center()
-                    .text_size(px(13.))
-                    .text_color(Theme::quiet())
+                    // `text-xs`, `placeholder-white/40` over the panel.
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .text_color(gpui::rgb(0x5a5275))
                     .child(t("members.search")),
             )
             .child(div().flex_none().h(px(32.)))
@@ -284,7 +286,7 @@ impl gpui::Render for Shell {
                     .flex()
                     .child(self.render_rail(cx))
                     .child(if self.home { self.render_home_sidebar(cx).into_any_element() } else { self.render_sidebar(window, cx).into_any_element() })
-                    .child(self.render_footer(cx))
+                    .child(self.render_footer(window, cx))
                     .child(self.render_footer_menu(cx)),
             )
             .when(self.home && self.channel_id.is_none(), |d| {

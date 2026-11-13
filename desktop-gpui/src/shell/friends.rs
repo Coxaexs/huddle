@@ -55,7 +55,7 @@ impl Shell {
             .overflow_y_scroll()
             .pt(px(7.))
             .px(px(10.))
-            .pb(px(super::rail::FOOTER_ROOM))
+            .pb(px(20.))
             .flex()
             .flex_col();
         // "Find or start a chat".
@@ -222,6 +222,7 @@ impl Shell {
             .flex_none()
             .flex()
             .flex_col()
+            .pb(px(super::rail::FOOTER_ROOM))
             .bg(Theme::panel())
             .child(header)
             .child(nav)
