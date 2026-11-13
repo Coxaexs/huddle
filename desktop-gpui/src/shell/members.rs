@@ -271,6 +271,10 @@ impl gpui::Render for Shell {
                     self.open_profile(&id, bounds, window, cx);
                 }
             }
+            // HOFFLE_DEV_CHANNEL=<channel id>: open that text channel (in the current server).
+            if let Ok(channel) = std::env::var("HOFFLE_DEV_CHANNEL") {
+                self.open_channel(channel, cx);
+            }
             // HOFFLE_DEV_STAGE=<channel id>: that voice room's stage, joined (empty rooms only).
             if let Ok(room) = std::env::var("HOFFLE_DEV_STAGE") {
                 self.open_stage(room, window, cx);

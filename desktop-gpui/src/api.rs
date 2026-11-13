@@ -166,6 +166,41 @@ impl Client {
         Ok(serde_json::from_value(message)?)
     }
 
+    /// A message carrying uploaded files: the first key as `attachmentKey`, the rest after it.
+    pub fn send_with_files(&self, channel_id: &str, content: &str, reply_to: Option<&str>, keys: &[String]) -> Result<Message> {
+        let mut body = json!({ "channelId": channel_id, "content": content });
+        if let Some(reply_to) = reply_to {
+            body["replyTo"] = json!(reply_to);
+        }
+        if let Some((first, rest)) = keys.split_first() {
+            body["attachmentKey"] = json!(first);
+            body["attachmentKeys"] = json!(rest);
+        }
+        let reply: Value = self.post("/api/messages", body)?;
+        let message = reply.get("message").cloned().unwrap_or(reply);
+        Ok(serde_json::from_value(message)?)
+    }
+
+    /// `POST /api/uploads` (multipart, one `file` field); answers the stored file's key.
+    pub fn upload(&self, name: &str, mime: &str, bytes: &[u8]) -> Result<String> {
+        let boundary = format!("hoffle{:016x}", rand_u64());
+        let safe = name.replace(['"', '\r', '\n'], "_");
+        let mut body = Vec::with_capacity(bytes.len() + 256);
+        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{safe}\"\r\nContent-Type: {mime}\r\n\r\n").as_bytes());
+        body.extend_from_slice(bytes);
+        body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+        let mut request = self
+            .agent
+            .post(format!("{}/api/uploads", self.base))
+            .header("Origin", self.absolute(""))
+            .header("Content-Type", &format!("multipart/form-data; boundary={boundary}"));
+        if let Some(cookie) = self.cookie_header() {
+            request = request.header("Cookie", &cookie);
+        }
+        let reply: Value = read(request.send(&body[..])?, "upload")?;
+        reply.get("key").and_then(Value::as_str).map(str::to_string).ok_or_else(|| anyhow::anyhow!("The upload gave no key back."))
+    }
+
     pub fn members(&self, server_id: &str) -> Result<Vec<crate::model::Member>> {
         #[derive(Deserialize)]
         struct Members {
@@ -446,6 +481,13 @@ fn read<T: DeserializeOwned>(mut response: ureq::http::Response<ureq::Body>, pat
         bail!(message);
     }
     serde_json::from_str(&text).with_context(|| format!("reading {path}"))
+}
+
+fn rand_u64() -> u64 {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
+    h.finish()
 }
 
 fn encode(value: &str) -> String {

@@ -4,6 +4,7 @@
 mod chat;
 mod context_menu;
 mod emoji_picker;
+mod files;
 mod friends;
 mod members;
 mod profile_card;
@@ -191,6 +192,10 @@ pub struct Shell {
     /// The emoji picker, open for a reaction or for the composer.
     picker: Option<OpenPicker>,
     picker_seq: u64,
+    /// Files waiting in the composer.
+    pending_files: Vec<files::Pending>,
+    /// Pictures whose real size has been seen (their rows measured again once).
+    sized: std::cell::RefCell<HashSet<String>>,
     /// The voice room being looked at.
     stage: Option<stage::Stage>,
     /// Pins, saved, mentions and search.
@@ -341,6 +346,8 @@ impl Shell {
             profile_seq: 0,
             panels: Default::default(),
             stage: None,
+            pending_files: Vec::new(),
+            sized: Default::default(),
             ctx_at: gpui::Point::default(),
             connected: false,
             status: Some("Loading your servers…".into()),
@@ -807,6 +814,12 @@ impl Shell {
     fn send_composer(&mut self, cx: &mut Context<Self>) {
         let Some(channel) = self.channel_id.clone() else { return };
         let text = self.composer.read(cx).value();
+        if !self.pending_files.is_empty() {
+            self.composer.update(cx, |input, cx| input.clear(cx));
+            let reply = self.reply_to.take().map(|(id, _)| id);
+            self.send_with_files(channel, text, reply, cx);
+            return;
+        }
         if text.trim().is_empty() {
             return;
         }

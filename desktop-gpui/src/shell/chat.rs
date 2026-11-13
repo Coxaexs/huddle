@@ -3,7 +3,7 @@
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Context, FontWeight, IntoElement, ObjectFit, SharedString, div, img, list, prelude::*, px};
+use gpui::{AnyElement, App, Context, FontWeight, IntoElement, ObjectFit, SharedString, div, list, prelude::*, px};
 use serde_json::Value;
 
 use super::Shell;
@@ -442,7 +442,8 @@ impl Shell {
         if let Some(card) = self.render_card(message, window) {
             body = body.child(card);
         }
-        body = body.children(self.render_attachments(message));
+        let column = f32::from(self.text_column_width(window));
+        body = body.children(self.render_attachments(message, column, window, cx));
         if !message.reactions.is_empty() {
             body = body.child(self.render_reactions(message, cx));
         }
@@ -878,61 +879,13 @@ impl Shell {
         }
     }
 
-    fn render_attachments(&self, message: &Message) -> Vec<AnyElement> {
+    fn render_attachments(&self, message: &Message, column: f32, window: &mut gpui::Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let mut out = Vec::new();
         for (n, url) in message.image.iter().chain(message.images.iter()).enumerate() {
-            let link = self.client.absolute(url);
-            let open = link.clone();
-            out.push(
-                div()
-                    .id(SharedString::from(format!("img-{}-{n}", message.id)))
-                    .mt(px(6.))
-                    .w(px(360.))
-                    .h(px(240.))
-                    .rounded(px(12.))
-                    .overflow_hidden()
-                    .bg(Theme::card())
-                    .cursor_pointer()
-                    .child(
-                        img(link)
-                            .size_full()
-                            .object_fit(ObjectFit::Contain)
-                            .with_loading(|| div().size_full().into_any_element())
-                            .with_fallback(|| {
-                                div()
-                                    .size_full()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .text_color(Theme::muted())
-                                    .child("Image could not be shown")
-                                    .into_any_element()
-                            }),
-                    )
-                    .on_click(move |_, _, cx| cx.open_url(&open))
-                    .into_any_element(),
-            );
+            out.push(self.render_image(message, n, url, column, window, cx));
         }
         for (n, file) in message.files.iter().enumerate() {
-            let link = self.client.absolute(&file.url);
-            out.push(
-                div()
-                    .id(SharedString::from(format!("file-{}-{n}", message.id)))
-                    .mt(px(6.))
-                    .px(px(12.))
-                    .py(px(8.))
-                    .rounded(px(12.))
-                    .bg(Theme::card())
-                    .border_1()
-                    .border_color(Theme::line())
-                    .text_size(px(13.))
-                    .text_color(Theme::ink())
-                    .cursor_pointer()
-                    .hover(|s| s.border_color(Theme::lavender_muted()))
-                    .child(format!("📎 {}", file.name))
-                    .on_click(move |_, _, cx| cx.open_url(&link))
-                    .into_any_element(),
-            );
+            out.push(self.render_file_card(message, n, file));
         }
         out
     }
@@ -949,7 +902,7 @@ impl Shell {
                 _ => "Several people are typing…".to_string(),
             });
         let note = typing.or(self.status.as_ref().map(|s| s.to_string())).unwrap_or_default();
-        let empty = self.composer.read(cx).is_empty();
+        let empty = self.composer.read(cx).is_empty() && self.pending_files.is_empty();
         let small = |name: &'static str, title: String| {
             div()
                 .id(name)
@@ -997,6 +950,7 @@ impl Shell {
             .pt(px(8.))
             .px(px(35.4))
             .pb(px(25.))
+            .children(self.render_staged(cx))
             .children(reply_bar)
             .child(
                 div()
@@ -1031,7 +985,8 @@ impl Shell {
                             .cursor_pointer()
                             .hover(|s| s.bg(Theme::hover()).text_color(Theme::ink()))
                             .tooltip(ui::tooltip(t("composer.attachFiles")))
-                            .child("+"),
+                            .child("+")
+                            .on_click(cx.listener(|this, _, _, cx| this.pick_files(cx))),
                     )
                     // The textarea: 9px 10px padding, growing to 40% of the window.
                     .child(div().flex_1().min_w_0().px(px(10.)).py(px(9.)).child(self.composer.clone()))
@@ -1082,7 +1037,8 @@ impl Shell {
                             .cursor_pointer()
                             .hover(|s| s.opacity(0.9))
                             .tooltip(ui::tooltip(if empty { "Record a voice message".to_string() } else { t("composer.sendMessage") }))
-                            .child(icon(if empty { "mic" } else { "send" }, 16., gpui::white()))
+                            // `.send-button`: the paper plane in dark ink; the mic in white.
+                            .child(if empty { icon("mic", 16., gpui::white()) } else { icon("send", 15., gpui::rgb(0x15121f)) })
                             .on_click(cx.listener(|this, _, _, cx| this.send_composer(cx))),
                     ),
             )

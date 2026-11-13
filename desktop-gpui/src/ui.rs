@@ -63,6 +63,55 @@ pub fn square(url: String) -> gpui::ImageSource {
 
 /// An avatar whose letter is set in its own size, weight and colour (the profile card's 68px one
 /// keeps the 16px regular letter in the card's text colour).
+/// A picture (URL or file) cut to the `aspect` (width / height) around its centre, so `object-fit:
+/// cover` in a rounded box stays inside its corners.
+pub fn cover(resource: gpui::Resource, aspect: f32) -> gpui::ImageSource {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    thread_local! {
+        static CUTS: RefCell<HashMap<String, Arc<gpui::RenderImage>>> = RefCell::new(HashMap::new());
+    }
+    let key = format!("{resource:?}|{aspect:.4}");
+    gpui::ImageSource::Custom(Arc::new(move |window, cx| {
+        if let Some(done) = CUTS.with(|s| s.borrow().get(&key).cloned()) {
+            return Some(Ok(done));
+        }
+        let full = match window.use_asset::<gpui::ImgResourceLoader>(&resource, cx)? {
+            Ok(full) => full,
+            Err(e) => return Some(Err(e)),
+        };
+        let size = full.size(0);
+        let (w, h) = (size.width.0 as u32, size.height.0 as u32);
+        let (cw, ch) = if (w as f32 / h.max(1) as f32) > aspect {
+            (((h as f32) * aspect).round() as u32, h)
+        } else {
+            (w, ((w as f32) / aspect).round() as u32)
+        };
+        let result = if cw == 0 || ch == 0 || (cw == w && ch == h) {
+            full
+        } else {
+            let (x, y) = ((w - cw) / 2, (h - ch) / 2);
+            let frames: Vec<image::Frame> = (0..full.frame_count())
+                .filter_map(|i| {
+                    let buffer = image::RgbaImage::from_raw(w, h, full.as_bytes(i)?.to_vec())?;
+                    Some(image::Frame::from_parts(image::imageops::crop_imm(&buffer, x, y, cw, ch).to_image(), 0, 0, full.delay(i)))
+                })
+                .collect();
+            if frames.is_empty() { full } else { Arc::new(gpui::RenderImage::new(frames)) }
+        };
+        CUTS.with(|s| s.borrow_mut().insert(key.clone(), result.clone()));
+        Some(Ok(result))
+    }))
+}
+
+/// A picture's own size once it has loaded (the view redraws when it has).
+pub fn image_size(resource: &gpui::Resource, window: &mut gpui::Window, cx: &mut gpui::App) -> Option<(f32, f32)> {
+    let image = window.use_asset::<gpui::ImgResourceLoader>(resource, cx)?.ok()?;
+    let size = image.size(0);
+    Some((size.width.0 as f32, size.height.0 as f32))
+}
+
 pub fn avatar_with(picture: Option<String>, glyph: &str, color: &str, name: &str, size: f32, font: f32, weight: gpui::FontWeight, text: Hsla) -> AnyElement {
     match picture.filter(|p| !p.is_empty()) {
         Some(url) => avatar(Some(url), glyph, color, name, size),
