@@ -93,8 +93,8 @@ it("opens from a lyrics card with its lines, and a click jumps the room there", 
   act(() => openMusicPlayer({ channelId: room, seed }));
   expect(screen.getByRole("dialog", { name: "Music player" })).toBeTruthy();
   expect(screen.getByText("Playing in")).toBeTruthy();
-  // The card's lines are reused: no lookup.
-  expect(calls("/api/music/lyrics")).toEqual([]);
+  // The card's lines show at once; only the saved lyrics are read again, for their timed words.
+  expect(calls("/api/music/lyrics")).toEqual(["/api/music/lyrics?voiceChannelId=room-1"]);
   expect(screen.getByText("Line 4").getAttribute("aria-current")).toBe("true");
 
   fireEvent.click(screen.getByText("Line 6"));
@@ -526,4 +526,36 @@ it("Escape closes the sheet and leaves the player open, and space stays out of i
   await waitFor(() => expect(screen.queryByRole("dialog", { name: /to a playlist/ })).toBeNull());
   expect(screen.getByText("Add to playlist")).toBeTruthy();
   expect(document.activeElement).toBe(opener);
+});
+
+it("sings the line word by word once its words are timed", async () => {
+  // At 33 s: "Line 4" (from 31 s) is sung; its words are at 31.0, 32.0 and 33.5 s.
+  apiFetch.mockImplementation(async (path: string) =>
+    path.startsWith("/api/music/lyrics")
+      ? {
+          trackId: "t1",
+          lines: seed.lines.map(({ at, line }) => [at, line]),
+          words: seed.lines.map((_, n) =>
+            n === 3
+              ? [[31.2, 31.8, "Four", [100, 200, 400, 600]], [32.0, 34.0, "and", [100, 1800, 2000]], [33.5, 34.0, "more", []]]
+              : [],
+          ),
+        }
+      : path.startsWith("/api/music/playlists") ? PLAYLISTS : {},
+  );
+  show();
+  act(() => openMusicPlayer({ channelId: room, tab: "lyrics" }));
+  const line = await screen.findByRole("button", { name: "Line 4" });
+  await waitFor(() => expect(line.querySelectorAll(".mp-word").length).toBe(3));
+  const [four, and, more] = Array.from(line.querySelectorAll<HTMLElement>(".mp-word"));
+  expect(four.textContent).toBe("Four");
+  // The line starts where its first word is sung, not where the lyrics site put it.
+  expect(line.getAttribute("title")).toBe("Play from 0:31");
+  expect(Number(four.style.getPropertyValue("--fill"))).toBe(1);
+  expect(four.classList.contains("sung")).toBe(true);
+  // "and" holds its long vowel: one second in, the fill is still on its second letter.
+  const fill = Number(and.style.getPropertyValue("--fill"));
+  expect(fill).toBeGreaterThan(0.33);
+  expect(fill).toBeLessThan(0.67);
+  expect(Number(more.style.getPropertyValue("--fill"))).toBe(0);
 });

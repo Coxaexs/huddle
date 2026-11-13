@@ -44,6 +44,7 @@ import { proxiedImage } from "@/app/lib/image-proxy";
 import { heard, isSongLink, playbackPosition, type PlayerState, type Track } from "@/lib/protocol";
 import { openWebView } from "./widgets/web-view";
 import { lyricsSource } from "@/app/lib/lyrics-source";
+import type { TimedWord } from "@/lib/musicbot";
 
 /**
  * Hoffle's full-screen music player: the room's song with synced lyrics you
@@ -549,6 +550,7 @@ function MusicPlayer({
               track={track}
               seed={view.seed}
               positionMs={positionMs}
+              playing={!paused}
               canSeek={controls}
               onSeek={seek}
               active={tab === "lyrics"}
@@ -626,9 +628,94 @@ function MusicPlayer({
 
 /* ---------- Lyrics ---------- */
 
+/**
+ * How far through a word the singer is, 0 to 1, at `ms` from the word's start: by the time each letter
+ * ends (`letters`, from Oracle's alignment) when there are some, so a held vowel holds the fill there
+ * instead of moving on evenly, else evenly over the word.
+ */
+function wordFill(word: TimedWord, ms: number): number {
+  const [start, end, , letters] = word;
+  if (start === null || end === null) return ms >= 0 ? 1 : 0;
+  if (ms <= 0) return 0;
+  const length = Math.max(1, (end - start) * 1000);
+  if (ms >= length) return 1;
+  if (!letters.length) return ms / length;
+  let done = 0;
+  while (done < letters.length && letters[done] <= ms) done += 1;
+  if (done >= letters.length) return 1;
+  const from = done ? letters[done - 1] : 0;
+  const to = Math.max(from + 1, letters[done]);
+  return (done + (ms - from) / (to - from)) / letters.length;
+}
+
+/**
+ * The line being sung, word by word: sung words light up, and the word being sung fills from left to
+ * right as it is sung (like Apple Music). The room's position arrives four times a second, so this
+ * runs its own clock from it between updates and paints straight onto the words (a CSS variable per
+ * word), without rendering React on every frame.
+ */
+function SungLine({
+  words,
+  positionMs,
+  offset,
+  playing,
+}: {
+  words: TimedWord[];
+  positionMs: number;
+  offset: number;
+  playing: boolean;
+}) {
+  const refs = useRef<Array<HTMLSpanElement | null>>([]);
+  const anchor = useRef({ position: positionMs, at: 0 });
+
+  useEffect(() => {
+    anchor.current = { position: positionMs, at: performance.now() };
+  }, [positionMs]);
+
+  useEffect(() => {
+    let frame = 0;
+    const paint = () => {
+      const { position, at } = anchor.current;
+      // Never run more than a second past the last update (a stalled room should not race ahead).
+      const ahead = playing ? Math.min(1000, performance.now() - at) : 0;
+      const seconds = (position + ahead) / 1000 + offset;
+      words.forEach((word, index) => {
+        const element = refs.current[index];
+        if (!element) return;
+        const fill = word[0] === null ? (index === 0 ? 1 : 0) : wordFill(word, (seconds - word[0]) * 1000);
+        const value = fill.toFixed(3);
+        if (element.style.getPropertyValue("--fill") !== value) element.style.setProperty("--fill", value);
+        element.classList.toggle("sung", fill > 0);
+      });
+      if (playing) frame = requestAnimationFrame(paint);
+    };
+    paint();
+    return () => cancelAnimationFrame(frame);
+  }, [words, offset, playing, positionMs]);
+
+  return (
+    <span className="mp-words" aria-hidden="true">
+      {words.map((word, index) => (
+        <span key={index}>
+          <span
+            className="mp-word"
+            ref={(element) => {
+              refs.current[index] = element;
+            }}
+          >
+            {word[2]}
+          </span>
+          {index < words.length - 1 ? " " : null}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 interface LyricsData {
   trackId: string;
-  lines: Array<{ at: number; line: string }>;
+  /** `words`: when each word of the line is sung, for songs Oracle has timed (see SungLine). */
+  lines: Array<{ at: number; line: string; words?: TimedWord[] }>;
   plain: string;
   source: string | null;
   sourceUrl: string | null;
@@ -652,12 +739,18 @@ interface LyricsResponse {
   picked?: boolean;
   /** lrclib did not answer the search: nothing was looked up. */
   unavailable?: boolean;
+  words?: TimedWord[][] | null;
 }
 
 function lyricsData(body: LyricsResponse, trackId: string, checked: boolean): LyricsData {
   return {
     trackId,
-    lines: (body.lines || []).map(([at, line]) => ({ at, line })),
+    lines: (body.lines || []).map(([at, line], index) => {
+      // Timed words also correct the line's own start: lrclib often times another version of the song.
+      const words = body.words?.[index]?.length ? body.words[index] : undefined;
+      const first = words?.find((word) => word[0] !== null)?.[0];
+      return { at: typeof first === "number" ? first : at, line, words };
+    }),
     plain: body.lyrics || "",
     source: body.source || null,
     sourceUrl: body.sourceUrl || null,
@@ -673,6 +766,7 @@ function LyricsPane({
   track,
   seed,
   positionMs,
+  playing,
   canSeek,
   onSeek,
   active,
@@ -683,6 +777,8 @@ function LyricsPane({
   track: Track | null;
   seed: MusicPlayerSeed | null;
   positionMs: number;
+  /** The song is moving (not paused): the sung line runs its own clock between updates. */
+  playing: boolean;
   canSeek: boolean;
   onSeek: (ms: number) => void;
   active: boolean;
@@ -723,7 +819,12 @@ function LyricsPane({
           setError("The lyrics site didn't answer just now. Try again in a moment.");
           return;
         }
-        setData(lyricsData(body, trackId, find));
+        // A saved-lyrics read that finds nothing keeps the lines the chat card opened the player with.
+        setData((old) =>
+          !find && !body.lines?.length && old?.trackId === trackId && old.lines.length
+            ? old
+            : lyricsData(body, trackId, find),
+        );
       } catch (problem) {
         if (mine === ticket.current) {
           setRetrySearch(find);
@@ -755,7 +856,6 @@ function LyricsPane({
         checked: true,
         picked: false,
       });
-      return;
     }
     void load(false);
   }, [trackId, seed, load]);
@@ -932,6 +1032,12 @@ function LyricsPane({
       >
         {lines.map((item, index) => {
           const when = index === activeIndex ? "now" : index < activeIndex ? "past" : "next";
+          const sung =
+            when === "now" && item.words?.length ? (
+              <SungLine words={item.words} positionMs={positionMs} offset={offset} playing={playing && active} />
+            ) : (
+              item.line
+            );
           return canSeek ? (
             <button
               key={`${item.at}-${index}`}
@@ -939,14 +1045,15 @@ function LyricsPane({
               data-line={index}
               className={`mp-line ${when}`}
               aria-current={when === "now" ? "true" : undefined}
+              aria-label={item.line}
               onClick={() => onSeek((item.at - offset) * 1000)}
               title={`Play from ${clock(item.at)}`}
             >
-              {item.line}
+              {sung}
             </button>
           ) : (
             <p key={`${item.at}-${index}`} data-line={index} className={`mp-line ${when}`}>
-              {item.line}
+              {sung}
             </p>
           );
         })}

@@ -147,7 +147,15 @@ export interface Lyrics {
   picked?: boolean;
   /** lrclib did not answer, so nothing was looked up (no Musixmatch request either). */
   unavailable?: boolean;
+  /**
+   * Per line of `lines`, when each word is sung: [start s, end s, word, [ms each letter ends, from the
+   * word's start]]. Timed on the song's own vocal stem (the bot's words.py), so only for songs with
+   * stems, and only once that song has been timed; otherwise absent.
+   */
+  words?: TimedWord[][] | null;
 }
+
+export type TimedWord = [number | null, number | null, string, number[]];
 
 /**
  * Lyrics for any track, not only whatever Discord is playing.
@@ -162,7 +170,13 @@ export async function fetchLyrics(
   title: string,
   artist?: string | null,
   duration?: number | null,
-  options: { musixmatch?: boolean | "cached"; cachedOnly?: boolean; pickScope?: string | null } = {},
+  options: {
+    musixmatch?: boolean | "cached";
+    cachedOnly?: boolean;
+    pickScope?: string | null;
+    /** The track's page URL and query: lets the bot find its stems and add timed words. */
+    keys?: Array<string | null | undefined>;
+  } = {},
 ): Promise<Lyrics> {
   const cookie = await botSession();
   const params = new URLSearchParams({ q: title });
@@ -173,6 +187,7 @@ export async function fetchLyrics(
   if (options.cachedOnly) params.set("cached_only", "1");
   // Lyrics someone in this Hoffle server picked by hand win (see pickLyrics).
   if (options.pickScope) params.set("pick_scope", options.pickScope);
+  for (const key of options.keys ?? []) if (key) params.append("key", key);
   const data = await botFetch(`/api/lyrics/search?${params}`, cookie);
   return {
     track: (data.track as string) || null,
@@ -187,6 +202,7 @@ export async function fetchLyrics(
     sourceUrl: typeof data.source_url === "string" ? data.source_url : null,
     picked: Boolean(data.picked),
     unavailable: Boolean(data.lrclib_down),
+    words: Array.isArray(data.words) ? (data.words as TimedWord[][]) : null,
   };
 }
 

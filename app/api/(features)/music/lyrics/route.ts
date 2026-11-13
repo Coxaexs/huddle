@@ -21,6 +21,7 @@ export function lyricsAnswer(track: Track, lyrics: Lyrics, searched: boolean) {
     musixmatchChecked: Boolean(lyrics.musixmatchChecked),
     picked: Boolean(lyrics.picked),
     unavailable: Boolean(lyrics.unavailable),
+    words: lyrics.words && lyrics.words.length === lyrics.lines.length ? lyrics.words : null,
     searched,
   };
 }
@@ -48,8 +49,8 @@ export async function GET(request: Request) {
       track.artist,
       track.duration,
       searched
-        ? { musixmatch: true, pickScope: room.serverId }
-        : { musixmatch: "cached", cachedOnly: true, pickScope: room.serverId },
+        ? { musixmatch: true, pickScope: room.serverId, keys: [track.pageUrl, track.query] }
+        : { musixmatch: "cached", cachedOnly: true, pickScope: room.serverId, keys: [track.pageUrl, track.query] },
     );
     return Response.json(lyricsAnswer(track, lyrics, searched));
   } catch (error) {

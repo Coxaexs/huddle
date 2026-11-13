@@ -395,6 +395,33 @@
   transform: scale(1.03);
 }
 
+/* The sung line, word by word (SungLine): each word fills with the ink as it is sung. */
+.mp-word {
+  --fill: 0;
+  --soft: .3em;
+  display: inline-block;
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    var(--ink) calc(var(--fill) * (100% + var(--soft)) - var(--soft)),
+    color-mix(in srgb, var(--ink) 38%, transparent) calc(var(--fill) * (100% + var(--soft)))
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  transition: transform .35s cubic-bezier(.2, .7, .3, 1), text-shadow .35s;
+}
+
+.mp-word.sung {
+  transform: translateY(-.05em);
+}
+
+@media (forced-colors: active) {
+  .mp-word {
+    color: CanvasText;
+    background: none;
+  }
+}
+
 button.mp-line {
   cursor: pointer;
 }
@@ -960,8 +987,13 @@ button.mp-line:focus-visible {
     transition: none;
   }
 
-  .mp-line.now {
+  .mp-line.now,
+  .mp-word.sung {
     transform: none;
+  }
+
+  .mp-word {
+    transition: none;
   }
 }
 
