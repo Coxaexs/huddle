@@ -51,7 +51,8 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | Profile card (from message names/avatars and member rows): tinted by the member's colour, banner, avatar + presence + decoration, status bubble, name + member tag (Owner/Admin/Mod/role), @username • pronouns, tagline, bio (3-line clamp), roles, mutual servers/friends, private note (saves on Enter/blur), member since, friend/DM/Mention/Block, self tiles | user-profile-card.tsx, profile-look.ts, cosmetics.css | 🟡 (styled cards (theme/finish/pattern/edge), profile frames and effects, badges shelf, achievements, social links, Spotify/activity, role editing ⬜) |
 | User menu (right-click on a person) | user-menu.tsx | ⬜ |
 | Settings (all tabs), server settings | settings-dialog.tsx, settings/*, server-settings* | ⬜ |
-| Threads, pins, saved, mentions, search, achievements panels | side-panels.tsx, achievements-panel.tsx | ⬜ |
+| Pins, saved, mentions (All/Unread) popovers; search strip with filter pills; jumping to a message (pages back until loaded, centred, blue flash) | side-panels.tsx, use-shell-history.ts | ✅ (Unpin needs the pin permission; DM header tools ⬜) |
+| Threads, achievements, find users, follow channel, header "More" menu | thread panel, achievements-panel.tsx | ⬜ |
 | Events, forums, polls | events-panel.tsx, forum-board.tsx | ⬜ |
 | Music player, DJ booth, widgets | music-player.tsx, widgets/* | ⬜ |
 | Living room / club / tabletop / meadow / board hall (3D) | living-room*.ts, club-*.ts, tabletop-*.ts | ⬜ |

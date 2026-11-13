@@ -7,6 +7,9 @@ mod emoji_picker;
 mod friends;
 mod members;
 mod profile_card;
+mod side_panels;
+
+pub use side_panels::{MentionEntry, SavedEntry, SearchResult};
 mod rail;
 mod sidebar;
 
@@ -82,6 +85,14 @@ impl Lists {
     fn splice(&self, range: std::ops::Range<usize>, count: usize) {
         self.bottom.splice(range.clone(), count);
         self.top.splice(range, count);
+    }
+
+    /// Brings message `ix` into view, in the middle when it can be (scrollIntoView, block: center).
+    pub(crate) fn reveal_middle(&self, ix: usize) {
+        for list in [&self.bottom, &self.top] {
+            let height = list.viewport_bounds().size.height;
+            list.scroll_to(gpui::ListOffset { item_ix: ix, offset_in_item: -(height / 2.) + px(40.) });
+        }
     }
 
     /// Puts message `ix` at the top of the list.
@@ -177,6 +188,8 @@ pub struct Shell {
     /// The emoji picker, open for a reaction or for the composer.
     picker: Option<OpenPicker>,
     picker_seq: u64,
+    /// Pins, saved, mentions and search.
+    panels: side_panels::Panels,
     /// The profile card that is open.
     profile: Option<profile_card::OpenProfile>,
     profile_seq: u64,
@@ -320,6 +333,7 @@ impl Shell {
             picker_seq: 0,
             profile: None,
             profile_seq: 0,
+            panels: Default::default(),
             ctx_at: gpui::Point::default(),
             connected: false,
             status: Some("Loading your servers…".into()),
@@ -679,6 +693,19 @@ impl Shell {
         cx.notify();
     }
 
+    /// A server, at one of its channels rather than the first.
+    pub(super) fn open_server_channel(&mut self, server: String, channel: String, cx: &mut Context<Self>) {
+        self.home = false;
+        if !self.emojis.contains_key(&server) {
+            self.load_emojis(server.clone(), cx);
+        }
+        if !self.members.contains_key(&server) {
+            self.load_members(server.clone(), cx);
+        }
+        self.server_id = Some(server);
+        self.open_channel(channel, cx);
+    }
+
     fn open_channel(&mut self, id: String, cx: &mut Context<Self>) {
         if self.channel_id.as_deref() == Some(&id) {
             return;
@@ -694,6 +721,9 @@ impl Shell {
             self.new_from.remove(&id);
         }
         self.mark_read(&id, cx);
+        if self.panels.open == Some(side_panels::Panel::Pins) {
+            self.panels.open = None;
+        }
         self.channel_id = Some(id.clone());
         self.hub.send(json!({ "t": "subscribe", "channelId": id }));
         let count = self.messages.get(&id).map_or(0, Vec::len);
@@ -747,6 +777,7 @@ impl Shell {
                     }
                     Err(err) => this.status = Some(format!("Could not load messages: {err}").into()),
                 }
+                this.continue_jump(cx);
                 cx.notify();
             })
             .ok();

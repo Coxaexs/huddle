@@ -271,6 +271,25 @@ impl gpui::Render for Shell {
                     self.open_profile(&id, bounds, window, cx);
                 }
             }
+            // HOFFLE_DEV_PANEL=pins | saved | mentions | search:<query>
+            if let Ok(which) = std::env::var("HOFFLE_DEV_PANEL") {
+                use super::side_panels::Panel;
+                match which.split_once(':') {
+                    Some(("search", query)) => {
+                        self.toggle_search(window, cx);
+                        if let Some((input, _)) = self.panels.search.as_ref() {
+                            input.update(cx, |i, cx| i.set_text(query.to_string(), cx));
+                        }
+                        self.run_search_now(query.to_string(), cx);
+                    }
+                    _ => match which.as_str() {
+                        "pins" => self.toggle_panel(Panel::Pins, cx),
+                        "saved" => self.toggle_panel(Panel::Saved, cx),
+                        "mentions" => self.toggle_panel(Panel::Mentions, cx),
+                        _ => {}
+                    },
+                }
+            }
             if let Ok(text) = std::env::var("HOFFLE_DEV_NOTICE") {
                 self.notice = Some(text);
             }
@@ -348,6 +367,7 @@ impl gpui::Render for Shell {
             })
             .when(!(self.home && self.channel_id.is_none()), |d| d.child(self.render_chat_panel(window, cx)))
             .when(members_open && (!self.home || self.channel_id.is_some()), |d| d.child(self.render_members(window, cx)))
+            .children(self.render_panel(window, cx))
             .children(self.render_profile(window, cx))
             .children(self.render_picker(window, cx))
             .children(self.render_context_menu(window, cx))

@@ -36,6 +36,7 @@ impl Shell {
             .shadow(card_shadow())
             .overflow_hidden()
             .child(self.render_header(window, cx))
+            .children(self.render_search(cx))
             .child(self.render_messages(cx))
             .children(self.render_notice(cx))
             .child(self.render_composer(cx)))
@@ -62,7 +63,20 @@ impl Shell {
         ];
         let mut right = div().flex().items_center().gap(px(3.));
         for (name, title) in tools {
-            right = right.child(header_button(name, title, false));
+            let active = match name {
+                "search" => self.panels.search.is_some(),
+                "at-sign" => self.panels.open == Some(super::side_panels::Panel::Mentions),
+                "pin" => self.panels.open == Some(super::side_panels::Panel::Pins),
+                "bookmark" => self.panels.open == Some(super::side_panels::Panel::Saved),
+                _ => false,
+            };
+            right = right.child(header_button(name, title, active).on_click(cx.listener(move |this, _, window, cx| match name {
+                "search" => this.toggle_search(window, cx),
+                "at-sign" => this.toggle_panel(super::side_panels::Panel::Mentions, cx),
+                "pin" => this.toggle_panel(super::side_panels::Panel::Pins, cx),
+                "bookmark" => this.toggle_panel(super::side_panels::Panel::Saved, cx),
+                _ => {}
+            })));
         }
         right = right.child(
             header_button("users", "header.toggleMemberList", self.members_open).on_click(cx.listener(|this, _, _, cx| {
@@ -504,6 +518,8 @@ impl Shell {
             .gap(px(13.))
             .hover(|s| s.bg(Theme::card()))
             .when(forced, |d| d.bg(Theme::card()))
+            // `.jump-flash`: a blue edge and a fading blue wash after a jump.
+            .when_some(self.flash_color(&message.id), |d, wash| d.bg(wash).border_l(px(3.)).border_color(gpui::rgb(0x5865f2)))
             .when(mentions_me, |d| d.bg(gpui::rgba(0xa78bfa14)).border_l_2().border_color(Theme::lavender()))
             .child(gutter)
             .child(body)

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Look up elements in a captured web spec: tools/spec.py <spec.json> <class-or-text substring>..."""
+"""Prints a style dump from the QA driver (rows of [depth, tag.class, rect, font, colour, ...])."""
 import json, sys
-spec = json.load(open(sys.argv[1]))
-for q in sys.argv[2:]:
-    for e in spec:
-        if q in e.get("cls", "") or (e.get("text") and q == e["text"]):
-            print(json.dumps({k: v for k, v in e.items() if v not in (None, "")}))
+raw = open(sys.argv[1]).read()
+raw = raw[raw.index("["):] if not raw.lstrip().startswith("[") else raw
+d = json.loads(raw)
+for r in d[: int(sys.argv[2]) if len(sys.argv) > 2 else 200]:
+    print("  " * r[0] + " | ".join(str(x) for x in r[1:] if x not in ("", None)))

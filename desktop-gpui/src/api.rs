@@ -350,6 +350,38 @@ impl Client {
         Ok(())
     }
 
+    /// A channel's pinned messages.
+    pub fn pinned(&self, channel_id: &str) -> Result<Vec<crate::model::Message>> {
+        Ok(self.get::<crate::model::MessagePage>(&format!("/api/messages?channelId={}&pinned=1", encode(channel_id)))?.messages)
+    }
+
+    pub fn saved_list(&self) -> Result<Vec<crate::shell::SavedEntry>> {
+        #[derive(serde::Deserialize, Default)]
+        #[serde(default)]
+        struct Saved {
+            saved: Vec<crate::shell::SavedEntry>,
+        }
+        Ok(self.get::<Saved>("/api/saved")?.saved)
+    }
+
+    pub fn mention_inbox(&self) -> Result<Vec<crate::shell::MentionEntry>> {
+        #[derive(serde::Deserialize, Default)]
+        #[serde(default)]
+        struct Mentions {
+            mentions: Vec<crate::shell::MentionEntry>,
+        }
+        Ok(self.get::<Mentions>("/api/mentions")?.mentions)
+    }
+
+    pub fn search(&self, server_id: &str, query: &str) -> Result<Vec<crate::shell::SearchResult>> {
+        #[derive(serde::Deserialize, Default)]
+        #[serde(default)]
+        struct Results {
+            results: Vec<crate::shell::SearchResult>,
+        }
+        Ok(self.get::<Results>(&format!("/api/messages/search?serverId={}&q={}", encode(server_id), encode(query)))?.results)
+    }
+
     pub fn mark_read(&self, channel_id: &str) -> Result<()> {
         let _: Value = self.post("/api/channels/reads", json!({ "channelId": channel_id }))?;
         Ok(())
