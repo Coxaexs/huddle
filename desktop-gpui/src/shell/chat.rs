@@ -101,7 +101,9 @@ impl Shell {
             ("award", "header.achievements"),
         ];
         let mut right = div().flex().items_center().gap(px(3.)).children(self.render_stage_controls(cx));
-        for (name, title) in tools {
+        // Simple on the stage: the tools wait behind "More".
+        let simple = self.simple();
+        for (name, title) in tools.into_iter().filter(|_| !simple) {
             let active = match name {
                 "search" => self.panels.search.is_some(),
                 "at-sign" => self.panels.open == Some(super::side_panels::Panel::Mentions),
@@ -117,12 +119,16 @@ impl Shell {
                 _ => {}
             })));
         }
-        right = right.child(
-            header_button("users", "header.toggleMemberList", self.members_open).on_click(cx.listener(|this, _, _, cx| {
-                this.members_open = !this.members_open;
-                cx.notify();
-            })),
-        );
+        if simple {
+            right = right.child(self.render_header_more(cx));
+        } else {
+            right = right.child(
+                header_button("users", "header.toggleMemberList", self.members_open).on_click(cx.listener(|this, _, _, cx| {
+                    this.members_open = !this.members_open;
+                    cx.notify();
+                })),
+            );
+        }
         div()
             .h(px(73.))
             .flex_none()

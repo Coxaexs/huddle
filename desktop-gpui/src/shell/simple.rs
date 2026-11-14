@@ -132,7 +132,7 @@ impl Shell {
     }
 
     /// `.header-more` and its menu: on a desktop in Simple it lists search, mentions and the member list.
-    fn render_header_more(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn render_header_more(&self, cx: &mut Context<Self>) -> AnyElement {
         let open = self.header_more;
         let muted: Hsla = Theme::quiet().into();
         let button = div()
@@ -296,5 +296,63 @@ impl Shell {
                 )
                 .into_any_element(),
         )
+    }
+}
+
+impl Shell {
+    /// SimpleCallButtons: big buttons with words under them. In the sidebar's call card: Mute,
+    /// Camera, Share, Leave in four columns; on the stage (520px, five columns) Activities too.
+    pub(super) fn render_simple_call_buttons(&self, on_stage: bool, window: &gpui::Window, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let red = gpui::rgb(0xe5484d);
+        let (font, line, pad_top, pad_x, pad_bottom) = if on_stage { (12.5, 15., 11., 4., 9.) } else { (11.5, 13.8, 9., 2., 7.) };
+        let button = |id: &'static str, glyph: &'static str, label: String, color: Hsla| {
+            div()
+                .id(id)
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .items_center()
+                .gap(px(4.))
+                .pt(px(pad_top))
+                .px(px(pad_x))
+                .pb(px(pad_bottom))
+                .rounded(px(10.))
+                .border_1()
+                .border_color(Theme::line())
+                .text_size(px(font))
+                .line_height(px(line))
+                .text_color(color)
+                .cursor_pointer()
+                .hover(|s| s.bg(ink.opacity(0.06)))
+                .child(icon(glyph, 20., color))
+                .child(div().whitespace_nowrap().when(on_stage, |d| d.max_w_full().overflow_hidden().text_ellipsis()).child(label))
+        };
+        let muted = self.muted;
+        let mut row = div()
+            .flex()
+            .gap(px(if on_stage { 8. } else { 6. }))
+            .child(
+                button("simple-mute", if muted { "mic-off" } else { "mic" }, t(if muted { "simple.unmute" } else { "simple.mute" }), if muted { Theme::coral().into() } else { ink })
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_mute(cx))),
+            )
+            .child(button("simple-camera", "video", t("simple.camera"), ink).on_click(cx.listener(|this, _, _, cx| this.set_notice("Camera is not in this app yet.", cx))))
+            .child(button("simple-share", "monitor", t("simple.share"), ink).on_click(cx.listener(|this, _, _, cx| this.set_notice("Screen sharing is not in this app yet.", cx))));
+        if on_stage {
+            row = row.child(button("simple-activities", "gamepad-2", t("simple.activities"), ink).on_click(cx.listener(|this, _, _, cx| this.set_notice("Activities are not in this app yet.", cx))));
+        }
+        row = row.child(
+            button("simple-leave", "phone-off", t("simple.leave"), red.into())
+                .bg(Hsla::from(red).opacity(0.16))
+                .border_color(gpui::transparent_black())
+                .on_click(cx.listener(|this, _, _, cx| this.leave_voice(cx))),
+        );
+        if on_stage {
+            let width = 520f32.min(f32::from(window.viewport_size().width) - 32.);
+            div().flex_none().w(px(width)).p(px(8.)).child(row).into_any_element()
+        } else {
+            div().flex_none().w_full().pt(px(4.)).px(px(10.)).pb(px(10.)).child(row).into_any_element()
+        }
     }
 }

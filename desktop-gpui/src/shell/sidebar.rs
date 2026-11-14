@@ -205,7 +205,10 @@ impl Shell {
         div()
             .id(SharedString::from(format!("channel-{}", channel.id)))
             .relative()
-            .flex_none()
+            // Simple: in a crowded list Chrome shrinks these rows down to their text line while the
+            // labels and talk-room cards keep their size; past that the list is cut off.
+            .when(!simple, |d| d.flex_none())
+            .when(simple, |d| d.flex_shrink().min_h(px(21.75)))
             .h(px(if simple { 36.4 } else { 38. }))
             .px(px(10.))
             .mx(px(1.))
@@ -220,12 +223,16 @@ impl Shell {
             // Simple: the selected room has a 2px accent edge on its left.
             .when(selected && simple, |d| d.child(div().absolute().inset_0().rounded(px(12.)).border_l_2().border_color(Theme::lavender())))
             .when(!selected, |d| {
-                d.text_color(if unread { Theme::ink() } else { Theme::quiet() })
-                    .font_weight(if unread { FontWeight::BOLD } else { FontWeight::SEMIBOLD })
+                // Simple marks unread rooms (`has-unread`) with the pill alone.
+                d.text_color(if unread && !simple { Theme::ink() } else { Theme::quiet() })
+                    .font_weight(if unread && !simple { FontWeight::BOLD } else { FontWeight::SEMIBOLD })
                     .hover(|s| s.bg(Theme::hover()).text_color(Theme::ink()))
             })
             .when(unread, |d| {
-                d.child(div().absolute().left(px(-11.)).top(px(if simple { 14.2 } else { 15. })).w(px(4.)).h(px(8.)).rounded_r(px(4.)).bg(Theme::ink()))
+                d.child(
+                    // Centred on the row, which may have shrunk.
+                    div().absolute().left(px(-11.)).top_0().bottom_0().flex().items_center().child(div().w(px(4.)).h(px(8.)).rounded_r(px(4.)).bg(Theme::ink())),
+                )
             })
             // Simple hides the channel's kind icon and lock.
             .when(!simple, |d| d.child(icon(channel.icon(), 16., if selected { Theme::lavender() } else { Theme::quiet() })))

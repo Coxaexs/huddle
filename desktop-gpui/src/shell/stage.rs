@@ -111,7 +111,8 @@ impl Shell {
                 .gap(px(8.))
                 .mr(px(4.))
                 .flex_none()
-                .child(switcher)
+                // Simple hides the grid / table / map switcher.
+                .when(!self.simple(), |d| d.child(switcher))
                 .child(
                     div()
                         .id("stage-chat")
@@ -144,7 +145,9 @@ impl Shell {
         let card_width = f32::from(self.chat_panel_width(window)) - 2.;
         let chat_width = if stage.chat_open { (card_width * 0.3).clamp(300., 440.) } else { 0. };
         let stage_width = card_width - chat_width;
-        let body_height = f32::from(window.viewport_size().height) - 10. - 1. - 73. - 126.;
+        // Less the control bar: 126px in Full, 77px for Simple's big buttons.
+        let bar_height = if self.simple() { 77. } else { 126. };
+        let body_height = f32::from(window.viewport_size().height) - 10. - 1. - 73. - bar_height;
 
         // `.voice-grid`: one tile up to 720 wide, two side by side, else as many 220px+ columns as fit.
         let inner = stage_width - 40.;
@@ -175,7 +178,13 @@ impl Shell {
             .p(px(20.))
             .child(div().pt(px(((body_height - 40. - grid_h) / 2.).max(0.))).child(grid));
 
-        let left = div().w(px(stage_width)).h_full().flex().flex_col().child(tiles).child(self.render_stage_bar(stage_width, cx));
+        // Simple: the five big labelled buttons, 520px wide in the middle at the bottom.
+        let bar = if self.simple() {
+            div().flex_none().w(px(stage_width)).flex().justify_center().child(self.render_simple_call_buttons(true, window, cx)).into_any_element()
+        } else {
+            self.render_stage_bar(stage_width, cx).into_any_element()
+        };
+        let left = div().w(px(stage_width)).h_full().flex().flex_col().child(tiles).child(bar);
         let mut split = div().flex_1().min_h_0().flex().child(left);
         if stage.chat_open {
             split = split.child(self.render_voice_chat(stage, chat_width, cx));
@@ -214,7 +223,8 @@ impl Shell {
             )
             .child(face)
             .child(
-                div().absolute().left(px(10.)).right(px(10.)).bottom(px(8.)).flex().justify_center().child(
+                // `figcaption`: 10px in from the tile's bottom-left corner.
+                div().absolute().left(px(10.)).right(px(10.)).bottom(px(10.)).flex().justify_start().child(
                     div()
                         .flex()
                         .items_center()
@@ -587,6 +597,9 @@ impl Shell {
                 .child(ui::icon(icon, 14., Theme::ink()))
         };
         let room = call.channel_id.clone();
+        // Simple: no signal button or small actions; the big buttons below unless the stage is open.
+        let simple = self.simple();
+        let stage_open = self.stage.as_ref().is_some_and(|s| s.channel_id == call.channel_id);
         Some(
             div()
                 .flex_none()
@@ -602,13 +615,13 @@ impl Shell {
                 .border_color(rgba(0xffffff12))
                 .flex()
                 .flex_col()
-                .gap(px(6.))
+                .gap(px(if simple { 2. } else { 6. }))
                 .child(
                     div()
                         .flex()
                         .items_center()
                         .gap(px(8.))
-                        .child(
+                        .when(!simple, |d| d.child(
                             div()
                                 .size(px(28.))
                                 .flex_none()
@@ -620,7 +633,7 @@ impl Shell {
                                 .items_center()
                                 .justify_center()
                                 .child(ui::icon("radio", 16., rgb(0x23a55a))),
-                        )
+                        ))
                         .child(
                             div()
                                 .id("mini-voice-info")
@@ -646,12 +659,13 @@ impl Shell {
                                             ),
                                         )
                                         // 152px beside the dot, cut with "…" like the web's.
-                                        .child(div().flex_1().min_w_0().whitespace_nowrap().overflow_hidden().child(ui::fit(window, &status, FontWeight::MEDIUM, 11.5, px(152.)))),
+                                        .child(div().flex_1().min_w_0().whitespace_nowrap().overflow_hidden().child(ui::fit(window, &status, FontWeight::MEDIUM, 11.5, px(if simple { 188. } else { 152. })))),
                                 )
                                 .on_click(cx.listener(move |this, _, window, cx| this.open_stage(room.clone(), window, cx))),
                         ),
                 )
-                .child(
+                .when(simple && !stage_open, |d| d.child(self.render_simple_call_buttons(false, window, cx)))
+                .when(!simple, |d| d.child(
                     div()
                         .flex()
                         .items_center()
@@ -674,7 +688,7 @@ impl Shell {
                                 .child(ui::icon("phone-off", 14., Theme::coral()))
                                 .on_click(cx.listener(|this, _, _, cx| this.leave_voice(cx))),
                         ),
-                )
+                ))
                 .into_any_element(),
         )
     }
