@@ -18,7 +18,7 @@ use crate::theme::Theme;
 actions!(
     text_area,
     [Backspace, Delete, Left, Right, Up, Down, SelectLeft, SelectRight, SelectUp, SelectDown, SelectAll,
-     LineStart, LineEnd, WordLeft, WordRight, DeleteWordLeft, Paste, Cut, Copy, Submit, Newline, Escape,
+     LineStart, LineEnd, WordLeft, WordRight, DeleteWordLeft, Paste, Cut, Copy, Submit, ForceSubmit, Newline, Escape,
      ShowCharacterPalette]
 );
 
@@ -48,6 +48,8 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-x", Cut, ctx),
         KeyBinding::new("enter", Submit, ctx),
         KeyBinding::new("shift-enter", Newline, ctx),
+        KeyBinding::new("cmd-enter", ForceSubmit, ctx),
+        KeyBinding::new("ctrl-enter", ForceSubmit, ctx),
         KeyBinding::new("escape", Escape, ctx),
         KeyBinding::new("ctrl-cmd-space", ShowCharacterPalette, ctx),
     ]);
@@ -77,6 +79,9 @@ pub struct TextArea {
     /// The x the caret keeps while moving up and down through rows.
     goal_x: Option<Pixels>,
     scroll_y: Pixels,
+    /// Enter starts a new line and only Cmd/Ctrl+Enter sends (the forward dialog's comment).
+    enter_newline: bool,
+    color: Option<gpui::Hsla>,
     last: Option<Shaped>,
     is_selecting: bool,
 }
@@ -145,6 +150,8 @@ impl TextArea {
             placeholder_color: None,
             goal_x: None,
             scroll_y: px(0.),
+            enter_newline: false,
+            color: None,
             last: None,
             is_selecting: false,
         }
@@ -154,6 +161,16 @@ impl TextArea {
     pub fn text(mut self, size: f32, line_height: f32) -> Self {
         self.size = size;
         self.line_height = line_height;
+        self
+    }
+
+    pub fn color(mut self, color: impl Into<gpui::Hsla>) -> Self {
+        self.color = Some(color.into());
+        self
+    }
+
+    pub fn enter_newline(mut self) -> Self {
+        self.enter_newline = true;
         self
     }
 
@@ -359,7 +376,14 @@ impl TextArea {
             self.replace_text_in_range(None, "", window, cx)
         }
     }
-    fn submit(&mut self, _: &Submit, _: &mut Window, cx: &mut Context<Self>) {
+    fn submit(&mut self, _: &Submit, window: &mut Window, cx: &mut Context<Self>) {
+        if self.enter_newline {
+            self.replace_text_in_range(None, "\n", window, cx);
+        } else {
+            cx.emit(AreaEvent::Submit);
+        }
+    }
+    fn force_submit(&mut self, _: &ForceSubmit, _: &mut Window, cx: &mut Context<Self>) {
         cx.emit(AreaEvent::Submit);
     }
     fn newline(&mut self, _: &Newline, window: &mut Window, cx: &mut Context<Self>) {
@@ -648,6 +672,7 @@ impl Render for TextArea {
             .on_action(cx.listener(Self::copy))
             .on_action(cx.listener(Self::cut))
             .on_action(cx.listener(Self::submit))
+            .on_action(cx.listener(Self::force_submit))
             .on_action(cx.listener(Self::newline))
             .on_action(cx.listener(Self::escape))
             .on_action(cx.listener(Self::show_character_palette))
@@ -657,7 +682,7 @@ impl Render for TextArea {
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .text_size(px(self.size))
             .line_height(px(self.line_height))
-            .text_color(Theme::ink())
+            .text_color(self.color.unwrap_or_else(|| Theme::ink().into()))
             .child(AreaElement { area: cx.entity() })
     }
 }

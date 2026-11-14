@@ -166,6 +166,13 @@ impl Client {
         Ok(serde_json::from_value(message)?)
     }
 
+    /// A message with a payload of its own (a forward's `forwardedFrom`).
+    pub fn send_payload(&self, channel_id: &str, content: &str, payload: Value) -> Result<Message> {
+        let reply: Value = self.post("/api/messages", json!({ "channelId": channel_id, "content": content, "payload": payload }))?;
+        let message = reply.get("message").cloned().unwrap_or(reply);
+        Ok(serde_json::from_value(message)?)
+    }
+
     /// A message carrying uploaded files: the first key as `attachmentKey`, the rest after it.
     pub fn send_with_files(&self, channel_id: &str, content: &str, reply_to: Option<&str>, keys: &[String]) -> Result<Message> {
         let mut body = json!({ "channelId": channel_id, "content": content });

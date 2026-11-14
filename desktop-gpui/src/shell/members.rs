@@ -263,6 +263,21 @@ impl gpui::Render for Shell {
                 self.ctx_menu = Some(super::context_menu::CtxMenu { message_id: id, at: gpui::point(px(x), px(y)) });
             }
         }
+        // Development: HOFFLE_DEV_FORWARD=1 opens the Forward dialog on the channel's last message;
+        // HOFFLE_DEV_FORWARD_PICK=<n> also picks the n-th destination.
+        if std::env::var("HOFFLE_DEV_FORWARD").is_ok() && self.forward.is_none() && !self.dev_forward_done {
+            if let Some(last) = self.channel_id.as_ref().and_then(|c| self.messages.get(c)).and_then(|l| l.last()).cloned() {
+                self.dev_forward_done = true;
+                self.open_forward(&last, window, cx);
+                if let Some(n) = std::env::var("HOFFLE_DEV_FORWARD_PICK").ok().and_then(|v| v.parse::<usize>().ok()) {
+                    self.dev_forward_pick(n);
+                }
+                // HOFFLE_DEV_FORWARD_SEND=1 sends it (use only the QA account's own notes DM, pick 0).
+                if std::env::var("HOFFLE_DEV_FORWARD_SEND").is_ok() {
+                    self.send_forward(window, cx);
+                }
+            }
+        }
         // Development: HOFFLE_DEV_NOTICE / HOFFLE_DEV_TOAST show that text; HOFFLE_DEV_TRANSLATE puts
         // it under your own last message as a finished translation.
         if !self.dev_extras_done && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c)) {
@@ -436,6 +451,7 @@ impl gpui::Render for Shell {
             .children(self.render_context_menu(window, cx))
             .children(self.render_toasts(cx))
             .children(self.render_confirm(cx))
+            .children(self.render_forward(window, cx))
             .on_modifiers_changed(cx.listener(|this, e: &gpui::ModifiersChangedEvent, _, cx| {
                 if this.shift_held != e.modifiers.shift {
                     this.shift_held = e.modifiers.shift;

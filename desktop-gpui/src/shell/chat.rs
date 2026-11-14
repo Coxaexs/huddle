@@ -419,6 +419,8 @@ impl Shell {
                     .child(editor),
             );
             body = body.child(div().mt(px(3.)).text_size(px(11.)).line_height(px(16.5)).text_color(Theme::muted()).child("Enter to save · Esc to cancel"));
+        } else if let Some(card) = self.render_forwarded(message, self.text_column_width(window), window, cx) {
+            body = body.child(card);
         } else if !message.text.is_empty()
             && (message.kind.as_deref() == Some("ai") || !super::cards::replaces_text(message))
             // A message that is only a picture's link shows just the picture.
@@ -729,7 +731,13 @@ impl Shell {
             );
             bar = bar
                 .child(button(format!("th-{}", message.id), false).tooltip(ui::tooltip(t("message.replyInThread"))).child(icon("message-square", 16., Theme::muted())))
-                .child(button(format!("fw-{}", message.id), false).tooltip(ui::tooltip(t("message.forward"))).child(icon("forward", 16., Theme::muted())))
+                .child({
+                    let m = message.clone();
+                    button(format!("fw-{}", message.id), false)
+                        .tooltip(ui::tooltip(t("message.forward")))
+                        .child(icon("forward", 16., Theme::muted()))
+                        .on_click(cx.listener(move |this, _, window, cx| this.open_forward(&m, window, cx)))
+                })
                 .child(button(format!("qv-{}", message.id), false).tooltip(ui::tooltip(t("message.quickVote"))).child(icon("vote", 16., Theme::muted())));
             if self.can_pin() {
                 let m = message.clone();

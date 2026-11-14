@@ -6,6 +6,7 @@ mod chat;
 mod context_menu;
 mod emoji_picker;
 mod files;
+mod forward;
 mod gif_picker;
 mod links;
 mod friends;
@@ -174,6 +175,7 @@ pub struct Shell {
     dev_joined: bool,
     dev_edit_done: bool,
     dev_ctx_done: bool,
+    dev_forward_done: bool,
     dev_rv_done: bool,
     dev_extras_done: bool,
     /// Who is typing where: (user id, name, when it was last heard).
@@ -237,6 +239,7 @@ pub struct Shell {
     channel_prefs: HashMap<String, String>,
     /// Who reacted with one emoji to a message, and where its rows were drawn.
     reaction_viewer: Option<reaction_viewer::ReactionViewer>,
+    forward: Option<forward::Forward>,
     viewer_spot: profile_card::Spot,
     /// Shift is down: message toolbars show their extra actions.
     shift_held: bool,
@@ -366,6 +369,7 @@ impl Shell {
             dev_joined: false,
             dev_edit_done: false,
             dev_ctx_done: false,
+            dev_forward_done: false,
             dev_rv_done: false,
             dev_extras_done: false,
             typing: HashMap::new(),
@@ -404,6 +408,7 @@ impl Shell {
             // Development: HOFFLE_DEV_SHIFT=1 behaves as if Shift were held.
             shift_held: std::env::var_os("HOFFLE_DEV_SHIFT").is_some(),
             reaction_viewer: None,
+            forward: None,
             viewer_spot: profile_card::spot(),
             server_menu: false,
             notify_menu: None,

@@ -297,8 +297,9 @@ impl Shell {
                 let at = gpui::point(px(self.article_right(window) - 48.), self.ctx_at.y);
                 self.open_reaction_picker(id, at, window, cx);
             }
-            // Not built yet here: forwarding, threads, read-aloud.
-            Item::Forward | Item::Thread | Item::Speak | Item::Apps => {}
+            Item::Forward => self.open_forward(&message, window, cx),
+            // Not built yet here: threads, read-aloud.
+            Item::Thread | Item::Speak | Item::Apps => {}
         }
         cx.notify();
     }
