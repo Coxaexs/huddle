@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 /**
  * Word-by-word timing borrowed from another version of the song the room is playing (the bot's words.py):
  * `action: "donors"` lists timed versions whose words fit the lyrics shown, `"borrow"` uses one (`from`),
- * `"shift"` saves a timing someone lined up by ear (`delta` seconds, for everyone), `"clear"` stops it.
+ * `"shift"` saves a timing someone lined up by ear (`delta` seconds, for everyone), `"confirm"` says the timing
+ * is right (the player stops asking), `"clear"` stops it.
  * Only for the song still playing (`trackId` must match), and on the lyrics the player shows for it.
  */
 export async function POST(request: Request) {
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "The song changed. Try again on this one." }, { status: 409 });
   }
   const action = body.action;
-  if (action !== "donors" && action !== "borrow" && action !== "shift" && action !== "clear") {
+  if (action !== "donors" && action !== "borrow" && action !== "shift" && action !== "confirm" && action !== "clear") {
     return Response.json({ error: "Unknown action." }, { status: 400 });
   }
   const keys = [track.pageUrl, track.query];

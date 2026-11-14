@@ -1023,7 +1023,7 @@ function LyricsPane({
     );
   };
 
-  const wordsCall = async (action: "shift" | "clear", delta?: number) =>
+  const wordsCall = async (action: "shift" | "confirm" | "clear", delta?: number) =>
     apiFetch<{ error?: string }>("/api/music/lyrics/words", {
       method: "POST",
       body: JSON.stringify({ voiceChannelId: roomId, trackId, action, delta }),
@@ -1043,6 +1043,16 @@ function LyricsPane({
       onNote(problem instanceof Error ? problem.message : "Could not save the timing.");
     } finally {
       setSavingTiming(false);
+    }
+  };
+
+  const confirmTiming = async () => {
+    try {
+      await wordsCall("confirm");
+      onNote("Thanks! Marked as right for everyone.");
+      await load(false);
+    } catch (problem) {
+      onNote(problem instanceof Error ? problem.message : "Could not save that.");
     }
   };
 
@@ -1260,14 +1270,23 @@ function LyricsPane({
           );
         })}
       </div>
-      {data?.wordsFrom && (
+      {data?.wordsFrom && (!data.wordsFrom.confirmed || offset !== 0) && (
         <p className="mp-lyrics-note">
           {data.wordsFrom.borrowed
             ? `Word timing borrowed from ${data.wordsFrom.title || "another version"}.`
             : `Word timing from another upload of this recording${data.wordsFrom.title ? ` (${data.wordsFrom.title})` : ""}.`}
-          {offset !== 0 && (
+          {offset !== 0 ? (
             <button type="button" className="mp-link" disabled={savingTiming} onClick={() => void saveTiming()}>
               {savingTiming ? "Saving…" : "Save this timing for everyone"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="mp-link"
+              onClick={() => void confirmTiming()}
+              title="The words light up in time with the singing: stop showing this note, for everyone"
+            >
+              Timing is right
             </button>
           )}
           <button type="button" className="mp-link" onClick={() => void stopBorrowing()}>

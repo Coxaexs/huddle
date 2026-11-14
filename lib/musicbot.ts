@@ -162,6 +162,8 @@ export interface WordsFrom {
   borrowed: boolean;
   title: string | null;
   shift: number | null;
+  /** Someone listened and said the timing is right (or saved a timing): the player stops asking. */
+  confirmed: boolean;
 }
 
 /** A timed version of a song whose words fit the lyrics shown, to borrow word timing from. */
@@ -179,7 +181,7 @@ export interface WordsDonor {
  * seconds (someone lined them up by ear); "clear" stops using them. `keys` = the track's page URL and query.
  */
 export async function wordsAction(body: {
-  action: "donors" | "borrow" | "shift" | "clear";
+  action: "donors" | "borrow" | "shift" | "confirm" | "clear";
   keys: Array<string | null | undefined>;
   lines?: Array<[number, string]>;
   from?: string;
@@ -245,6 +247,7 @@ export async function fetchLyrics(
           borrowed: Boolean(data.words_from.borrowed),
           title: typeof data.words_from.title === "string" ? data.words_from.title : null,
           shift: typeof data.words_from.shift === "number" ? data.words_from.shift : null,
+          confirmed: Boolean(data.words_from.confirmed),
         }
       : null,
   };

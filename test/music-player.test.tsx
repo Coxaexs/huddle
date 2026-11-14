@@ -624,3 +624,28 @@ it("corrects the word timing with one tap", async () => {
   await waitFor(() => expect(screen.getByText(/^\+[67](\.\d+)?s$/)).toBeTruthy());
   expect(screen.queryByText("“Line 5”")).toBeNull();
 });
+
+it("the timing of another upload's words can be confirmed, and then stops being asked about", async () => {
+  let confirmed = false;
+  apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (path === "/api/music/lyrics/words") {
+      confirmed = JSON.parse(String(init?.body)).action === "confirm";
+      return { confirmed };
+    }
+    if (path.startsWith("/api/music/lyrics")) {
+      return {
+        trackId: "t1",
+        lines: seed.lines.map(({ at, line }) => [at, line]),
+        words: seed.lines.map(({ at }, n) => [[at, at + 0.5, `Word${n + 1}`, []]]),
+        wordsFrom: { borrowed: false, title: "Line - Album", shift: 3.8, confirmed },
+      };
+    }
+    return path.startsWith("/api/music/playlists") ? PLAYLISTS : {};
+  });
+  show();
+  act(() => openMusicPlayer({ channelId: room, tab: "lyrics" }));
+  expect(await screen.findByText(/Word timing from another upload/)).toBeTruthy();
+  fireEvent.click(screen.getByText("Timing is right"));
+  await waitFor(() => expect(screen.queryByText(/Word timing from another upload/)).toBeNull());
+  expect(confirmed).toBe(true);
+});
