@@ -171,6 +171,10 @@ pub(super) struct Settings {
     digest: Option<Value>,
     digest_status: Option<String>,
     digest_busy: bool,
+    /// Licenses: the full AGPL text shown, the package search and category.
+    agpl_open: bool,
+    license_search: Entity<TextInput>,
+    license_category: &'static str,
     _subs: Vec<Subscription>,
 }
 
@@ -234,6 +238,13 @@ impl Shell {
         let security = Security { password: Some(make("", true, "", window, cx)), code: Some(make("123456", false, "", window, cx)), ..Default::default() };
         let ntfy = make("https://ntfy.sh/your-secret-topic", false, "", window, cx);
         let ntfy_token = make("Access token (only for protected topics)", true, "", window, cx);
+        let license_search = cx.new(|cx| {
+            TextInput::new("Search dependencies...", cx).look(Look { size: 12., line_height: 16., height: 16., color: gpui::white(), placeholder: rgb(0x80848e).into() })
+        });
+        subs.push(cx.subscribe_in(&license_search, window, |this, _, event, window, cx| match event {
+            InputEvent::Escape => this.close_settings(window, cx),
+            _ => cx.notify(),
+        }));
         let focus = cx.focus_handle();
         window.focus(&focus);
         self.settings = Some(Settings {
@@ -269,6 +280,9 @@ impl Shell {
             digest: None,
             digest_status: None,
             digest_busy: false,
+            agpl_open: false,
+            license_search,
+            license_category: "all",
             _subs: subs,
         });
         self.load_security(cx);
@@ -969,6 +983,7 @@ impl Shell {
             Tab::Language => self.render_language_page(s, window, cx),
             Tab::Notifications => self.render_notifications_page(s, window, cx),
             Tab::Accessibility => self.render_accessibility_page(cx),
+            Tab::Licenses => self.render_licenses_page(s, window, cx),
             _ => Vec::new(),
         };
         for section in page {
@@ -2324,5 +2339,356 @@ impl Shell {
                 Self::toggle(a.motion).id("ac-motion-t").cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.change_access(|a| a.motion = !a.motion, cx))).into_any_element(),
             ));
         vec![preview.into_any_element(), readability.into_any_element()]
+    }
+}
+
+/// licenses-tab.tsx THIRD_PARTY_PACKAGES: name, category, license, its URL, author, what it is, project.
+const PACKAGES: [(&str, &str, &str, &str, &str, &str, &str); 12] = [
+    ("React & React DOM", "Core & UI", "MIT", "https://opensource.org/licenses/MIT", "Meta Platforms, Inc.", "The library for web and native user interfaces.", "https://react.dev"),
+    ("Lucide React", "Core & UI", "ISC", "https://opensource.org/licenses/ISC", "Lucide Contributors", "Beautiful & consistent icons crafted for modern interfaces.", "https://lucide.dev"),
+    ("Tailwind CSS", "Core & UI", "MIT", "https://opensource.org/licenses/MIT", "Tailwind Labs, Inc.", "Utility-first CSS framework for rapid UI styling.", "https://tailwindcss.com"),
+    ("Three.js", "Audio & Graphics", "MIT", "https://opensource.org/licenses/MIT", "Ricardo Cabello (mrdoob) & contributors", "JavaScript 3D library used for tabletop dice rendering and 3D visualizers.", "https://threejs.org"),
+    ("@3d-dice/dice-box", "Audio & Graphics", "MIT", "https://opensource.org/licenses/MIT", "Frank S", "3D physics-based dice rolling engine for the tabletop game room.", "https://github.com/3d-dice/dice-box"),
+    ("RNNoise", "Audio & Graphics", "Apache-2.0", "https://www.apache.org/licenses/LICENSE-2.0", "Jean-Marc Valin / Xiph.Org Foundation", "Recurrent neural network for real-time microphone noise suppression.", "https://github.com/xiph/rnnoise"),
+    ("pdf-lib & fontkit", "Documents & Tools", "MIT", "https://opensource.org/licenses/MIT", "Andrew Dillon (Hopding) & fontkit contributors", "PDF creation and modification library for interactive character sheets and handouts.", "https://pdf-lib.js.org"),
+    ("PDF.js (pdfjs-dist)", "Documents & Tools", "Apache-2.0", "https://www.apache.org/licenses/LICENSE-2.0", "Mozilla Foundation", "Standards-based PDF viewer and canvas rendering engine.", "https://mozilla.github.io/pdf.js/"),
+    ("yt-dlp", "Platform & Services", "The Unlicense", "https://unlicense.org", "yt-dlp contributors", "Command-line media extractor powering the self-hosted music resolver bot.", "https://github.com/yt-dlp/yt-dlp"),
+    ("FFmpeg", "Platform & Services", "LGPL / GPL", "https://www.ffmpeg.org/legal.html", "FFmpeg team", "Cross-platform audio and video processing framework.", "https://ffmpeg.org"),
+    ("Discord.js", "Platform & Services", "Apache-2.0", "https://www.apache.org/licenses/LICENSE-2.0", "Discord.js contributors", "JavaScript interface powering the optional bidirectional Discord chat bridge.", "https://discord.js.org"),
+    ("Cloudflare Wrangler & Workers", "Platform & Services", "Apache-2.0", "https://www.apache.org/licenses/LICENSE-2.0", "Cloudflare, Inc.", "Developer tooling and runtime environment for local and edge service orchestration.", "https://developers.cloudflare.com/workers/"),
+];
+
+const AGPL_SUMMARY: [(&str, &str); 4] = [
+    ("Freedom to Run & Self-Host", "You can run Hoffle on your own private hardware, VPS, or cloud server for your community without paying license fees."),
+    ("Freedom to Inspect & Modify", "You have complete access to the source code and can adapt it, add custom bot commands, or customize the UI."),
+    ("Copyleft Network Clause (Section 13)", "If you modify Hoffle and offer it as a service over a network, you must provide your modified source code to everyone interacting with it."),
+    ("No Warranty", "Hoffle is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY of merchantability or fitness for a particular purpose."),
+];
+
+const AGPL_TEXT: &str = "                    GNU AFFERO GENERAL PUBLIC LICENSE\n                       Version 3, 19 November 2007\n\n Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>\n Everyone is permitted to copy and distribute verbatim copies\n of this license document, but changing it is not allowed.\n\n                            Preamble\n\n  The GNU Affero General Public License is a free, copyleft license for\nsoftware and other kinds of works, specifically designed to ensure\ncooperation with the community in the case of network server software.\n\n  The GNU Affero General Public License is designed specifically to ensure\nthat, in such cases, the modified source code becomes available to the\ncommunity. It requires the operator of a network server to provide the\nsource code of the modified version running there to the users of that\nserver. Therefore, public use of a modified version, on a publicly\naccessible server, gives the public access to the source code of the\nmodified version.\n\nSection 13: Remote Network Interaction; Use with the GNU General Public License.\n  Notwithstanding any other provision of this License, if you modify the\nProgram, your modified version must prominently offer all users\ninteracting with it remotely through a computer network (if your version\nsupports such interaction) an opportunity to receive the Corresponding\nSource of your version by providing access to the Corresponding Source\nfrom a network server at no charge, through some standard or customary\nmeans of facilitating copying of software.\n\nThe complete license text is available in the root LICENSE file of this\nrepository, or online at: https://www.gnu.org/licenses/agpl-3.0.html";
+
+impl Shell {
+    /// licenses-tab.tsx: Hoffle's AGPL card (the app hides Ko-fi and Sponsors, as the web's native
+    /// shell does), then the third-party packages with search and categories.
+    fn render_licenses_page(&self, s: &Settings, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let blurple: Hsla = rgb(0x5865f2).into();
+        let muted: Hsla = rgb(0x949ba4).into();
+        let faint: Hsla = rgb(0x80848e).into();
+        let soft: Hsla = rgb(0xc4c9ce).into();
+        let edge: Hsla = rgb(0x3f4147).into();
+        let width = 772.;
+        let link = |id: &str, url: &'static str| div().id(SharedString::from(id.to_string())).cursor_pointer().on_click(move |_, _, cx| cx.open_url(url));
+        // The AGPL summaries, two to a row, each row as tall as its taller card.
+        let cell_w = (730. - 10.) / 2.;
+        let text_lines = |text: &str, size: f32, weight: FontWeight, w: f32| -> usize {
+            let mut face = gpui::font(crate::theme::UI_FONT);
+            face.weight = weight;
+            let mut wrapper = window.text_system().line_wrapper(face, px(size));
+            wrapper.wrap_line(&[gpui::LineFragment::text(text)], px(w)).count() + 1
+        };
+        let mut summary = div().mt(px(16.)).flex().flex_col().gap(px(10.));
+        for pair in AGPL_SUMMARY.chunks(2) {
+            let lines = pair.iter().map(|(_, d)| text_lines(d, 11., FontWeight::NORMAL, cell_w - 22.)).max().unwrap_or(1);
+            let height = 10. + 16. + 4. + lines as f32 * 17.875 + 10. + 2.;
+            let mut row = div().flex().gap(px(10.));
+            for (title, desc) in pair {
+                row = row.child(
+                    div()
+                        .w(px(cell_w))
+                        .h(px(height))
+                        .p(px(10.))
+                        .rounded(px(8.))
+                        .bg(Hsla::from(rgb(0x232428)).opacity(0.8))
+                        .border_1()
+                        .border_color(edge.opacity(0.4))
+                        .flex()
+                        .flex_col()
+                        .child(div().flex().items_center().gap(px(6.)).text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::SEMIBOLD).text_color(rgb(0xf2f3f5)).child(ui::icon("shield-check", 14., blurple)).child(*title))
+                        .child(div().mt(px(4.)).text_size(px(11.)).line_height(px(17.875)).text_color(muted).child(*desc)),
+                );
+            }
+            summary = summary.child(row);
+        }
+        let open = s.agpl_open;
+        let hero = div()
+            .relative()
+            .flex_none()
+            .w(px(width))
+            .p(px(20.))
+            .rounded(px(12.))
+            .border_1()
+            .border_color(blurple.opacity(0.3))
+            .overflow_hidden()
+            .flex()
+            .flex_col()
+            .child(ui::css_background("linear-gradient(135deg, rgba(88, 101, 242, 0.1), #2b2d31 50%, #1e1f22)", 12.))
+            .child(
+                div()
+                    .relative()
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(12.))
+                            .child(div().size(px(44.)).flex_none().rounded(px(12.)).bg(blurple).flex().items_center().justify_center().child(ui::icon("scale", 24., gpui::white())))
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(2.))
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap(px(8.))
+                                            .child(div().text_size(px(16.)).line_height(px(24.)).font_weight(FontWeight::BOLD).text_color(gpui::white()).child("Hoffle Self-Hosted Platform"))
+                                            .child(div().px(px(8.)).py(px(2.)).rounded(px(4.)).bg(blurple.opacity(0.3)).border_1().border_color(blurple.opacity(0.5)).text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::SEMIBOLD).text_color(rgb(0xa5b4fc)).child("GNU AGPLv3")),
+                                    )
+                                    .child(div().text_size(px(12.)).line_height(px(16.)).text_color(muted).child("Copyright © 2026 coxaexs <coxaexs@gmail.com> · Free & Open Source")),
+                            ),
+                    )
+                    .child(
+                        div().flex().child(
+                            link("lic-source", "https://github.com/Coxaexs/huddle")
+                                .px(px(12.))
+                                .py(px(6.))
+                                .rounded(px(8.))
+                                .bg(rgb(0x35373c))
+                                .hover(|s| s.bg(rgb(0x3e4046)))
+                                .flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .text_size(px(12.))
+                                .line_height(px(16.))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(gpui::white())
+                                .child(ui::icon("code-xml", 14., gpui::white()))
+                                .child("Source Code")
+                                .child(div().opacity(0.7).child(ui::icon("external-link", 12., gpui::white()))),
+                        ),
+                    ),
+            )
+            .child(
+                div()
+                    .relative()
+                    .mt(px(12.))
+                    .text_size(px(12.))
+                    .line_height(px(19.5))
+                    .text_color(soft)
+                    .child(gpui::StyledText::new("Hoffle is licensed under the GNU Affero General Public License Version 3 (GNU AGPLv3). As a self-hosted platform, this ensures that Hoffle remains free and open source forever, protecting user freedom across both private server deployments and networked services.").with_highlights([(29..85, gpui::HighlightStyle { font_weight: Some(FontWeight::BOLD), ..Default::default() })])),
+            )
+            .child(summary.relative())
+            .child(
+                div()
+                    .relative()
+                    .mt(px(16.))
+                    .pt(px(12.))
+                    .border_t_1()
+                    .border_color(edge.opacity(0.5))
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .id("lic-agpl")
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .text_size(px(12.))
+                            .line_height(px(16.))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(rgb(0xa5b4fc))
+                            .cursor_pointer()
+                            .hover(|s| s.text_color(gpui::white()))
+                            .child(div().flex().items_center().gap(px(6.)).child(ui::icon("scale", 14., rgb(0xa5b4fc))).child(if open { "Hide full GNU AGPLv3 text" } else { "Read full GNU AGPLv3 terms and conditions" }))
+                            .child(ui::icon(if open { "chevron-up" } else { "chevron-down" }, 16., rgb(0xa5b4fc)))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if let Some(s) = this.settings.as_mut() {
+                                    s.agpl_open = !s.agpl_open;
+                                    cx.notify();
+                                }
+                            })),
+                    )
+                    .when(open, |d| {
+                        d.child(
+                            div()
+                                .id("lic-agpl-text")
+                                .mt(px(8.))
+                                .max_h(px(288.))
+                                .overflow_y_scroll()
+                                .p(px(12.))
+                                .rounded(px(8.))
+                                .bg(rgb(0x18191c))
+                                .border_1()
+                                .border_color(edge.opacity(0.6))
+                                .font_family(crate::theme::MONO_FONT)
+                                .text_size(px(11.))
+                                .line_height(px(17.875))
+                                .text_color(rgb(0xb5bac1))
+                                .children(AGPL_TEXT.split('\n').map(|l| div().min_h(px(17.875)).child(if l.is_empty() { " ".to_string() } else { l.to_string() }))),
+                        )
+                    }),
+            );
+        // Third-party attributions.
+        let query = s.license_search.read(cx).text().trim().to_lowercase();
+        let category = s.license_category;
+        let shown: Vec<_> = PACKAGES
+            .iter()
+            .filter(|p| category == "all" || p.1 == category)
+            .filter(|p| query.is_empty() || [p.0, p.2, p.4, p.5].iter().any(|f| f.to_lowercase().contains(&query)))
+            .collect();
+        let focused = gpui::Focusable::focus_handle(s.license_search.read(cx), cx).is_focused(window);
+        let mut pills = div().pt(px(4.)).flex().flex_wrap().gap(px(6.));
+        for cat in ["all", "Core & UI", "Audio & Graphics", "Documents & Tools", "Platform & Services"] {
+            let on = category == cat;
+            pills = pills.child(
+                div()
+                    .id(SharedString::from(format!("lic-cat-{cat}")))
+                    .px(px(10.))
+                    .py(px(2.))
+                    .rounded_full()
+                    .bg(if on { blurple } else { rgb(0x2b2d31).into() })
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(if on { gpui::white() } else { muted })
+                    .cursor_pointer()
+                    .when(!on, |d| d.hover(|s| s.bg(rgb(0x35373c)).text_color(gpui::white())))
+                    .child(if cat == "all" { "All Packages" } else { cat })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(s) = this.settings.as_mut() {
+                            s.license_category = cat;
+                            cx.notify();
+                        }
+                    })),
+            );
+        }
+        let card_w = (width - 10.) / 2.;
+        let mut grid = div().flex().flex_col().gap(px(10.));
+        for pair in shown.chunks(2) {
+            let desc_lines = pair.iter().map(|p| text_lines(p.5, 12., FontWeight::NORMAL, card_w - 26.).min(2)).max().unwrap_or(1);
+            let height = 12. + 20.3 + 2. + 15.7 + 6. + desc_lines as f32 * 19.5 + 10. + 8. + 15.7 + 12. + 2. + 1.;
+            let mut row = div().flex().gap(px(10.));
+            for (n, p) in pair.iter().enumerate() {
+                let (name, cat, license, license_url, author, desc, project) = **p;
+                row = row.child(
+                    div()
+                        .w(px(card_w))
+                        .h(px(height))
+                        .p(px(12.))
+                        .rounded(px(8.))
+                        .bg(Hsla::from(rgb(0x2b2d31)).opacity(0.8))
+                        .border_1()
+                        .border_color(edge.opacity(0.5))
+                        .flex()
+                        .flex_col()
+                        .justify_between()
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_start()
+                                        .justify_between()
+                                        .gap(px(8.))
+                                        .child(div().text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::SEMIBOLD).text_color(gpui::white()).child(name))
+                                        .child(
+                                            link(&format!("lic-l-{name}-{n}"), license_url)
+                                                .px(px(6.))
+                                                .py(px(2.))
+                                                .rounded(px(4.))
+                                                .bg(rgb(0x1e1f22))
+                                                .border_1()
+                                                .border_color(edge)
+                                                .flex()
+                                                .items_center()
+                                                .gap(px(4.))
+                                                .font_family(crate::theme::MONO_FONT)
+                                                .text_size(px(10.))
+                                                .line_height(px(14.3))
+                                                .font_weight(FontWeight::MEDIUM)
+                                                .text_color(blurple)
+                                                .hover(|s| s.text_color(rgb(0x7983f5)))
+                                                .child(license)
+                                                .child(ui::icon("external-link", 10., blurple)),
+                                        ),
+                                )
+                                .child(div().mt(px(2.)).text_size(px(11.)).line_height(px(15.7)).text_color(faint).child(author))
+                                .child(div().mt(px(6.)).text_size(px(12.)).line_height(px(19.5)).text_color(soft).line_clamp(2).child(desc)),
+                        )
+                        .child(
+                            div()
+                                .mt(px(10.))
+                                .pt(px(8.))
+                                .border_t_1()
+                                .border_color(edge.opacity(0.3))
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .text_size(px(11.))
+                                .line_height(px(15.7))
+                                .child(div().text_color(faint).child(cat))
+                                .child(
+                                    link(&format!("lic-p-{name}-{n}"), project)
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(4.))
+                                        .text_color(muted)
+                                        .hover(|s| s.text_color(gpui::white()))
+                                        .child("Visit Project")
+                                        .child(ui::icon("external-link", 11., muted)),
+                                ),
+                        ),
+                );
+            }
+            grid = grid.child(row);
+        }
+        if shown.is_empty() {
+            grid = grid.child(div().py(px(32.)).flex().justify_center().text_size(px(12.)).text_color(faint).child(format!("No dependencies found matching \"{query}\".")));
+        }
+        let third = div()
+            .flex_none()
+            .mt(px(24.))
+            .flex()
+            .flex_col()
+            .gap(px(12.))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .child(div().flex().items_center().gap(px(6.)).text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight::BOLD).text_color(gpui::white()).child(ui::icon("heart", 15., rgb(0xff6467))).child("Third-Party Open Source Attributions"))
+                            .child(div().text_size(px(12.)).line_height(px(16.)).text_color(muted).child("Hoffle is made possible by these essential open source projects and libraries.")),
+                    )
+                    .child(
+                        div()
+                            .relative()
+                            .w(px(205.))
+                            .h(px(30.))
+                            .pl(px(32.))
+                            .pr(px(12.))
+                            .rounded(px(6.))
+                            .bg(rgb(0x1e1f22))
+                            .border_1()
+                            .border_color(if focused { blurple } else { edge })
+                            .flex()
+                            .items_center()
+                            .child(div().absolute().left(px(9.)).top(px(7.)).child(ui::icon("search", 14., faint)))
+                            .child(div().flex_1().child(s.license_search.clone())),
+                    ),
+            )
+            .child(pills)
+            .child(grid);
+        vec![hero.into_any_element(), third.into_any_element()]
     }
 }
