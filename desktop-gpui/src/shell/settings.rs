@@ -181,6 +181,12 @@ pub(super) struct Settings {
     manual_activity: Entity<TextInput>,
     lastfm: Entity<TextInput>,
     track: Entity<TextInput>,
+    /// Voice & Video: devices (None until listed), the open select, and the mic choices.
+    audio: crate::voice::AudioPrefs,
+    devices: Option<(Vec<(String, String)>, Vec<(String, String)>)>,
+    open_select: Option<&'static str>,
+    mic: MicPrefs,
+    more_voice: bool,
     _subs: Vec<Subscription>,
 }
 
@@ -310,9 +316,26 @@ impl Shell {
             manual_activity,
             lastfm,
             track,
+            audio: crate::voice::load_prefs(),
+            devices: None,
+            open_select: None,
+            mic: load_mic(),
+            more_voice: false,
             _subs: subs,
         });
         self.load_security(cx);
+        // The system's microphones and speakers (opening the audio module takes a moment).
+        cx.spawn(async move |this, cx| {
+            let found = cx.background_executor().spawn(async move { crate::voice::list_devices() }).await;
+            this.update(cx, |this, cx| {
+                if let Some(s) = this.settings.as_mut() {
+                    s.devices = Some(found);
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
         self.settings_call(
             cx,
             |c| c.settings_get("/api/settings/privacy"),
@@ -1023,6 +1046,7 @@ impl Shell {
             Tab::Accessibility => self.render_accessibility_page(cx),
             Tab::Licenses => self.render_licenses_page(s, window, cx),
             Tab::Activities => self.render_activities_page(s, window, cx),
+            Tab::Voice => self.render_voice_page(s, window, cx),
             Tab::Tutorial => vec![
                 div()
                     .flex_none()
@@ -3056,6 +3080,359 @@ impl Shell {
                     .into_any_element(),
             );
         }
+        out
+    }
+}
+
+/// The mic choices that live in the app rather than the audio module (lib/mic-chain.ts MicSettings).
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct MicPrefs {
+    /// "voice", "ptt" or "always".
+    pub input_mode: String,
+    pub auto_sensitivity: bool,
+    /// "off", "browser", "rnnoise" or "voice".
+    pub suppression: String,
+    pub clarity: bool,
+    pub voice_effect: String,
+    pub delay_ms: u32,
+}
+
+impl Default for MicPrefs {
+    fn default() -> Self {
+        Self { input_mode: "voice".into(), auto_sensitivity: true, suppression: "browser".into(), clarity: true, voice_effect: "none".into(), delay_ms: 0 }
+    }
+}
+
+fn mic_path() -> Option<std::path::PathBuf> {
+    Some(dirs::config_dir()?.join("Hoffle Lite").join("mic.json"))
+}
+
+fn load_mic() -> MicPrefs {
+    mic_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+fn save_mic(prefs: &MicPrefs) {
+    if let Some(path) = mic_path() {
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+        let _ = std::fs::write(path, serde_json::to_vec(prefs).unwrap_or_default());
+    }
+}
+
+const SUPPRESSION: [(&str, &str); 4] = [
+    ("off", "Off"),
+    ("browser", "Standard"),
+    ("rnnoise", "Enhanced — removes fans, keyboards, hum"),
+    ("voice", "Strong — also removes voices in the background"),
+];
+
+impl Shell {
+    fn change_audio(&mut self, change: impl FnOnce(&mut crate::voice::AudioPrefs), cx: &mut Context<Self>) {
+        let Some(s) = self.settings.as_mut() else { return };
+        change(&mut s.audio);
+        crate::voice::save_prefs(&s.audio);
+        self.voice.send(crate::voice::VoiceCmd::Audio(s.audio.clone()));
+        s.open_select = None;
+        cx.notify();
+    }
+
+    fn change_mic(&mut self, change: impl FnOnce(&mut MicPrefs), cx: &mut Context<Self>) {
+        let Some(s) = self.settings.as_mut() else { return };
+        change(&mut s.mic);
+        save_mic(&s.mic);
+        s.open_select = None;
+        cx.notify();
+    }
+
+    /// A `<select>` as Chrome draws it on this page: the value and a chevron, the options in a list
+    /// under it when open.
+    fn select_box(&self, key: &'static str, value: String, options: Vec<(String, String)>, width: f32, on_pick: std::rc::Rc<dyn Fn(&mut Self, String, &mut Context<Self>)>, cx: &mut Context<Self>) -> gpui::Div {
+        let s = self.settings.as_ref();
+        let open = s.is_some_and(|s| s.open_select == Some(key));
+        let label = options.iter().find(|(v, _)| *v == value).map(|(_, l)| l.clone()).unwrap_or_else(|| options.first().map(|(_, l)| l.clone()).unwrap_or_default());
+        let ink: Hsla = Theme::ink().into();
+        let mut out = div().relative().w(px(width)).child(
+            div()
+                .id(SharedString::from(format!("sel-{key}")))
+                .h(px(22.))
+                .pl(px(4.))
+                .pr(px(6.))
+                .flex()
+                .items_center()
+                .justify_between()
+                .text_size(px(16.))
+                .text_color(ink)
+                .cursor_pointer()
+                .child(div().min_w_0().truncate().child(label))
+                .child(ui::icon("chevron-down", 14., ink))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    if let Some(s) = this.settings.as_mut() {
+                        s.open_select = if s.open_select == Some(key) { None } else { Some(key) };
+                        cx.notify();
+                    }
+                })),
+        );
+        if open {
+            let mut list = div()
+                .id(SharedString::from(format!("sel-list-{key}")))
+                .absolute()
+                .top(px(24.))
+                .left_0()
+                .min_w(px(width))
+                .max_h(px(320.))
+                .overflow_y_scroll()
+                .p(px(4.))
+                .rounded(px(8.))
+                .bg(rgb(0x2b2a33))
+                .border_1()
+                .border_color(rgb(0x5b5b66))
+                .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.5), offset: gpui::point(px(0.), px(8.)), blur_radius: px(24.), spread_radius: px(0.) }])
+                .flex()
+                .flex_col()
+                .on_mouse_down_out(cx.listener(move |this, _, _, cx| {
+                    if let Some(s) = this.settings.as_mut()
+                        && s.open_select == Some(key)
+                    {
+                        s.open_select = None;
+                        cx.notify();
+                    }
+                }));
+            for (n, (v, l)) in options.into_iter().enumerate() {
+                let chosen = v == value;
+                let pick = on_pick.clone();
+                list = list.child(
+                    div()
+                        .id(SharedString::from(format!("sel-{key}-{n}")))
+                        .px(px(8.))
+                        .py(px(4.))
+                        .rounded(px(4.))
+                        .text_size(px(14.))
+                        .line_height(px(20.))
+                        .text_color(ink)
+                        .when(chosen, |d| d.bg(rgba(0xffffff1f)))
+                        .hover(|s| s.bg(Theme::lavender()).text_color(rgb(0x15121f)))
+                        .cursor_pointer()
+                        .child(l)
+                        .on_click(cx.listener(move |this, _, _, cx| pick(this, v.clone(), cx))),
+                );
+            }
+            out = out.child(gpui::deferred(list).with_priority(1));
+        }
+        out
+    }
+
+    fn render_voice_page(&self, s: &Settings, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let muted: Hsla = Theme::muted().into();
+        // `.field-label`'s 4px top margin collapses into the 22px between sections; only the first shows it.
+        let field_label = |text: &str| div().when(text == "Devices", |d| d.mt(px(4.))).text_size(px(11.)).line_height(px(16.5)).font_weight(FontWeight::EXTRA_BOLD).text_color(rgb(0xc9cad2)).child(text.to_uppercase());
+        let small_label = |text: &str| div().text_size(px(13.)).line_height(px(19.5)).font_weight(FontWeight::SEMIBOLD).text_color(muted).child(text.to_string());
+        let strong = |text: &str| div().text_size(px(16.)).line_height(px(24.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(text.to_string());
+        let small = |text: String| div().text_size(px(12.8)).line_height(px(19.2)).text_color(muted).child(text);
+        let (inputs, outputs) = s.devices.clone().unwrap_or_default();
+        let with_default = |list: Vec<(String, String)>| {
+            let mut all = vec![(String::new(), "System default".to_string())];
+            all.extend(list);
+            all
+        };
+        let half = (772. - 12.) / 2.;
+        let mut out = Vec::new();
+        // Devices.
+        out.push(
+            div()
+                .flex_none()
+                .mb(px(22.))
+                .flex()
+                .flex_col()
+                .child(field_label("Devices"))
+                .child(
+                    div()
+                        .mt(px(6.))
+                        .flex()
+                        .gap(px(12.))
+                        .child(div().pt(px(10.)).flex().flex_col().gap(px(7.)).child(small_label("Input device")).child(self.select_box(
+                            "input",
+                            s.audio.input.clone().unwrap_or_default(),
+                            with_default(inputs),
+                            half,
+                            std::rc::Rc::new(|this, v, cx| this.change_audio(|a| a.input = (!v.is_empty()).then_some(v), cx)),
+                            cx,
+                        )))
+                        .child(div().pt(px(10.)).flex().flex_col().gap(px(7.)).child(small_label("Output device")).child(self.select_box(
+                            "output",
+                            s.audio.output.clone().unwrap_or_default(),
+                            with_default(outputs),
+                            half,
+                            std::rc::Rc::new(|this, v, cx| this.change_audio(|a| a.output = (!v.is_empty()).then_some(v), cx)),
+                            cx,
+                        ))),
+                )
+                .into_any_element(),
+        );
+        // Mic test: playing the mic back is not in this app yet.
+        out.push(
+            div()
+                .flex_none()
+                .mb(px(22.))
+                .flex()
+                .flex_col()
+                .child(field_label("Mic test"))
+                .child(
+                    div()
+                        .mt(px(6.))
+                        .flex()
+                        .items_center()
+                        .gap(px(14.))
+                        .child(Self::discord_button("mic-check".into(), "Let's check", true).h(px(38.3)).min_w(px(128.)).justify_center().on_click(cx.listener(|this, _, _, cx| this.settings_note("The mic test is not in this app yet.", cx))))
+                        .child(div().flex_1().h(px(12.)).rounded_full().bg(rgba(0xffffff1a))),
+                )
+                .child(Self::hint("Plays your mic straight back to you, with all your settings applied."))
+                .into_any_element(),
+        );
+        // Input mode.
+        let mut modes = div().mt(px(6.)).mb(px(10.)).flex().gap(px(8.));
+        for (mode, label) in [("voice", "Voice activity"), ("ptt", "Push to talk"), ("always", "Always on")] {
+            let on = s.mic.input_mode == mode;
+            modes = modes.child(
+                div()
+                    .id(SharedString::from(format!("mode-{mode}")))
+                    .flex_1()
+                    .h(px(44.))
+                    .rounded(px(10.))
+                    .border_1()
+                    .border_color(if on { Hsla::from(Theme::lavender()) } else { Theme::line().into() })
+                    .bg(if on { Hsla::from(Theme::lavender()) } else { Theme::panel().into() })
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_size(px(16.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(if on { rgb(0x15121f) } else { Theme::ink() })
+                    .cursor_pointer()
+                    .child(label)
+                    .on_click(cx.listener(move |this, _, _, cx| this.change_mic(|m| m.input_mode = mode.into(), cx))),
+            );
+        }
+        let auto = s.mic.auto_sensitivity;
+        out.push(
+            div()
+                .flex_none()
+                .mb(px(22.))
+                .flex()
+                .flex_col()
+                .child(field_label("Input mode"))
+                .child(modes)
+                .child(
+                    Self::switch_box("mic-auto-sens")
+                        .items_center()
+                        .justify_between()
+                        .cursor_pointer()
+                        .child(div().flex().flex_col().gap(px(2.)).child(strong("Automatic sensitivity")).child(small("Works out what is you and what is the room".into())))
+                        .child(Self::checkbox(auto))
+                        .on_click(cx.listener(|this, _, _, cx| this.change_mic(|m| m.auto_sensitivity = !m.auto_sensitivity, cx))),
+                )
+                .into_any_element(),
+        );
+        // Noise suppression: Off turns libwebrtc's off; the stronger ones are the web's own filters.
+        let suppression = s.mic.suppression.clone();
+        let hint = match suppression.as_str() {
+            "off" => "No filtering.",
+            "browser" => "Your browser's built-in filter.",
+            "rnnoise" => "A neural filter for steady noise.",
+            _ => "Also removes other voices near you.",
+        };
+        out.push(
+            div()
+                .flex_none()
+                .mb(px(22.))
+                .flex()
+                .flex_col()
+                .child(field_label("Noise suppression"))
+                .child(div().mt(px(7.)).child(self.select_box(
+                    "suppression",
+                    suppression,
+                    SUPPRESSION.iter().map(|(v, l)| (v.to_string(), l.to_string())).collect(),
+                    772.,
+                    std::rc::Rc::new(|this, v, cx| {
+                        let on = v != "off";
+                        this.change_mic(|m| m.suppression = v.clone(), cx);
+                        this.change_audio(|a| a.noise_suppression = on, cx);
+                    }),
+                    cx,
+                )))
+                .child(Self::hint(hint).mt(px(1.)))
+                .into_any_element(),
+        );
+        // More voice options.
+        let open = s.more_voice;
+        let mut more = div()
+            .flex_none()
+            .mb(px(22.))
+            .rounded(px(12.))
+            .bg(rgba(0x1a162899))
+            .border_1()
+            .border_color(Theme::line())
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .id("more-voice")
+                    .px(px(14.))
+                    .py(px(12.))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .text_size(px(14.))
+                    .line_height(px(21.))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(Theme::ink())
+                    .cursor_pointer()
+                    .child("More voice options")
+                    .child(ui::icon(if open { "chevron-up" } else { "chevron-down" }, 16., muted))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if let Some(s) = this.settings.as_mut() {
+                            s.more_voice = !s.more_voice;
+                            cx.notify();
+                        }
+                    })),
+            );
+        if open {
+            let row = |id: &str, title: &str, desc: &str, on: bool| {
+                Self::switch_box(id)
+                    .items_center()
+                    .justify_between()
+                    .cursor_pointer()
+                    .child(div().flex().flex_col().gap(px(2.)).child(strong(title)).child(small(desc.into())))
+                    .child(Self::checkbox(on))
+            };
+            more = more.child(
+                div()
+                    .px(px(14.))
+                    .pb(px(14.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.))
+                    .child(row("mv-agc", "Automatic input volume", "Levels your voice for you", s.audio.auto_gain).on_click(cx.listener(|this, _, _, cx| this.change_audio(|a| a.auto_gain = !a.auto_gain, cx))))
+                    .child(
+                        row("mv-aec", "Echo cancellation", "Keep on with speakers. On headphones, off keeps your voice fuller", s.audio.echo_cancellation)
+                            .on_click(cx.listener(|this, _, _, cx| this.change_audio(|a| a.echo_cancellation = !a.echo_cancellation, cx))),
+                    )
+                    .child(row("mv-clarity", "Voice clarity", "Cuts desk thumps, fan rumble and mic pops", s.mic.clarity).on_click(cx.listener(|this, _, _, cx| this.change_mic(|m| m.clarity = !m.clarity, cx)))),
+            );
+        }
+        out.push(more.into_any_element());
+        // Video: this app has no camera yet, so only the system's.
+        out.push(
+            div()
+                .flex_none()
+                .mb(px(22.))
+                .flex()
+                .flex_col()
+                .child(field_label("Video"))
+                .child(div().mt(px(10.)).child(small_label("Camera")))
+                .child(div().mt(px(7.)).child(self.select_box("camera", String::new(), vec![(String::new(), "System default".into())], 772., std::rc::Rc::new(|_, _, _| {}), cx)))
+                .into_any_element(),
+        );
+        let _ = window;
         out
     }
 }

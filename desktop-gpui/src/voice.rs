@@ -24,6 +24,74 @@ pub enum VoiceCmd {
     Deafen(bool),
     /// People this app should not play ("Mute for me"), by user id.
     MuteFor(std::collections::HashSet<String>),
+    /// Settings → Voice & Video: devices and libwebrtc's processing, now and for later calls.
+    Audio(AudioPrefs),
+}
+
+/// The microphone and speakers to use (None: the system's) and the processing switches, kept on
+/// this computer like the web's device and mic settings.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AudioPrefs {
+    pub input: Option<String>,
+    pub output: Option<String>,
+    pub noise_suppression: bool,
+    pub echo_cancellation: bool,
+    pub auto_gain: bool,
+}
+
+impl Default for AudioPrefs {
+    fn default() -> Self {
+        Self { input: None, output: None, noise_suppression: true, echo_cancellation: true, auto_gain: true }
+    }
+}
+
+fn prefs_path() -> Option<std::path::PathBuf> {
+    Some(dirs::config_dir()?.join("Hoffle Lite").join("audio.json"))
+}
+
+pub fn load_prefs() -> AudioPrefs {
+    prefs_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+pub fn save_prefs(prefs: &AudioPrefs) {
+    if let Some(path) = prefs_path() {
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+        let _ = std::fs::write(path, serde_json::to_vec(prefs).unwrap_or_default());
+    }
+}
+
+/// The microphones and speakers the system has: (id, name) each.
+pub fn list_devices() -> (Vec<(String, String)>, Vec<(String, String)>) {
+    match PlatformAudio::new() {
+        Ok(audio) => (
+            audio.recording_devices().map(|d| (d.id.as_str().to_string(), d.name.clone())).collect(),
+            audio.playout_devices().map(|d| (d.id.as_str().to_string(), d.name.clone())).collect(),
+        ),
+        Err(_) => (Vec::new(), Vec::new()),
+    }
+}
+
+/// Puts the chosen devices and processing on this audio module.
+fn apply_prefs(audio: &PlatformAudio, prefs: &AudioPrefs, live: bool) {
+    use livekit::{PlayoutDeviceId, RecordingDeviceId};
+    if let Some(id) = prefs.input.as_deref().filter(|i| !i.is_empty()) {
+        let id = RecordingDeviceId::from_unchecked_guid(id);
+        let result = if live { audio.switch_recording_device(&id) } else { audio.set_recording_device(&id) };
+        if let Err(e) = result {
+            log_err(format!("input device not set: {e}"));
+        }
+    }
+    if let Some(id) = prefs.output.as_deref().filter(|i| !i.is_empty()) {
+        let id = PlayoutDeviceId::from_unchecked_guid(id);
+        let result = if live { audio.switch_playout_device(&id) } else { audio.set_playout_device(&id) };
+        if let Err(e) = result {
+            log_err(format!("output device not set: {e}"));
+        }
+    }
+    let _ = audio.set_noise_suppression(prefs.noise_suppression, false);
+    let _ = audio.set_echo_cancellation(prefs.echo_cancellation, false);
+    let _ = audio.set_auto_gain_control(prefs.auto_gain, false);
 }
 
 #[derive(Debug)]
@@ -75,12 +143,13 @@ struct Session {
     deafened: bool,
     muted_for: std::collections::HashSet<String>,
     // Kept alive for as long as the call: dropping the last handle turns the devices off.
-    _audio: PlatformAudio,
+    audio: PlatformAudio,
     events: mpsc::UnboundedReceiver<RoomEvent>,
 }
 
 async fn run(mut commands: mpsc::UnboundedReceiver<VoiceCmd>, events: Sender<VoiceEvent>) {
     let mut session: Option<Session> = None;
+    let mut prefs = load_prefs();
     loop {
         let room_event = async {
             match session.as_mut() {
@@ -96,7 +165,7 @@ async fn run(mut commands: mpsc::UnboundedReceiver<VoiceCmd>, events: Sender<Voi
                         if let Some(old) = session.take() {
                             let _ = old.room.close().await;
                         }
-                        match join(&url, &token, bitrate, muted, deafened).await {
+                        match join(&url, &token, bitrate, muted, deafened, &prefs).await {
                             Ok(s) => {
                                 session = Some(s);
                                 let _ = events.send(VoiceEvent::Connected).await;
@@ -131,6 +200,12 @@ async fn run(mut commands: mpsc::UnboundedReceiver<VoiceCmd>, events: Sender<Voi
                             s.muted_for = users;
                             set_hearing(s);
                         }
+                    }
+                    VoiceCmd::Audio(next) => {
+                        if let Some(s) = &session {
+                            apply_prefs(&s.audio, &next, true);
+                        }
+                        prefs = next;
                     }
                 }
             }
@@ -168,8 +243,9 @@ async fn run(mut commands: mpsc::UnboundedReceiver<VoiceCmd>, events: Sender<Voi
     }
 }
 
-async fn join(url: &str, token: &str, bitrate: u64, muted: bool, deafened: bool) -> Result<Session, String> {
+async fn join(url: &str, token: &str, bitrate: u64, muted: bool, deafened: bool, prefs: &AudioPrefs) -> Result<Session, String> {
     let audio = PlatformAudio::new().map_err(|e| format!("No microphone or speakers found ({e})."))?;
+    apply_prefs(&audio, prefs, false);
     let (room, room_events) = Room::connect(url, token, RoomOptions::default())
         .await
         .map_err(|e| format!("Could not reach the voice server: {e}"))?;
@@ -191,7 +267,7 @@ async fn join(url: &str, token: &str, bitrate: u64, muted: bool, deafened: bool)
     if let Err(err) = room.local_participant().publish_track(LocalTrack::Audio(mic.clone()), options).await {
         log_err(format!("microphone not published: {err}"));
     }
-    let session = Session { room, mic, deafened, muted_for: Default::default(), _audio: audio, events: room_events };
+    let session = Session { room, mic, deafened, muted_for: Default::default(), audio, events: room_events };
     if deafened {
         set_hearing(&session);
     }
