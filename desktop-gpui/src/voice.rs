@@ -102,6 +102,8 @@ pub enum VoiceEvent {
     Disconnected(String),
     /// LiveKit identities (`userId|connectionId`) talking right now.
     Speaking(HashSet<String>),
+    /// A camera or screen share's newest picture (BGRA, as gpui draws), or None when it stopped.
+    Video { identity: String, screen: bool, frame: Option<std::sync::Arc<gpui::RenderImage>> },
     Error(String),
 }
 
@@ -220,7 +222,12 @@ async fn run(mut commands: mpsc::UnboundedReceiver<VoiceCmd>, events: Sender<Voi
                         let ids = speakers.iter().map(|p| p.identity().to_string()).collect();
                         let _ = events.send(VoiceEvent::Speaking(ids)).await;
                     }
-                    RoomEvent::TrackSubscribed { publication, participant, .. } => {
+                    RoomEvent::TrackSubscribed { track, publication, participant } => {
+                        if let RemoteTrack::Video(video) = track {
+                            let screen = publication.source() == TrackSource::Screenshare;
+                            tokio::spawn(watch_video(video, participant.identity().to_string(), screen, events.clone()));
+                            continue;
+                        }
                         // Someone new while deafened (or muted for this app) stays unheard too.
                         if session.as_ref().is_some_and(|s| s.deafened || s.muted_for.contains(user_of(participant.identity().as_str()))) {
                             publication.set_enabled(false);
@@ -287,6 +294,69 @@ fn set_hearing(s: &Session) {
 }
 
 /// A LiveKit identity is `userId|connectionId`.
+/// Development: an I420 picture of one colour (BT.601 limited range), converted the way remote
+/// video is, for checking the byte order and the tiles without a second account in the call.
+pub fn test_picture(r: u8, g: u8, b: u8, w: u32, h: u32) -> std::sync::Arc<gpui::RenderImage> {
+    use livekit::webrtc::prelude::I420Buffer;
+    use livekit::webrtc::video_frame::VideoFormatType;
+    use livekit::webrtc::video_frame::native::VideoFrameBufferExt;
+    let (rf, gf, bf) = (r as f32, g as f32, b as f32);
+    let y = (16. + 0.257 * rf + 0.504 * gf + 0.098 * bf).round() as u8;
+    let u = (128. - 0.148 * rf - 0.291 * gf + 0.439 * bf).round() as u8;
+    let v = (128. + 0.439 * rf - 0.368 * gf - 0.071 * bf).round() as u8;
+    let mut i420 = I420Buffer::new(w, h);
+    {
+        let (ys, us, vs) = i420.data_mut();
+        ys.fill(y);
+        us.fill(u);
+        vs.fill(v);
+    }
+    let mut bgra = vec![0u8; (w * h * 4) as usize];
+    i420.to_argb(VideoFormatType::ARGB, &mut bgra, w * 4, w as i32, h as i32);
+    crate::trace(format!("video test picture: asked rgb({r},{g},{b}), first bytes {:?}", &bgra[..4]));
+    let image = image::RgbaImage::from_raw(w, h, bgra).expect("picture");
+    std::sync::Arc::new(gpui::RenderImage::new(smallvec::smallvec![image::Frame::new(image)]))
+}
+
+/// A remote camera or screen share, decoded: at most 30 pictures a second, the widest side kept to
+/// 1920px, converted to the BGRA gpui draws. Ends (sending None) when the track does.
+async fn watch_video(video: RemoteVideoTrack, identity: String, screen: bool, events: Sender<VoiceEvent>) {
+    use futures_util::StreamExt;
+    use livekit::webrtc::video_frame::VideoFormatType;
+    use livekit::webrtc::video_frame::native::VideoFrameBufferExt;
+    use livekit::webrtc::prelude::VideoBuffer;
+    use livekit::webrtc::video_stream::native::NativeVideoStream;
+    let mut stream = NativeVideoStream::new(video.rtc_track());
+    let mut last: Option<std::time::Instant> = None;
+    while let Some(frame) = stream.next().await {
+        if last.is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(33)) {
+            continue;
+        }
+        last = Some(std::time::Instant::now());
+        let buffer = &frame.buffer;
+        let i420 = match (buffer.as_native(), buffer.as_i420()) {
+            (Some(native), _) => native.to_i420(),
+            (None, Some(i420)) => i420.to_i420(),
+            _ => continue,
+        };
+        let (w, h) = (i420.width(), i420.height());
+        if w == 0 || h == 0 {
+            continue;
+        }
+        let shrink = (1920f32 / w.max(h) as f32).min(1.);
+        let (dw, dh) = (((w as f32 * shrink) as u32).max(2) & !1, ((h as f32 * shrink) as u32).max(2) & !1);
+        let mut bgra = vec![0u8; (dw * dh * 4) as usize];
+        // libyuv's "ARGB" is B, G, R, A in memory.
+        i420.to_argb(VideoFormatType::ARGB, &mut bgra, dw * 4, dw as i32, dh as i32);
+        let Some(image) = image::RgbaImage::from_raw(dw, dh, bgra) else { continue };
+        let picture = std::sync::Arc::new(gpui::RenderImage::new(smallvec::smallvec![image::Frame::new(image)]));
+        if events.send(VoiceEvent::Video { identity: identity.clone(), screen, frame: Some(picture) }).await.is_err() {
+            return;
+        }
+    }
+    let _ = events.send(VoiceEvent::Video { identity, screen, frame: None }).await;
+}
+
 fn user_of(identity: &str) -> &str {
     identity.split('|').next().unwrap_or(identity)
 }

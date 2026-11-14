@@ -19,6 +19,9 @@ tokio = { version = "1.54.1", features = ["rt-multi-thread", "sync", "macros"] }
 ttf-parser = "0.25"
 tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
 unicode-segmentation = "1.13.3"
+# Reading remote video frames (src/voice.rs); both already come with livekit.
+futures-util = "0.3"
+smallvec = "1"
 ureq = { version = "3.5.2", features = ["json"] }
 url = "2.5.8"
 qrcodegen = "1.8.0"

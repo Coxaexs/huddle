@@ -153,7 +153,20 @@ impl Shell {
         // `.voice-grid`: one tile up to 720 wide, two side by side, else as many 220px+ columns as fit.
         let inner = stage_width - 40.;
         let gap = 16.;
-        let n = people.len().max(1);
+        // voice-stage.tsx videoTiles: each remote camera and screen share is a tile of its own, before
+        // the people (in the order they sit).
+        let mut videos: Vec<(String, bool, String)> = Vec::new();
+        for person in &people {
+            let identity = format!("{}|{}", person.id, person.connection_id);
+            for screen in [false, true] {
+                if self.videos.contains_key(&(identity.clone(), screen)) {
+                    let me = self.connection_id.as_deref() == Some(person.connection_id.as_str());
+                    let who = if me { "You" } else { person.name() };
+                    videos.push((identity.clone(), screen, format!("{who} · {}", if screen { "screen" } else { "camera" })));
+                }
+            }
+        }
+        let n = (people.len() + videos.len()).max(1);
         let (cols, tile_w) = match n {
             1 => (1, inner.clamp(280., 720.)),
             2 => (2, ((inner - gap) / 2.).max(220.)),
@@ -166,9 +179,11 @@ impl Shell {
         let rows = n.div_ceil(cols);
         let grid_h = rows as f32 * tile_h + gap * (rows as f32 - 1.);
         let mut grid = div().flex().flex_col().gap(px(gap)).items_center();
-        let mut people_iter = people.iter().peekable();
-        while people_iter.peek().is_some() {
-            let row: Vec<_> = people_iter.by_ref().take(cols).map(|p| self.render_tile(p, tile_w, tile_h, window, cx)).collect();
+        let mut all: Vec<AnyElement> = videos.iter().map(|(identity, screen, label)| self.render_video_tile(identity, *screen, label, tile_w, tile_h)).collect();
+        all.extend(people.iter().map(|p| self.render_tile(p, tile_w, tile_h, window, cx)));
+        let mut tiles_iter = all.into_iter().peekable();
+        while tiles_iter.peek().is_some() {
+            let row: Vec<_> = tiles_iter.by_ref().take(cols).collect();
             grid = grid.child(div().flex().gap(px(gap)).children(row));
         }
         let tiles = div()
@@ -191,6 +206,60 @@ impl Shell {
             split = split.child(self.render_voice_chat(stage, chat_width, cx));
         }
         Some(split.into_any_element())
+    }
+
+    /// `figure.stage-tile.video-tile`: the picture contained on black inside a 2px edge, and the
+    /// "Name · camera" caption with its live dot.
+    fn render_video_tile(&self, identity: &str, screen: bool, label: &str, w: f32, h: f32) -> AnyElement {
+        let picture = self.videos.get(&(identity.to_string(), screen)).cloned();
+        div()
+            .id(SharedString::from(format!("video-{identity}-{screen}")))
+            .relative()
+            .flex_none()
+            .w(px(w))
+            .h(px(h))
+            .rounded(px(16.))
+            .bg(rgb(0xccc8d8))
+            .border_2()
+            .border_color(gpui::transparent_black())
+            .shadow(vec![
+                gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.35), offset: gpui::point(px(0.), px(1.)), blur_radius: px(2.), spread_radius: px(0.) },
+                gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.25), offset: gpui::point(px(0.), px(1.)), blur_radius: px(3.), spread_radius: px(0.) },
+            ])
+            .child(
+                div()
+                    .size_full()
+                    .rounded(px(14.))
+                    .overflow_hidden()
+                    .bg(gpui::black())
+                    .children(picture.map(|p| gpui::img(gpui::ImageSource::Render(p)).size_full().object_fit(gpui::ObjectFit::Contain))),
+            )
+            .child(
+                div().absolute().left(px(10.)).bottom(px(10.)).child(
+                    div()
+                        .px(px(10.))
+                        .py(px(4.))
+                        .rounded_full()
+                        .bg(gpui::hsla(0., 0., 0., 0.5))
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .text_size(px(13.))
+                        .line_height(px(19.5))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(gpui::white())
+                        .child(
+                            div().size(px(8.)).rounded_full().bg(rgb(0xf59e6e)).shadow(vec![gpui::BoxShadow {
+                                color: Hsla::from(rgb(0xf59e6e)).opacity(0.3),
+                                offset: gpui::point(px(0.), px(0.)),
+                                blur_radius: px(0.),
+                                spread_radius: px(3.),
+                            }]),
+                        )
+                        .child(div().opacity(0.9).child(label.to_string())),
+                ),
+            )
+            .into_any_element()
     }
 
     fn render_tile(&self, person: &VoiceParticipant, w: f32, h: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {

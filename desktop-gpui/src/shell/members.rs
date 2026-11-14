@@ -278,6 +278,18 @@ impl gpui::Render for Shell {
                 self.ctx_menu = Some(super::context_menu::CtxMenu { message_id: id, at: gpui::point(px(x), px(y)), expanded: false });
             }
         }
+        // Development: HOFFLE_DEV_FAKE_VIDEO=camera|screen puts a test picture (Chrome's fake-camera
+        // green, 1280x720) up as your own camera or screen once you are in a call.
+        if let Ok(kind) = std::env::var("HOFFLE_DEV_FAKE_VIDEO")
+            && self.videos.is_empty()
+            && let Some(call) = &self.call
+            && let Some(conn) = self.connection_id.clone()
+        {
+            let _ = call;
+            let identity = format!("{}|{}", self.me.id, conn);
+            let picture = crate::voice::test_picture(242, 163, 124, 1280, 720);
+            self.videos.insert((identity, kind == "screen"), picture);
+        }
         // Development: HOFFLE_DEV_BOTMENU=x,y opens the music bot's menu there once.
         if let Ok(spec) = std::env::var("HOFFLE_DEV_BOTMENU")
             && !self.dev_botmenu_done

@@ -215,6 +215,8 @@ pub struct Shell {
     pending_command: Option<(String, String)>,
     /// /api/features: session recording is switched on here.
     features_record: bool,
+    /// The newest picture of each camera and screen share in the call, by (LiveKit identity, screen).
+    videos: HashMap<(String, bool), std::sync::Arc<gpui::RenderImage>>,
     /// Push to talk: its key is held right now.
     ptt_held: bool,
     /// The number last put on the dock icon.
@@ -453,6 +455,7 @@ impl Shell {
             bot_commands: Vec::new(),
             last_badge: None,
             ptt_held: false,
+            videos: HashMap::new(),
             tips_seen: simple::load_tips_seen(),
             was_simple: false,
             emojis: HashMap::new(),
@@ -1415,6 +1418,9 @@ impl Shell {
     fn leave_voice(&mut self, cx: &mut Context<Self>) {
         self.close_stage();
         self.ptt_held = false;
+        for (_, old) in self.videos.drain() {
+            cx.drop_image(old, None);
+        }
         if self.call.take().is_some() {
             crate::sounds::play("disconnect");
             self.voice.send(VoiceCmd::Leave(None));
@@ -1477,6 +1483,20 @@ impl Shell {
     }
 
     fn on_voice(&mut self, event: VoiceEvent, cx: &mut Context<Self>) {
+        // A picture from a camera or screen share: kept as the newest for that person, the one it
+        // replaces freed from the GPU (30 a second would fill it otherwise).
+        if let VoiceEvent::Video { identity, screen, frame } = event {
+            let key = (identity, screen);
+            let old = match frame {
+                Some(frame) => self.videos.insert(key, frame),
+                None => self.videos.remove(&key),
+            };
+            if let Some(old) = old {
+                cx.drop_image(old, None);
+            }
+            cx.notify();
+            return;
+        }
         crate::trace(format!("voice: {event:?}"));
         match event {
             VoiceEvent::Connected => {
@@ -1508,6 +1528,8 @@ impl Shell {
                     call.speaking = ids;
                 }
             }
+            // Handled above.
+            VoiceEvent::Video { .. } => {}
             VoiceEvent::Error(err) => {
                 self.status = Some(err.into());
                 if self.call.take().is_some() {
