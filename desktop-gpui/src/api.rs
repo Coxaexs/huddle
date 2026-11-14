@@ -119,6 +119,15 @@ impl Client {
         self.post(path, body)
     }
 
+    pub fn settings_patch(&self, path: &str, body: Value) -> Result<Value> {
+        let mut request = self.agent.patch(format!("{}{path}", self.base)).header("Origin", self.absolute(""));
+        if let Some(cookie) = self.cookie_header() {
+            request = request.header("Cookie", &cookie);
+        }
+        let response = request.send_json(body).with_context(|| format!("PATCH {path}"))?;
+        read(response, path)
+    }
+
     pub fn settings_delete(&self, path: &str, body: Value) -> Result<Value> {
         self.delete_json(path, body)
     }

@@ -271,7 +271,9 @@ impl gpui::Render for Shell {
         {
             self.dev_settings_done = true;
             self.open_settings(window, cx);
-            let _ = n;
+            if let Ok(n) = n.parse::<usize>() {
+                self.dev_settings_page(n, cx);
+            }
             // HOFFLE_DEV_SETTINGS_SCROLL=<px>: the page scrolled that far.
             if let Some(y) = std::env::var("HOFFLE_DEV_SETTINGS_SCROLL").ok().and_then(|v| v.parse::<f32>().ok()) {
                 self.dev_settings_scroll(y);

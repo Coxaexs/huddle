@@ -72,8 +72,23 @@ fn nav() -> Vec<(String, Vec<NavItem>)> {
     ]
 }
 
-/// The Password page's sections that the sidebar rail jumps to, by their place in the page.
-const ACCOUNT_ANCHORS: [(&str, usize); 4] = [("Username", 0), ("Email", 1), ("Password", 2), ("Delete account", 7)];
+/// The sections of a page that the sidebar rail jumps to, by their place in the page.
+fn anchors(tab: Tab) -> Vec<(String, usize)> {
+    match tab {
+        Tab::Password => vec![("Username".into(), 0), ("Email".into(), 1), ("Password".into(), 2), ("Delete account".into(), 7)],
+        Tab::Privacy => vec![(t("privacy.dmTitle"), 0), (t("privacy.streamerTitle"), 1)],
+        _ => Vec::new(),
+    }
+}
+
+/// Streamer Mode: off, on while sharing the screen, or always (kept on this computer).
+pub(super) fn streamer_setting() -> String {
+    streamer_path().and_then(|p| std::fs::read_to_string(p).ok()).map(|s| s.trim().to_string()).filter(|s| ["off", "auto", "on"].contains(&s.as_str())).unwrap_or_else(|| "off".into())
+}
+
+fn streamer_path() -> Option<std::path::PathBuf> {
+    Some(dirs::config_dir()?.join("Hoffle Lite").join("streamer-mode"))
+}
 
 pub(super) struct Settings {
     pub tab: Tab,
@@ -95,6 +110,10 @@ pub(super) struct Settings {
     delete_messages: bool,
     deleting: bool,
     security: Security,
+    /// Privacy: who may start a conversation (None until loaded), and the line under it.
+    dm_policy: Option<String>,
+    privacy_status: Option<String>,
+    streamer: String,
     _subs: Vec<Subscription>,
 }
 
@@ -177,9 +196,21 @@ impl Shell {
             delete_messages: false,
             deleting: false,
             security,
+            dm_policy: None,
+            privacy_status: None,
+            streamer: streamer_setting(),
             _subs: subs,
         });
         self.load_security(cx);
+        self.settings_call(
+            cx,
+            |c| c.settings_get("/api/settings/privacy"),
+            |this, result, _| {
+                if let Some(s) = this.settings.as_mut() {
+                    s.dm_policy = Some(result.ok().and_then(|v| v.get("dmPolicy").and_then(Value::as_str).map(str::to_string)).unwrap_or_else(|| "everyone".into()));
+                }
+            },
+        );
         cx.notify();
     }
 
@@ -187,6 +218,13 @@ impl Shell {
         if self.settings.take().is_some() {
             window.focus(&gpui::Focusable::focus_handle(&self.composer, cx));
             cx.notify();
+        }
+    }
+
+    /// Development: the n-th page of the sidebar.
+    pub(super) fn dev_settings_page(&mut self, n: usize, cx: &mut Context<Self>) {
+        if let Some(tab) = nav().into_iter().flat_map(|(_, items)| items).nth(n).map(|i| i.tab) {
+            self.settings_tab(tab, cx);
         }
     }
 
@@ -739,16 +777,17 @@ impl Shell {
 
     /// `.settings-subnav`: the open page's sections, the one in view marked.
     fn render_settings_rail(&self, s: &Settings, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if s.tab != Tab::Password {
+        let list = anchors(s.tab);
+        if list.len() < 2 {
             return None;
         }
         let top = s.scroll.logical_scroll_top().0;
         // Scrolled to the end, the last section is the one being read.
         let at_end = s.scroll.max_offset().height > px(0.) && -s.scroll.offset().y >= s.scroll.max_offset().height - px(1.);
-        let current = if at_end { ACCOUNT_ANCHORS[ACCOUNT_ANCHORS.len() - 1].1 } else { ACCOUNT_ANCHORS.iter().rev().find(|(_, ix)| *ix <= top).map_or(0, |(_, ix)| *ix) };
+        let current = if at_end { list[list.len() - 1].1 } else { list.iter().rev().find(|(_, ix)| *ix <= top).map_or(0, |(_, ix)| *ix) };
         let rail_color: Hsla = Hsla::from(Theme::muted()).opacity(0.35);
         let mut rail = div().mt(px(2.)).mb(px(6.)).ml(px(20.)).border_l_1().border_color(rail_color).flex().flex_col();
-        for (label, ix) in ACCOUNT_ANCHORS {
+        for (label, ix) in list {
             let active = ix == current;
             let scroll = s.scroll.clone();
             rail = rail.child(
@@ -825,18 +864,21 @@ impl Shell {
             .px(px(44.))
             .pb(px(56.))
             .flex()
-            .flex_col()
-            .gap(px(18.));
-        if s.tab == Tab::Password {
-            for section in self.render_account_page(s, window, cx) {
-                content = content.child(section);
-            }
+            .flex_col();
+        let page = match s.tab {
+            // `.account-settings`: 18px between its sections.
+            Tab::Password => self.render_account_page(s, window, cx).into_iter().enumerate().map(|(n, e)| div().when(n > 0, |d| d.mt(px(18.))).child(e).into_any_element()).collect(),
+            Tab::Privacy => self.render_privacy_page(s, cx),
+            _ => Vec::new(),
+        };
+        for section in page {
+            content = content.child(section);
         }
         if let Some(error) = &s.error {
-            content = content.child(Self::auth_error(error.clone()).mt(px(-6.)));
+            content = content.child(Self::auth_error(error.clone()).mt(px(12.)));
         }
         if let Some(status) = &s.status {
-            content = content.child(div().mt(px(-6.)).text_size(px(13.)).line_height(px(19.5)).text_color(Theme::mint()).child(status.clone()));
+            content = content.child(div().mt(px(12.)).text_size(px(13.)).line_height(px(19.5)).text_color(Theme::mint()).child(status.clone()));
         }
         div().flex_1().min_w_0().h_full().bg(Theme::chat_bg()).flex().flex_col().child(topbar).child(content).into_any_element()
     }
@@ -1393,5 +1435,113 @@ fn when(iso: Option<&str>) -> String {
         tv(if hours == 1 { "security.when.hours.one" } else { "security.when.hours.other" }, &[("count", &hours.to_string())])
     } else {
         t0.with_timezone(&chrono::Local).format_localized("%-d %b %Y", chrono::Locale::en_US).to_string()
+    }
+}
+
+impl Shell {
+    fn choose_dm_policy(&mut self, next: &'static str, cx: &mut Context<Self>) {
+        let Some(s) = self.settings.as_mut() else { return };
+        let previous = s.dm_policy.replace(next.to_string());
+        s.privacy_status = None;
+        self.settings_call(
+            cx,
+            move |c| c.settings_patch("/api/settings/privacy", json!({ "dmPolicy": next })),
+            move |this, result, _| {
+                let Some(s) = this.settings.as_mut() else { return };
+                match result {
+                    Ok(_) => s.privacy_status = Some(t("privacy.saved")),
+                    Err(e) => {
+                        s.dm_policy = previous;
+                        s.privacy_status = Some(if e.to_string().is_empty() { t("privacy.failed") } else { e.to_string() });
+                    }
+                }
+            },
+        );
+    }
+
+    fn set_streamer(&mut self, value: &'static str, cx: &mut Context<Self>) {
+        if let Some(path) = streamer_path() {
+            let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+            let _ = std::fs::write(path, value);
+        }
+        if let Some(s) = self.settings.as_mut() {
+            s.streamer = value.to_string();
+        }
+        cx.notify();
+    }
+
+    /// `label.appearance-switch` holding a radio: the choice in bold, the browser's radio on the right.
+    fn radio_row(id: String, label: String, checked: bool, enabled: bool) -> gpui::Stateful<gpui::Div> {
+        div()
+            .id(SharedString::from(id))
+            .h(px(48.))
+            .px(px(12.))
+            .rounded(px(12.))
+            .bg(Theme::panel())
+            .border_1()
+            .border_color(Theme::line())
+            .flex()
+            .items_center()
+            .justify_between()
+            .when(enabled, |d| d.cursor_pointer())
+            .child(div().text_size(px(16.)).line_height(px(24.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(label))
+            .child(
+                // Chrome's dark radio, 19px with its margins: a grey ring, the accent dot when chosen.
+                div()
+                    .mr(px(1.))
+                    .size(px(17.))
+                    .rounded_full()
+                    .border_1()
+                    .border_color(rgb(0x9b9aa3))
+                    .bg(if checked { rgb(0x2b2541) } else { rgb(0x3b3b3b) })
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .when(checked, |d| d.child(div().size(px(11.)).rounded_full().bg(rgb(0x9d8cfa))))
+                    .when(!enabled, |d| d.opacity(0.5)),
+            )
+    }
+
+    fn render_privacy_page(&self, s: &Settings, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let section = |id: &str| {
+            div()
+                .id(SharedString::from(id.to_string()))
+                .flex_none()
+                .p(px(18.))
+                .rounded(px(12.))
+                .bg(rgba(0x00000038))
+                .border_1()
+                .border_color(Theme::line())
+                .flex()
+                .flex_col()
+        };
+        let loaded = s.dm_policy.is_some();
+        let mut dms = div().mt(px(12.)).flex().flex_col().gap(px(8.));
+        for policy in ["everyone", "servers", "friends"] {
+            let checked = s.dm_policy.as_deref() == Some(policy);
+            dms = dms.child(Self::radio_row(format!("pv-dm-{policy}"), t(&format!("privacy.dm.{policy}")), checked, loaded).when(loaded && !checked, |d| {
+                d.on_click(cx.listener(move |this, _, _, cx| this.choose_dm_policy(policy, cx)))
+            }));
+        }
+        let mut streamer = div().mt(px(12.)).flex().flex_col().gap(px(8.));
+        for value in ["off", "auto", "on"] {
+            let checked = s.streamer == value;
+            streamer = streamer.child(Self::radio_row(format!("pv-st-{value}"), t(&format!("privacy.streamer.{value}")), checked, true).when(!checked, |d| {
+                d.on_click(cx.listener(move |this, _, _, cx| this.set_streamer(value, cx)))
+            }));
+        }
+        vec![
+            section("pv-dms")
+                .child(Self::section_title(&t("privacy.dmTitle"), None))
+                .child(Self::hint(t("privacy.dmDesc")).mt(px(4.)))
+                .child(dms)
+                .when_some(s.privacy_status.clone(), |d, status| d.child(Self::hint(status).mb(px(12.))))
+                .into_any_element(),
+            section("pv-streamer")
+                .child(Self::section_title(&t("privacy.streamerTitle"), None))
+                .child(Self::hint(t("privacy.streamerDesc")).mt(px(4.)))
+                .child(streamer)
+                .into_any_element(),
+        ]
     }
 }
