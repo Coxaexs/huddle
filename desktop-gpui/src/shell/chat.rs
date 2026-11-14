@@ -751,6 +751,7 @@ impl Shell {
         let mut row = div().flex().flex_wrap().gap(px(5.)).mt(px(6.));
         for reaction in &message.reactions {
             let (id, e) = (message.id.clone(), reaction.emoji.clone());
+            let spot = super::profile_card::spot();
             let lavender: gpui::Hsla = Theme::lavender().into();
             row = row.child(
                 div()
@@ -785,9 +786,20 @@ impl Shell {
                             .text_color(if reaction.mine { gpui::white().into() } else { gpui::Hsla::from(Theme::muted()) })
                             .child(reaction.count.to_string()),
                     )
+                    .child(super::profile_card::track(&spot))
+                    .relative()
+                    .on_mouse_down(gpui::MouseButton::Right, {
+                        let (id, e, spot) = (message.id.clone(), reaction.emoji.clone(), spot.clone());
+                        cx.listener(move |this, _: &gpui::MouseDownEvent, _, cx| {
+                            cx.stop_propagation();
+                            this.open_reaction_viewer(id.clone(), e.clone(), spot.get(), cx);
+                        })
+                    })
                     .on_click(cx.listener(move |this, _, _, cx| this.toggle_reaction(id.clone(), e.clone(), cx))),
             );
         }
+        let add_spot = super::profile_card::spot();
+        let add_id = message.id.clone();
         row.child(
             div()
                 .id(SharedString::from(format!("rx-add-{}", message.id)))
@@ -801,7 +813,10 @@ impl Shell {
                 .items_center()
                 .cursor_pointer()
                 .tooltip(ui::tooltip("Add reaction · Shift-click to add to quick reactions"))
-                .child(icon("smile-plus", 14., Theme::muted())),
+                .child(icon("smile-plus", 14., Theme::muted()))
+                .relative()
+                .child(super::profile_card::track(&add_spot))
+                .on_click(cx.listener(move |this, _, window, cx| this.open_reaction_picker(add_id.clone(), add_spot.get().origin, window, cx))),
         )
     }
 

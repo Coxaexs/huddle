@@ -22,6 +22,7 @@ pub use links::Preview;
 pub use user_menu::VoicePref;
 pub use side_panels::{MentionEntry, SavedEntry, SearchResult};
 mod rail;
+mod reaction_viewer;
 mod server_menu;
 mod sidebar;
 
@@ -173,6 +174,7 @@ pub struct Shell {
     dev_joined: bool,
     dev_edit_done: bool,
     dev_ctx_done: bool,
+    dev_rv_done: bool,
     dev_extras_done: bool,
     /// Who is typing where: (user id, name, when it was last heard).
     typing: HashMap<String, Vec<(String, String, Instant)>>,
@@ -233,6 +235,9 @@ pub struct Shell {
     notify_menu: Option<notify_menu::NotifyMenu>,
     server_menu_closed: Option<Instant>,
     channel_prefs: HashMap<String, String>,
+    /// Who reacted with one emoji to a message, and where its rows were drawn.
+    reaction_viewer: Option<reaction_viewer::ReactionViewer>,
+    viewer_spot: profile_card::Spot,
     /// The GIF / sticker picker over the composer.
     gif_picker: Option<gif_picker::GifPicker>,
     /// Files waiting in the composer.
@@ -359,6 +364,7 @@ impl Shell {
             dev_joined: false,
             dev_edit_done: false,
             dev_ctx_done: false,
+            dev_rv_done: false,
             dev_extras_done: false,
             typing: HashMap::new(),
             reads: HashMap::new(),
@@ -393,6 +399,8 @@ impl Shell {
             stage: None,
             pending_files: Vec::new(),
             gif_picker: None,
+            reaction_viewer: None,
+            viewer_spot: profile_card::spot(),
             server_menu: false,
             notify_menu: None,
             server_menu_closed: None,
@@ -638,6 +646,7 @@ impl Shell {
                 Some(r) if reactions[r].mine => {
                     reactions[r].mine = false;
                     reactions[r].count = reactions[r].count.saturating_sub(1);
+                    reactions[r].users.retain(|u| u.id != self.me.id);
                     if reactions[r].count == 0 {
                         reactions.remove(r);
                     }
@@ -645,8 +654,9 @@ impl Shell {
                 Some(r) => {
                     reactions[r].mine = true;
                     reactions[r].count += 1;
+                    reactions[r].users.push(self.me.clone());
                 }
-                None => reactions.push(model::Reaction { emoji: emoji.clone(), count: 1, mine: true }),
+                None => reactions.push(model::Reaction { emoji: emoji.clone(), count: 1, mine: true, users: vec![self.me.clone()] }),
             }
             self.list.splice(ix..ix + 1, 1);
         }
@@ -1089,6 +1099,20 @@ impl Shell {
                 if mine {
                     return;
                 }
+                // Who it was, for the reaction viewer: a member, or the event's own `reactor`.
+                let user_id = value.get("userId").and_then(Value::as_str).unwrap_or_default().to_string();
+                let reactor: User = match self.member_anywhere(&user_id) {
+                    Some(m) => User {
+                        id: m.id.clone(),
+                        username: m.username.clone(),
+                        display_name: m.display_name.clone(),
+                        avatar: m.avatar.clone(),
+                        avatar_url: m.avatar_url.clone(),
+                        color: m.color.clone(),
+                        ..Default::default()
+                    },
+                    None => value.get("reactor").cloned().and_then(|r| serde_json::from_value(r).ok()).unwrap_or(User { id: user_id.clone(), ..Default::default() }),
+                };
                 if let Some(channel) = channel
                     && let Some(list) = self.messages.get_mut(&channel)
                     && let Some(ix) = list.iter().position(|m| m.id == id)
@@ -1098,9 +1122,11 @@ impl Shell {
                         Some(r) if added => {
                             reactions[r].count += 1;
                             reactions[r].mine |= mine;
+                            reactions[r].users.push(reactor);
                         }
                         Some(r) => {
                             reactions[r].count = reactions[r].count.saturating_sub(1);
+                            reactions[r].users.retain(|u| u.id != user_id);
                             if mine {
                                 reactions[r].mine = false;
                             }
@@ -1108,7 +1134,7 @@ impl Shell {
                                 reactions.remove(r);
                             }
                         }
-                        None if added => reactions.push(model::Reaction { emoji, count: 1, mine }),
+                        None if added => reactions.push(model::Reaction { emoji, count: 1, mine, users: vec![reactor] }),
                         None => {}
                     }
                     if self.channel_id.as_deref() == Some(&channel) {

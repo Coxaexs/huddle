@@ -154,6 +154,8 @@ pub struct Reaction {
     pub emoji: String,
     pub count: u32,
     pub mine: bool,
+    /// Who reacted, for the reaction viewer.
+    pub users: Vec<User>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

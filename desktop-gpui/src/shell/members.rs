@@ -377,6 +377,17 @@ impl gpui::Render for Shell {
                 self.list.scroll_to_item(ix);
             }
         }
+        // HOFFLE_DEV_RV=<message id prefix>,x,y,w,h: who reacted (first reaction), as if from there.
+        if let Ok(spec) = std::env::var("HOFFLE_DEV_RV").map(|v| v).ok().filter(|_| self.reaction_viewer.is_none() && !self.dev_rv_done).ok_or(()) {
+            let mut parts = spec.split(',');
+            let prefix = parts.next().unwrap_or_default().to_string();
+            let n: Vec<f32> = parts.filter_map(|v| v.trim().parse().ok()).collect();
+            let found = self.channel_id.as_ref().and_then(|c| self.messages.get(c)).and_then(|l| l.iter().find(|m| m.id.starts_with(&prefix))).and_then(|m| m.reactions.first().map(|r| (m.id.clone(), r.emoji.clone())));
+            if let (Some((id, emoji)), [x, y, w, h]) = (found, n.as_slice()) {
+                self.dev_rv_done = true;
+                self.open_reaction_viewer(id, emoji, gpui::Bounds::new(gpui::point(px(*x), px(*y)), gpui::size(px(*w), px(*h))), cx);
+            }
+        }
         let members_open = self.members_open;
         // The composer grows to 40% of the window (`max-height: 40vh`), less its padding.
         let cap = f32::from(window.bounds().size.height) * 0.4 - 18.;
@@ -419,6 +430,7 @@ impl gpui::Render for Shell {
             .children(self.render_user_menu(window, cx))
             .children(self.render_server_menu(cx))
             .children(self.render_notify_menu(window, cx))
+            .children(self.render_reaction_viewer(window, cx))
             .children(self.render_profile(window, cx))
             .children(self.render_picker(window, cx))
             .children(self.render_context_menu(window, cx))
