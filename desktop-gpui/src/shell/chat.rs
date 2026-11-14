@@ -573,9 +573,17 @@ impl Shell {
                     this.open_context_menu(id.clone(), event.position, cx);
                 })
             });
-        // `.system-message` (pins, people joining or leaving a group) takes the article's place.
-        let system = message.kind.as_deref().is_some_and(|k| k.starts_with("system-"));
-        let article: AnyElement = if system { self.render_system_message(message, window, cx) } else { article.into_any_element() };
+        // `.system-message` (pins, people joining or leaving a group) and the Nudge / winkie lines
+        // take the article's place.
+        let line = super::system_message::nudge_or_wink(message);
+        let system = line.is_some() || message.kind.as_deref().is_some_and(|k| k.starts_with("system-"));
+        let article: AnyElement = if line.is_some() {
+            self.render_nudge_line(message, cx)
+        } else if system {
+            self.render_system_message(message, window, cx)
+        } else {
+            article.into_any_element()
+        };
         // Articles have 8px side margins; a system line has none.
         let side = if system { 18. } else { 10. };
         let row = div()
@@ -616,14 +624,14 @@ impl Shell {
                 ),
             );
         } else {
-            // Its 2px margin collapses with an article's 1px.
-            let after_system = prev.is_some_and(|p| p.kind.as_deref().is_some_and(|k| k.starts_with("system-")));
-            column = column.child(gap(if system || after_system { 2. } else { 1. }));
+            // Neighbouring margins collapse into the larger one.
+            let margin = prev.map_or(0., super::system_message::row_margin).max(super::system_message::row_margin(message));
+            column = column.child(gap(margin));
         }
         column = column.child(row);
         if last {
             // The last margin and `.messages` padding-bottom.
-            column = column.child(gap(if system { 2. } else { 1. } + 8.));
+            column = column.child(gap(super::system_message::row_margin(message) + 8.));
         }
         column.into_any_element()
     }

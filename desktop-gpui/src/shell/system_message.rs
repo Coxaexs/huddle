@@ -8,7 +8,90 @@ use crate::model::{self, Message};
 use crate::theme::Theme;
 use crate::ui;
 
+/// The winkies an MSN-themed message can carry (msn-chrome.tsx MSN_WINKS): id, name, emoji.
+const WINKS: [(&str, &str, &str); 39] = [
+    ("kiss", "Kiss", "💋"), ("heart", "Heart", "💗"), ("laugh", "Laughing Face", "😆"), ("laughing-girl", "Laughing Girl", "🤣"),
+    ("guitar-smash", "Guitar Smash", "🎸"), ("frog", "Frog", "🐸"), ("bow", "Bow", "🙇"), ("knock", "Knock", "✊"),
+    ("dancing-pig", "Dancing Pig", "🐷"), ("love-letter", "Love Letter", "💌"), ("birthday", "Birthday Cake", "🎂"),
+    ("water-balloon", "Water Balloon", "💦"), ("fartguy", "Fart Guy", "💨"), ("ufo", "UFO", "🛸"), ("sleepy", "Sleepy Guard", "💂"),
+    ("yawning-moon", "Yawning Moon", "🌙"), ("waiting", "Waiting", "⏳"), ("busy", "Busy", "📞"), ("cry", "Crying Dog", "😭"),
+    ("punch", "Punch", "🥊"), ("dart", "Bullseye", "🎯"), ("bouncy-ball", "Bouncy Smiley", "🙂"), ("silly-face", "Silly Face", "🤪"),
+    ("eyeball", "Eyeball", "👁️"), ("lightbulb", "Bright Idea", "💡"), ("imissyou", "I Miss You", "🥺"), ("heartkey", "Key to My Heart", "🗝️"),
+    ("lipstick-girl", "Lipstick", "💄"), ("rich", "Gold Coins", "💰"), ("drink", "Cheers", "🍻"), ("sunflower", "Sunflower", "🌻"),
+    ("stars", "Shooting Stars", "✨"), ("notes", "Music Notes", "🎵"), ("dance", "Dancing Bunny", "🐰"), ("dancer", "Dancer", "🕺"),
+    ("snowboarder-girl", "Snowboarder", "🏂"), ("taxi", "Rocket Taxi", "🚀"), ("hello", "Hello!", "👋"), ("byebye", "Bye Bye", "🪂"),
+];
+
+pub(super) enum Line {
+    Nudge,
+    Wink(&'static str, &'static str),
+}
+
+/// findWink, with the old ids that still replay.
+pub(super) fn nudge_or_wink(message: &Message) -> Option<Line> {
+    let payload = message.payload.as_ref()?;
+    if payload.get("nudge").and_then(serde_json::Value::as_bool) == Some(true) {
+        return Some(Line::Nudge);
+    }
+    let id = payload.get("wink").and_then(serde_json::Value::as_str)?;
+    let id = match id {
+        "hearts" => "heart",
+        "cake" => "birthday",
+        "storm" => "water-balloon",
+        "fireworks" => "stars",
+        "guitar" => "guitar-smash",
+        "flowers" => "sunflower",
+        "ghost" => "ufo",
+        other => other,
+    };
+    WINKS.iter().find(|(w, _, _)| *w == id).map(|(_, name, emoji)| Line::Wink(name, emoji))
+}
+
+/// A row's vertical margin: articles 1px, system lines 2px, Nudge / winkie lines 8px.
+pub(super) fn row_margin(message: &Message) -> f32 {
+    if nudge_or_wink(message).is_some() {
+        8.
+    } else if message.kind.as_deref().is_some_and(|k| k.starts_with("system-")) {
+        2.
+    } else {
+        1.
+    }
+}
+
 impl Shell {
+    /// `.nudge-line`: a rule, "{name} just sent you a Nudge!" (or the winkie and Play), a rule.
+    pub(super) fn render_nudge_line(&self, message: &Message, cx: &mut Context<Self>) -> AnyElement {
+        let muted: Hsla = Theme::muted().into();
+        let mine = message.user_id.as_deref() == Some(self.me.id.as_str());
+        let name = message.user_id.as_ref().and_then(|id| self.member(id)).map(|m| m.display_name_or_name()).filter(|n| !n.is_empty()).unwrap_or_else(|| message.author.clone());
+        let rule = || div().flex_1().h(px(1.)).bg(Theme::line());
+        let mut row = div().w_full().h(px(18.)).flex().items_center().gap(px(10.)).text_size(px(12.)).line_height(px(18.)).text_color(muted).child(rule());
+        match nudge_or_wink(message) {
+            Some(Line::Wink(wink, emoji)) => {
+                row = row
+                    .child(div().text_size(px(15.)).child(emoji))
+                    .child(if mine { crate::i18n::tv("msn.winkSent", &[("name", wink)]) } else { crate::i18n::tv("msn.winkReceived", &[("name", &name), ("wink", wink)]) })
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("wink-{}", message.id)))
+                            .px(px(6.))
+                            .rounded(px(3.))
+                            .border_1()
+                            .border_color(Theme::lavender())
+                            .text_size(px(11.))
+                            .text_color(Theme::lavender())
+                            .cursor_pointer()
+                            .child(crate::i18n::t("msn.winkPlay"))
+                            .on_click(cx.listener(|this, _, _, cx| this.set_notice("Winkies do not play in this app yet.", cx))),
+                    );
+            }
+            _ => {
+                row = row.child(if mine { crate::i18n::t("msn.nudged") } else { crate::i18n::tv("msn.receivedNudge", &[("name", &name)]) });
+            }
+        }
+        row.child(rule()).into_any_element()
+    }
+
     pub(super) fn render_system_message(&self, message: &Message, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let kind = message.kind.as_deref().unwrap_or_default();
         let muted: Hsla = Theme::muted().into();
