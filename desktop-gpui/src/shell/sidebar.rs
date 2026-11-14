@@ -62,6 +62,20 @@ impl Shell {
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_server_menu(cx))),
             );
 
+        if self.simple() {
+            return div()
+                .w(px(240.))
+                .h_full()
+                .flex_none()
+                .flex()
+                .flex_col()
+                .pb(px(super::rail::FOOTER_ROOM))
+                .bg(Theme::panel())
+                .child(header)
+                .child(self.render_simple_rooms(server, window, cx))
+                .children(self.render_mini_voice_bar(window, cx))
+                .into_any_element();
+        }
         let mut nav = div()
             .id("channel-nav")
             .flex_1()
@@ -187,11 +201,12 @@ impl Shell {
         let text = channel.is_text();
         let base = self.client.base().to_string();
         let server_id = channel.server_id.clone();
+        let simple = self.simple();
         div()
             .id(SharedString::from(format!("channel-{}", channel.id)))
             .relative()
             .flex_none()
-            .h(px(38.))
+            .h(px(if simple { 36.4 } else { 38. }))
             .px(px(10.))
             .mx(px(1.))
             .rounded(px(12.))
@@ -199,20 +214,23 @@ impl Shell {
             .items_center()
             .gap(px(9.))
             .cursor_pointer()
-            .text_size(px(13.))
-            .line_height(px(19.5))
+            .text_size(px(if simple { 14.5 } else { 13. }))
+            .line_height(px(if simple { 21.75 } else { 19.5 }))
             .when(selected, |d| d.bg(Theme::lavender_soft()).text_color(Theme::lavender()).font_weight(FontWeight::BOLD))
+            // Simple: the selected room has a 2px accent edge on its left.
+            .when(selected && simple, |d| d.child(div().absolute().inset_0().rounded(px(12.)).border_l_2().border_color(Theme::lavender())))
             .when(!selected, |d| {
                 d.text_color(if unread { Theme::ink() } else { Theme::quiet() })
                     .font_weight(if unread { FontWeight::BOLD } else { FontWeight::SEMIBOLD })
                     .hover(|s| s.bg(Theme::hover()).text_color(Theme::ink()))
             })
             .when(unread, |d| {
-                d.child(div().absolute().left(px(-11.)).top(px(15.)).w(px(4.)).h(px(8.)).rounded_r(px(4.)).bg(Theme::ink()))
+                d.child(div().absolute().left(px(-11.)).top(px(if simple { 14.2 } else { 15. })).w(px(4.)).h(px(8.)).rounded_r(px(4.)).bg(Theme::ink()))
             })
-            .child(icon(channel.icon(), 16., if selected { Theme::lavender() } else { Theme::quiet() }))
+            // Simple hides the channel's kind icon and lock.
+            .when(!simple, |d| d.child(icon(channel.icon(), 16., if selected { Theme::lavender() } else { Theme::quiet() })))
             .child(div().flex_1().min_w_0().truncate().child(channel.name.clone()))
-            .when(channel.private, |d| d.child(icon("lock", 12., Theme::quiet())))
+            .when(channel.private && !simple, |d| d.child(icon("lock", 12., Theme::quiet())))
             .when(mentions > 0 && !selected, |d| d.child(ui::rail_badge(mentions)))
             .on_mouse_down(gpui::MouseButton::Right, {
                 let id = channel.id.clone();
@@ -499,7 +517,7 @@ impl Shell {
                             .line_height(px(15.6))
                             .font_weight(FontWeight::EXTRA_BOLD)
                             .text_color(Theme::ink())
-                            .child(ui::fit(window, self.me.name(), FontWeight::EXTRA_BOLD, 13., px(96.))),
+                            .child(ui::fit(window, self.me.name(), FontWeight::EXTRA_BOLD, 13., px(if self.simple() { 170. } else { 96. }))),
                     )
                     .child(
                         div()
@@ -510,23 +528,154 @@ impl Shell {
                             .child(status),
                     ),
             )
-            .child(
-                control("mic", if self.muted { "mic-off" } else { "mic" }, self.muted)
-                    .child(icon("chevron-down", 12., Theme::muted()))
-                    .tooltip(ui::tooltip(t(if self.muted { "footer.unmute" } else { "footer.mute" })))
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_mute(cx))),
-            )
-            .child(
-                control("deafen", if self.deafened { "headphone-off" } else { "headphones" }, self.deafened)
-                    .child(icon("chevron-down", 12., Theme::muted()))
-                    .tooltip(ui::tooltip(t(if self.deafened { "footer.undeafen" } else { "footer.deafen" })))
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_deafen(cx))),
-            )
+            // Simple keeps only the settings button here (the call has its own buttons).
+            .when(!self.simple(), |d| {
+                d.child(
+                    control("mic", if self.muted { "mic-off" } else { "mic" }, self.muted)
+                        .child(icon("chevron-down", 12., Theme::muted()))
+                        .tooltip(ui::tooltip(t(if self.muted { "footer.unmute" } else { "footer.mute" })))
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_mute(cx))),
+                )
+                .child(
+                    control("deafen", if self.deafened { "headphone-off" } else { "headphones" }, self.deafened)
+                        .child(icon("chevron-down", 12., Theme::muted()))
+                        .tooltip(ui::tooltip(t(if self.deafened { "footer.undeafen" } else { "footer.deafen" })))
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_deafen(cx))),
+                )
+            })
             .child(
                 control("settings", "settings", false)
                     .tooltip(ui::tooltip(t("footer.userSettings")))
                     .on_click(cx.listener(|this, _, window, cx| this.open_settings(window, cx))),
             )
+    }
+}
+
+impl Shell {
+    /// The Simple interface (users.ui_mode = "simple"; HOFFLE_UI_MODE overrides it for tests).
+    pub(super) fn simple(&self) -> bool {
+        match std::env::var("HOFFLE_UI_MODE").ok().as_deref() {
+            Some(mode) => mode == "simple",
+            None => self.me.ui_mode.as_deref() == Some("simple"),
+        }
+    }
+
+    /// SimpleRooms (panels.tsx): every room in two plain lists, Chat and Talk.
+    fn render_simple_rooms(&self, server: &crate::model::Server, window: &gpui::Window, cx: &mut Context<Self>) -> AnyElement {
+        let mut categories = server.categories.clone();
+        categories.sort_by_key(|c| c.position);
+        let mut channels: Vec<&Channel> = server.channels.iter().collect();
+        channels.sort_by_key(|c| c.position);
+        let mut all: Vec<&Channel> = channels.iter().filter(|c| c.category_id.is_none()).copied().collect();
+        for category in &categories {
+            all.extend(channels.iter().filter(|c| c.category_id.as_deref() == Some(&category.id)).copied());
+        }
+        let muted: gpui::Hsla = Theme::muted().into();
+        let label = |icon_name: &'static str, text: String, first: bool| {
+            div()
+                .flex_none()
+                .mt(px(if first { 4. } else { 12. }))
+                .mx(px(4.))
+                .mb(px(4.))
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .text_size(px(12.5))
+                .line_height(px(18.75))
+                .text_color(muted)
+                .child(icon(icon_name, 16., muted))
+                .child(text)
+        };
+        let mut nav = div().id("simple-rooms").flex_1().min_h_0().overflow_y_scroll().pt(px(4.)).px(px(10.)).pb(px(10.)).flex().flex_col().gap(px(3.));
+        let chat: Vec<&Channel> = all.iter().filter(|c| !c.is_voice()).copied().collect();
+        let talk: Vec<&Channel> = all.iter().filter(|c| c.is_voice()).copied().collect();
+        if !chat.is_empty() {
+            nav = nav.child(label("message-circle", t("simple.chat"), true));
+            for channel in chat {
+                nav = nav.child(self.render_channel(channel, window, cx));
+            }
+        }
+        if !talk.is_empty() {
+            nav = nav.child(label("mic", t("simple.talk"), false));
+            for channel in talk {
+                nav = nav.child(self.render_talk_room(channel, cx));
+            }
+        }
+        nav.into_any_element()
+    }
+
+    /// A voice room as a card: its name, who is in it, and Join (or "· empty").
+    fn render_talk_room(&self, channel: &Channel, cx: &mut Context<Self>) -> AnyElement {
+        let people: &[VoiceParticipant] = self.rooms.get(&channel.id).map(|v| v.as_slice()).unwrap_or(&[]);
+        let here = self.call.as_ref().is_some_and(|c| c.channel_id == channel.id);
+        let live = !people.is_empty();
+        let ink: gpui::Hsla = Theme::ink().into();
+        let go_ink = crate::theme::mix(Theme::mint(), 0.75, Theme::ink());
+        let id = channel.id.clone();
+        let mut faces = div().flex().items_center();
+        for (n, person) in people.iter().take(4).enumerate() {
+            faces = faces.child(
+                div()
+                    .when(n > 0, |d| d.ml(px(-7.)))
+                    .size(px(26.))
+                    .rounded_full()
+                    .border_2()
+                    .border_color(Theme::panel())
+                    .child(ui::avatar(self.picture(&person.avatar_url), &person.avatar, &person.color, person.name(), 22.)),
+            );
+        }
+        if people.len() > 4 {
+            faces = faces.child(div().ml(px(5.)).text_size(px(11.5)).text_color(Theme::muted()).child(format!("+{}", people.len() - 4)));
+        }
+        div()
+            .id(SharedString::from(format!("talk-{}", channel.id)))
+            .flex_none()
+            .mt(px(3.))
+            .px(px(11.))
+            .py(px(9.))
+            .rounded(px(10.))
+            .border_1()
+            .border_color(if here { go_ink } else if live { ink.opacity(0.24) } else { Theme::line().into() })
+            .flex()
+            .flex_col()
+            .gap(px(7.))
+            .cursor_pointer()
+            .hover(|s| s.bg(ink.opacity(0.05)))
+            .child(
+                div()
+                    .flex()
+                    .items_baseline()
+                    .text_size(px(14.5))
+                    .line_height(px(21.75))
+                    .text_color(if live || here { ink } else { Theme::muted().into() })
+                    .child(channel.name.clone())
+                    .when(!live, |d| d.child(div().text_size(px(12.)).text_color(Theme::muted()).child(format!(" · {}", t("simple.empty"))))),
+            )
+            .when(live, |d| {
+                d.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap(px(8.))
+                        .child(faces)
+                        .when(!here, |d| {
+                            d.child(
+                                div()
+                                    .px(px(11.))
+                                    .py(px(3.))
+                                    .rounded_full()
+                                    .bg(gpui::Hsla::from(Theme::mint()).opacity(0.2))
+                                    .text_size(px(12.))
+                                    .line_height(px(18.))
+                                    .text_color(go_ink)
+                                    .child(t("simple.join")),
+                            )
+                        }),
+                )
+            })
+            .on_click(cx.listener(move |this, _, window, cx| this.open_stage(id.clone(), window, cx)))
+            .into_any_element()
     }
 }
 

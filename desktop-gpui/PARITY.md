@@ -55,7 +55,7 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | Area | Web source | Status |
 | --- | --- | --- |
 | Sign-in, two-factor | auth-gate.tsx | 🟡 (passkeys, sign-up ⬜) |
-| Simple mode | panels.tsx SimpleRooms, easy.css | ⬜ |
+| Simple mode: rooms as Chat / Talk lists (14.5px rows without icons, accent edge on the selected one), talk-room cards (faces, +N, Join, · empty, live / you're-here borders), footer with only settings, the Interface switch saved to the account (`HOFFLE_UI_MODE` overrides it for tests) | panels.tsx SimpleRooms, simple-parts.tsx, easy.css, lib/ui-mode.ts | 🟡 (header faces + More, composer, Hoffy tips, reading column, call buttons, short menus, Settings tile page ⬜) |
 | DMs home: sidebar (search, friends, DM rows), friends view (tabs, search, counts, Hoffy empty states) | panels.tsx, friends-view.tsx | ✅ (add-friend form submit, accept/ignore/block actions, active-now panel ⬜) |
 | DM conversation: header (Chrome's flex-shrink reproduced), start banner, NEW line, participants panel, day labels in the system locale | chat-header.tsx, message-list.tsx, app/lib/chat/format.ts | ✅ (calls from the header, pin/close actions ⬜) |
 | Voice stage: opens (and joins) from the room, header (speaker, name, "· N in call", grid/table/map, chat toggle), avatar tiles (glow, caption with seat time, green speaking pulse), control bar (mic, deafen, leave work), the room's own chat (system lines, messages, composer), joined room card and "voice connected · region" bar in the sidebar | voice-stage.tsx, voice-stage/*, voice-chat-panel.tsx, mini-voice-bar.tsx | 🟡 (table and map views, soundboard, seat picker, device settings, camera/screen buttons, pop-out, fullscreen, games ⬜) |

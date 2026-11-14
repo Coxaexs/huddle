@@ -24,6 +24,8 @@ pub struct User {
     pub lastfm_username: Option<String>,
     /// Features hidden on this account (Appearance → Extras → Features).
     pub disabled_modules: Vec<String>,
+    /// "simple" or "full" (users.ui_mode): which interface this account uses.
+    pub ui_mode: Option<String>,
 }
 
 impl User {

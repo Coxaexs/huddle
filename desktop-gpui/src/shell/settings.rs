@@ -3809,15 +3809,24 @@ impl Shell {
         cx.notify();
     }
 
+    /// Switches Simple / Full at once and saves it to the account (POST /api/settings/ui-mode).
+    fn set_ui_mode(&mut self, mode: &'static str, cx: &mut Context<Self>) {
+        // As setUiMode: shown at once, a failed save is ignored.
+        self.me.ui_mode = Some(mode.to_string());
+        cx.notify();
+        self.settings_call(cx, move |c| c.settings_post("/api/settings/ui-mode", json!({ "mode": mode })), |_, _, _| {});
+    }
+
     fn render_appearance_page(&self, s: &Settings, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let muted: Hsla = Theme::muted().into();
         let ink: Hsla = Theme::ink().into();
         let lavender: Hsla = Theme::lavender().into();
         let mut out = Vec::new();
-        // Interface: Simple or Full (this app has the full interface only so far).
+        // Interface: Simple or Full, saved to the account (users.ui_mode) like lib/ui-mode.ts.
         let mut switch = div().flex_none().flex().p(px(3.)).rounded_full().bg(ink.opacity(0.08));
-        for (mode, label) in [("simple", "Simple"), ("full", "Full")] {
-            let on = mode == "full";
+        let current = if self.simple() { "simple" } else { "full" };
+        for (mode, label) in [("simple", t("userSettings.uiMode.simple")), ("full", t("userSettings.uiMode.full"))] {
+            let on = mode == current;
             switch = switch.child(
                 div()
                     .id(SharedString::from(format!("ui-mode-{mode}")))
@@ -3831,7 +3840,7 @@ impl Shell {
                     .text_color(if on { rgb(0x15121f).into() } else { muted })
                     .cursor_pointer()
                     .child(label)
-                    .when(!on, |d| d.on_click(cx.listener(|this, _, _, cx| this.settings_note("Simple mode is not in this app yet.", cx)))),
+                    .when(!on, |d| d.on_click(cx.listener(move |this, _, _, cx| this.set_ui_mode(mode, cx)))),
             );
         }
         out.push(
