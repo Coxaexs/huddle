@@ -303,7 +303,7 @@ impl Shell {
         cx.notify();
     }
 
-    fn toggle_pin(&mut self, message: Message, cx: &mut Context<Self>) {
+    pub(super) fn toggle_pin(&mut self, message: Message, cx: &mut Context<Self>) {
         let client = self.client.clone();
         cx.spawn(async move |this, cx| {
             let id = message.id.clone();
@@ -327,7 +327,7 @@ impl Shell {
         }
     }
 
-    fn toggle_saved(&mut self, id: String, cx: &mut Context<Self>) {
+    pub(super) fn toggle_saved(&mut self, id: String, cx: &mut Context<Self>) {
         let saved = self.saved.contains(&id);
         if saved {
             self.saved.remove(&id);

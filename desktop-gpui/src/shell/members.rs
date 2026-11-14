@@ -436,6 +436,15 @@ impl gpui::Render for Shell {
             .children(self.render_context_menu(window, cx))
             .children(self.render_toasts(cx))
             .children(self.render_confirm(cx))
+            .on_modifiers_changed(cx.listener(|this, e: &gpui::ModifiersChangedEvent, _, cx| {
+                if this.shift_held != e.modifiers.shift {
+                    this.shift_held = e.modifiers.shift;
+                    if let Some(list) = this.channel_id.as_ref().and_then(|c| this.messages.get(c)) {
+                        this.list.splice(0..list.len(), list.len());
+                    }
+                    cx.notify();
+                }
+            }))
             // Escape closes the message menu before anything else hears it.
             .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
                 if event.keystroke.key == "escape" && this.ctx_menu.is_some() {

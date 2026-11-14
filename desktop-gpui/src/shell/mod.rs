@@ -238,6 +238,8 @@ pub struct Shell {
     /// Who reacted with one emoji to a message, and where its rows were drawn.
     reaction_viewer: Option<reaction_viewer::ReactionViewer>,
     viewer_spot: profile_card::Spot,
+    /// Shift is down: message toolbars show their extra actions.
+    shift_held: bool,
     /// The GIF / sticker picker over the composer.
     gif_picker: Option<gif_picker::GifPicker>,
     /// Files waiting in the composer.
@@ -399,6 +401,8 @@ impl Shell {
             stage: None,
             pending_files: Vec::new(),
             gif_picker: None,
+            // Development: HOFFLE_DEV_SHIFT=1 behaves as if Shift were held.
+            shift_held: std::env::var_os("HOFFLE_DEV_SHIFT").is_some(),
             reaction_viewer: None,
             viewer_spot: profile_card::spot(),
             server_menu: false,

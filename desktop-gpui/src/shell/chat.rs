@@ -717,6 +717,49 @@ impl Shell {
                     .on_click(cx.listener(move |this, _, window, cx| this.start_edit(id.clone(), text.clone(), window, cx))),
             );
         }
+        // Holding Shift adds: bookmark, reply in thread, forward, quick vote, pin, report.
+        if self.shift_held {
+            let saved = self.saved.contains(&message.id);
+            let id = message.id.clone();
+            bar = bar.child(
+                button(format!("sv-{}", message.id), false)
+                    .tooltip(ui::tooltip(t(if saved { "message.removeBookmark" } else { "message.bookmark" })))
+                    .child(icon(if saved { "bookmark-check" } else { "bookmark" }, 16., Theme::muted()))
+                    .on_click(cx.listener(move |this, _, _, cx| this.toggle_saved(id.clone(), cx))),
+            );
+            bar = bar
+                .child(button(format!("th-{}", message.id), false).tooltip(ui::tooltip(t("message.replyInThread"))).child(icon("message-square", 16., Theme::muted())))
+                .child(button(format!("fw-{}", message.id), false).tooltip(ui::tooltip(t("message.forward"))).child(icon("forward", 16., Theme::muted())))
+                .child(button(format!("qv-{}", message.id), false).tooltip(ui::tooltip(t("message.quickVote"))).child(icon("vote", 16., Theme::muted())));
+            if self.can_pin() {
+                let m = message.clone();
+                bar = bar.child(
+                    button(format!("pn-{}", message.id), false)
+                        .tooltip(ui::tooltip(t(if message.pinned { "message.unpinMessage" } else { "message.pinMessage" })))
+                        .child(icon("pin", 16., Theme::muted()))
+                        .on_click(cx.listener(move |this, _, _, cx| this.toggle_pin(m.clone(), cx))),
+                );
+            }
+            if !mine && !message.bot {
+                let id = message.id.clone();
+                bar = bar.child(
+                    button(format!("rp-{}", message.id), false)
+                        .tooltip(ui::tooltip(t("message.report")))
+                        .child(icon("shield-alert", 16., Theme::muted()))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let text = if this.home { t("report.dmConfirm") } else { "Report this message to the server moderators?".into() };
+                            this.confirm = Some(super::context_menu::Confirm {
+                                title: t("menu.reportMessage"),
+                                text,
+                                ok: t("menu.reportMessage"),
+                                cancel: t("common.cancel"),
+                                action: super::context_menu::ConfirmAction::Report(id.clone()),
+                            });
+                            cx.notify();
+                        })),
+                );
+            }
+        }
         if mine || message.sender_id.as_deref() == Some(self.me.id.as_str()) {
             let id = message.id.clone();
             bar = bar.child(
