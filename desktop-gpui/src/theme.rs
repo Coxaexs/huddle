@@ -103,9 +103,59 @@ pub fn load_theme() {
     }
 }
 
+/// Appearance → Customize: an accent of your own, corner roundness, and the rest kept for later
+/// (kept on this computer like the web's appearance settings).
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Customize {
+    pub accent: Option<String>,
+    pub corners: Option<f32>,
+    pub pride: String,
+    pub spacing: String,
+    pub backdrop: String,
+}
+
+fn customize_path() -> Option<std::path::PathBuf> {
+    Some(dirs::config_dir()?.join("Hoffle Lite").join("customize.json"))
+}
+
+pub fn load_customize() -> Customize {
+    let mut c: Customize = customize_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    if c.pride.is_empty() { c.pride = "off".into(); }
+    if c.spacing.is_empty() { c.spacing = "cozy".into(); }
+    if c.backdrop.is_empty() { c.backdrop = "plain".into(); }
+    c
+}
+
+/// Saves the choices and puts them on the current theme.
+pub fn set_customize(c: &Customize) {
+    if let Some(path) = customize_path() {
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+        let _ = std::fs::write(path, serde_json::to_vec(c).unwrap_or_default());
+    }
+    let id = active_theme();
+    if let Some(def) = builtin_themes().into_iter().find(|t| t.id == id) {
+        set_theme(&def, false);
+    }
+}
+
 /// Switches the whole palette to this theme (and remembers it when `save`).
 pub fn set_theme(def: &ThemeDef, save: bool) {
-    let palette = if def.id == "cozy" { COZY } else { derive(def) };
+    let custom = load_customize();
+    let mut def = def.clone();
+    if let Some(accent) = custom.accent.clone() {
+        def.colors.insert("lavender".into(), accent.clone());
+    }
+    let mut palette = if def.id == "cozy" && custom.accent.is_none() { COZY } else { derive(&def) };
+    if custom.accent.is_some() && def.id == "cozy" {
+        // Cozy's derived accents follow a custom accent.
+        let lav: Hsla = palette.lavender.into();
+        palette.lavender_soft = mix(lav, 0.25, COZY.panel).into();
+        palette.lavender_muted = mix(lav, 0.4, COZY.panel).into();
+    }
+    if let Some(r) = custom.corners {
+        palette.radius = r;
+    }
     *PALETTE.write().unwrap() = palette;
     *THEME_ID.write().unwrap() = def.id.clone();
     if save

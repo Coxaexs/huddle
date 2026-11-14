@@ -403,6 +403,15 @@ impl Shell {
         if let Some(tab) = nav().into_iter().flat_map(|(_, items)| items).nth(n).map(|i| i.tab) {
             self.settings_tab(tab, cx);
         }
+        // HOFFLE_DEV_AP_TAB=installed|community|look|extras: that Appearance tab.
+        if let (Ok(tab), Some(s)) = (std::env::var("HOFFLE_DEV_AP_TAB"), self.settings.as_mut()) {
+            s.appearance_tab = match tab.as_str() {
+                "community" => "community",
+                "look" => "look",
+                "extras" => "extras",
+                _ => "installed",
+            };
+        }
         // HOFFLE_DEV_LANG_OPEN=1: the language list open.
         if std::env::var("HOFFLE_DEV_LANG_OPEN").is_ok()
             && let Some(s) = self.settings.as_mut()
@@ -4033,6 +4042,8 @@ impl Shell {
         out.push(tabs.into_any_element());
         if s.appearance_tab == "installed" {
             out.extend(self.render_theme_grid(window, cx));
+        } else if s.appearance_tab == "look" {
+            out.extend(self.render_customize(cx));
         } else {
             out.push(Self::hint("This part of Appearance is not in this app yet.").flex_none().into_any_element());
         }
@@ -4158,5 +4169,156 @@ impl Shell {
             grid = grid.child(row);
         }
         vec![head.into_any_element(), grid.into_any_element()]
+    }
+}
+
+impl Shell {
+    fn change_customize(&mut self, change: impl FnOnce(&mut crate::theme::Customize), window: &mut Window, cx: &mut Context<Self>) {
+        let mut c = crate::theme::load_customize();
+        change(&mut c);
+        crate::theme::set_customize(&c);
+        if let Some(list) = self.channel_id.as_ref().and_then(|c| self.messages.get(c)) {
+            self.list.splice(0..list.len(), list.len());
+        }
+        window.refresh();
+        cx.notify();
+    }
+
+    fn render_customize(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let c = crate::theme::load_customize();
+        let ink: Hsla = Theme::ink().into();
+        let lavender: Hsla = Theme::lavender().into();
+        let muted: Hsla = Theme::muted().into();
+        let label = |text: &str| div().flex_none().mb(px(6.)).text_size(px(11.)).line_height(px(16.5)).font_weight(FontWeight::EXTRA_BOLD).text_color(rgb(0xc9cad2)).child(text.to_uppercase());
+        let mut out = Vec::new();
+        // Accent colour.
+        let mut accents = div().flex_none().mb(px(16.)).flex().gap(px(8.));
+        for hex in ["#9d8cf5", "#e0a56a", "#68a8ff", "#49c99a", "#ff8b72", "#f3bd5d", "#e57bd8"] {
+            let color = crate::theme::css_color(hex).unwrap_or(lavender);
+            let on = c.accent.as_deref() == Some(hex);
+            accents = accents.child(
+                div()
+                    .id(SharedString::from(format!("accent-{hex}")))
+                    .size(px(30.))
+                    .rounded_full()
+                    .bg(color)
+                    .border_2()
+                    .border_color(if on { ink } else { gpui::transparent_black() })
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, window, cx| this.change_customize(|c| c.accent = Some(hex.into()), window, cx))),
+            );
+        }
+        // The colour box: back to the theme's own accent.
+        accents = accents.child(
+            div()
+                .id("accent-reset")
+                .size(px(30.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .child(div().w(px(22.)).h(px(16.)).rounded(px(2.)).bg(lavender).border_1().border_color(rgb(0x767676)))
+                .on_click(cx.listener(|this, _, window, cx| this.change_customize(|c| c.accent = None, window, cx))),
+        );
+        out.push(label("Accent colour").into_any_element());
+        out.push(accents.into_any_element());
+        // Pride palette.
+        let mut pride = div().flex_none().mb(px(16.)).flex().gap(px(8.));
+        for (key, name, css) in [
+            ("off", "Classic", "linear-gradient(90deg, #8b8d98, #8b8d98)"),
+            ("trans", "Trans", "linear-gradient(90deg, #5bcffa 0%, #5bcffa 20%, #f5a9b8 20%, #f5a9b8 40%, #ffffff 40%, #ffffff 60%, #f5a9b8 60%, #f5a9b8 80%, #5bcffa 80%, #5bcffa 100%)"),
+            ("pride", "Pride", "linear-gradient(90deg, #e40303 0%, #e40303 16.6%, #ff8c00 16.6%, #ff8c00 33.3%, #ffed00 33.3%, #ffed00 50%, #008026 50%, #008026 66.6%, #24408e 66.6%, #24408e 83.3%, #732982 83.3%, #732982 100%)"),
+            ("nonbinary", "Nonbinary", "linear-gradient(90deg, #fff430 0%, #fff430 25%, #ffffff 25%, #ffffff 50%, #9c59d1 50%, #9c59d1 75%, #2c2c2c 75%, #2c2c2c 100%)"),
+        ] {
+            let on = c.pride == key;
+            pride = pride.child(
+                div()
+                    .id(SharedString::from(format!("pride-{key}")))
+                    .flex_1()
+                    .h(px(53.))
+                    .px(px(10.))
+                    .py(px(9.))
+                    .rounded(px(12.))
+                    .bg(Theme::panel())
+                    .border_1()
+                    .border_color(if on { lavender } else { Theme::line().into() })
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap(px(5.))
+                    .cursor_pointer()
+                    .child(div().relative().w_full().h(px(8.)).rounded_full().overflow_hidden().child(ui::css_background(css, 4.)))
+                    .child(div().text_size(px(12.)).line_height(px(18.)).font_weight(FontWeight::BOLD).text_color(if on { ink } else { muted }).child(name))
+                    .on_click(cx.listener(move |this, _, window, cx| this.change_customize(|c| c.pride = key.into(), window, cx))),
+            );
+        }
+        out.push(label("Pride palette").into_any_element());
+        out.push(pride.into_any_element());
+        let choice_row = |prefix: &'static str, options: [(&'static str, &'static str); 3], current: &str, cx: &mut Context<Self>| {
+            let mut row = div().flex_none().mb(px(14.)).flex().gap(px(8.));
+            for (key, name) in options {
+                let on = current == key;
+                row = row.child(
+                    div()
+                        .id(SharedString::from(format!("{prefix}-{key}")))
+                        .flex_1()
+                        .h(px(44.))
+                        .rounded(px(10.))
+                        .border_1()
+                        .border_color(if on { lavender } else { Theme::line().into() })
+                        .bg(if on { lavender } else { Theme::panel().into() })
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(16.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(if on { rgb(0x15121f).into() } else { ink })
+                        .cursor_pointer()
+                        .child(name)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.change_customize(|c| if prefix == "spacing" { c.spacing = key.into() } else { c.backdrop = key.into() }, window, cx)
+                        })),
+                );
+            }
+            row
+        };
+        out.push(label("Message spacing").into_any_element());
+        out.push(choice_row("spacing", [("compact", "Compact"), ("cozy", "Cozy"), ("roomy", "Roomy")], &c.spacing, cx).into_any_element());
+        out.push(label("Chat backdrop").into_any_element());
+        out.push(choice_row("backdrop", [("plain", "Plain"), ("aurora", "Purple + Green"), ("dots", "Dots")], &c.backdrop, cx).mb(px(10.)).into_any_element());
+        // Corner roundness: 0–32px.
+        let radius = Theme::radius();
+        let spot = super::profile_card::spot();
+        let fill = (radius / 32.).clamp(0., 1.);
+        out.push(
+            div()
+                .flex_none()
+                .mt(px(0.))
+                .mb(px(18.))
+                .flex()
+                .flex_col()
+                .gap(px(8.))
+                .child(div().flex().justify_between().text_size(px(16.)).line_height(px(24.)).text_color(ink).child("Corner roundness").child(div().font_weight(FontWeight::BOLD).child(format!("{}px", radius.round() as i32))))
+                .child(
+                    div()
+                        .id("corners")
+                        .relative()
+                        .h(px(16.))
+                        .cursor_pointer()
+                        .child(div().absolute().left_0().right_0().top(px(4.)).h(px(8.)).rounded_full().bg(rgb(0x2b2a33)).border_1().border_color(rgb(0x767680)))
+                        .child(div().absolute().left_0().top(px(4.)).w(gpui::relative(fill)).h(px(8.)).rounded_full().bg(lavender))
+                        .child(div().absolute().top_0().left(gpui::relative(fill)).ml(px(-16. * fill)).size(px(16.)).rounded_full().bg(lavender))
+                        .child(super::profile_card::track(&spot))
+                        .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, e: &gpui::MouseDownEvent, window, cx| {
+                            let b = spot.get();
+                            let share = (f32::from(e.position.x - b.origin.x) / f32::from(b.size.width)).clamp(0., 1.);
+                            let value = (share * 32.).round();
+                            this.change_customize(|c| c.corners = Some(value), window, cx);
+                        })),
+                )
+                .into_any_element(),
+        );
+        out.push(Self::hint("Animation and motion settings are under Accessibility.").flex_none().into_any_element());
+        out
     }
 }
