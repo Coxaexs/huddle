@@ -211,6 +211,10 @@ impl Shell {
     }
 
     pub(super) fn name_style(&self, user_id: &str) -> Option<crate::names::NameStyle> {
+        // Settings → Accessibility → Display Name Styles off: plain names everywhere.
+        if !self.access.display_name_styles {
+            return None;
+        }
         crate::names::NameStyle::from_profile(self.member_anywhere(user_id)?.profile_style.as_ref())
     }
 

@@ -247,6 +247,7 @@ pub struct Shell {
     settings: Option<settings::Settings>,
     /// The account's email, once Settings asked (None: none set or not asked yet).
     account_email: Option<String>,
+    access: settings::Access,
     /// The menu for a person (right-click), their voice settings, and where its slider was drawn.
     user_menu: Option<user_menu::UserMenu>,
     voice_prefs: HashMap<String, user_menu::VoicePref>,
@@ -451,6 +452,7 @@ impl Shell {
             polls: Default::default(),
             settings: None,
             account_email: None,
+            access: settings::load_access(),
             unread_bar: None,
             unread_pending: None,
             sized: Default::default(),

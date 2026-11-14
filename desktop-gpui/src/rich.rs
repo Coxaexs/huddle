@@ -223,6 +223,8 @@ fn flatten(parsed: &Inline, revealed: bool) -> Vec<TextRun> {
 /// The web's inline styles (app/globals.css): `.mention` 22% lavender (40% when it is you), weight
 /// 600; `.inline-code` monospace on 12% ink; `.spoiler` 82% ink with clear text, 10% once revealed;
 /// links are plain message text.
+pub static UNDERLINE_LINKS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[derive(Default)]
 struct Look {
     weight: Option<FontWeight>,
@@ -246,7 +248,8 @@ impl Look {
                 self.mono = true;
                 self.background = Some(ink.opacity(0.12));
             }
-            Span::Link => {}
+            // `[data-underline-links="on"] a`: Settings → Accessibility → Always underline links.
+            Span::Link => self.underline |= UNDERLINE_LINKS.load(std::sync::atomic::Ordering::Relaxed),
             Span::Channel => {
                 // `.mention.mention-channel`: measured at weight 400 (the channel rule overrides 600).
                 let lavender: Hsla = Theme::lavender().into();

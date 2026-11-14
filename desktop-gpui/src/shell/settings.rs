@@ -81,6 +81,41 @@ fn anchors(tab: Tab) -> Vec<(String, usize)> {
     }
 }
 
+/// Accessibility choices, kept on this computer like the web's localStorage.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Access {
+    pub chat_font_size: u32,
+    pub underline_links: bool,
+    pub display_name_styles: bool,
+    /// "hover", "always" or "still".
+    pub name_motion: String,
+    pub motion: bool,
+}
+
+impl Default for Access {
+    fn default() -> Self {
+        Self { chat_font_size: 16, underline_links: false, display_name_styles: true, name_motion: "hover".into(), motion: true }
+    }
+}
+
+fn access_path() -> Option<std::path::PathBuf> {
+    Some(dirs::config_dir()?.join("Hoffle Lite").join("accessibility.json"))
+}
+
+pub fn load_access() -> Access {
+    let access: Access = access_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    crate::rich::UNDERLINE_LINKS.store(access.underline_links, std::sync::atomic::Ordering::Relaxed);
+    access
+}
+
+fn save_access(access: &Access) {
+    if let Some(path) = access_path() {
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+        let _ = std::fs::write(path, serde_json::to_vec(access).unwrap_or_default());
+    }
+}
+
 /// Desktop notifications on or off (`huddle-notify`, kept on this computer; on unless turned off).
 pub(super) fn notify_setting() -> bool {
     notify_path().and_then(|p| std::fs::read_to_string(p).ok()).is_none_or(|s| s.trim() != "off")
@@ -933,6 +968,7 @@ impl Shell {
             Tab::Privacy => self.render_privacy_page(s, cx),
             Tab::Language => self.render_language_page(s, window, cx),
             Tab::Notifications => self.render_notifications_page(s, window, cx),
+            Tab::Accessibility => self.render_accessibility_page(cx),
             _ => Vec::new(),
         };
         for section in page {
@@ -2009,4 +2045,284 @@ fn radix36(mut n: u32) -> String {
     }
     out.reverse();
     String::from_utf8(out).unwrap_or_default()
+}
+
+impl Shell {
+    fn change_access(&mut self, change: impl FnOnce(&mut Access), cx: &mut Context<Self>) {
+        change(&mut self.access);
+        save_access(&self.access);
+        crate::rich::UNDERLINE_LINKS.store(self.access.underline_links, std::sync::atomic::Ordering::Relaxed);
+        // Message rows were measured with the old look.
+        if let Some(list) = self.channel_id.as_ref().and_then(|c| self.messages.get(c)) {
+            self.list.splice(0..list.len(), list.len());
+        }
+        cx.notify();
+    }
+
+    /// `.toggle-switch`: 44×24, grey or accent, an 18px white knob.
+    fn toggle(on: bool) -> gpui::Div {
+        div()
+            .relative()
+            .flex_none()
+            .w(px(44.))
+            .h(px(24.))
+            .rounded(px(24.))
+            .bg(if on { Hsla::from(Theme::lavender()) } else { rgb(0x4e5058).into() })
+            .child(
+                div()
+                    .absolute()
+                    .top(px(3.))
+                    .left(px(if on { 23. } else { 3. }))
+                    .size(px(18.))
+                    .rounded_full()
+                    .bg(gpui::white())
+                    .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.3), offset: gpui::point(px(0.), px(2.)), blur_radius: px(4.), spread_radius: px(0.) }]),
+            )
+    }
+
+    fn render_accessibility_page(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let a = self.access.clone();
+        let size = a.chat_font_size as f32;
+        // Tailwind's colours the web page uses.
+        let gray400: Hsla = rgb(0x99a1af).into();
+        let gray300: Hsla = rgb(0xd1d5dc).into();
+        let indigo400: Hsla = rgb(0x7c86ff).into();
+        let pink400: Hsla = rgb(0xfb64b6).into();
+        let me = &self.me;
+        let glyph = if me.avatar.is_empty() { "K".to_string() } else { me.avatar.clone() };
+        let name = if me.name().is_empty() { "kivu".to_string() } else { me.name().to_string() };
+        let header = || {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(div().text_size(px(size)).line_height(px(size * 1.5)).font_weight(FontWeight::BOLD).text_color(pink400).child(name.clone()))
+                .child(
+                    div()
+                        .px(px(6.))
+                        .py(px(2.))
+                        .rounded_full()
+                        .bg(Hsla::from(rgb(0xf6339a)).opacity(0.2))
+                        .border_1()
+                        .border_color(Hsla::from(rgb(0xf6339a)).opacity(0.3))
+                        .text_size(px(10.))
+                        .line_height(px(15.))
+                        .text_color(rgb(0xfda5d5))
+                        .child("❤️ LGBT"),
+                )
+                .child(div().text_size(px(11.)).line_height(px(16.5)).text_color(gray400).child("14:48"))
+        };
+        let avatar = || div().size(px(40.)).flex_none().rounded_full().bg(rgb(0x4f39f6)).flex().items_center().justify_center().font_weight(FontWeight::BOLD).text_color(gpui::white()).child(glyph.clone());
+        let pill = |text: &str, bg: Hsla, border: Hsla, color: Hsla| {
+            div().px(px(8.)).py(px(2.)).rounded(px(4.)).bg(bg).border_1().border_color(border).text_size(px(12.)).line_height(px(16.)).text_color(color).child(text.to_string())
+        };
+        let preview = div()
+            .flex()
+            .flex_col()
+            .child(div().mb(px(8.)).text_size(px(11.)).line_height(px(16.5)).font_weight(FontWeight::BOLD).text_color(gray400).child("PREVIEW"))
+            .child(
+                div()
+                    .p(px(16.))
+                    .rounded(px(12.))
+                    .bg(rgb(0x1e1f22))
+                    .border_1()
+                    .border_color(rgba(0xffffff1a))
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.))
+                    .child(
+                        div().flex().items_start().gap(px(12.)).child(avatar()).child(
+                            div()
+                                .flex_1()
+                                .flex()
+                                .flex_col()
+                                .gap(px(4.))
+                                .child(header())
+                                .child(div().text_size(px(size)).line_height(px(size * 1.5)).text_color(rgb(0xe5e7eb)).child("what happened to all the beans"))
+                                .child(
+                                    div()
+                                        .pt(px(4.))
+                                        .flex()
+                                        .gap(px(6.))
+                                        .child(pill("🫐 3", Hsla::from(rgb(0x1e1a4d)).opacity(0.6), Hsla::from(rgb(0x625fff)).opacity(0.4), rgb(0xa3b3ff).into()))
+                                        .child(pill("🧱 1", rgba(0xffffff0d).into(), rgba(0xffffff1a).into(), gray300)),
+                                ),
+                        ),
+                    )
+                    .child(
+                        div().pt(px(4.)).flex().items_start().gap(px(12.)).child(avatar()).child(
+                            div()
+                                .flex_1()
+                                .flex()
+                                .flex_col()
+                                .gap(px(4.))
+                                .child(header())
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .text_size(px(size))
+                                        .line_height(px(size * 1.5))
+                                        .text_color(rgb(0xe5e7eb))
+                                        .child(
+                                            div()
+                                                .flex()
+                                                .child("here's a link\u{a0}")
+                                                .child(div().text_color(indigo400).when(a.underline_links, |d| d.underline()).child("https://hoffle.online/accessibility")),
+                                        )
+                                        .child(
+                                            div()
+                                                .ml(px(16.))
+                                                // `button.primary` keeps its 16px top margin in settings.
+                                                .mt(px(16.))
+                                                .flex_none()
+                                                .h(px(42.))
+                                                .px(px(16.))
+                                                .rounded(px(10.))
+                                                .bg(Theme::lavender())
+                                                .flex()
+                                                .items_center()
+                                                .text_size(px(12.))
+                                                .font_weight(FontWeight::EXTRA_BOLD)
+                                                .text_color(rgb(0x15121f))
+                                                .child("Example Button"),
+                                        ),
+                                ),
+                        ),
+                    ),
+            );
+        // Chat font size: a 12–24 track with its marks.
+        let spot = super::profile_card::spot();
+        let fill = (size - 12.) / 12.;
+        let mut marks = div().relative().h(px(16.)).mt(px(8.));
+        for mark in [12u32, 14, 15, 16, 18, 20, 24] {
+            let chosen = a.chat_font_size == mark;
+            let frac = (mark as f32 - 12.) / 12.;
+            marks = marks.child(
+                div()
+                    .id(SharedString::from(format!("ac-mark-{mark}")))
+                    .absolute()
+                    .top_0()
+                    .left(gpui::relative(frac))
+                    // `left: calc(8px + (100% - 16px) * f)`, centred on that point.
+                    .ml(px(8. - 16. * frac - 12.))
+                    .w(px(24.))
+                    .flex()
+                    .justify_center()
+                    .text_size(px(11.))
+                    .line_height(px(16.5))
+                    .font_weight(if chosen { FontWeight::BOLD } else { FontWeight::NORMAL })
+                    .text_color(if chosen { indigo400 } else { gray400 })
+                    .cursor_pointer()
+                    .hover(|s| s.text_color(gpui::white()))
+                    .child(format!("{mark}px"))
+                    .on_click(cx.listener(move |this, _, _, cx| this.change_access(|a| a.chat_font_size = mark, cx))),
+            );
+        }
+        let slider = div()
+            .relative()
+            .pt(px(4.))
+            .pb(px(16.))
+            .child(
+                div()
+                    .id("ac-font")
+                    .relative()
+                    .h(px(24.))
+                    .cursor_pointer()
+                    .child(div().absolute().left_0().right_0().top(px(10.)).h(px(8.)).rounded(px(8.)).bg(rgb(0x364153)))
+                    .child(div().absolute().top(px(6.)).left(gpui::relative(fill)).ml(px(-16. * fill)).size(px(16.)).rounded_full().bg(rgb(0x6366f1)))
+                    .child(super::profile_card::track(&spot))
+                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                        let b = spot.get();
+                        let share = (f32::from(e.position.x - b.origin.x - px(8.)) / (f32::from(b.size.width) - 16.)).clamp(0., 1.);
+                        let value = (12. + share * 12.).round() as u32;
+                        this.change_access(|a| a.chat_font_size = value, cx);
+                    })),
+            )
+            .child(marks);
+        let row = |id: &str, title: String, desc: String, control: AnyElement| {
+            div()
+                .id(SharedString::from(id.to_string()))
+                .py(px(12.))
+                .border_t_1()
+                .border_color(rgba(0xffffff1a))
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap(px(16.))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .child(div().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight::SEMIBOLD).text_color(gpui::white()).child(title))
+                        .child(div().text_size(px(12.)).line_height(px(16.)).text_color(gray400).child(desc)),
+                )
+                .child(control)
+        };
+        let mut segmented = div().flex_none().flex().p(px(4.)).rounded(px(8.)).bg(rgba(0xffffff0d));
+        for (value, label) in [("hover", "On hover"), ("always", "Always"), ("still", "Never")] {
+            let on = a.name_motion == value;
+            segmented = segmented.child(
+                div()
+                    .id(SharedString::from(format!("ac-motion-{value}")))
+                    .px(px(12.))
+                    .py(px(4.))
+                    .rounded(px(6.))
+                    .when(on, |d| d.bg(rgba(0xffffff26)))
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(if on { gpui::white() } else { gray400 })
+                    .cursor_pointer()
+                    .when(!on, |d| d.hover(|s| s.text_color(gpui::white())))
+                    .child(label)
+                    .on_click(cx.listener(move |this, _, _, cx| this.change_access(|a| a.name_motion = value.into(), cx))),
+            );
+        }
+        let readability = div()
+            .mt(px(24.))
+            .pt(px(8.))
+            .flex()
+            .flex_col()
+            .gap(px(16.))
+            .child(div().text_size(px(16.)).line_height(px(24.)).font_weight(FontWeight::BOLD).text_color(gpui::white()).child("Text Readability"))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .text_size(px(12.))
+                            .line_height(px(16.))
+                            .text_color(gray300)
+                            .child(t("accessibilitySettings.fontSize"))
+                            .child(div().font_weight(FontWeight::BOLD).text_color(indigo400).child(format!("{}px", a.chat_font_size))),
+                    )
+                    .child(div().mt(px(4.)).mb(px(12.)).text_size(px(12.)).line_height(px(16.)).text_color(gray400).child(t("accessibilitySettings.fontSizeDesc")))
+                    .child(slider),
+            )
+            .child(row(
+                "ac-underline",
+                t("accessibilitySettings.underlineLinks"),
+                t("accessibilitySettings.underlineLinksDesc"),
+                Self::toggle(a.underline_links).id("ac-underline-t").cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.change_access(|a| a.underline_links = !a.underline_links, cx))).into_any_element(),
+            ))
+            .child(row(
+                "ac-names",
+                t("accessibilitySettings.displayNameStyles"),
+                t("accessibilitySettings.displayNameStylesDesc"),
+                Self::toggle(a.display_name_styles).id("ac-names-t").cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.change_access(|a| a.display_name_styles = !a.display_name_styles, cx))).into_any_element(),
+            ))
+            .child(row("ac-name-motion", t("accessibilitySettings.animateNameEffects"), t("accessibilitySettings.animateNameEffectsDesc"), segmented.into_any_element()))
+            .child(row(
+                "ac-motion",
+                t("accessibilitySettings.interfaceMotion"),
+                t("accessibilitySettings.interfaceMotionDesc"),
+                Self::toggle(a.motion).id("ac-motion-t").cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.change_access(|a| a.motion = !a.motion, cx))).into_any_element(),
+            ));
+        vec![preview.into_any_element(), readability.into_any_element()]
+    }
 }

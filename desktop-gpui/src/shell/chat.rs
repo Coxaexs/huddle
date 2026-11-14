@@ -436,13 +436,15 @@ impl Shell {
             let in_ai = message.kind.as_deref() == Some("ai");
             let text_width = self.text_column_width(window) - if in_ai { px(32.) } else { px(0.) };
             // Message paragraphs have a 1px top margin.
+            // `--chat-font-size` (Settings → Accessibility), with the paragraph's 1.55 leading.
+            let chat_font = self.access.chat_font_size as f32;
             let text = div()
                 .pt(px(1.))
-                .text_size(px(16.))
-                .line_height(px(24.8))
+                .text_size(px(chat_font))
+                .line_height(px(chat_font * 1.55))
                 .text_color(Theme::ink())
                 .child({
-                    let (font, size) = rich::ui_font(16.);
+                    let (font, size) = rich::ui_font(chat_font);
                     let weak = cx.weak_entity();
                     let on_channel: Rc<dyn Fn(String, &mut App)> = Rc::new(move |id, cx| {
                         weak.update(cx, |this, cx| this.open_channel(id, cx)).ok();
@@ -456,7 +458,8 @@ impl Shell {
             }
         }
         if let Some(translation) = self.render_translation(&message.id, cx) {
-            body = body.child(div().text_size(px(16.)).line_height(px(24.8)).text_color(Theme::ink()).child(translation));
+            let chat_font = self.access.chat_font_size as f32;
+            body = body.child(div().text_size(px(chat_font)).line_height(px(chat_font * 1.55)).text_color(Theme::ink()).child(translation));
         }
         if let Some(card) = self.render_poll(message, f32::from(self.text_column_width(window)), window, cx) {
             body = body.child(card);
