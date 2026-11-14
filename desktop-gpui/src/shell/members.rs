@@ -541,11 +541,32 @@ impl gpui::Render for Shell {
             }))
             // The menu-bar item's Toggle Mute (desktop.rs).
             .on_action(cx.listener(|this, _: &crate::TrayToggleMute, _, cx| this.toggle_mute(cx)))
+            .capture_key_up(cx.listener(|this, event: &gpui::KeyUpEvent, _, cx| {
+                if this.ptt_held && event.keystroke.key == super::settings::load_mic().ptt_key {
+                    this.set_ptt_held(false, cx);
+                }
+            }))
             // Escape closes the message menu before anything else hears it.
             .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
                 let k = &event.keystroke;
                 let combo = k.unparse();
                 let has_modifier = k.modifiers.control || k.modifiers.alt || k.modifiers.platform;
+                // The push-to-talk key in Settings: any key at all (not a modifier on its own).
+                if this.settings.as_ref().and_then(|s| s.capturing_key) == Some("ptt") {
+                    if k.key == "escape" {
+                        this.end_key_capture(None, cx);
+                    } else if !["shift", "control", "alt", "platform", "function"].contains(&k.key.as_str()) {
+                        this.end_key_capture(Some(("ptt", k.key.clone())), cx);
+                    }
+                    cx.stop_propagation();
+                    return;
+                }
+                // Push to talk in a call: its key held (a repeat goes on to the box, as on the web).
+                if this.call.is_some() && !event.is_held && super::settings::load_mic().input_mode == "ptt" && k.key == super::settings::load_mic().ptt_key {
+                    this.set_ptt_held(true, cx);
+                    cx.stop_propagation();
+                    return;
+                }
                 // Rebinding a voice key in Settings: the next combination with a modifier.
                 if let Some(which) = this.settings.as_ref().and_then(|s| s.capturing_key) {
                     if k.key == "escape" {

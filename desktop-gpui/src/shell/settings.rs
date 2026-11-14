@@ -3209,6 +3209,8 @@ pub struct MicPrefs {
     /// Keybinds as "ctrl-shift-m" (gpui keystroke text).
     pub mute_key: String,
     pub deafen_key: String,
+    /// The push-to-talk key, held while the window is in front (gpui key name; Space by default).
+    pub ptt_key: String,
 }
 
 impl Default for MicPrefs {
@@ -3223,7 +3225,18 @@ impl Default for MicPrefs {
             screen_audio: true,
             mute_key: "ctrl-shift-m".into(),
             deafen_key: "ctrl-shift-d".into(),
+            ptt_key: "space".into(),
         }
+    }
+}
+
+/// The web shows the key's code without "Key": Space, V, F5.
+fn ptt_label(key: &str) -> String {
+    let mut chars = key.chars();
+    match chars.next() {
+        Some(first) if key.chars().count() == 1 => first.to_uppercase().collect(),
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => "Space".into(),
     }
 }
 
@@ -3232,7 +3245,12 @@ fn mic_path() -> Option<std::path::PathBuf> {
 }
 
 pub fn load_mic() -> MicPrefs {
-    mic_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    let mut prefs: MicPrefs = mic_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    // HOFFLE_MIC_MODE=voice|ptt|always (tests): that input mode for this run, the saved one left alone.
+    if let Ok(mode) = std::env::var("HOFFLE_MIC_MODE") {
+        prefs.input_mode = mode;
+    }
+    prefs
 }
 
 fn save_mic(prefs: &MicPrefs) {
@@ -3266,6 +3284,8 @@ impl Shell {
         if let Some((which, combo)) = bound {
             if which == "mute" {
                 s.mic.mute_key = combo;
+            } else if which == "ptt" {
+                s.mic.ptt_key = combo;
             } else {
                 s.mic.deafen_key = combo;
             }
@@ -3280,6 +3300,8 @@ impl Shell {
         change(&mut s.mic);
         save_mic(&s.mic);
         s.open_select = None;
+        // Switching to or from push to talk in a call opens or closes the mic at once.
+        self.apply_mic();
         cx.notify();
     }
 
@@ -3460,15 +3482,48 @@ impl Shell {
                 .flex_col()
                 .child(field_label("Input mode"))
                 .child(modes)
-                .child(
-                    Self::switch_box("mic-auto-sens")
-                        .items_center()
-                        .justify_between()
-                        .cursor_pointer()
-                        .child(div().flex().flex_col().gap(px(2.)).child(strong("Automatic sensitivity")).child(small("Works out what is you and what is the room".into())))
-                        .child(Self::checkbox(auto))
-                        .on_click(cx.listener(|this, _, _, cx| this.change_mic(|m| m.auto_sensitivity = !m.auto_sensitivity, cx))),
-                )
+                // Voice activity: the sensitivity switch; push to talk: the key; always on: a hint.
+                .when(s.mic.input_mode == "voice", |d| {
+                    d.child(
+                        Self::switch_box("mic-auto-sens")
+                            .items_center()
+                            .justify_between()
+                            .cursor_pointer()
+                            .child(div().flex().flex_col().gap(px(2.)).child(strong("Automatic sensitivity")).child(small("Works out what is you and what is the room".into())))
+                            .child(Self::checkbox(auto))
+                            .on_click(cx.listener(|this, _, _, cx| this.change_mic(|m| m.auto_sensitivity = !m.auto_sensitivity, cx))),
+                    )
+                })
+                .when(s.mic.input_mode == "ptt", |d| {
+                    let listening = s.capturing_key == Some("ptt");
+                    d.child(
+                        // `.ptt-key-button`
+                        div()
+                            .id("ptt-key")
+                            // 6px under the mode row, which already leaves 5px less here than the web's.
+                            .mt(px(1.))
+                            .w_full()
+                            .px(px(12.))
+                            .py(px(9.))
+                            .rounded(px(10.))
+                            .border_1()
+                            .border_color(if listening { Theme::lavender().into() } else { Hsla::from(Theme::line()) })
+                            .bg(if listening { Theme::lavender_soft() } else { Theme::paper() })
+                            .text_size(px(16.))
+                            .line_height(px(24.))
+                            .text_color(Theme::ink())
+                            .cursor_pointer()
+                            .hover(|s| s.border_color(Theme::lavender()))
+                            .child(if listening { "Press a key…".to_string() } else { format!("Push-to-talk key: {}", ptt_label(&s.mic.ptt_key)) })
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                if let Some(s) = this.settings.as_mut() {
+                                    s.capturing_key = if s.capturing_key == Some("ptt") { None } else { Some("ptt") };
+                                    cx.notify();
+                                }
+                            })),
+                    )
+                })
+                .when(s.mic.input_mode == "always", |d| d.child(Self::hint("Your mic sends all the time, including the room between sentences.").mt(px(8.))))
                 .into_any_element(),
         );
         // Noise suppression: Off turns libwebrtc's off; the stronger ones are the web's own filters.

@@ -215,6 +215,8 @@ pub struct Shell {
     pending_command: Option<(String, String)>,
     /// /api/features: session recording is switched on here.
     features_record: bool,
+    /// Push to talk: its key is held right now.
+    ptt_held: bool,
     /// The number last put on the dock icon.
     last_badge: Option<u32>,
     /// Commands the server's connected bots registered (the / menu's Bots group).
@@ -450,6 +452,7 @@ impl Shell {
             features_record: true,
             bot_commands: Vec::new(),
             last_badge: None,
+            ptt_held: false,
             tips_seen: simple::load_tips_seen(),
             was_simple: false,
             emojis: HashMap::new(),
@@ -1371,7 +1374,9 @@ impl Shell {
         let wanted = self.channel_by_id(&channel_id).and_then(|c| c.bitrate).unwrap_or(64_000);
         // Hoffle's 320k tier is for rooms of up to 10; bigger rooms stay at or under 192k.
         let bitrate = wanted.clamp(16_000, if people <= 10 { 320_000 } else { 192_000 });
-        let (muted, deafened) = (self.muted, self.deafened);
+        // Push to talk starts with the mic closed until its key is held.
+        let muted = self.muted || settings::load_mic().input_mode == "ptt";
+        let deafened = self.deafened;
         let client = self.client.clone();
         cx.spawn(async move |this, cx| {
             let room = channel_id.clone();
@@ -1409,11 +1414,34 @@ impl Shell {
 
     fn leave_voice(&mut self, cx: &mut Context<Self>) {
         self.close_stage();
+        self.ptt_held = false;
         if self.call.take().is_some() {
             crate::sounds::play("disconnect");
             self.voice.send(VoiceCmd::Leave(None));
             self.hub.send(json!({ "t": "voice-leave" }));
         }
+        cx.notify();
+    }
+
+    /// The central mic gate (use-voice.ts): with push to talk the mic is live only while its key
+    /// is held, otherwise while not muted.
+    pub(super) fn apply_mic(&mut self) {
+        if self.call.is_none() {
+            return;
+        }
+        let ptt = settings::load_mic().input_mode == "ptt";
+        let on = if ptt { self.ptt_held } else { !self.muted };
+        self.voice.send(VoiceCmd::Mute(!on));
+    }
+
+    /// Push to talk: the key went down or up (ticks on press and release).
+    pub(super) fn set_ptt_held(&mut self, held: bool, cx: &mut Context<Self>) {
+        if self.ptt_held == held {
+            return;
+        }
+        self.ptt_held = held;
+        crate::sounds::play(if held { "pttOn" } else { "pttOff" });
+        self.apply_mic();
         cx.notify();
     }
 
@@ -1425,7 +1453,7 @@ impl Shell {
             self.deafened = false;
             self.voice.send(VoiceCmd::Deafen(false));
         }
-        self.voice.send(VoiceCmd::Mute(self.muted));
+        self.apply_mic();
         self.hub.send(json!({ "t": "voice-state", "muted": self.muted, "deafened": self.deafened }));
         cx.notify();
     }
@@ -1438,11 +1466,11 @@ impl Shell {
         if self.deafened && !self.muted {
             self.muted = true;
             self.mute_from_deafen = true;
-            self.voice.send(VoiceCmd::Mute(true));
+            self.apply_mic();
         } else if !self.deafened && self.mute_from_deafen {
             self.muted = false;
             self.mute_from_deafen = false;
-            self.voice.send(VoiceCmd::Mute(false));
+            self.apply_mic();
         }
         self.hub.send(json!({ "t": "voice-state", "muted": self.muted, "deafened": self.deafened }));
         cx.notify();
