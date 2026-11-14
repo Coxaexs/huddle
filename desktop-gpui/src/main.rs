@@ -15,6 +15,7 @@ mod names;
 mod realtime;
 mod rich;
 mod shell;
+mod sounds;
 mod textarea;
 mod theme;
 mod ui;

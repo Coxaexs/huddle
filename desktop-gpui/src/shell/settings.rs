@@ -187,6 +187,10 @@ pub(super) struct Settings {
     open_select: Option<&'static str>,
     mic: MicPrefs,
     more_voice: bool,
+    /// Which of the voice page's foldouts are open, the sounds list unfolded, a keybind being set.
+    open_details: std::collections::HashSet<&'static str>,
+    sounds_more: bool,
+    pub capturing_key: Option<&'static str>,
     _subs: Vec<Subscription>,
 }
 
@@ -321,6 +325,9 @@ impl Shell {
             open_select: None,
             mic: load_mic(),
             more_voice: false,
+            open_details: Default::default(),
+            sounds_more: false,
+            capturing_key: None,
             _subs: subs,
         });
         self.load_security(cx);
@@ -3096,11 +3103,25 @@ pub struct MicPrefs {
     pub clarity: bool,
     pub voice_effect: String,
     pub delay_ms: u32,
+    pub screen_audio: bool,
+    /// Keybinds as "ctrl-shift-m" (gpui keystroke text).
+    pub mute_key: String,
+    pub deafen_key: String,
 }
 
 impl Default for MicPrefs {
     fn default() -> Self {
-        Self { input_mode: "voice".into(), auto_sensitivity: true, suppression: "browser".into(), clarity: true, voice_effect: "none".into(), delay_ms: 0 }
+        Self {
+            input_mode: "voice".into(),
+            auto_sensitivity: true,
+            suppression: "browser".into(),
+            clarity: true,
+            voice_effect: "none".into(),
+            delay_ms: 0,
+            screen_audio: true,
+            mute_key: "ctrl-shift-m".into(),
+            deafen_key: "ctrl-shift-d".into(),
+        }
     }
 }
 
@@ -3108,7 +3129,7 @@ fn mic_path() -> Option<std::path::PathBuf> {
     Some(dirs::config_dir()?.join("Hoffle Lite").join("mic.json"))
 }
 
-fn load_mic() -> MicPrefs {
+pub fn load_mic() -> MicPrefs {
     mic_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
 }
 
@@ -3133,6 +3154,22 @@ impl Shell {
         crate::voice::save_prefs(&s.audio);
         self.voice.send(crate::voice::VoiceCmd::Audio(s.audio.clone()));
         s.open_select = None;
+        cx.notify();
+    }
+
+    /// A voice key rebound (or the capture cancelled).
+    pub(super) fn end_key_capture(&mut self, bound: Option<(&'static str, String)>, cx: &mut Context<Self>) {
+        let Some(s) = self.settings.as_mut() else { return };
+        s.capturing_key = None;
+        if let Some((which, combo)) = bound {
+            if which == "mute" {
+                s.mic.mute_key = combo;
+            } else {
+                s.mic.deafen_key = combo;
+            }
+            save_mic(&s.mic);
+            self.voice_keys = (s.mic.mute_key.clone(), s.mic.deafen_key.clone());
+        }
         cx.notify();
     }
 
@@ -3416,7 +3453,44 @@ impl Shell {
                         row("mv-aec", "Echo cancellation", "Keep on with speakers. On headphones, off keeps your voice fuller", s.audio.echo_cancellation)
                             .on_click(cx.listener(|this, _, _, cx| this.change_audio(|a| a.echo_cancellation = !a.echo_cancellation, cx))),
                     )
-                    .child(row("mv-clarity", "Voice clarity", "Cuts desk thumps, fan rumble and mic pops", s.mic.clarity).on_click(cx.listener(|this, _, _, cx| this.change_mic(|m| m.clarity = !m.clarity, cx)))),
+                    .child(row("mv-clarity", "Voice clarity", "Cuts desk thumps, fan rumble and mic pops", s.mic.clarity).on_click(cx.listener(|this, _, _, cx| this.change_mic(|m| m.clarity = !m.clarity, cx))))
+                    .child(
+                        Self::switch_box("mv-effect")
+                            .items_center()
+                            .justify_between()
+                            .child(div().flex().flex_col().gap(px(2.)).child(strong("Voice effect")).child(small("Your normal voice".into())))
+                            .child(self.select_box(
+                                "effect",
+                                s.mic.voice_effect.clone(),
+                                [("none", "None"), ("singer", "Singing voice"), ("vampire", "Vampire"), ("gramophone", "Gramophone")].iter().map(|(v, l)| (v.to_string(), l.to_string())).collect(),
+                                119.,
+                                std::rc::Rc::new(|this, v, cx| {
+                                    if v != "none" {
+                                        this.settings_note("Voice effects are not in this app yet.", cx);
+                                    }
+                                }),
+                                cx,
+                            )),
+                    )
+                    .child(
+                        div()
+                            .mt(px(6.))
+                            .flex()
+                            .flex_col()
+                            .gap(px(8.))
+                            .child(div().flex().justify_between().child(strong("Voice delay")).child(div().text_size(px(12.8)).line_height(px(19.2)).text_color(Theme::ink()).child(format!("{} ms", s.mic.delay_ms))))
+                            .child(div().relative().h(px(16.)).child(div().absolute().left_0().right_0().top(px(4.)).h(px(8.)).rounded_full().bg(rgb(0x2b2a33)).border_1().border_color(rgb(0x767680))).child(div().absolute().left_0().top_0().size(px(16.)).rounded_full().bg(Theme::lavender())))
+                            .child(Self::hint("Holds your voice back to line it up with a screen share. Leave at 0 otherwise.")),
+                    )
+                    .child(
+                        div()
+                            .mt(px(14.))
+                            .flex()
+                            .items_center()
+                            .gap(px(10.))
+                            .child(Self::discord_button("mv-record".into(), "Record a sample", false).h(px(38.3)).on_click(cx.listener(|this, _, _, cx| this.settings_note("Recording a sample is not in this app yet.", cx))))
+                            .child(Self::hint("Records 10 seconds you can play back or save — handy when someone says you sound odd.")),
+                    ),
             );
         }
         out.push(more.into_any_element());
@@ -3430,8 +3504,190 @@ impl Shell {
                 .child(field_label("Video"))
                 .child(div().mt(px(10.)).child(small_label("Camera")))
                 .child(div().mt(px(7.)).child(self.select_box("camera", String::new(), vec![(String::new(), "System default".into())], 772., std::rc::Rc::new(|_, _, _| {}), cx)))
+                .child(
+                    Self::switch_box("vid-audio")
+                        .mt(px(13.))
+                        .items_center()
+                        .justify_between()
+                        .cursor_pointer()
+                        .child(div().flex().flex_col().gap(px(2.)).child(strong("Share audio with my screen")).child(small("Sends the sound of the tab, app or system along with a screen share".into())))
+                        .child(Self::checkbox(s.mic.screen_audio))
+                        .on_click(cx.listener(|this, _, _, cx| this.change_mic(|m| m.screen_audio = !m.screen_audio, cx))),
+                )
                 .into_any_element(),
         );
+        // Sounds: each cue with a preview and its switch; four, then the rest folded.
+        let shown = if s.sounds_more { crate::sounds::SOUNDS.len() } else { 4 };
+        let mut list = div().mt(px(6.)).flex().flex_col();
+        let sound_row = |id: &'static str, label: &'static str, cx: &mut Context<Self>| {
+            let on = crate::sounds::is_on(id);
+            div()
+                .py(px(11.))
+                .border_b_1()
+                .border_color(Theme::line())
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap(px(12.))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(div().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(Theme::ink()).child(label))
+                        .child(
+                            div()
+                                .id(SharedString::from(format!("snd-pre-{id}")))
+                                .text_size(px(12.5))
+                                .line_height(px(18.75))
+                                .text_color(Theme::lavender())
+                                .cursor_pointer()
+                                .hover(|s| s.underline())
+                                .child("Preview sound")
+                                .on_click(move |_, _, _| crate::sounds::preview(id)),
+                        ),
+                )
+                .child(Self::toggle(on).w(px(40.)).id(SharedString::from(format!("snd-{id}"))).cursor_pointer().on_click(cx.listener(move |_, _, _, cx| {
+                    crate::sounds::set_on(id, !crate::sounds::is_on(id));
+                    cx.notify();
+                })))
+        };
+        for (id, label) in crate::sounds::SOUNDS.iter().take(4) {
+            list = list.child(sound_row(id, label, cx));
+        }
+        let hidden = crate::sounds::SOUNDS.len() - 4;
+        list = list.child(
+            div()
+                .id("snd-more")
+                .group("snd-more")
+                .py(px(11.))
+                .border_b_1()
+                .border_color(Theme::line())
+                .flex()
+                .items_center()
+                .justify_between()
+                .cursor_pointer()
+                .child(div().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(Theme::ink()).child(if s.sounds_more { format!("Hide {hidden} sounds") } else { format!("Show {hidden} more sounds") }))
+                .child(
+                    div()
+                        .size(px(34.))
+                        .rounded(px(8.))
+                        .bg(rgba(0x211d2eb8))
+                        .group_hover("snd-more", |s| s.bg(Theme::line()))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(ui::icon(if s.sounds_more { "chevron-up" } else { "chevron-down" }, 18., Theme::ink())),
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    if let Some(s) = this.settings.as_mut() {
+                        s.sounds_more = !s.sounds_more;
+                        cx.notify();
+                    }
+                })),
+        );
+        for (id, label) in crate::sounds::SOUNDS.iter().take(shown).skip(4) {
+            list = list.child(sound_row(id, label, cx));
+        }
+        out.push(div().flex_none().mb(px(22.)).flex().flex_col().child(field_label("Sounds")).child(list).into_any_element());
+        // Foldouts: keybinds, spatial audio, connection.
+        let foldout = |key: &'static str, title: &str, open: bool, body: gpui::Div, cx: &mut Context<Self>| {
+            div()
+                .flex_none()
+                .mb(px(10.))
+                .rounded(px(12.))
+                .bg(rgba(0x1a162899))
+                .border_1()
+                .border_color(Theme::line())
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .id(SharedString::from(format!("fold-{key}")))
+                        .px(px(14.))
+                        .py(px(12.))
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .text_size(px(14.))
+                        .line_height(px(21.))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(Theme::ink())
+                        .cursor_pointer()
+                        .child(title.to_string())
+                        .child(ui::icon(if open { "chevron-up" } else { "chevron-down" }, 16., muted))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if let Some(s) = this.settings.as_mut() {
+                                if !s.open_details.remove(key) {
+                                    s.open_details.insert(key);
+                                }
+                                cx.notify();
+                            }
+                        })),
+                )
+                .when(open, |d| d.child(body.px(px(14.)).pb(px(14.))))
+                .into_any_element()
+        };
+        let key_label = |combo: &str| combo.split('-').map(|k| match k { "ctrl" => "Ctrl".to_string(), "shift" => "Shift".into(), "alt" => "Alt".into(), "cmd" => "Cmd".into(), other => other.to_uppercase() }).collect::<Vec<_>>().join(" + ");
+        let bind_row = |id: &'static str, title: &str, combo: Option<String>, capturing: bool, cx: &mut Context<Self>| {
+            div()
+                .id(SharedString::from(format!("bind-{id}")))
+                .min_h(px(44.))
+                .px(px(13.))
+                .py(px(10.))
+                .rounded(px(10.))
+                .bg(Theme::paper())
+                .border_1()
+                .border_color(if capturing { Hsla::from(Theme::lavender()) } else { Theme::line().into() })
+                .flex()
+                .items_center()
+                .justify_between()
+                .cursor_pointer()
+                .child(div().text_size(px(16.)).line_height(px(24.)).text_color(Theme::ink()).child(title.to_string()))
+                .when_some(combo, |d, c| {
+                    d.child(div().px(px(8.)).py(px(3.)).rounded(px(6.)).bg(Hsla::from(Theme::ink()).opacity(0.1)).border_1().border_color(Theme::line()).text_size(px(12.)).line_height(px(18.)).text_color(Theme::muted()).child(if capturing { "Press keys…".to_string() } else { c }))
+                })
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    if id == "whisper" {
+                        this.settings_note("Whispering is not in this app yet.", cx);
+                        return;
+                    }
+                    if let Some(s) = this.settings.as_mut() {
+                        s.capturing_key = if s.capturing_key == Some(id) { None } else { Some(id) };
+                        cx.notify();
+                    }
+                }))
+        };
+        let capturing = s.capturing_key;
+        let keybinds = div()
+            .flex()
+            .flex_col()
+            .child(Self::hint("Work while you are in a voice room, and are ignored while you are typing. Hold modifiers and press a key to rebind.").mb(px(12.)))
+            .child(bind_row("mute", "Toggle mute", Some(key_label(&s.mic.mute_key)), capturing == Some("mute"), cx).mb(px(14.)))
+            .child(bind_row("deafen", "Toggle deafen", Some(key_label(&s.mic.deafen_key)), capturing == Some("deafen"), cx).mb(px(14.)))
+            .child(bind_row("whisper", "Set a whisper key", None, false, cx));
+        out.push(foldout("keybinds", "Keybinds", s.open_details.contains("keybinds"), keybinds, cx));
+        let spatial = div().child(
+            Self::switch_box("spatial-table")
+                .items_center()
+                .justify_between()
+                .cursor_pointer()
+                .child(div().flex().flex_col().gap(px(2.)).child(strong("Table Mode")).child(small("Places voices around you. Only changes what you hear.".into())))
+                .child(Self::checkbox(false))
+                .on_click(cx.listener(|this, _, _, cx| this.settings_note("Spatial audio is not in this app yet.", cx))),
+        );
+        out.push(foldout("spatial", "Spatial audio", s.open_details.contains("spatial"), spatial, cx));
+        let region = self.call.as_ref().and_then(|c| c.region.clone());
+        let connection = div()
+            .flex()
+            .flex_col()
+            .child(Self::hint(match region {
+                Some(r) => format!("Connected through the {} relay.", if r == "de" { "Germany" } else { "Netherlands" }),
+                None => "Not checked yet. Join a voice room to test the relay.".into(),
+            }))
+            .child(div().flex().child(Self::plain("conn-check".into(), "Check again")));
+        out.push(foldout("connection", "Connection", s.open_details.contains("connection"), connection, cx));
+        out.push(Self::hint("Saved on this device. Switching the microphone in a call doesn't drop the call.").flex_none().mt(px(8.)).opacity(0.8).into_any_element());
         let _ = window;
         out
     }

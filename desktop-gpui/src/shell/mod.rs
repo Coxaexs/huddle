@@ -248,6 +248,8 @@ pub struct Shell {
     /// The account's email, once Settings asked (None: none set or not asked yet).
     account_email: Option<String>,
     access: settings::Access,
+    /// Voice keybinds (Settings → Voice & Video): mute and deafen.
+    voice_keys: (String, String),
     /// The menu for a person (right-click), their voice settings, and where its slider was drawn.
     user_menu: Option<user_menu::UserMenu>,
     voice_prefs: HashMap<String, user_menu::VoicePref>,
@@ -453,6 +455,7 @@ impl Shell {
             settings: None,
             account_email: None,
             access: settings::load_access(),
+            voice_keys: { let m = settings::load_mic(); (m.mute_key, m.deafen_key) },
             unread_bar: None,
             unread_pending: None,
             sized: Default::default(),
@@ -1090,7 +1093,18 @@ impl Shell {
             }
             "voice" => {
                 if let Some(channel) = channel {
-                    let list = serde_json::from_value(value["participants"].clone()).unwrap_or_default();
+                    let list: Vec<crate::model::VoiceParticipant> = serde_json::from_value(value["participants"].clone()).unwrap_or_default();
+                    // Someone (not a bot, not us) arriving or going in our room: its cue.
+                    if self.call.as_ref().is_some_and(|c| c.channel_id == channel && c.state == CallState::Connected) {
+                        let seats = |l: &[crate::model::VoiceParticipant]| -> HashSet<String> { l.iter().filter(|p| !p.bot && p.id != self.me.id).map(|p| p.connection_id.clone()).collect() };
+                        let before = seats(self.rooms.get(&channel).map(Vec::as_slice).unwrap_or_default());
+                        let after = seats(&list);
+                        if after.iter().any(|s| !before.contains(s)) {
+                            crate::sounds::play("userJoin");
+                        } else if before.iter().any(|s| !after.contains(s)) {
+                            crate::sounds::play("userLeave");
+                        }
+                    }
                     self.rooms.insert(channel, list);
                 }
             }
@@ -1277,6 +1291,7 @@ impl Shell {
     fn leave_voice(&mut self, cx: &mut Context<Self>) {
         self.close_stage();
         if self.call.take().is_some() {
+            crate::sounds::play("disconnect");
             self.voice.send(VoiceCmd::Leave(None));
             self.hub.send(json!({ "t": "voice-leave" }));
         }
@@ -1285,6 +1300,7 @@ impl Shell {
 
     fn toggle_mute(&mut self, cx: &mut Context<Self>) {
         self.muted = !self.muted;
+        crate::sounds::play(if self.muted { "mute" } else { "unmute" });
         // Unmuting while deafened hears again too, as on the web.
         if !self.muted && self.deafened {
             self.deafened = false;
@@ -1297,6 +1313,7 @@ impl Shell {
 
     fn toggle_deafen(&mut self, cx: &mut Context<Self>) {
         self.deafened = !self.deafened;
+        crate::sounds::play(if self.deafened { "deafen" } else { "undeafen" });
         self.voice.send(VoiceCmd::Deafen(self.deafened));
         // Deafening closes the mic; undeafening opens it only if deafen was what closed it.
         if self.deafened && !self.muted {
@@ -1317,6 +1334,10 @@ impl Shell {
         match event {
             VoiceEvent::Connected => {
                 if let Some(call) = self.call.as_mut() {
+                    // Joining plays the join cue; coming back after a reconnect does not.
+                    if call.state == CallState::Joining {
+                        crate::sounds::play("userJoin");
+                    }
                     call.state = CallState::Connected;
                 }
                 // People muted for this app stay unheard in the new call.
@@ -1348,6 +1369,7 @@ impl Shell {
             }
             VoiceEvent::Disconnected(reason) => {
                 if reason != "left" && self.call.take().is_some() {
+                    crate::sounds::play("disconnect");
                     self.hub.send(json!({ "t": "voice-leave" }));
                     self.status = Some("Voice disconnected.".into());
                 }

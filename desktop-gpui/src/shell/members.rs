@@ -501,6 +501,32 @@ impl gpui::Render for Shell {
             }))
             // Escape closes the message menu before anything else hears it.
             .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
+                let k = &event.keystroke;
+                let combo = k.unparse();
+                let has_modifier = k.modifiers.control || k.modifiers.alt || k.modifiers.platform;
+                // Rebinding a voice key in Settings: the next combination with a modifier.
+                if let Some(which) = this.settings.as_ref().and_then(|s| s.capturing_key) {
+                    if k.key == "escape" {
+                        this.end_key_capture(None, cx);
+                    } else if has_modifier && !["shift", "control", "alt", "platform", "function"].contains(&k.key.as_str()) {
+                        this.end_key_capture(Some((which, combo)), cx);
+                    }
+                    cx.stop_propagation();
+                    return;
+                }
+                // The voice keybinds work while in a call.
+                if this.call.is_some() && has_modifier {
+                    if combo == this.voice_keys.0 {
+                        this.toggle_mute(cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    if combo == this.voice_keys.1 {
+                        this.toggle_deafen(cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                }
                 if event.keystroke.key == "escape" && this.confirm.is_none() && this.settings.is_some() {
                     this.settings = None;
                     cx.notify();
