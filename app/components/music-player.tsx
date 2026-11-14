@@ -902,6 +902,12 @@ function LyricsPane({
   const ticket = useRef(0);
   const listRef = useRef<HTMLDivElement>(null);
   const handScrolledAt = useRef(0);
+  // "Correct timing": the line someone taps Now on when they hear it start (its index), else null.
+  const [tapLine, setTapLine] = useState<number | null>(null);
+  const clockAt = useRef({ ms: positionMs, at: 0 });
+  useEffect(() => {
+    clockAt.current = { ms: positionMs, at: performance.now() };
+  }, [positionMs]);
   // The chat card keeps the same timing correction under the same key.
   const storeKey = trackId ? `lyricsOffset:${trackId}` : null;
 
@@ -978,8 +984,9 @@ function LyricsPane({
     }
   }, [storeKey]);
 
-  const nudge = (delta: number) => {
-    const next = delta === 0 ? 0 : Math.round((offset + delta) * 10) / 10;
+  const nudge = (delta: number) => setTiming(delta === 0 ? 0 : Math.round((offset + delta) * 10) / 10);
+
+  const setTiming = (next: number) => {
     setOffset(next);
     try {
       if (!storeKey) return;
@@ -992,6 +999,29 @@ function LyricsPane({
 
   const lines = data?.trackId === trackId ? data.lines : [];
   const timedWords = lines.some((line) => line.words?.length);
+
+  // "Correct timing": ask for a line a few seconds ahead of what is shown now (one with timed words), so
+  // there is time to read it; the tap then says exactly where the song is against the words.
+  const startTapping = () => {
+    const now = positionMs / 1000 + offset;
+    const ahead = lines.findIndex((line) => line.words?.length && line.at >= now + 3);
+    setTapLine(ahead >= 0 ? ahead : lines.findIndex((line) => line.words?.length));
+  };
+
+  const tapNow = () => {
+    const line = tapLine === null ? null : lines[tapLine];
+    const start = line?.words?.find((word) => word[0] !== null)?.[0];
+    if (typeof start !== "number") return;
+    const { ms, at } = clockAt.current;
+    const heard = (ms + (playing ? Math.min(1000, performance.now() - at) : 0)) / 1000;
+    setTiming(Math.round((start - heard) * 100) / 100);
+    setTapLine(null);
+    onNote(
+      data?.wordsFrom
+        ? "Lined up with your tap. Sounds right? Save this timing for everyone, or correct it again."
+        : "Lined up with your tap (on this device). Correct it again any time.",
+    );
+  };
 
   const wordsCall = async (action: "shift" | "clear", delta?: number) =>
     apiFetch<{ error?: string }>("/api/music/lyrics/words", {
@@ -1170,6 +1200,23 @@ function LyricsPane({
 
   return (
     <div className="mp-lyrics-wrap">
+      {tapLine !== null && lines[tapLine] && (
+        <div className="mp-tap" role="group" aria-label="Correct the timing">
+          <p>
+            Tap <b>Now</b> the moment you hear:
+            <span className="mp-tap-line">“{lines[tapLine].line}”</span>
+          </p>
+          <div className="mp-tap-actions">
+            <button type="button" className="mp-button" onClick={tapNow} disabled={!playing}>
+              Now
+            </button>
+            <button type="button" className="mp-link" onClick={() => setTapLine(null)}>
+              Cancel
+            </button>
+          </div>
+          {!playing && <small>Play the song first.</small>}
+        </div>
+      )}
       {(data?.loose || data?.versionLength) && (
         <p className="mp-lyrics-note">
           {data.loose
@@ -1249,6 +1296,11 @@ function LyricsPane({
         {offset !== 0 && (
           <button type="button" onClick={() => nudge(0)}>
             Reset
+          </button>
+        )}
+        {timedWords && tapLine === null && (
+          <button type="button" onClick={startTapping} title="Tap along once to line the words up with the singing">
+            Correct timing
           </button>
         )}
         {!timedWords && trackId && roomId && (

@@ -602,3 +602,25 @@ it("borrows word timing from another version of the song", async () => {
   });
   expect(await screen.findByText(/Word timing from Şebnem Ferah/)).toBeTruthy();
 });
+
+it("corrects the word timing with one tap", async () => {
+  // At 33 s the room is in "Line 4" (31 s); each line's word starts on the line's time.
+  apiFetch.mockImplementation(async (path: string) =>
+    path.startsWith("/api/music/lyrics")
+      ? {
+          trackId: "t1",
+          lines: seed.lines.map(({ at, line }) => [at, line]),
+          words: seed.lines.map(({ at }, n) => [[at, at + 0.5, `Word${n + 1}`, []]]),
+        }
+      : path.startsWith("/api/music/playlists") ? PLAYLISTS : {},
+  );
+  show();
+  act(() => openMusicPlayer({ channelId: room, tab: "lyrics" }));
+  fireEvent.click(await screen.findByText("Correct timing"));
+  // The first line at least 3 s ahead, to have time to read it: "Line 5" at 40 s.
+  expect(screen.getByText("“Line 5”")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Now" }));
+  // Heard at 33 to 34 s (the room's clock runs on between updates), the words said 40 s: about 6 to 7 s early.
+  await waitFor(() => expect(screen.getByText(/^\+[67](\.\d+)?s$/)).toBeTruthy());
+  expect(screen.queryByText("“Line 5”")).toBeNull();
+});

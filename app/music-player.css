@@ -426,6 +426,40 @@ button.mp-line {
   cursor: pointer;
 }
 
+/* "Correct timing": tap Now when a line starts. */
+.mp-tap {
+  margin: 12px 16px 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--lavender) 45%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--lavender) 10%, transparent);
+}
+
+.mp-tap p {
+  margin: 0 0 10px;
+  color: var(--muted);
+}
+
+.mp-tap-line {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.mp-tap-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mp-tap small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+}
+
 /* A search result whose lyrics light up word by word. */
 .mp-words-mark {
   display: inline-flex;
