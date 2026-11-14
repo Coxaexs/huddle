@@ -242,6 +242,16 @@ fn group_label(text: String) -> impl IntoElement {
 
 impl gpui::Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Switching to Simple closes the member list (the header's faces open it), and the
+        // composer's placeholder follows the interface.
+        let simple = self.simple();
+        if simple != self.was_simple {
+            self.was_simple = simple;
+            if simple {
+                self.members_open = false;
+            }
+            self.refresh_placeholder(cx);
+        }
         // Typing goes to the composer unless something else has focus.
         if window.focused(cx).is_none() {
             window.focus(&self.composer.focus_handle(cx));

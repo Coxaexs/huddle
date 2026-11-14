@@ -26,6 +26,8 @@ pub struct User {
     pub disabled_modules: Vec<String>,
     /// "simple" or "full" (users.ui_mode): which interface this account uses.
     pub ui_mode: Option<String>,
+    /// The site lets this account make invites wherever it is (user.canInvite).
+    pub can_invite: bool,
 }
 
 impl User {
@@ -66,6 +68,7 @@ pub struct Role {
 /// lib/permissions.ts flags this client checks.
 pub mod permission {
     pub const ADMINISTRATOR: u64 = 1 << 0;
+    pub const CREATE_INVITES: u64 = 1 << 8;
     pub const MANAGE_MESSAGES: u64 = 1 << 21;
 }
 

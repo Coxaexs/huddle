@@ -78,9 +78,17 @@ impl Shell {
     /// canPin: anyone in a DM; in a server, MANAGE_MESSAGES (owners, admins and ADMINISTRATOR have
     /// everything), worked out like myPermissions in use-shell-session.ts.
     pub(super) fn can_pin(&self) -> bool {
-        if self.home {
-            return true;
-        }
+        self.home || self.has_permission(permission::MANAGE_MESSAGES)
+    }
+
+    /// canCreateServerInvites: CREATE_INVITES here, or a site admin / an account allowed to invite.
+    pub(super) fn can_invite(&self) -> bool {
+        self.me.can_invite || self.has_permission(permission::CREATE_INVITES)
+    }
+
+    /// hasPermission(myPermissions, bit) in the open server: owners, site admins and ADMINISTRATOR
+    /// have everything.
+    pub(super) fn has_permission(&self, bit: u64) -> bool {
         let Some(server) = self.server() else { return false };
         if self.me.is_admin || server.owner_id.as_deref() == Some(self.me.id.as_str()) {
             return true;
@@ -99,7 +107,7 @@ impl Shell {
                 mask |= role.permissions;
             }
         }
-        mask & (permission::ADMINISTRATOR | permission::MANAGE_MESSAGES) != 0
+        mask & (permission::ADMINISTRATOR | bit) != 0
     }
 
     pub(super) fn open_context_menu(&mut self, message_id: String, at: Point<Pixels>, cx: &mut Context<Self>) {

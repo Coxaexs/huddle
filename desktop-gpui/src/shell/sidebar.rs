@@ -613,7 +613,7 @@ impl Shell {
         let go_ink = crate::theme::mix(Theme::mint(), 0.75, Theme::ink());
         let id = channel.id.clone();
         let mut faces = div().flex().items_center();
-        for (n, person) in people.iter().take(4).enumerate() {
+        for (n, person) in people.iter().take(5).enumerate() {
             faces = faces.child(
                 div()
                     .when(n > 0, |d| d.ml(px(-7.)))
@@ -624,8 +624,8 @@ impl Shell {
                     .child(ui::avatar(self.picture(&person.avatar_url), &person.avatar, &person.color, person.name(), 22.)),
             );
         }
-        if people.len() > 4 {
-            faces = faces.child(div().ml(px(5.)).text_size(px(11.5)).text_color(Theme::muted()).child(format!("+{}", people.len() - 4)));
+        if people.len() > 5 {
+            faces = faces.child(div().ml(px(5.)).text_size(px(11.5)).text_color(Theme::muted()).child(format!("+{}", people.len() - 5)));
         }
         div()
             .id(SharedString::from(format!("talk-{}", channel.id)))
@@ -651,7 +651,7 @@ impl Shell {
                     .child(channel.name.clone())
                     .when(!live, |d| d.child(div().text_size(px(12.)).text_color(Theme::muted()).child(format!(" · {}", t("simple.empty"))))),
             )
-            .when(live, |d| {
+            .when(live || here, |d| {
                 d.child(
                     div()
                         .flex()
@@ -659,8 +659,7 @@ impl Shell {
                         .justify_between()
                         .gap(px(8.))
                         .child(faces)
-                        .when(!here, |d| {
-                            d.child(
+                        .child(
                                 div()
                                     .px(px(11.))
                                     .py(px(3.))
@@ -669,9 +668,8 @@ impl Shell {
                                     .text_size(px(12.))
                                     .line_height(px(18.))
                                     .text_color(go_ink)
-                                    .child(t("simple.join")),
-                            )
-                        }),
+                                    .child(t(if here { "simple.here" } else { "simple.join" })),
+                            ),
                 )
             })
             .on_click(cx.listener(move |this, _, window, cx| this.open_stage(id.clone(), window, cx)))

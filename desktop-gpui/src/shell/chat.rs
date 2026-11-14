@@ -39,13 +39,19 @@ impl Shell {
             .children(self.render_search(cx))
             .map(|d| match self.render_stage_body(window, cx) {
                 Some(stage) => d.child(stage),
-                None => d.child(self.render_messages(cx)).children(self.render_notice(cx)).child(self.render_composer(window, cx)),
+                None => d.child(self.render_messages(cx))
+                    .children(self.render_notice(cx))
+                    .children(self.render_simple_tip(f32::from(self.chat_panel_width(window)) - 2., cx))
+                    .child(self.render_composer(window, cx)),
             }))
     }
 
     fn render_header(&self, window: &gpui::Window, cx: &mut Context<Self>) -> AnyElement {
         if let Some(dm) = self.channel_id.as_ref().and_then(|c| self.dm(c)) {
             return self.render_dm_header(dm.clone(), window, cx).into_any_element();
+        }
+        if self.simple() && !self.home && self.stage.is_none() {
+            return self.render_simple_header(cx);
         }
         // In a voice room's stage: its speaker icon and name, "· N in call", and the stage controls.
         let staged = self.stage.as_ref().and_then(|s| self.channel_by_id(&s.channel_id));
@@ -1063,7 +1069,9 @@ impl Shell {
                 _ => "Several people are typing…".to_string(),
             });
         let note = typing.or(self.status.as_ref().map(|s| s.to_string())).unwrap_or_default();
-        let empty = self.composer.read(cx).is_empty() && self.pending_files.is_empty();
+        // Simple has no voice-message button: the paper plane shows even when empty.
+        let simple = self.simple();
+        let empty = self.composer.read(cx).is_empty() && self.pending_files.is_empty() && !simple;
         let small = |name: &'static str, title: String| {
             div()
                 .id(name)
@@ -1110,7 +1118,7 @@ impl Shell {
             .flex_none()
             .pt(px(8.))
             .px(px(35.4))
-            .pb(px(25.))
+            .pb(px(if simple { 18. } else { 25. }))
             // The composer's padding is clamp(18px, 3vw, 36px) each side.
             .children(self.render_gif_picker(f32::from(self.chat_panel_width(window)) - 2. - 2. * (f32::from(window.viewport_size().width) * 0.03).clamp(18., 36.), window, cx))
             .children(self.render_staged(cx))
@@ -1133,7 +1141,7 @@ impl Shell {
                     }])
                     .flex()
                     .items_center()
-                    .gap(px(4.))
+                    .gap(px(if simple { 5. } else { 4. }))
                     .child(
                         div()
                             .id("attach")
@@ -1147,19 +1155,21 @@ impl Shell {
                             .text_color(Theme::quiet())
                             .cursor_pointer()
                             .hover(|s| s.bg(Theme::hover()).text_color(Theme::ink()))
-                            .tooltip(ui::tooltip(t("composer.attachFiles")))
-                            .child("+")
+                            .tooltip(ui::tooltip(t(if simple { "simple.sendPicture" } else { "composer.attachFiles" })))
+                            .child(if simple { icon("image", 19., Theme::quiet()).into_any_element() } else { "+".into_any_element() })
                             .on_click(cx.listener(|this, _, _, cx| this.pick_files(cx))),
                     )
                     // The textarea: 9px 10px padding, growing to 40% of the window.
                     .child(div().flex_1().min_w_0().px(px(10.)).py(px(9.)).child(self.composer.clone()))
-                    .child(small("chevron-up", t("composer.moreTools")))
+                    .when(!simple, |d| d.child(small("chevron-up", t("composer.moreTools"))))
                     // `.composer-emoji-btn`: 6px corners; on hover a 10% ink square and a lavender face.
                     .child(
                         div()
                             .id("smile")
                             .group("composer-emoji")
-                            .size(px(28.))
+                            // Simple: `padding: 4px 6px` around the 18px face, 30 by 26.
+                            .w(px(if simple { 30. } else { 28. }))
+                            .h(px(if simple { 26. } else { 28. }))
                             .rounded(px(6.))
                             .flex()
                             .items_center()
@@ -1170,7 +1180,7 @@ impl Shell {
                             .child(icon("smile", 18., Theme::quiet()).group_hover("composer-emoji", |s| s.text_color(Theme::lavender())))
                             .on_click(cx.listener(|this, _, window, cx| this.toggle_composer_picker(window, cx))),
                     )
-                    .child(
+                    .when(!simple, |d| d.child(
                         div()
                             .id("gif")
                             .w(px(28.))
@@ -1188,7 +1198,7 @@ impl Shell {
                             .tooltip(ui::tooltip("GIFs"))
                             .child("GIF")
                             .on_click(cx.listener(|this, _, window, cx| this.toggle_gif_picker(window, cx))),
-                    )
+                    ))
                     .child(
                         div()
                             .id("send")
@@ -1234,7 +1244,7 @@ impl Shell {
     }
 }
 
-fn header_button(name: &'static str, title: &'static str, active: bool) -> gpui::Stateful<gpui::Div> {
+pub(super) fn header_button(name: &'static str, title: &'static str, active: bool) -> gpui::Stateful<gpui::Div> {
     div()
         .id(name)
         .size(px(34.))

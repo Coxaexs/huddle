@@ -32,6 +32,7 @@ mod reaction_viewer;
 mod server_menu;
 mod settings;
 mod sidebar;
+mod simple;
 
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -200,6 +201,12 @@ pub struct Shell {
     /// Categories folded shut in the sidebar.
     collapsed: HashSet<String>,
     members_open: bool,
+    /// Simple: the header's "More" menu is open.
+    header_more: bool,
+    /// Simple: how many of Hoffy's tips were dismissed (kept on this computer).
+    tips_seen: usize,
+    /// The interface last drawn, so switching to Simple can close the member list once.
+    was_simple: bool,
     /// Each server's custom emoji.
     emojis: HashMap<String, Vec<model::Emoji>>,
     /// The message the composer is answering: (id, author shown).
@@ -406,6 +413,9 @@ impl Shell {
             dms: Vec::new(),
             collapsed: HashSet::new(),
             members_open: true,
+            header_more: false,
+            tips_seen: simple::load_tips_seen(),
+            was_simple: false,
             emojis: HashMap::new(),
             reply_to: None,
             home: false,
@@ -614,11 +624,23 @@ impl Shell {
         let name = self.dm(&channel_id).map(|d| (d.user.id == self.me.id, d.user.name().to_string()));
         self.channel_id = None;
         self.open_channel(channel_id, cx);
-        // DM placeholders: "Message @name", or the note-to-self line in your own chat.
-        if let Some((mine, name)) = name {
-            let text = if mine { crate::i18n::t("composer.notePlaceholder") } else { crate::i18n::tv("composer.dmPlaceholder", &[("channel", &name)]) };
-            self.composer.update(cx, |input, cx| input.set_placeholder(text, cx));
-        }
+        let _ = name;
+        self.refresh_placeholder(cx);
+    }
+
+    /// The composer's placeholder (composer.tsx): "Say something…" in Simple; in DMs "Message @name"
+    /// or the note-to-self line in your own chat; otherwise "Message #channel".
+    pub(super) fn refresh_placeholder(&mut self, cx: &mut Context<Self>) {
+        use crate::i18n::{t, tv};
+        let text = if self.channel_id.is_some() && self.simple() {
+            t("simple.typeHere")
+        } else if let Some(dm) = self.channel_id.as_ref().and_then(|c| self.dm(c)) {
+            if dm.user.id == self.me.id { t("composer.notePlaceholder") } else { tv("composer.dmPlaceholder", &[("channel", dm.user.name())]) }
+        } else {
+            let name = self.channel().map(|c| c.name.clone()).unwrap_or_default();
+            tv("composer.channelPlaceholder", &[("channel", &name)])
+        };
+        self.composer.update(cx, |input, cx| input.set_placeholder(text, cx));
     }
 
     fn open_dm_with(&mut self, user_id: String, cx: &mut Context<Self>) {
@@ -866,8 +888,7 @@ impl Shell {
         } else {
             self.land_on_unread(&id, cx);
         }
-        let name = self.channel().map(|c| c.name.clone()).unwrap_or_default();
-        self.composer.update(cx, |input, cx| input.set_placeholder(crate::i18n::tv("composer.channelPlaceholder", &[("channel", &name)]), cx));
+        self.refresh_placeholder(cx);
         cx.notify();
     }
 
