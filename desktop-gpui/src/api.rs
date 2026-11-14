@@ -166,6 +166,11 @@ impl Client {
         Ok(serde_json::from_value(message)?)
     }
 
+    /// A message by id, with where it lives (`/api/messages/<id>`); an error when we cannot read it.
+    pub fn linked_message(&self, id: &str) -> Result<Value> {
+        self.get(&format!("/api/messages/{}", encode(id)))
+    }
+
     /// A thread's replies, oldest first.
     pub fn thread(&self, root_id: &str) -> Result<Vec<Message>> {
         let page: MessagePage = self.get(&format!("/api/messages?threadId={}", encode(root_id)))?;

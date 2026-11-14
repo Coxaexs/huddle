@@ -104,7 +104,11 @@ impl Shell {
             }
             return out;
         }
-        for (n, url) in links.iter().filter(|u| !u.contains("/hangout?") || !u.contains("message=")).take(3).enumerate() {
+        for (n, url) in links.iter().take(3).enumerate() {
+            if super::message_link::parse(url).is_some() {
+                out.extend(self.render_message_link(message, n, url, column, cx));
+                continue;
+            }
             let preview = self.preview(url, cx);
             if let Some(id) = youtube_id(url) {
                 out.push(self.render_youtube(message, n, url, &id, preview, column));
@@ -153,7 +157,7 @@ impl Shell {
             .into_any_element()
     }
 
-    fn card_frame(accent: Hsla) -> gpui::Div {
+    pub(super) fn card_frame(accent: Hsla) -> gpui::Div {
         div()
             .mt(px(8.))
             .pl(px(12.))
