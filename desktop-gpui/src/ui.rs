@@ -415,3 +415,17 @@ pub fn css_background(css: &'static str, radius: f32) -> impl IntoElement {
     .left_0()
     .size_full()
 }
+
+/// A CSS string made at run time, kept for the life of the app (each distinct one once), for
+/// `css_background`, which wants `'static`.
+pub fn css_static(css: String) -> &'static str {
+    static SEEN: std::sync::Mutex<Option<std::collections::HashSet<&'static str>>> = std::sync::Mutex::new(None);
+    let mut seen = SEEN.lock().unwrap();
+    let set = seen.get_or_insert_with(Default::default);
+    if let Some(hit) = set.get(css.as_str()) {
+        return hit;
+    }
+    let leaked: &'static str = Box::leak(css.into_boxed_str());
+    set.insert(leaked);
+    leaked
+}

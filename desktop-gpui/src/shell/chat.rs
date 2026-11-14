@@ -223,12 +223,46 @@ impl Shell {
                 .child("Loading messages…")
                 .into_any_element();
         }
+        // Appearance → Customize → Chat backdrop.
+        let backdrop = crate::theme::load_customize().backdrop;
         div()
             .relative()
             .flex_1()
             .min_h_0()
             .flex()
             .flex_col()
+            .when(backdrop == "aurora", |d| {
+                let lav = gpui::Hsla::from(Theme::lavender());
+                let css = format!(
+                    "radial-gradient(circle at 82% 8%, {}, rgba(0, 0, 0, 0) 38%), radial-gradient(circle at 12% 88%, rgba(66, 211, 155, 0.17), rgba(0, 0, 0, 0) 36%), linear-gradient(135deg, {}, rgba(61, 186, 140, 0.05))",
+                    rgba_css(lav.opacity(0.22)),
+                    rgba_css(lav.opacity(0.06))
+                );
+                d.child(ui::css_background(ui::css_static(css), 0.))
+            })
+            .when(backdrop == "dots", |d| {
+                let dot = gpui::Hsla::from(Theme::muted()).opacity(0.2);
+                d.child(
+                    gpui::canvas(
+                        |_, _, _| {},
+                        move |bounds, _, window, _| {
+                            let mut y = bounds.top() + px(9.);
+                            while y < bounds.bottom() {
+                                let mut x = bounds.left() + px(9.);
+                                while x < bounds.right() {
+                                    window.paint_quad(gpui::fill(gpui::Bounds::new(gpui::point(x - px(0.7), y - px(0.7)), gpui::size(px(1.4), px(1.4))), dot).corner_radii(px(0.7)));
+                                    x += px(18.);
+                                }
+                                y += px(18.);
+                            }
+                        },
+                    )
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full(),
+                )
+            })
             .child(list(self.list.current(), cx.processor(|this, ix: usize, window, cx| this.render_message(ix, window, cx))).flex_1())
             .children(self.render_unread_bar(cx))
             .into_any_element()
@@ -546,7 +580,9 @@ impl Shell {
         // day is a 40px top margin with the label drawn in it; the list adds 36px above the first
         // message and 8px below the last.
         let last = ix + 1 == list.len();
-        let pad = if continuation { 1. } else { 7. };
+        // Appearance → Customize → Message spacing: compact 5px, cozy 7px, roomy 15px.
+        let spacing = crate::theme::load_customize().spacing;
+        let pad = if continuation { 1. } else if spacing == "compact" { 5. } else if spacing == "roomy" { 15. } else { 7. };
         // The list's padding and the article's margin sit outside the card that lights up on hover.
         let group = SharedString::from(format!("msg-{}", message.id));
         // Development: HOFFLE_DEV_HOVER=1 draws the last message as hovered (screenshots get no mouse).
@@ -1279,4 +1315,10 @@ fn new_divider() -> impl IntoElement {
                 .text_color(gpui::white())
                 .child("NEW"),
         )
+}
+
+/// A colour as CSS `rgba(...)`, for building backgrounds.
+fn rgba_css(c: gpui::Hsla) -> String {
+    let r = gpui::Rgba::from(c);
+    format!("rgba({}, {}, {}, {})", (r.r * 255.).round(), (r.g * 255.).round(), (r.b * 255.).round(), r.a)
 }
