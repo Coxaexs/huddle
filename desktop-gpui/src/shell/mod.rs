@@ -7,6 +7,7 @@ mod context_menu;
 mod emoji_picker;
 mod files;
 mod forward;
+mod thread;
 mod gif_picker;
 mod links;
 mod friends;
@@ -176,6 +177,7 @@ pub struct Shell {
     dev_edit_done: bool,
     dev_ctx_done: bool,
     dev_forward_done: bool,
+    dev_thread_done: bool,
     dev_rv_done: bool,
     dev_extras_done: bool,
     /// Who is typing where: (user id, name, when it was last heard).
@@ -240,6 +242,9 @@ pub struct Shell {
     /// Who reacted with one emoji to a message, and where its rows were drawn.
     reaction_viewer: Option<reaction_viewer::ReactionViewer>,
     forward: Option<forward::Forward>,
+    thread: Option<thread::Thread>,
+    /// Thread replies already counted on their root (the hub and the send both report them).
+    counted_replies: HashSet<String>,
     viewer_spot: profile_card::Spot,
     /// Shift is down: message toolbars show their extra actions.
     shift_held: bool,
@@ -370,6 +375,7 @@ impl Shell {
             dev_edit_done: false,
             dev_ctx_done: false,
             dev_forward_done: false,
+            dev_thread_done: false,
             dev_rv_done: false,
             dev_extras_done: false,
             typing: HashMap::new(),
@@ -409,6 +415,8 @@ impl Shell {
             shift_held: std::env::var_os("HOFFLE_DEV_SHIFT").is_some(),
             reaction_viewer: None,
             forward: None,
+            thread: None,
+            counted_replies: HashSet::new(),
             viewer_spot: profile_card::spot(),
             server_menu: false,
             notify_menu: None,
@@ -802,6 +810,7 @@ impl Shell {
         if self.channel_id.as_deref() == Some(&id) {
             return;
         }
+        self.thread = None;
         if let Some(previous) = self.channel_id.clone() {
             self.reads.insert(previous.clone(), ReadState { unread: true, ..Default::default() });
             self.mark_read(&previous, cx);
@@ -948,6 +957,7 @@ impl Shell {
         let Some(channel) = message.channel_id.clone() else { return };
         // A thread reply belongs to its thread, not the channel's main list.
         if message.thread_id.is_some() {
+            self.add_thread_reply(message, cx);
             return;
         }
         let Some(list) = self.messages.get_mut(&channel) else {

@@ -538,7 +538,7 @@ fn shape(area: &TextArea, width: Pixels, window: &mut Window) -> (Vec<HardLine>,
         }
         let shaped = window
             .text_system()
-            .shape_text(SharedString::from(hard.to_string()), px(area.size), &[run], Some(width), None)
+            .shape_text(SharedString::from(hard.to_string()), px(area.size), &[run], (!placeholder).then_some(width), None)
             .ok()
             .and_then(|mut v| (!v.is_empty()).then(|| v.remove(0)));
         if let Some(line) = shaped {
@@ -572,9 +572,10 @@ impl Element for AreaElement {
                 _ => px(400.),
             });
             let a = area.read(cx);
-            let (lines, _) = shape(a, width, window);
+            let (lines, placeholder) = shape(a, width, window);
             let lh = px(a.line_height);
-            let height = lines.last().map_or(lh, |l| l.top + l.line.size(lh).height);
+            // An empty field is one row tall: a long placeholder is cut off, as in a textarea.
+            let height = if placeholder { lh } else { lines.last().map_or(lh, |l| l.top + l.line.size(lh).height) };
             let max = (lh * a.max_lines as f32).min(px(a.max_height.unwrap_or(f32::MAX)));
             size(width, height.min(max).max(px(a.min_height)))
         });

@@ -298,8 +298,9 @@ impl Shell {
                 self.open_reaction_picker(id, at, window, cx);
             }
             Item::Forward => self.open_forward(&message, window, cx),
-            // Not built yet here: threads, read-aloud.
-            Item::Thread | Item::Speak | Item::Apps => {}
+            Item::Thread => self.open_thread(message, window, cx),
+            // Not built yet here: read-aloud.
+            Item::Speak | Item::Apps => {}
         }
         cx.notify();
     }

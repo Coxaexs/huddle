@@ -166,6 +166,19 @@ impl Client {
         Ok(serde_json::from_value(message)?)
     }
 
+    /// A thread's replies, oldest first.
+    pub fn thread(&self, root_id: &str) -> Result<Vec<Message>> {
+        let page: MessagePage = self.get(&format!("/api/messages?threadId={}", encode(root_id)))?;
+        Ok(page.messages)
+    }
+
+    /// A reply in a thread.
+    pub fn send_thread(&self, channel_id: &str, content: &str, thread_id: &str) -> Result<Message> {
+        let reply: Value = self.post("/api/messages", json!({ "channelId": channel_id, "content": content, "threadId": thread_id }))?;
+        let message = reply.get("message").cloned().unwrap_or(reply);
+        Ok(serde_json::from_value(message)?)
+    }
+
     /// A message with a payload of its own (a forward's `forwardedFrom`).
     pub fn send_payload(&self, channel_id: &str, content: &str, payload: Value) -> Result<Message> {
         let reply: Value = self.post("/api/messages", json!({ "channelId": channel_id, "content": content, "payload": payload }))?;

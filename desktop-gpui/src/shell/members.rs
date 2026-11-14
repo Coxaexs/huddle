@@ -263,6 +263,20 @@ impl gpui::Render for Shell {
                 self.ctx_menu = Some(super::context_menu::CtxMenu { message_id: id, at: gpui::point(px(x), px(y)) });
             }
         }
+        // Development: HOFFLE_DEV_THREAD=1 opens the last message's thread; HOFFLE_DEV_THREAD_SEND=<text>
+        // replies there (only in the QA account's own notes DM).
+        if std::env::var("HOFFLE_DEV_THREAD").is_ok() && !self.dev_thread_done {
+            if let Some(last) = self.channel_id.as_ref().and_then(|c| self.messages.get(c)).and_then(|l| l.last()).cloned() {
+                self.dev_thread_done = true;
+                self.open_thread(last, window, cx);
+                if let Ok(text) = std::env::var("HOFFLE_DEV_THREAD_SEND")
+                    && let Some(thread) = self.thread.as_ref()
+                {
+                    thread.composer.update(cx, |c, cx| c.set_value(text, cx));
+                    self.send_thread_reply(cx);
+                }
+            }
+        }
         // Development: HOFFLE_DEV_FORWARD=1 opens the Forward dialog on the channel's last message;
         // HOFFLE_DEV_FORWARD_PICK=<n> also picks the n-th destination.
         if std::env::var("HOFFLE_DEV_FORWARD").is_ok() && self.forward.is_none() && !self.dev_forward_done {
@@ -440,6 +454,7 @@ impl gpui::Render for Shell {
                 )
             })
             .when(!(self.home && self.channel_id.is_none()), |d| d.child(self.render_chat_panel(window, cx)))
+            .children(self.render_thread(window, cx))
             .when(members_open && (!self.home || self.channel_id.is_some()) && self.stage.is_none(), |d| d.child(self.render_members(window, cx)))
             .children(self.render_panel(window, cx))
             .children(self.render_user_menu(window, cx))

@@ -477,15 +477,7 @@ impl Shell {
         if !message.reactions.is_empty() {
             body = body.child(self.render_reactions(message, cx));
         }
-        if let Some(count) = message.thread_count.filter(|c| *c > 0) {
-            body = body.child(
-                div()
-                    .mt(px(4.))
-                    .text_size(px(12.))
-                    .text_color(Theme::lavender())
-                    .child(format!("{count} {} in thread", if count == 1 { "reply" } else { "replies" })),
-            );
-        }
+        body = body.children(self.render_thread_link(message, cx));
 
         let gutter: AnyElement = if continuation {
             div().w(px(36.)).flex_none().into_any_element()
@@ -730,7 +722,13 @@ impl Shell {
                     .on_click(cx.listener(move |this, _, _, cx| this.toggle_saved(id.clone(), cx))),
             );
             bar = bar
-                .child(button(format!("th-{}", message.id), false).tooltip(ui::tooltip(t("message.replyInThread"))).child(icon("message-square", 16., Theme::muted())))
+                .child({
+                    let m = message.clone();
+                    button(format!("th-{}", message.id), false)
+                        .tooltip(ui::tooltip(t("message.replyInThread")))
+                        .child(icon("message-square", 16., Theme::muted()))
+                        .on_click(cx.listener(move |this, _, window, cx| this.open_thread(m.clone(), window, cx)))
+                })
                 .child({
                     let m = message.clone();
                     button(format!("fw-{}", message.id), false)
@@ -980,7 +978,7 @@ impl Shell {
         }
     }
 
-    fn render_attachments(&self, message: &Message, column: f32, window: &mut gpui::Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    pub(super) fn render_attachments(&self, message: &Message, column: f32, window: &mut gpui::Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let mut out = Vec::new();
         for (n, url) in message.image.iter().chain(message.images.iter()).enumerate() {
             out.push(self.render_image(message, n, url, column, window, cx));
