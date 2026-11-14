@@ -468,6 +468,39 @@ impl Client {
         Ok(())
     }
 
+    pub fn mark_read_many(&self, channel_ids: &[String]) -> Result<()> {
+        let _: Value = self.post("/api/channels/reads", json!({ "channelIds": channel_ids }))?;
+        Ok(())
+    }
+
+    /// Notification levels by channel (or `server:<id>`).
+    pub fn channel_prefs(&self) -> Result<std::collections::HashMap<String, String>> {
+        #[derive(serde::Deserialize, Default)]
+        #[serde(default)]
+        struct Reply {
+            prefs: std::collections::HashMap<String, String>,
+        }
+        Ok(self.get::<Reply>("/api/channels/prefs")?.prefs)
+    }
+
+    pub fn set_channel_pref(&self, key: &str, level: &str) -> Result<()> {
+        let _: Value = self.post("/api/channels/prefs", json!({ "channelId": key, "level": level }))?;
+        Ok(())
+    }
+
+    pub fn leave_server(&self, server_id: &str) -> Result<()> {
+        let _: Value = self.post("/api/servers/membership", json!({ "action": "leave", "serverId": server_id }))?;
+        Ok(())
+    }
+
+    pub fn delete_server(&self, server_id: &str) -> Result<()> {
+        let mut request = self.agent.delete(format!("{}/api/servers/{}", self.base, encode(server_id))).header("Origin", self.absolute(""));
+        if let Some(cookie) = self.cookie_header() {
+            request = request.header("Cookie", &cookie);
+        }
+        read::<Value>(request.call()?, "delete server").map(|_| ())
+    }
+
     pub fn mark_read(&self, channel_id: &str) -> Result<()> {
         let _: Value = self.post("/api/channels/reads", json!({ "channelId": channel_id }))?;
         Ok(())

@@ -37,6 +37,8 @@ pub(super) struct Confirm {
 pub(super) enum ConfirmAction {
     Delete(String),
     Report(String),
+    LeaveServer(String),
+    DeleteServer(String),
 }
 
 #[derive(Clone, Copy)]
@@ -625,6 +627,8 @@ impl Shell {
         self.confirm = None;
         match action {
             ConfirmAction::Delete(id) => self.delete_message(id, cx),
+            ConfirmAction::LeaveServer(id) => self.leave_server(id, cx),
+            ConfirmAction::DeleteServer(id) => self.delete_server(id, cx),
             ConfirmAction::Report(id) => {
                 let client = self.client.clone();
                 let server = if self.home { None } else { self.server_id.clone() };

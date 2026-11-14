@@ -21,6 +21,7 @@ pub use links::Preview;
 pub use user_menu::VoicePref;
 pub use side_panels::{MentionEntry, SavedEntry, SearchResult};
 mod rail;
+mod server_menu;
 mod sidebar;
 
 use std::collections::{HashMap, HashSet};
@@ -225,6 +226,10 @@ pub struct Shell {
     user_menu: Option<user_menu::UserMenu>,
     voice_prefs: HashMap<String, user_menu::VoicePref>,
     volume_spot: profile_card::Spot,
+    /// The ••• menu under the server's name, and notification levels by channel / `server:<id>`.
+    server_menu: bool,
+    server_menu_closed: Option<Instant>,
+    channel_prefs: HashMap<String, String>,
     /// The GIF / sticker picker over the composer.
     gif_picker: Option<gif_picker::GifPicker>,
     /// Files waiting in the composer.
@@ -385,6 +390,9 @@ impl Shell {
             stage: None,
             pending_files: Vec::new(),
             gif_picker: None,
+            server_menu: false,
+            server_menu_closed: None,
+            channel_prefs: HashMap::new(),
             user_menu: None,
             voice_prefs: HashMap::new(),
             volume_spot: profile_card::spot(),
@@ -405,6 +413,7 @@ impl Shell {
         shell.load_side_data(cx);
         shell.load_saved(cx);
         shell.load_voice_prefs(cx);
+        shell.load_channel_prefs(cx);
         // Voice seat timers tick once a second.
         shell._tasks.push(cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(Duration::from_secs(1)).await;

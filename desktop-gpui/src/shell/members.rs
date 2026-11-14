@@ -300,6 +300,9 @@ impl gpui::Render for Shell {
                     self.open_user_menu(id, gpui::point(px(*x), px(*y)), cx);
                 }
             }
+            if std::env::var_os("HOFFLE_DEV_SERVERMENU").is_some() {
+                self.server_menu = true;
+            }
             // HOFFLE_DEV_GIF=hoffy | gifs: the media picker on that tab.
             if let Ok(tab) = std::env::var("HOFFLE_DEV_GIF") {
                 self.toggle_gif_picker(window, cx);
@@ -405,6 +408,7 @@ impl gpui::Render for Shell {
             .when(members_open && (!self.home || self.channel_id.is_some()) && self.stage.is_none(), |d| d.child(self.render_members(window, cx)))
             .children(self.render_panel(window, cx))
             .children(self.render_user_menu(window, cx))
+            .children(self.render_server_menu(cx))
             .children(self.render_profile(window, cx))
             .children(self.render_picker(window, cx))
             .children(self.render_context_menu(window, cx))

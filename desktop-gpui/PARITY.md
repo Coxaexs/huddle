@@ -16,7 +16,7 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | UI strings in all 7 languages, resolved like lib/i18n.ts (`tools/export-i18n.mjs`) | lib/i18n.ts, lib/i18n-catalog | ✅ (strings not yet ported stay English) |
 | Hoffy mascot, every face × pose (`tools/export-hoffy.mjs`) | lib/hoffy-svg.ts | ✅ (idle/wave motion ⬜) |
 | Rail: home + DM badge, servers, active/unread pills, mention badge, voice badge, add, explore, 4 DMs with presence | chat/rail.tsx | ✅ (folders, drag to reorder, right-click menu ⬜) |
-| Sidebar header: eyebrow, Fraunces name, ••• | panels.tsx | ✅ (server menu ⬜) |
+| Sidebar header: eyebrow, Fraunces name, ••• and its menu (Mark as Read, notification level, Leave / Delete Server with confirm; settings, invite, rename, create channel listed for those allowed) | panels.tsx | 🟡 (the settings, invite, rename and create-channel dialogs ⬜) |
 | Channel list: label, events chip, rows by kind, selected, unread pill, mention count, categories fold | panels.tsx, chat-shell-renderers.tsx | ✅ (banner header, kind picker, drag, channel menu ⬜) |
 | Voice rooms in the list: LIVE, seats with timers, bot bars, mute/deafen, speaking ring | chat-shell-renderers.tsx | ✅ (stream hover card, drag to move ⬜) |
 | User card: avatar, presence, name, custom status or presence, mic/headphones/settings | user-footer.tsx | 🟡 (device menus, status picker, settings ⬜) |

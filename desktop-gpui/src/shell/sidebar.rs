@@ -57,7 +57,9 @@ impl Shell {
                     .cursor_pointer()
                     .hover(|s| s.bg(Theme::hover()).text_color(Theme::ink()))
                     .tooltip(ui::tooltip(t("sidebar.serverMenu")))
-                    .child("•••"),
+                    .when(self.server_menu, |d| d.bg(Theme::lavender_soft()).text_color(Theme::lavender()))
+                    .child("•••")
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_server_menu(cx))),
             );
 
         let mut nav = div()
