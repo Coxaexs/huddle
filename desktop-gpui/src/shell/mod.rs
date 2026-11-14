@@ -33,6 +33,7 @@ mod server_menu;
 mod settings;
 mod sidebar;
 mod simple;
+mod simple_settings;
 
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -1409,7 +1410,7 @@ impl Shell {
     }
 
 
-    fn sign_out(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn sign_out(&mut self, cx: &mut Context<Self>) {
         self.leave_voice(cx);
         let client = self.client.clone();
         cx.background_executor().spawn(async move { client.logout() }).detach();

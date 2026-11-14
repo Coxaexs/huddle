@@ -14,6 +14,8 @@ use crate::ui;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum Tab {
+    /// Simple's page of tiles.
+    Home,
     Password,
     Privacy,
     Activities,
@@ -294,7 +296,7 @@ impl Shell {
         let focus = cx.focus_handle();
         window.focus(&focus);
         self.settings = Some(Settings {
-            tab: Tab::Password,
+            tab: if self.simple() { Tab::Home } else { Tab::Password },
             focus,
             search,
             scroll: ScrollHandle::new(),
@@ -405,7 +407,7 @@ impl Shell {
     }
 
     /// A line for the open settings page (the chat's notice bar is hidden behind the dialog).
-    fn settings_note(&mut self, text: &str, cx: &mut Context<Self>) {
+    pub(super) fn settings_note(&mut self, text: &str, cx: &mut Context<Self>) {
         match self.settings.as_mut() {
             Some(s) => {
                 s.status = Some(text.to_string());
@@ -443,7 +445,7 @@ impl Shell {
         }
     }
 
-    fn settings_tab(&mut self, tab: Tab, cx: &mut Context<Self>) {
+    pub(super) fn settings_tab(&mut self, tab: Tab, cx: &mut Context<Self>) {
         if let Some(s) = self.settings.as_mut() {
             s.tab = tab;
             s.status = None;
@@ -823,7 +825,8 @@ impl Shell {
                         .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.75), offset: gpui::point(px(0.), px(28.)), blur_radius: px(80.), spread_radius: px(0.) }])
                         .overflow_hidden()
                         .flex()
-                        .child(self.render_settings_sidebar(s, window, cx))
+                        // Simple has no sidebar: Home's tiles and a Back pill instead.
+                        .when(!self.simple(), |d| d.child(self.render_settings_sidebar(s, window, cx)))
                         .child(self.render_settings_main(s, window, cx)),
                 )
                 .into_any_element(),
@@ -1056,7 +1059,33 @@ impl Shell {
     }
 
     fn render_settings_main(&self, s: &Settings, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let title = nav().into_iter().flat_map(|(_, items)| items).find(|i| i.tab == s.tab).map(|i| i.label).unwrap_or_default();
+        let simple = self.simple();
+        let title = if s.tab == Tab::Home { t("common.settings") } else { nav().into_iter().flat_map(|(_, items)| items).find(|i| i.tab == s.tab).map(|i| i.label).unwrap_or_default() };
+        // `.settings-simple-back`: back to the tiles from any page.
+        let back = (simple && s.tab != Tab::Home).then(|| {
+            div()
+                .id("settings-simple-back")
+                .flex_none()
+                .mr(px(10.))
+                .flex()
+                .items_center()
+                .gap(px(4.))
+                .pl(px(8.))
+                .pr(px(12.))
+                .py(px(6.))
+                .rounded_full()
+                .border_1()
+                .border_color(Theme::line())
+                .text_size(px(13.))
+                .line_height(px(19.5))
+                .text_color(Theme::ink())
+                .whitespace_nowrap()
+                .cursor_pointer()
+                .hover(|s| s.bg(Hsla::from(Theme::ink()).opacity(0.06)))
+                .child(ui::icon("chevron-left", 18., Theme::ink()))
+                .child(t("simpleSettings.back"))
+                .on_click(cx.listener(|this, _, _, cx| this.settings_tab(Tab::Home, cx)))
+        });
         let topbar = div()
             .flex_none()
             .pt(px(24.))
@@ -1067,7 +1096,8 @@ impl Shell {
             .flex()
             .items_center()
             .justify_between()
-            .child(div().text_size(px(20.)).line_height(px(30.)).font_weight(FontWeight::EXTRA_BOLD).text_color(Theme::ink()).child(title))
+            .children(back)
+            .child(div().flex_1().text_size(px(20.)).line_height(px(30.)).font_weight(FontWeight::EXTRA_BOLD).text_color(Theme::ink()).child(title))
             .child(
                 div()
                     .id("settings-esc")
@@ -1097,7 +1127,7 @@ impl Shell {
             .id("settings-content")
             .flex_1()
             .min_h_0()
-            .max_w(px(860.))
+            .when(!simple, |d| d.max_w(px(860.)))
             .overflow_y_scroll()
             .track_scroll(&s.scroll)
             .pt(px(28.))
@@ -1105,7 +1135,9 @@ impl Shell {
             .pb(px(56.))
             .flex()
             .flex_col();
+        let modal_w = 1180f32.min(f32::from(window.viewport_size().width) * 0.95).min(f32::from(window.viewport_size().width) - 48.);
         let page = match s.tab {
+            Tab::Home => vec![self.render_simple_home(s, 760f32.min(modal_w - 2. - 88.), window, cx)],
             // `.account-settings`: 18px between its sections.
             Tab::Password => self.render_account_page(s, window, cx).into_iter().enumerate().map(|(n, e)| div().when(n > 0, |d| d.mt(px(18.))).child(e).into_any_element()).collect(),
             Tab::Privacy => self.render_privacy_page(s, cx),
@@ -1146,8 +1178,15 @@ impl Shell {
             ],
             _ => Vec::new(),
         };
+        let home = s.tab == Tab::Home;
         for section in page {
-            content = content.child(section);
+            // Simple (easy.css): every section in the middle, at most 772px across.
+            content = if simple && !home {
+                // Fixed-width sections (Password & Security's 480px cards) sit in the middle of it.
+                content.child(div().w_full().max_w(px(772.)).mx_auto().flex().flex_col().when(s.tab == Tab::Password, |d| d.items_center()).child(section))
+            } else {
+                content.child(section)
+            };
         }
         if let Some(error) = &s.error {
             content = content.child(Self::auth_error(error.clone()).mt(px(12.)));
@@ -3791,7 +3830,7 @@ fn save_layout(l: &LayoutPrefs) {
 }
 
 impl Shell {
-    fn apply_theme(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn apply_theme(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(def) = crate::theme::all_themes().into_iter().find(|t| t.id == id) {
             crate::theme::set_theme(&def, true);
             if let Some(list) = self.channel_id.as_ref().and_then(|c| self.messages.get(c)) {
@@ -3810,9 +3849,16 @@ impl Shell {
     }
 
     /// Switches Simple / Full at once and saves it to the account (POST /api/settings/ui-mode).
-    fn set_ui_mode(&mut self, mode: &'static str, cx: &mut Context<Self>) {
+    pub(super) fn set_ui_mode(&mut self, mode: &'static str, cx: &mut Context<Self>) {
         // As setUiMode: shown at once, a failed save is ignored.
         self.me.ui_mode = Some(mode.to_string());
+        // The full interface has no Home page: Settings goes to its first tab.
+        if let Some(s) = self.settings.as_mut()
+            && mode == "full"
+            && s.tab == Tab::Home
+        {
+            s.tab = Tab::Password;
+        }
         cx.notify();
         self.settings_call(cx, move |c| c.settings_post("/api/settings/ui-mode", json!({ "mode": mode })), |_, _, _| {});
     }
