@@ -61,7 +61,7 @@ impl Shell {
     }
 
     /// saveVoicePref: changed here at once, then saved to the account.
-    fn save_voice_pref(&mut self, user_id: String, volume: Option<u32>, muted: Option<bool>, cx: &mut Context<Self>) {
+    pub(super) fn save_voice_pref(&mut self, user_id: String, volume: Option<u32>, muted: Option<bool>, cx: &mut Context<Self>) {
         let pref = self.voice_prefs.entry(user_id.clone()).or_default();
         if let Some(v) = volume {
             pref.volume = v;
@@ -179,8 +179,9 @@ impl Shell {
                             .cursor_pointer()
                             // Chrome's dark-scheme range: a dark track with a grey edge, filled in light blue.
                             .child(div().absolute().left_0().right_0().top(px(4.)).h(px(8.)).rounded_full().bg(rgb(0x2b2a33)).border_1().border_color(rgb(0x767680)))
-                            .child(div().absolute().left_0().top(px(4.)).w(px(196. * fill)).h(px(8.)).rounded_full().bg(rgb(0x8ab4f8)))
-                            .child(div().absolute().left(px(196. * fill - 8.)).top_0().size(px(16.)).rounded_full().bg(rgb(0x8ab4f8)))
+                            .child(div().absolute().left_0().top(px(4.)).w(px(8. + 180. * fill)).h(px(8.)).rounded_full().bg(rgb(0x8ab4f8)))
+                            // The thumb stays inside the track, as Chrome draws a range.
+                            .child(div().absolute().left(px(180. * fill)).top_0().size(px(16.)).rounded_full().bg(rgb(0x8ab4f8)))
                             .child(super::profile_card::track(&self.volume_spot))
                             .on_mouse_down(gpui::MouseButton::Left, {
                                 let spot = self.volume_spot.clone();

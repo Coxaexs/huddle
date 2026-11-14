@@ -132,7 +132,7 @@ impl Shell {
         cx.notify();
     }
 
-    fn find_message(&self, id: &str) -> Option<Message> {
+    pub(super) fn find_message(&self, id: &str) -> Option<Message> {
         self.channel_id.as_ref().and_then(|c| self.messages.get(c)).and_then(|l| l.iter().find(|m| m.id == id)).cloned()
     }
 

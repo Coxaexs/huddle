@@ -277,6 +277,17 @@ impl gpui::Render for Shell {
                 self.ctx_menu = Some(super::context_menu::CtxMenu { message_id: id, at: gpui::point(px(x), px(y)), expanded: false });
             }
         }
+        // Development: HOFFLE_DEV_BOTMENU=x,y opens the music bot's menu there once.
+        if let Ok(spec) = std::env::var("HOFFLE_DEV_BOTMENU")
+            && !self.dev_botmenu_done
+            && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
+        {
+            self.dev_botmenu_done = true;
+            let n: Vec<f32> = spec.split(',').filter_map(|v| v.trim().parse().ok()).collect();
+            if let [x, y] = n[..] {
+                self.open_bot_menu(super::bot_menu::BotKind::Music, gpui::point(px(x), px(y)), cx);
+            }
+        }
         // Development: HOFFLE_DEV_DRAFT=<text> types that into the composer once (never sends).
         if let Ok(text) = std::env::var("HOFFLE_DEV_DRAFT")
             && !self.dev_draft_done
@@ -507,6 +518,7 @@ impl gpui::Render for Shell {
             .when(members_open && (!self.home || self.channel_id.is_some()) && self.stage.is_none(), |d| d.child(self.render_members(window, cx)))
             .children(self.render_panel(window, cx))
             .children(self.render_user_menu(window, cx))
+            .children(self.render_bot_menu(window, cx))
             .children(self.render_server_menu(cx))
             .children(self.render_notify_menu(window, cx))
             .children(self.render_reaction_viewer(window, cx))
@@ -563,6 +575,10 @@ impl gpui::Render for Shell {
                     cx.stop_propagation();
                 } else if event.keystroke.key == "escape" && this.notify_menu.is_some() {
                     this.notify_menu = None;
+                    cx.notify();
+                    cx.stop_propagation();
+                } else if event.keystroke.key == "escape" && this.bot_menu.is_some() {
+                    this.bot_menu = None;
                     cx.notify();
                     cx.stop_propagation();
                 } else if event.keystroke.key == "escape" && this.user_menu.is_some() {

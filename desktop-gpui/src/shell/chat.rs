@@ -650,7 +650,8 @@ impl Shell {
                 let id = message.id.clone();
                 cx.listener(move |this, event: &gpui::MouseDownEvent, _, cx| {
                     cx.stop_propagation();
-                    this.open_context_menu(id.clone(), event.position, cx);
+                    // A bot's own menu first (bot-menu.tsx), else the message menu.
+                    this.message_right_click(id.clone(), event.position, cx);
                 })
             });
         // `.system-message` (pins, people joining or leaving a group) and the Nudge / winkie lines

@@ -31,6 +31,7 @@ mod rail;
 mod reaction_viewer;
 mod server_menu;
 mod settings;
+mod bot_menu;
 mod commands;
 mod sidebar;
 mod simple;
@@ -192,6 +193,7 @@ pub struct Shell {
     dev_thread_done: bool,
     dev_settings_done: bool,
     dev_draft_done: bool,
+    dev_botmenu_done: bool,
     dev_rv_done: bool,
     dev_extras_done: bool,
     /// Who is typing where: (user id, name, when it was last heard).
@@ -271,6 +273,9 @@ pub struct Shell {
     voice_keys: (String, String),
     /// The menu for a person (right-click), their voice settings, and where its slider was drawn.
     user_menu: Option<user_menu::UserMenu>,
+    /// A bot's right-click menu, and each server's bot-registered menus by bot.
+    bot_menu: Option<bot_menu::BotMenu>,
+    bot_menus: HashMap<String, HashMap<String, bot_menu::AppMenu>>,
     voice_prefs: HashMap<String, user_menu::VoicePref>,
     volume_spot: profile_card::Spot,
     /// The ••• menu under the server's name, and notification levels by channel / `server:<id>`.
@@ -427,6 +432,7 @@ impl Shell {
             dev_thread_done: false,
             dev_settings_done: false,
             dev_draft_done: false,
+            dev_botmenu_done: false,
             dev_rv_done: false,
             dev_extras_done: false,
             typing: HashMap::new(),
@@ -482,6 +488,8 @@ impl Shell {
             server_menu_closed: None,
             channel_prefs: HashMap::new(),
             user_menu: None,
+            bot_menu: None,
+            bot_menus: HashMap::new(),
             voice_prefs: HashMap::new(),
             volume_spot: profile_card::spot(),
             unfurls: Default::default(),
@@ -926,6 +934,7 @@ impl Shell {
         }
         self.refresh_placeholder(cx);
         self.load_bot_commands(cx);
+        self.load_bot_menus(cx);
         cx.notify();
     }
 

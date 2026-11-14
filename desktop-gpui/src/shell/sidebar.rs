@@ -400,7 +400,18 @@ impl Shell {
         let me = self.connection_id.as_deref() == Some(person.connection_id.as_str());
         let elapsed = ((self.hub_now() - person.joined_at) / 1000.).max(0.) as u64;
         let picture = self.picture(&person.avatar_url);
+        let person_id = person.id.clone();
         div()
+            .id(SharedString::from(format!("seat-{}", person.connection_id)))
+            // Right click: the music bot's own menu, anyone else's user menu.
+            .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                cx.stop_propagation();
+                if person_id == "bot:music" {
+                    this.open_bot_menu(super::bot_menu::BotKind::Music, e.position, cx);
+                } else {
+                    this.open_user_menu(person_id.clone(), e.position, cx);
+                }
+            }))
             .h(px(height))
             .flex()
             .items_center()
