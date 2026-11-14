@@ -326,6 +326,17 @@ impl Shell {
         }
     }
 
+    /// A line for the open settings page (the chat's notice bar is hidden behind the dialog).
+    fn settings_note(&mut self, text: &str, cx: &mut Context<Self>) {
+        match self.settings.as_mut() {
+            Some(s) => {
+                s.status = Some(text.to_string());
+                cx.notify();
+            }
+            None => self.set_notice(text, cx),
+        }
+    }
+
     /// Development: the n-th page of the sidebar.
     pub(super) fn dev_settings_page(&mut self, n: usize, cx: &mut Context<Self>) {
         if let Some(tab) = nav().into_iter().flat_map(|(_, items)| items).nth(n).map(|i| i.tab) {
@@ -984,6 +995,33 @@ impl Shell {
             Tab::Notifications => self.render_notifications_page(s, window, cx),
             Tab::Accessibility => self.render_accessibility_page(cx),
             Tab::Licenses => self.render_licenses_page(s, window, cx),
+            Tab::Tutorial => vec![
+                div()
+                    .flex_none()
+                    .flex()
+                    .flex_col()
+                    .gap(px(16.))
+                    .child(div().text_size(px(14.)).line_height(px(22.75)).text_color(rgb(0xd1d5dc)).child(
+                        "The tutorial walks you through picking a theme, getting around, voice and screen sharing, chat and game night, with buttons that try each thing for real. It opened when you signed up, and you can open it again from here any time.",
+                    ))
+                    .child(div().flex().child(
+                        div()
+                            .id("tutorial-open")
+                            .px(px(18.))
+                            .py(px(9.))
+                            .rounded(px(4.))
+                            .bg(Theme::lavender())
+                            .text_size(px(13.5))
+                            .line_height(px(20.25))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(0x15121f))
+                            .cursor_pointer()
+                            .child("Open the tutorial")
+                            // The welcome tour is not in this app yet.
+                            .on_click(cx.listener(|this, _, _, cx| this.settings_note("The tutorial is not in this app yet. Open Hoffle in your browser to take it.", cx))),
+                    ))
+                    .into_any_element(),
+            ],
             _ => Vec::new(),
         };
         for section in page {
@@ -1494,7 +1532,7 @@ impl Shell {
             }
         }
         keys = keys.child(div().flex().child(Self::primary("sec-key-add".into(), t("security.passkeys.add"), true).mt(px(28.)).on_click(cx.listener(|this, _, _, cx| {
-            this.set_notice("Adding a passkey is not in this app yet. Use Hoffle in your browser for that.", cx);
+            this.settings_note("Adding a passkey is not in this app yet. Use Hoffle in your browser for that.", cx);
         }))));
         out.push(keys.into_any_element());
 
