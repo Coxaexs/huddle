@@ -133,6 +133,13 @@ impl Shell {
             .id(SharedString::from(format!("member-{}", member.id)))
             .child(super::profile_card::track(&spot))
             .on_click(open)
+            .on_mouse_down(gpui::MouseButton::Right, {
+                let id = member.id.clone();
+                cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    this.open_user_menu(id.clone(), e.position, cx);
+                })
+            })
             .relative()
             .flex_none()
             .h(px(height))
@@ -283,6 +290,16 @@ impl gpui::Render for Shell {
             if let Ok(room) = std::env::var("HOFFLE_DEV_STAGE") {
                 self.open_stage(room, window, cx);
             }
+            // HOFFLE_DEV_USERMENU=<user id prefix>,x,y: that person's menu, right-clicked there.
+            if let Ok(spec) = std::env::var("HOFFLE_DEV_USERMENU") {
+                let mut parts = spec.split(',');
+                let prefix = parts.next().unwrap_or_default().to_string();
+                let n: Vec<f32> = parts.filter_map(|v| v.trim().parse().ok()).collect();
+                let id = self.members.values().flat_map(|m| m.iter()).find(|m| m.id.starts_with(&prefix)).map(|m| m.id.clone());
+                if let (Some(id), [x, y]) = (id, n.as_slice()) {
+                    self.open_user_menu(id, gpui::point(px(*x), px(*y)), cx);
+                }
+            }
             // HOFFLE_DEV_GIF=hoffy | gifs: the media picker on that tab.
             if let Ok(tab) = std::env::var("HOFFLE_DEV_GIF") {
                 self.toggle_gif_picker(window, cx);
@@ -387,6 +404,7 @@ impl gpui::Render for Shell {
             .when(!(self.home && self.channel_id.is_none()), |d| d.child(self.render_chat_panel(window, cx)))
             .when(members_open && (!self.home || self.channel_id.is_some()) && self.stage.is_none(), |d| d.child(self.render_members(window, cx)))
             .children(self.render_panel(window, cx))
+            .children(self.render_user_menu(window, cx))
             .children(self.render_profile(window, cx))
             .children(self.render_picker(window, cx))
             .children(self.render_context_menu(window, cx))
@@ -396,6 +414,10 @@ impl gpui::Render for Shell {
             .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
                 if event.keystroke.key == "escape" && this.ctx_menu.is_some() {
                     this.close_context_menu(cx);
+                    cx.stop_propagation();
+                } else if event.keystroke.key == "escape" && this.user_menu.is_some() {
+                    this.user_menu = None;
+                    cx.notify();
                     cx.stop_propagation();
                 } else if event.keystroke.key == "escape" && this.profile.is_some() {
                     this.close_profile(cx);

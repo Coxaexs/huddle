@@ -345,8 +345,13 @@ impl Shell {
                             .id(SharedString::from(format!("nm-{}", message.id)))
                             .relative()
                             .when_some(name_target.clone(), |d, (id, spot)| {
+                                let menu_id = id.clone();
                                 d.cursor_pointer()
                                     .child(super::profile_card::track(&spot))
+                                    .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                                        cx.stop_propagation();
+                                        this.open_user_menu(menu_id.clone(), e.position, cx);
+                                    }))
                                     .on_click(cx.listener(move |this, _, window, cx| this.open_profile(&id, spot.get(), window, cx)))
                             })
                             .h(px(24.))
@@ -520,6 +525,13 @@ impl Shell {
                         .cursor_pointer()
                         .child(face)
                         .child(super::profile_card::track(&spot))
+                        .on_mouse_down(gpui::MouseButton::Right, {
+                            let id = id.clone();
+                            cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                                cx.stop_propagation();
+                                this.open_user_menu(id.clone(), e.position, cx);
+                            })
+                        })
                         .on_click(cx.listener(move |this, _, window, cx| this.open_profile(&id, spot.get(), window, cx)))
                         .into_any_element()
                 }

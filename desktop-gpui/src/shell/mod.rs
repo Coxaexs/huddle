@@ -14,9 +14,11 @@ mod profile_card;
 mod side_panels;
 mod stage;
 mod unread;
+mod user_menu;
 
 pub use gif_picker::MediaItem;
 pub use links::Preview;
+pub use user_menu::VoicePref;
 pub use side_panels::{MentionEntry, SavedEntry, SearchResult};
 mod rail;
 mod sidebar;
@@ -219,6 +221,10 @@ pub struct Shell {
     /// Link previews by URL (none when there is no card), and the ones on their way.
     unfurls: std::cell::RefCell<HashMap<String, Option<links::Preview>>>,
     unfurl_pending: std::cell::RefCell<HashSet<String>>,
+    /// The menu for a person (right-click), their voice settings, and where its slider was drawn.
+    user_menu: Option<user_menu::UserMenu>,
+    voice_prefs: HashMap<String, user_menu::VoicePref>,
+    volume_spot: profile_card::Spot,
     /// The GIF / sticker picker over the composer.
     gif_picker: Option<gif_picker::GifPicker>,
     /// Files waiting in the composer.
@@ -379,6 +385,9 @@ impl Shell {
             stage: None,
             pending_files: Vec::new(),
             gif_picker: None,
+            user_menu: None,
+            voice_prefs: HashMap::new(),
+            volume_spot: profile_card::spot(),
             unfurls: Default::default(),
             unfurl_pending: Default::default(),
             unread_bar: None,
@@ -395,6 +404,7 @@ impl Shell {
         shell.load_servers(cx);
         shell.load_side_data(cx);
         shell.load_saved(cx);
+        shell.load_voice_prefs(cx);
         // Voice seat timers tick once a second.
         shell._tasks.push(cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(Duration::from_secs(1)).await;
@@ -1224,6 +1234,8 @@ impl Shell {
                 if let Some(call) = self.call.as_mut() {
                     call.state = CallState::Connected;
                 }
+                // People muted for this app stay unheard in the new call.
+                self.apply_voice_prefs();
                 // Development: HOFFLE_DEV_QUIT_AFTER=<seconds> quits the way Cmd-Q does, once in a call.
                 if let Some(secs) = std::env::var("HOFFLE_DEV_QUIT_AFTER").ok().and_then(|v| v.parse::<u64>().ok()) {
                     cx.spawn(async move |_, cx| {

@@ -22,6 +22,8 @@ pub enum VoiceCmd {
     Leave(Option<std::sync::mpsc::Sender<()>>),
     Mute(bool),
     Deafen(bool),
+    /// People this app should not play ("Mute for me"), by user id.
+    MuteFor(std::collections::HashSet<String>),
 }
 
 #[derive(Debug)]
@@ -71,6 +73,7 @@ struct Session {
     room: Room,
     mic: LocalAudioTrack,
     deafened: bool,
+    muted_for: std::collections::HashSet<String>,
     // Kept alive for as long as the call: dropping the last handle turns the devices off.
     _audio: PlatformAudio,
     events: mpsc::UnboundedReceiver<RoomEvent>,
@@ -120,7 +123,13 @@ async fn run(mut commands: mpsc::UnboundedReceiver<VoiceCmd>, events: Sender<Voi
                     VoiceCmd::Deafen(deafened) => {
                         if let Some(s) = session.as_mut() {
                             s.deafened = deafened;
-                            set_hearing(&s.room, !deafened);
+                            set_hearing(s);
+                        }
+                    }
+                    VoiceCmd::MuteFor(users) => {
+                        if let Some(s) = session.as_mut() {
+                            s.muted_for = users;
+                            set_hearing(s);
                         }
                     }
                 }
@@ -136,9 +145,9 @@ async fn run(mut commands: mpsc::UnboundedReceiver<VoiceCmd>, events: Sender<Voi
                         let ids = speakers.iter().map(|p| p.identity().to_string()).collect();
                         let _ = events.send(VoiceEvent::Speaking(ids)).await;
                     }
-                    RoomEvent::TrackSubscribed { publication, .. } => {
-                        // Someone new while deafened stays unheard too.
-                        if session.as_ref().is_some_and(|s| s.deafened) {
+                    RoomEvent::TrackSubscribed { publication, participant, .. } => {
+                        // Someone new while deafened (or muted for this app) stays unheard too.
+                        if session.as_ref().is_some_and(|s| s.deafened || s.muted_for.contains(user_of(participant.identity().as_str()))) {
                             publication.set_enabled(false);
                         }
                     }
@@ -182,20 +191,28 @@ async fn join(url: &str, token: &str, bitrate: u64, muted: bool, deafened: bool)
     if let Err(err) = room.local_participant().publish_track(LocalTrack::Audio(mic.clone()), options).await {
         log_err(format!("microphone not published: {err}"));
     }
+    let session = Session { room, mic, deafened, muted_for: Default::default(), _audio: audio, events: room_events };
     if deafened {
-        set_hearing(&room, false);
+        set_hearing(&session);
     }
-    Ok(Session { room, mic, deafened, _audio: audio, events: room_events })
+    Ok(session)
 }
 
-fn set_hearing(room: &Room, on: bool) {
-    for participant in room.remote_participants().values() {
+/// Plays everyone's audio unless deafened, except the people muted for this app.
+fn set_hearing(s: &Session) {
+    for participant in s.room.remote_participants().values() {
+        let on = !s.deafened && !s.muted_for.contains(user_of(participant.identity().as_str()));
         for publication in participant.track_publications().values() {
             if publication.kind() == TrackKind::Audio {
                 publication.set_enabled(on);
             }
         }
     }
+}
+
+/// A LiveKit identity is `userId|connectionId`.
+fn user_of(identity: &str) -> &str {
+    identity.split('|').next().unwrap_or(identity)
 }
 
 fn log_err(message: String) {

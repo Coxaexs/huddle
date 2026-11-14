@@ -446,6 +446,28 @@ impl Client {
         Ok((items, String::new()))
     }
 
+    /// Volume and mute for each person, as this account set them (`/api/voice/prefs`).
+    pub fn voice_prefs(&self) -> Result<std::collections::HashMap<String, crate::shell::VoicePref>> {
+        #[derive(serde::Deserialize, Default)]
+        #[serde(default)]
+        struct Reply {
+            prefs: std::collections::HashMap<String, crate::shell::VoicePref>,
+        }
+        Ok(self.get::<Reply>("/api/voice/prefs")?.prefs)
+    }
+
+    pub fn save_voice_pref(&self, target: &str, volume: Option<u32>, muted: Option<bool>) -> Result<()> {
+        let mut body = json!({ "targetId": target });
+        if let Some(v) = volume {
+            body["volume"] = json!(v);
+        }
+        if let Some(m) = muted {
+            body["muted"] = json!(m);
+        }
+        let _: Value = self.post("/api/voice/prefs", body)?;
+        Ok(())
+    }
+
     pub fn mark_read(&self, channel_id: &str) -> Result<()> {
         let _: Value = self.post("/api/channels/reads", json!({ "channelId": channel_id }))?;
         Ok(())
