@@ -153,6 +153,43 @@ export interface Lyrics {
    * stems, and only once that song has been timed; otherwise absent.
    */
   words?: TimedWord[][] | null;
+  /** The words are another upload's, shifted onto this one (found automatically, or borrowed by hand). */
+  wordsFrom?: WordsFrom | null;
+}
+
+export interface WordsFrom {
+  /** Someone picked them in the player (not lined up automatically). */
+  borrowed: boolean;
+  title: string | null;
+  shift: number | null;
+}
+
+/** A timed version of a song whose words fit the lyrics shown, to borrow word timing from. */
+export interface WordsDonor {
+  id: string;
+  title: string;
+  duration: number | null;
+  /** Share of the shown lyrics' words it has, in order (0.6 to 1). */
+  match: number;
+}
+
+/**
+ * Borrowing another version's word timing in the music player (the bot's words.py): "donors" lists timed
+ * versions whose words fit `lines`; "borrow" uses one (`from`); "shift" moves the borrowed words by `delta`
+ * seconds (someone lined them up by ear); "clear" stops using them. `keys` = the track's page URL and query.
+ */
+export async function wordsAction(body: {
+  action: "donors" | "borrow" | "shift" | "clear";
+  keys: Array<string | null | undefined>;
+  lines?: Array<[number, string]>;
+  from?: string;
+  delta?: number;
+  by?: string;
+}): Promise<Record<string, any>> {
+  return botFetch("/api/words", await botSession(), {
+    method: "POST",
+    body: JSON.stringify({ ...body, keys: body.keys.filter(Boolean) }),
+  });
 }
 
 export type TimedWord = [number | null, number | null, string, number[]];
@@ -203,6 +240,13 @@ export async function fetchLyrics(
     picked: Boolean(data.picked),
     unavailable: Boolean(data.lrclib_down),
     words: Array.isArray(data.words) ? (data.words as TimedWord[][]) : null,
+    wordsFrom: data.words_from && typeof data.words_from === "object"
+      ? {
+          borrowed: Boolean(data.words_from.borrowed),
+          title: typeof data.words_from.title === "string" ? data.words_from.title : null,
+          shift: typeof data.words_from.shift === "number" ? data.words_from.shift : null,
+        }
+      : null,
   };
 }
 

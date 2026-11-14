@@ -22,6 +22,7 @@ export function lyricsAnswer(track: Track, lyrics: Lyrics, searched: boolean) {
     picked: Boolean(lyrics.picked),
     unavailable: Boolean(lyrics.unavailable),
     words: lyrics.words && lyrics.words.length === lyrics.lines.length ? lyrics.words : null,
+    wordsFrom: lyrics.words && lyrics.wordsFrom ? lyrics.wordsFrom : null,
     searched,
   };
 }

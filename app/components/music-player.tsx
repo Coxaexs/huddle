@@ -44,7 +44,7 @@ import { proxiedImage } from "@/app/lib/image-proxy";
 import { heard, isSongLink, playbackPosition, type PlayerState, type Track } from "@/lib/protocol";
 import { openWebView } from "./widgets/web-view";
 import { lyricsSource } from "@/app/lib/lyrics-source";
-import type { TimedWord } from "@/lib/musicbot";
+import type { TimedWord, WordsDonor, WordsFrom } from "@/lib/musicbot";
 
 /**
  * Hoffle's full-screen music player: the room's song with synced lyrics you
@@ -628,6 +628,102 @@ function MusicPlayer({
 
 /* ---------- Lyrics ---------- */
 
+/** "Word by word…": timed versions of the playing song whose words fit its lyrics, to borrow from. */
+function WordsBorrow({
+  roomId,
+  trackId,
+  onClose,
+  onBorrowed,
+}: {
+  roomId: string;
+  trackId: string;
+  onClose: () => void;
+  onBorrowed: (title: string) => void;
+}) {
+  const [donors, setDonors] = useState<WordsDonor[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    apiFetch<{ donors?: WordsDonor[] }>("/api/music/lyrics/words", {
+      method: "POST",
+      body: JSON.stringify({ voiceChannelId: roomId, trackId, action: "donors" }),
+    })
+      .then((body) => live && setDonors(body.donors || []))
+      .catch((problem) => live && setError(problem instanceof Error ? problem.message : "Could not look."));
+    return () => {
+      live = false;
+    };
+  }, [roomId, trackId]);
+
+  const pick = async (donor: WordsDonor) => {
+    setBusy(donor.id);
+    setError(null);
+    try {
+      await apiFetch("/api/music/lyrics/words", {
+        method: "POST",
+        body: JSON.stringify({ voiceChannelId: roomId, trackId, action: "borrow", from: donor.id }),
+      });
+      onBorrowed(donor.title);
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : "Could not use that one.");
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="mp-list-wrap">
+      <div className="mp-picker-head">
+        <button type="button" className="mp-link" onClick={onClose}>
+          <ArrowLeft size={14} /> Back to the lyrics
+        </button>
+        <h3>Word by word from another version</h3>
+        <p className="mp-lyrics-note">
+          These versions of the song have every word timed. Pick one: its timing is used for this song, starting where
+          the lyrics put each line. If it's off, line it up with the timing buttons and save it.
+        </p>
+      </div>
+      {error && <p className="mp-error">{error}</p>}
+      {!donors && !error && (
+        <Empty icon={<LoaderCircle size={28} className="mp-spin" />} title="Looking for timed versions…" />
+      )}
+      {donors && !donors.length && (
+        <Empty
+          icon={<MicVocal size={28} />}
+          title="No timed version yet"
+          text="None of the songs timed so far has these words. More get timed every hour; try again later."
+        />
+      )}
+      {donors && donors.length > 0 && (
+        <ol className="mp-list">
+          {donors.map((donor) => (
+            <li key={donor.id} className="mp-row">
+              <div className="mp-row-main static">
+                <span className="mp-row-text">
+                  <strong>{donor.title}</strong>
+                  <small>{Math.round(donor.match * 100)}% of the words match</small>
+                </span>
+                <span className="mp-row-time">{donor.duration ? clock(donor.duration) : ""}</span>
+              </div>
+              <span className="mp-row-actions">
+                <button
+                  type="button"
+                  className="mp-button small"
+                  disabled={busy !== null}
+                  onClick={() => void pick(donor)}
+                >
+                  {busy === donor.id ? <LoaderCircle size={14} className="mp-spin" /> : null} Use this
+                </button>
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
 /**
  * How far through a word the singer is, 0 to 1, at `ms` from the word's start: by the time each letter
  * ends (`letters`, from Oracle's alignment) when there are some, so a held vowel holds the fill there
@@ -725,6 +821,8 @@ interface LyricsData {
   checked: boolean;
   /** Someone in this server picked these by hand ("Wrong lyrics?"). */
   picked: boolean;
+  /** The word timing is another upload's (lined up automatically, or borrowed by hand). */
+  wordsFrom: WordsFrom | null;
 }
 
 interface LyricsResponse {
@@ -740,6 +838,7 @@ interface LyricsResponse {
   /** lrclib did not answer the search: nothing was looked up. */
   unavailable?: boolean;
   words?: TimedWord[][] | null;
+  wordsFrom?: WordsFrom | null;
 }
 
 function lyricsData(body: LyricsResponse, trackId: string, checked: boolean): LyricsData {
@@ -758,6 +857,7 @@ function lyricsData(body: LyricsResponse, trackId: string, checked: boolean): Ly
     loose: Boolean(body.loose),
     checked,
     picked: Boolean(body.picked),
+    wordsFrom: body.wordsFrom ?? null,
   };
 }
 
@@ -796,6 +896,9 @@ function LyricsPane({
   const [offset, setOffset] = useState(0);
   // "Wrong lyrics?": songs on lrclib with that name, to pick the right one.
   const [picking, setPicking] = useState(Boolean(pickRequest));
+  // "Word by word…": borrow word timing from another version of the song.
+  const [borrowing, setBorrowing] = useState(false);
+  const [savingTiming, setSavingTiming] = useState(false);
   const ticket = useRef(0);
   const listRef = useRef<HTMLDivElement>(null);
   const handScrolledAt = useRef(0);
@@ -855,6 +958,7 @@ function LyricsPane({
         loose: Boolean(seed.loose),
         checked: true,
         picked: false,
+        wordsFrom: null,
       });
     }
     void load(false);
@@ -887,6 +991,42 @@ function LyricsPane({
   };
 
   const lines = data?.trackId === trackId ? data.lines : [];
+  const timedWords = lines.some((line) => line.words?.length);
+
+  const wordsCall = async (action: "shift" | "clear", delta?: number) =>
+    apiFetch<{ error?: string }>("/api/music/lyrics/words", {
+      method: "POST",
+      body: JSON.stringify({ voiceChannelId: roomId, trackId, action, delta }),
+    });
+
+  // The timing someone lined up by ear becomes the words' own (for everyone), and the nudge goes back to 0.
+  // The nudge shows lyrics `offset` s early, so the words move the other way.
+  const saveTiming = async () => {
+    if (!offset) return;
+    setSavingTiming(true);
+    try {
+      await wordsCall("shift", -offset);
+      nudge(0);
+      onNote("Saved: everyone gets this timing for this song.");
+      await load(false);
+    } catch (problem) {
+      onNote(problem instanceof Error ? problem.message : "Could not save the timing.");
+    } finally {
+      setSavingTiming(false);
+    }
+  };
+
+  const stopBorrowing = async () => {
+    try {
+      await wordsCall("clear");
+      nudge(0);
+      onNote("Back to line-by-line lyrics for this song.");
+      await load(false);
+    } catch (problem) {
+      onNote(problem instanceof Error ? problem.message : "Could not remove the word timing.");
+    }
+  };
+
   const seconds = positionMs / 1000 + offset;
   let activeIndex = -1;
   for (let index = 0; index < lines.length; index += 1) {
@@ -940,6 +1080,21 @@ function LyricsPane({
         onCleared={() => {
           setPicking(false);
           onNote("Back to the automatic lyrics for this song.");
+          void load(false);
+        }}
+      />
+    );
+  }
+
+  if (borrowing && trackId && roomId) {
+    return (
+      <WordsBorrow
+        roomId={roomId}
+        trackId={trackId}
+        onClose={() => setBorrowing(false)}
+        onBorrowed={(title) => {
+          setBorrowing(false);
+          onNote(`Word timing from ${title}. If it's off, line it up with the timing buttons, then Save this timing.`);
           void load(false);
         }}
       />
@@ -1058,17 +1213,51 @@ function LyricsPane({
           );
         })}
       </div>
+      {data?.wordsFrom && (
+        <p className="mp-lyrics-note">
+          {data.wordsFrom.borrowed
+            ? `Word timing borrowed from ${data.wordsFrom.title || "another version"}.`
+            : `Word timing from another upload of this recording${data.wordsFrom.title ? ` (${data.wordsFrom.title})` : ""}.`}
+          {offset !== 0 && (
+            <button type="button" className="mp-link" disabled={savingTiming} onClick={() => void saveTiming()}>
+              {savingTiming ? "Saving…" : "Save this timing for everyone"}
+            </button>
+          )}
+          <button type="button" className="mp-link" onClick={() => void stopBorrowing()}>
+            Remove word timing
+          </button>
+        </p>
+      )}
       <div className="mp-lyrics-bar" aria-label="Lyrics timing">
         <button type="button" onClick={() => nudge(-0.5)} title="Show the lyrics half a second later">
           −0.5s
         </button>
+        {timedWords && (
+          <button type="button" onClick={() => nudge(-0.1)} title="Show the lyrics a tenth of a second later">
+            −0.1s
+          </button>
+        )}
         <span>{offset ? `${offset > 0 ? "+" : ""}${offset}s` : "In sync"}</span>
+        {timedWords && (
+          <button type="button" onClick={() => nudge(0.1)} title="Show the lyrics a tenth of a second earlier">
+            +0.1s
+          </button>
+        )}
         <button type="button" onClick={() => nudge(0.5)} title="Show the lyrics half a second earlier">
           +0.5s
         </button>
         {offset !== 0 && (
           <button type="button" onClick={() => nudge(0)}>
             Reset
+          </button>
+        )}
+        {!timedWords && trackId && roomId && (
+          <button
+            type="button"
+            onClick={() => setBorrowing(true)}
+            title="Use word-by-word timing from another version of this song"
+          >
+            Word by word…
           </button>
         )}
         <button type="button" onClick={() => setPicking(true)} title="Pick the right lyrics from songs with this name">
