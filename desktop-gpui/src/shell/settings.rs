@@ -200,6 +200,9 @@ pub(super) struct Settings {
     /// Extras switches kept on this computer, and the features hidden on the account.
     extras: std::collections::HashMap<String, bool>,
     disabled_modules: Vec<String>,
+    /// Text-to-Speech choices (this computer) and the preview text.
+    tts: TtsPrefs,
+    tts_text: Entity<TextInput>,
     _subs: Vec<Subscription>,
 }
 
@@ -263,6 +266,7 @@ impl Shell {
         let security = Security { password: Some(make("", true, "", window, cx)), code: Some(make("123456", false, "", window, cx)), ..Default::default() };
         let ntfy = make("https://ntfy.sh/your-secret-topic", false, "", window, cx);
         let ntfy_token = make("Access token (only for protected topics)", true, "", window, cx);
+        let tts_text = make("", false, "Hey everyone, this is how I sound.", window, cx);
         let small_look = Look { size: 14., line_height: 18.67, height: 18.67, color: gpui::white(), placeholder: gpui::hsla(0., 0., 1., 0.45) };
         let mut small = |placeholder: &str, value: &str, window: &mut Window, cx: &mut Context<Self>| {
             let input = cx.new(|cx| {
@@ -342,6 +346,8 @@ impl Shell {
             community: None,
             community_search,
             extras: load_extras(),
+            tts: load_tts(),
+            tts_text,
             disabled_modules: self.me.disabled_modules.clone(),
             _subs: subs,
         });
@@ -1110,6 +1116,7 @@ impl Shell {
             Tab::Activities => self.render_activities_page(s, window, cx),
             Tab::Voice => self.render_voice_page(s, window, cx),
             Tab::Appearance => self.render_appearance_page(s, window, cx),
+            Tab::Tts => self.render_tts_page(s, window, cx),
             Tab::Tutorial => vec![
                 div()
                     .flex_none()
@@ -4590,4 +4597,210 @@ fn base64_encode(bytes: &[u8]) -> String {
         }
     }
     out
+}
+
+/// Text-to-Speech (lib/tts/client.ts and captions), kept on this computer as the web keeps them.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct TtsPrefs {
+    pub playback: bool,
+    pub speaker: String,
+    pub turkish: String,
+    pub tempo: f32,
+    pub pitch: f32,
+    pub effect: String,
+    pub lang: String,
+    pub engine: String,
+    pub language: String,
+}
+
+impl Default for TtsPrefs {
+    fn default() -> Self {
+        Self {
+            playback: true,
+            speaker: "default".into(),
+            turkish: "alania2-f1".into(),
+            tempo: 1.,
+            pitch: 1.,
+            effect: "none".into(),
+            lang: "en".into(),
+            engine: "auto".into(),
+            language: "tr".into(),
+        }
+    }
+}
+
+fn tts_path() -> Option<std::path::PathBuf> {
+    Some(dirs::config_dir()?.join("Hoffle Lite").join("tts.json"))
+}
+
+fn load_tts() -> TtsPrefs {
+    tts_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+const ALANIA: [(&str, &str, &str); 11] = [
+    ("alania2-f1", "Default", "Alania-2's standard voice"),
+    ("alania2-nisa", "Nisa", "Gentle and playful"),
+    ("alania2-selin", "Selin", "Relaxed and friendly"),
+    ("alania2-lina", "Lina", "Warm and calm"),
+    ("alania2-melisa", "Melisa", "Bright and energetic"),
+    ("alania2-nil", "Nil", "Warm and enthusiastic"),
+    ("alania2-oncel", "Öncel", "Mature and reassuring"),
+    ("alania2-m1", "M1", "Alania-2's standard male voice"),
+    ("alania2-emre", "Emre", "Smooth and thoughtful"),
+    ("alania2-fikri", "Fikri", "Clear and gentle"),
+    ("alania2-sezgin", "Sezgin", "Soft-spoken and breathy"),
+];
+
+impl Shell {
+    fn change_tts(&mut self, change: impl FnOnce(&mut TtsPrefs), cx: &mut Context<Self>) {
+        let Some(s) = self.settings.as_mut() else { return };
+        change(&mut s.tts);
+        s.tts.tempo = s.tts.tempo.clamp(0.6, 1.3);
+        s.tts.pitch = s.tts.pitch.clamp(0.75, 1.15);
+        if let Some(path) = tts_path() {
+            let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+            let _ = std::fs::write(path, serde_json::to_vec(&s.tts).unwrap_or_default());
+        }
+        s.open_select = None;
+        cx.notify();
+    }
+
+    /// A 0..1 range like Chrome's (dark track, accent fill and thumb) that sets a value on click.
+    fn range(&self, id: &'static str, fill: f32, width: f32, on_set: std::rc::Rc<dyn Fn(&mut Self, f32, &mut Context<Self>)>, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let spot = super::profile_card::spot();
+        let lavender: Hsla = Theme::lavender().into();
+        div()
+            .id(id)
+            .relative()
+            .w(px(width))
+            .h(px(16.))
+            .cursor_pointer()
+            .child(div().absolute().left_0().right_0().top(px(4.)).h(px(8.)).rounded_full().bg(rgb(0x2b2a33)).border_1().border_color(rgb(0x767680)))
+            .child(div().absolute().left_0().top(px(4.)).w(px(width * fill)).h(px(8.)).rounded_full().bg(lavender))
+            .child(div().absolute().top_0().left(px((width - 16.) * fill)).size(px(16.)).rounded_full().bg(lavender))
+            .child(super::profile_card::track(&spot))
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                let b = spot.get();
+                let share = (f32::from(e.position.x - b.origin.x) / f32::from(b.size.width)).clamp(0., 1.);
+                on_set(this, share, cx);
+            }))
+    }
+
+    fn render_tts_page(&self, s: &Settings, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let t = &s.tts;
+        let muted: Hsla = Theme::muted().into();
+        let label = |text: &str| div().text_size(px(11.)).line_height(px(16.5)).font_weight(FontWeight::EXTRA_BOLD).text_color(rgb(0xc9cad2)).child(text.to_uppercase());
+        let heading = |text: &str| div().text_size(px(13.)).line_height(px(19.5)).font_weight(FontWeight::BOLD).text_color(muted).child(text.to_uppercase());
+        let options = |list: &[(&str, &str)]| list.iter().map(|(v, l)| (v.to_string(), l.to_string())).collect::<Vec<_>>();
+        let describe = |v: f32, low: &str, high: &str| if v < 0.97 { low.to_string() } else if v > 1.03 { high.to_string() } else { "normal".into() };
+        let value_label = |name: &str, v: f32, desc: String| {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(label(name))
+                .child(div().text_size(px(11.)).line_height(px(16.5)).font_weight(FontWeight::MEDIUM).text_color(muted).child(format!("{v:.2}× · {desc}").to_uppercase()))
+        };
+        let col = div()
+            .flex_none()
+            .w(px(560.))
+            .flex()
+            .flex_col()
+            .child({
+                // The two commands are `<code>`: monospace.
+                let (a, b, c, d) = ("Turkish is spoken by Alania (on the server) when it is available, else EMA Lightning on your device. English is made on your device with Paradee (or Piper for the male voice); the first use downloads the voice once. These are the same settings as ", "/tts on|off", " and ", "/ttsvoice");
+                let text = format!("{a}{b}{c}{d}.");
+                let color: Hsla = rgb(0xaaaeba).into();
+                let run = |len: usize, family: &str| gpui::TextRun { len, font: gpui::font(family.to_string()), color, background_color: None, underline: None, strikethrough: None };
+                let runs = vec![run(a.len(), crate::theme::UI_FONT), run(b.len(), crate::theme::MONO_FONT), run(c.len(), crate::theme::UI_FONT), run(d.len(), crate::theme::MONO_FONT), run(1, crate::theme::UI_FONT)];
+                div().text_size(px(13.)).line_height(px(19.5)).child(gpui::StyledText::new(text).with_runs(runs))
+            })
+            .child(
+                div()
+                    .id("tts-playback")
+                    .mt(px(20.))
+                    .h(px(24.))
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .cursor_pointer()
+                    .child(Self::checkbox(t.playback).size(px(13.)).mr(px(0.)))
+                    .child(div().text_size(px(16.)).text_color(Theme::ink()).child("Read /tts messages aloud on this device"))
+                    .on_click(cx.listener(|this, _, _, cx| this.change_tts(|t| t.playback = !t.playback, cx))),
+            )
+            .child(heading("Your voice").mt(px(26.)))
+            .child(Self::hint("Used for your own /tts messages (everyone hears it the same way) and /say in voice.").mt(px(8.)))
+            .child(label("English voice").mt(px(34.)))
+            .child(div().mt(px(14.)).child(self.select_box("tts-speaker", t.speaker.clone(), options(&[("default", "Female"), ("male", "Male")]), 560., std::rc::Rc::new(|this, v, cx| this.change_tts(|t| t.speaker = v, cx)), cx)))
+            .child(label("Turkish voice").mt(px(22.)))
+            .child(div().mt(px(14.)).child(self.select_box(
+                "tts-turkish",
+                t.turkish.clone(),
+                ALANIA.iter().map(|(id, name, desc)| (id.to_string(), format!("{name} — {}", desc.to_lowercase()))).collect(),
+                560.,
+                std::rc::Rc::new(|this, v, cx| this.change_tts(|t| t.turkish = v, cx)),
+                cx,
+            )))
+            .child(value_label("Tempo", t.tempo, describe(t.tempo, "slower", "faster")).mt(px(22.)))
+            .child(div().mt(px(14.)).child(self.range("tts-tempo", (t.tempo - 0.6) / 0.7, 560., std::rc::Rc::new(|this, f, cx| this.change_tts(|t| t.tempo = ((0.6 + f * 0.7) * 20.).round() / 20., cx)), cx)))
+            .child(value_label("Pitch", t.pitch, describe(t.pitch, "deeper", "higher")).mt(px(22.)))
+            .child(div().mt(px(14.)).child(self.range("tts-pitch", (t.pitch - 0.75) / 0.4, 560., std::rc::Rc::new(|this, f, cx| this.change_tts(|t| t.pitch = ((0.75 + f * 0.4) * 20.).round() / 20., cx)), cx)))
+            .child(label("Effect").mt(px(22.)))
+            .child(div().mt(px(14.)).child(self.select_box("tts-effect", t.effect.clone(), options(&[("none", "Natural"), ("robot", "Robot")]), 560., std::rc::Rc::new(|this, v, cx| this.change_tts(|t| t.effect = v, cx)), cx)))
+            .child(heading("Preview").mt(px(26.)))
+            .child(
+                div()
+                    .mt(px(8.))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(self.select_box("tts-lang", t.lang.clone(), options(&[("en", "English"), ("tr", "Türkçe")]), 75., std::rc::Rc::new(|this, v, cx| {
+                        let sample = if v == "tr" { "Merhaba millet, sesim böyle duyuluyor." } else { "Hey everyone, this is how I sound." };
+                        if let Some(s) = this.settings.as_ref() {
+                            s.tts_text.update(cx, |i, cx| i.set_text(sample, cx));
+                        }
+                        this.change_tts(|t| t.lang = v, cx)
+                    }), cx))
+                    .child(Self::field(&s.tts_text, window, cx).flex_1())
+                    .child(Self::primary("tts-play".into(), "Play", true).on_click(cx.listener(|this, _, _, cx| this.settings_note("Speaking a voice is not in this app yet.", cx)))),
+            )
+            .child(heading("Live captions").mt(px(26.)))
+            .child(Self::hint("What turns your speech into text when you caption your voice in a call. Duyu is Turkish speech recognition run by this server; the browser's own works in Chrome, Edge and Safari.").mt(px(8.)))
+            .child(label("Recognizer").mt(px(34.)))
+            .child(div().mt(px(14.)).child(self.select_box(
+                "tts-engine",
+                t.engine.clone(),
+                options(&[("auto", "Automatic (Duyu when available)"), ("duyu", "Duyu"), ("browser", "Browser")]),
+                560.,
+                std::rc::Rc::new(|this, v, cx| this.change_tts(|t| t.engine = v, cx)),
+                cx,
+            )))
+            .when(t.engine != "browser", |d| {
+                d.child(label("Duyu language").mt(px(22.)))
+                    .child(div().mt(px(14.)).child(self.select_box("tts-duyu", t.language.clone(), options(&[("tr", "Turkish"), ("auto", "Detect")]), 560., std::rc::Rc::new(|this, v, cx| this.change_tts(|t| t.language = v, cx)), cx)))
+            })
+            .child(div().mt(px(18.)).flex().child(
+                div()
+                    .id("tts-reset")
+                    .h(px(40.))
+                    .px(px(16.))
+                    .rounded(px(10.))
+                    .border_1()
+                    .border_color(Theme::line())
+                    .flex()
+                    .items_center()
+                    .text_size(px(16.))
+                    .text_color(Theme::ink())
+                    .cursor_pointer()
+                    .hover(|s| s.bg(Theme::hover()))
+                    .child("Reset to the normal voice")
+                    .on_click(cx.listener(|this, _, _, cx| this.change_tts(|t| {
+                        let keep = (t.playback, t.lang.clone(), t.engine.clone(), t.language.clone());
+                        *t = TtsPrefs::default();
+                        (t.playback, t.lang, t.engine, t.language) = keep;
+                    }, cx))),
+            ));
+        vec![col.into_any_element()]
+    }
 }
