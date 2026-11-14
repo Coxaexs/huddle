@@ -14,6 +14,7 @@ pub fn replaces_text(message: &Message) -> bool {
     match message.kind.as_deref() {
         Some("lyricsnow") => message.payload.as_ref().and_then(|p| p.get("lines")).is_some_and(|l| l.is_array()),
         Some("ai") => true,
+        Some("poll") => message.payload.as_ref().and_then(|p| p.get("pollId")).is_some(),
         Some(k) if super::music_cards::KINDS.contains(&k) => message.payload.is_some(),
         Some("dnd") => message.payload.as_ref().and_then(|p| p.get("type")).and_then(Value::as_str) == Some("roll"),
         _ => false,

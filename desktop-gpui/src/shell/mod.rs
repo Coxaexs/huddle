@@ -12,6 +12,7 @@ mod gif_picker;
 mod links;
 mod message_link;
 mod music_cards;
+mod poll;
 mod friends;
 mod members;
 mod notify_menu;
@@ -240,6 +241,7 @@ pub struct Shell {
     linked_messages: std::cell::RefCell<HashMap<String, Option<serde_json::Value>>>,
     /// A settings card's state since its buttons were used (the web keeps it per card).
     music_settings: HashMap<String, serde_json::Map<String, serde_json::Value>>,
+    polls: std::cell::RefCell<HashMap<String, poll::PollState>>,
     /// The menu for a person (right-click), their voice settings, and where its slider was drawn.
     user_menu: Option<user_menu::UserMenu>,
     voice_prefs: HashMap<String, user_menu::VoicePref>,
@@ -440,6 +442,7 @@ impl Shell {
             unfurl_pending: Default::default(),
             linked_messages: Default::default(),
             music_settings: HashMap::new(),
+            polls: Default::default(),
             unread_bar: None,
             unread_pending: None,
             sized: Default::default(),
@@ -1102,6 +1105,7 @@ impl Shell {
                     }
                 }
             }
+            "poll" => self.on_poll_event(&value, cx),
             "message-pinned" => {
                 let id = value.get("id").and_then(Value::as_str).unwrap_or("").to_string();
                 let pinned = value.get("pinned").and_then(Value::as_bool).unwrap_or(false);

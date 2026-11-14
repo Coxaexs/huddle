@@ -176,6 +176,16 @@ impl Client {
         self.post("/api/music/command", json!({ "command": command, "voiceChannelId": voice_channel_id, "textChannelId": text_channel_id, "silent": silent }))
     }
 
+    /// A poll's tallies, my votes, whether it is private, and (public) who voted for what.
+    pub fn poll(&self, poll_id: &str) -> Result<Value> {
+        self.get(&format!("/api/polls?pollId={}", encode(poll_id)))
+    }
+
+    /// Vote on a poll (again on the same option takes the vote back).
+    pub fn vote(&self, poll_id: &str, choice: usize) -> Result<Value> {
+        self.post("/api/polls/vote", json!({ "pollId": poll_id, "choice": choice }))
+    }
+
     /// A thread's replies, oldest first.
     pub fn thread(&self, root_id: &str) -> Result<Vec<Message>> {
         let page: MessagePage = self.get(&format!("/api/messages?threadId={}", encode(root_id)))?;
