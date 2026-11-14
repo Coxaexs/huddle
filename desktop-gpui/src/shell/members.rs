@@ -274,7 +274,7 @@ impl gpui::Render for Shell {
             let mut xy = at.split(',').filter_map(|v| v.trim().parse::<f32>().ok());
             if let (Some(id), Some(x), Some(y)) = (own, xy.next(), xy.next()) {
                 self.dev_ctx_done = true;
-                self.ctx_menu = Some(super::context_menu::CtxMenu { message_id: id, at: gpui::point(px(x), px(y)) });
+                self.ctx_menu = Some(super::context_menu::CtxMenu { message_id: id, at: gpui::point(px(x), px(y)), expanded: false });
             }
         }
         // Development: HOFFLE_DEV_SETTINGS=<n> opens Settings on its n-th page.

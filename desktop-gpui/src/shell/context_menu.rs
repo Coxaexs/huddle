@@ -15,6 +15,8 @@ use crate::ui;
 pub(super) struct CtxMenu {
     pub message_id: String,
     pub at: Point<Pixels>,
+    /// Simple: "More…" was pressed, so every item shows.
+    pub expanded: bool,
 }
 
 /// "Translate" on a message (lib/message-translate.ts states).
@@ -61,6 +63,8 @@ enum Item {
     Speak,
     Report,
     CopyId,
+    /// Simple's "More…": the rest of the menu, in place.
+    More,
 }
 
 enum Row {
@@ -111,7 +115,7 @@ impl Shell {
     }
 
     pub(super) fn open_context_menu(&mut self, message_id: String, at: Point<Pixels>, cx: &mut Context<Self>) {
-        self.ctx_menu = Some(CtxMenu { message_id, at });
+        self.ctx_menu = Some(CtxMenu { message_id, at, expanded: false });
         cx.notify();
     }
 
@@ -141,6 +145,20 @@ impl Shell {
         } else {
             rows.push(item(Item::Reply, "menu.reply", "reply", false, false));
             rows.push(Row::Separator);
+        }
+        // Simple (message-context-menu.tsx): the everyday actions, then "More…" for the rest.
+        if self.simple() && !self.ctx_menu.as_ref().is_some_and(|m| m.expanded) {
+            rows.push(item(Item::CopyText, "menu.copyText", "copy", false, false));
+            if self.can_pin() {
+                let pin_key = if message.pinned { "menu.unpinMessage" } else { "menu.pinMessage" };
+                rows.push(item(Item::Pin, pin_key, "pin", false, false));
+            }
+            rows.push(item(Item::More, "menu.more", "more-horizontal", false, false));
+            if !own && !message.bot {
+                rows.push(Row::Separator);
+                rows.push(item(Item::Report, "menu.reportMessage", "shield-alert", false, false));
+            }
+            return rows;
         }
         rows.push(item(Item::Forward, "menu.forward", "forward", false, false));
         rows.push(item(Item::Thread, "menu.createThread", "message-circle", false, false));
@@ -251,6 +269,13 @@ impl Shell {
 
     /// What each item does: the handlers message-row.tsx passes to the menu.
     fn run_item(&mut self, item: Item, id: String, window: &mut Window, cx: &mut Context<Self>) {
+        if matches!(item, Item::More) {
+            if let Some(menu) = self.ctx_menu.as_mut() {
+                menu.expanded = true;
+            }
+            cx.notify();
+            return;
+        }
         if let Some(menu) = self.ctx_menu.take() {
             self.ctx_at = menu.at;
         }
@@ -259,6 +284,8 @@ impl Shell {
             return;
         };
         match item {
+            // Handled above: it keeps the menu open.
+            Item::More => {}
             Item::Edit => self.start_edit(id, message.text.clone(), window, cx),
             Item::Reply => self.start_reply(id, message.author.clone(), window, cx),
             Item::Delete => {
