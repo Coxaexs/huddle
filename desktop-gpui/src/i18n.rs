@@ -20,7 +20,12 @@ fn load(locale: &str) -> HashMap<String, String> {
         .unwrap_or_default()
 }
 
+static CURRENT: std::sync::RwLock<Option<&'static Catalog>> = std::sync::RwLock::new(None);
+
 fn catalog() -> &'static Catalog {
+    if let Some(c) = *CURRENT.read().unwrap() {
+        return c;
+    }
     static CATALOG: OnceLock<Catalog> = OnceLock::new();
     CATALOG.get_or_init(|| {
         let locale = detect();
@@ -28,11 +33,39 @@ fn catalog() -> &'static Catalog {
     })
 }
 
+fn saved_path() -> Option<std::path::PathBuf> {
+    Some(dirs::config_dir()?.join("Hoffle Lite").join("locale"))
+}
+
+/// setLocale: this language from now on, remembered on this computer.
+pub fn set_locale(code: &str) {
+    let Some(locale) = LOCALES.iter().find(|l| **l == code) else { return };
+    if let Some(path) = saved_path() {
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+        let _ = std::fs::write(path, locale);
+    }
+    let fresh: &'static Catalog = Box::leak(Box::new(Catalog { locale, strings: load(locale), english: load("en") }));
+    *CURRENT.write().unwrap() = Some(fresh);
+}
+
+/// The languages the picker lists: code, its own name, and whether it is fully translated.
+pub const NAMES: [(&str, &str, bool); 7] = [
+    ("en", "English", true),
+    ("tr", "Türkçe", true),
+    ("es", "Español", false),
+    ("de", "Deutsch", false),
+    ("fr", "Français", false),
+    ("pt-BR", "Português (Brasil)", false),
+    ("nl", "Nederlands", false),
+];
+
 /// HOFFLE_LOCALE, else the system's preferred languages in order (the web reads navigator.languages).
 fn detect() -> &'static str {
     let wanted: Vec<String> = std::env::var("HOFFLE_LOCALE")
         .ok()
         .into_iter()
+        // The language picked in Settings, then the system's.
+        .chain(saved_path().and_then(|p| std::fs::read_to_string(p).ok()).map(|s| s.trim().to_string()))
         .chain(sys_locale::get_locales())
         .map(|l| l.replace('_', "-"))
         .collect();

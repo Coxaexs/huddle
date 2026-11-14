@@ -81,6 +81,15 @@ fn anchors(tab: Tab) -> Vec<(String, usize)> {
     }
 }
 
+/// Desktop notifications on or off (`huddle-notify`, kept on this computer; on unless turned off).
+pub(super) fn notify_setting() -> bool {
+    notify_path().and_then(|p| std::fs::read_to_string(p).ok()).is_none_or(|s| s.trim() != "off")
+}
+
+fn notify_path() -> Option<std::path::PathBuf> {
+    Some(dirs::config_dir()?.join("Hoffle Lite").join("notify"))
+}
+
 /// Streamer Mode: off, on while sharing the screen, or always (kept on this computer).
 pub(super) fn streamer_setting() -> String {
     streamer_path().and_then(|p| std::fs::read_to_string(p).ok()).map(|s| s.trim().to_string()).filter(|s| ["off", "auto", "on"].contains(&s.as_str())).unwrap_or_else(|| "off".into())
@@ -114,6 +123,19 @@ pub(super) struct Settings {
     dm_policy: Option<String>,
     privacy_status: Option<String>,
     streamer: String,
+    /// Language: whether the picker's list is open, and the row under the pointer.
+    language_open: bool,
+    language_active: usize,
+    /// Notifications: desktop on/off (this computer), the ntfy topic and the weekly digest.
+    notify: bool,
+    ntfy: Entity<TextInput>,
+    ntfy_token: Entity<TextInput>,
+    ntfy_saved: Option<String>,
+    ntfy_status: Option<String>,
+    ntfy_busy: bool,
+    digest: Option<Value>,
+    digest_status: Option<String>,
+    digest_busy: bool,
     _subs: Vec<Subscription>,
 }
 
@@ -175,6 +197,8 @@ impl Shell {
         let next = make("", true, "", window, cx);
         let delete_password = make("", true, "", window, cx);
         let security = Security { password: Some(make("", true, "", window, cx)), code: Some(make("123456", false, "", window, cx)), ..Default::default() };
+        let ntfy = make("https://ntfy.sh/your-secret-topic", false, "", window, cx);
+        let ntfy_token = make("Access token (only for protected topics)", true, "", window, cx);
         let focus = cx.focus_handle();
         window.focus(&focus);
         self.settings = Some(Settings {
@@ -199,6 +223,17 @@ impl Shell {
             dm_policy: None,
             privacy_status: None,
             streamer: streamer_setting(),
+            language_open: false,
+            language_active: 0,
+            notify: notify_setting(),
+            ntfy,
+            ntfy_token,
+            ntfy_saved: None,
+            ntfy_status: None,
+            ntfy_busy: false,
+            digest: None,
+            digest_status: None,
+            digest_busy: false,
             _subs: subs,
         });
         self.load_security(cx);
@@ -208,6 +243,27 @@ impl Shell {
             |this, result, _| {
                 if let Some(s) = this.settings.as_mut() {
                     s.dm_policy = Some(result.ok().and_then(|v| v.get("dmPolicy").and_then(Value::as_str).map(str::to_string)).unwrap_or_else(|| "everyone".into()));
+                }
+            },
+        );
+        self.settings_call(
+            cx,
+            |c| c.settings_get("/api/push/ntfy"),
+            |this, result, cx| {
+                if let (Some(s), Ok(v)) = (this.settings.as_mut(), result) {
+                    s.ntfy_saved = v.get("endpoint").and_then(Value::as_str).map(str::to_string);
+                    if let Some(endpoint) = s.ntfy_saved.clone() {
+                        s.ntfy.update(cx, |i, cx| i.set_text(endpoint, cx));
+                    }
+                }
+            },
+        );
+        self.settings_call(
+            cx,
+            |c| c.settings_get("/api/digest"),
+            |this, result, _| {
+                if let (Some(s), Ok(v)) = (this.settings.as_mut(), result) {
+                    s.digest = Some(v);
                 }
             },
         );
@@ -225,6 +281,12 @@ impl Shell {
     pub(super) fn dev_settings_page(&mut self, n: usize, cx: &mut Context<Self>) {
         if let Some(tab) = nav().into_iter().flat_map(|(_, items)| items).nth(n).map(|i| i.tab) {
             self.settings_tab(tab, cx);
+        }
+        // HOFFLE_DEV_LANG_OPEN=1: the language list open.
+        if std::env::var("HOFFLE_DEV_LANG_OPEN").is_ok()
+            && let Some(s) = self.settings.as_mut()
+        {
+            s.language_open = true;
         }
     }
 
@@ -869,6 +931,8 @@ impl Shell {
             // `.account-settings`: 18px between its sections.
             Tab::Password => self.render_account_page(s, window, cx).into_iter().enumerate().map(|(n, e)| div().when(n > 0, |d| d.mt(px(18.))).child(e).into_any_element()).collect(),
             Tab::Privacy => self.render_privacy_page(s, cx),
+            Tab::Language => self.render_language_page(s, window, cx),
+            Tab::Notifications => self.render_notifications_page(s, window, cx),
             _ => Vec::new(),
         };
         for section in page {
@@ -1544,4 +1608,405 @@ impl Shell {
                 .into_any_element(),
         ]
     }
+}
+
+impl Shell {
+    fn choose_language(&mut self, code: &'static str, window: &mut Window, cx: &mut Context<Self>) {
+        crate::i18n::set_locale(code);
+        if let Some(s) = self.settings.as_mut() {
+            s.language_open = false;
+        }
+        window.refresh();
+        cx.notify();
+    }
+
+    fn render_language_page(&self, s: &Settings, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let muted: Hsla = Theme::muted().into();
+        let ink: Hsla = Theme::ink().into();
+        let current = crate::i18n::locale();
+        let name = crate::i18n::NAMES.iter().find(|(c, _, _)| *c == current).map_or("English", |(_, n, _)| *n);
+        let open = s.language_open;
+        let trigger = div()
+            .id("lang-trigger")
+            .min_w(px(220.))
+            .h(px(42.))
+            .px(px(12.))
+            .rounded(px(10.))
+            .bg(ink.opacity(0.04))
+            .border_1()
+            .border_color(if open { Hsla::from(Theme::lavender()).opacity(0.6) } else { ink.opacity(0.22) })
+            .hover(|s| s.border_color(Hsla::from(Theme::lavender()).opacity(0.6)))
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .text_size(px(14.))
+            .line_height(px(21.))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(ink)
+            .cursor_pointer()
+            .child(ui::icon("globe", 16., muted))
+            .child(div().flex_1().child(name))
+            .child(ui::icon(if open { "chevron-up" } else { "chevron-down" }, 14., muted))
+            .on_click(cx.listener(|this, _, _, cx| {
+                if let Some(s) = this.settings.as_mut() {
+                    s.language_open = !s.language_open;
+                    s.language_active = crate::i18n::NAMES.iter().position(|(c, _, _)| *c == crate::i18n::locale()).unwrap_or(0);
+                    cx.notify();
+                }
+            }));
+        // The hint's 12px and the picker's own 12px (an inline-block: they do not collapse).
+        let mut picker = div().relative().mt(px(24.)).mb(px(6.)).flex().child(trigger);
+        if open {
+            let mut list = div()
+                .id("lang-list")
+                .absolute()
+                .top(px(48.))
+                .left_0()
+                .p(px(6.))
+                .rounded(px(12.))
+                .bg(Theme::panel())
+                .border_1()
+                .border_color(ink.opacity(0.18))
+                .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.55), offset: gpui::point(px(0.), px(18.)), blur_radius: px(40.), spread_radius: px(-16.) }])
+                .flex()
+                .flex_col()
+                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                    if let Some(s) = this.settings.as_mut() {
+                        s.language_open = false;
+                        cx.notify();
+                    }
+                }));
+            for (n, (code, label, complete)) in crate::i18n::NAMES.iter().enumerate() {
+                let selected = *code == current;
+                let active = n == s.language_active;
+                let code: &'static str = code;
+                list = list.child(
+                    div()
+                        .id(SharedString::from(format!("lang-{code}")))
+                        .px(px(10.))
+                        .py(px(8.))
+                        .rounded(px(8.))
+                        .when(active, |d| d.bg(Hsla::from(Theme::lavender()).opacity(0.16)))
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .text_size(px(14.))
+                        .line_height(px(21.))
+                        .font_weight(if selected { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+                        .text_color(ink)
+                        .cursor_pointer()
+                        .when(selected, |d| d.child(ui::icon("check", 14., Theme::lavender())))
+                        .child(
+                            div()
+                                .flex_1()
+                                .flex()
+                                .items_baseline()
+                                .when(!selected, |d| d.pl(px(22.)))
+                                .child(label.to_string())
+                                .when(!complete, |d| d.child(div().text_size(px(12.)).font_weight(FontWeight::NORMAL).text_color(muted).child(format!(" · {}", t("settings.language.partialTag"))))),
+                        )
+                        .child(div().ml(px(18.)).font_family(crate::theme::MONO_FONT).text_size(px(11.5)).text_color(muted).child(code))
+                        .on_mouse_move(cx.listener(move |this, _, _, cx| {
+                            if let Some(s) = this.settings.as_mut()
+                                && s.language_active != n
+                            {
+                                s.language_active = n;
+                                cx.notify();
+                            }
+                        }))
+                        .on_click(cx.listener(move |this, _, window, cx| this.choose_language(code, window, cx))),
+                );
+            }
+            // Drawn after the page, so the hints under the picker do not cover it.
+            picker = picker.child(gpui::deferred(list).with_priority(1));
+        }
+        let _ = window;
+        vec![
+            Self::section("lang")
+                .child(Self::section_title(&t("settings.language"), None))
+                .child(Self::hint(t("settings.language.description")).mt(px(4.)))
+                .child(picker)
+                .child(Self::hint(t("settings.language.detected")))
+                .child(Self::hint(t("settings.language.partialNote")).mt(px(12.)))
+                .into_any_element(),
+        ]
+    }
+
+    /// `.appearance-switch` with a checkbox (the browser's, in the accent when on).
+    fn checkbox(checked: bool) -> gpui::Div {
+        div()
+            .size(px(18.))
+            .mr(px(0.5))
+            .rounded(px(3.))
+            .border_1()
+            .border_color(if checked { Hsla::from(Theme::lavender()) } else { rgb(0x767676).into() })
+            .bg(if checked { Hsla::from(Theme::lavender()) } else { rgb(0x3b3b3b).into() })
+            .flex()
+            .items_center()
+            .justify_center()
+            .when(checked, |d| d.child(ui::icon("check-bold", 12., rgb(0x15121f))))
+    }
+
+    /// `button.secondary` in settings: outlined, 42px.
+    fn secondary(id: String, label: impl Into<SharedString>, enabled: bool) -> gpui::Stateful<gpui::Div> {
+        let ink: Hsla = Theme::ink().into();
+        div()
+            .id(SharedString::from(id))
+            .h(px(42.))
+            .px(px(16.))
+            .rounded(px(10.))
+            .border_1()
+            .border_color(ink.opacity(0.22))
+            .flex()
+            .items_center()
+            .text_size(px(16.))
+            .font_weight(FontWeight::BOLD)
+            .text_color(ink)
+            .when(!enabled, |d| d.opacity(0.45))
+            .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(ink.opacity(0.07))))
+            .child(label.into())
+    }
+
+    fn switch_box(id: &str) -> gpui::Stateful<gpui::Div> {
+        div().id(SharedString::from(id.to_string())).px(px(12.)).py(px(11.)).rounded(px(12.)).bg(Theme::panel()).border_1().border_color(Theme::line()).flex()
+    }
+
+    fn ntfy_save(&mut self, cx: &mut Context<Self>) {
+        let Some(s) = self.settings.as_mut() else { return };
+        s.ntfy_busy = true;
+        s.ntfy_status = None;
+        let (endpoint, token) = (s.ntfy.read(cx).text(), s.ntfy_token.read(cx).text());
+        let client = self.client.clone();
+        self.settings_call(
+            cx,
+            move |_| client.settings_put("/api/push/ntfy", json!({ "endpoint": endpoint, "token": token })),
+            |this, result, _| {
+                let Some(s) = this.settings.as_mut() else { return };
+                s.ntfy_busy = false;
+                match result {
+                    Ok(v) => {
+                        s.ntfy_saved = v.get("endpoint").and_then(Value::as_str).map(str::to_string);
+                        s.ntfy_status = Some("Sent a test notification — check your phone.".into());
+                    }
+                    Err(e) => s.ntfy_status = Some(e.to_string()),
+                }
+            },
+        );
+    }
+
+    fn ntfy_remove(&mut self, cx: &mut Context<Self>) {
+        let Some(s) = self.settings.as_mut() else { return };
+        s.ntfy_busy = true;
+        self.settings_call(
+            cx,
+            |c| c.settings_delete("/api/push/ntfy", json!({})),
+            |this, result, cx| {
+                let Some(s) = this.settings.as_mut() else { return };
+                s.ntfy_busy = false;
+                match result {
+                    Ok(_) => {
+                        s.ntfy_saved = None;
+                        s.ntfy.update(cx, |i, cx| i.set_text("", cx));
+                        s.ntfy_token.update(cx, |i, cx| i.set_text("", cx));
+                        s.ntfy_status = Some("Phone notifications turned off.".into());
+                    }
+                    Err(e) => s.ntfy_status = Some(e.to_string()),
+                }
+            },
+        );
+    }
+
+    fn choose_digest(&mut self, mode: &'static str, cx: &mut Context<Self>) {
+        let Some(s) = self.settings.as_mut() else { return };
+        let previous = s.digest.clone();
+        if let Some(d) = s.digest.as_mut() {
+            d["mode"] = json!(mode);
+        }
+        s.digest_status = None;
+        self.settings_call(
+            cx,
+            move |c| c.settings_post("/api/digest", json!({ "mode": mode })),
+            move |this, result, _| {
+                if let (Some(s), Err(e)) = (this.settings.as_mut(), result) {
+                    s.digest = previous;
+                    s.digest_status = Some(if e.to_string().is_empty() { "Could not save that.".into() } else { e.to_string() });
+                }
+            },
+        );
+    }
+
+    fn digest_preview(&mut self, cx: &mut Context<Self>) {
+        let Some(s) = self.settings.as_mut() else { return };
+        s.digest_busy = true;
+        s.digest_status = None;
+        self.settings_call(
+            cx,
+            |c| c.settings_post("/api/digest", json!({ "preview": true })),
+            |this, result, _| {
+                let Some(s) = this.settings.as_mut() else { return };
+                s.digest_busy = false;
+                s.digest_status = Some(match result {
+                    Ok(v) if v.get("sent").and_then(Value::as_bool) == Some(true) => "Sent. It's in your Notes.".into(),
+                    Ok(v) => v.get("reason").and_then(Value::as_str).unwrap_or("Nothing to send.").to_string(),
+                    Err(e) => if e.to_string().is_empty() { "Could not send it.".into() } else { e.to_string() },
+                });
+            },
+        );
+    }
+
+    fn render_notifications_page(&self, s: &Settings, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let muted: Hsla = Theme::muted().into();
+        let small = |text: String| div().text_size(px(12.8)).line_height(px(19.2)).text_color(muted).child(text);
+        let strong = |text: &str| div().text_size(px(16.)).line_height(px(24.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(text.to_string());
+        let mut out = Vec::new();
+        // Desktop notifications.
+        let on = s.notify;
+        out.push(
+            Self::switch_box("nt-desktop")
+                .items_center()
+                .justify_between()
+                .cursor_pointer()
+                .child(div().flex().flex_col().gap(px(2.)).child(strong(&t("notificationSettings.enableDesktop"))).child(small(t("notificationSettings.desktopDesc"))))
+                .child(Self::checkbox(on))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    if let Some(s) = this.settings.as_mut() {
+                        s.notify = !s.notify;
+                        if let Some(path) = notify_path() {
+                            let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+                            let _ = std::fs::write(path, if s.notify { "on" } else { "off" });
+                        }
+                        cx.notify();
+                    }
+                }))
+                .into_any_element(),
+        );
+        // Phone notifications through ntfy.
+        let endpoint = s.ntfy.read(cx).text();
+        let can_save = !s.ntfy_busy && !endpoint.is_empty();
+        let mut buttons = div().flex().flex_wrap().gap(px(8.)).child(
+            Self::primary("nt-ntfy-save".into(), if s.ntfy_saved.is_some() { "Update & test" } else { "Save & test" }, can_save)
+                .mt(px(16.))
+                .when(can_save, |d| d.on_click(cx.listener(|this, _, _, cx| this.ntfy_save(cx)))),
+        );
+        if endpoint.is_empty() {
+            buttons = buttons.child(Self::secondary("nt-ntfy-suggest".into(), "Make me a topic", true).mt(px(16.)).on_click(cx.listener(|this, _, _, cx| {
+                // 12 random bytes in base 36, the first 20 characters.
+                let mut topic = String::new();
+                let mut seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(1) as u64 | 1;
+                for _ in 0..12 {
+                    seed ^= seed << 13;
+                    seed ^= seed >> 7;
+                    seed ^= seed << 17;
+                    let b = (seed % 256) as u32;
+                    topic.push_str(&format!("{:0>2}", radix36(b)));
+                }
+                topic.truncate(20);
+                if let Some(s) = this.settings.as_mut() {
+                    s.ntfy.update(cx, |i, cx| i.set_text(format!("https://ntfy.sh/hoffle-{topic}"), cx));
+                }
+            })));
+        }
+        if s.ntfy_saved.is_some() {
+            buttons = buttons.child(Self::secondary("nt-ntfy-off".into(), "Turn off", !s.ntfy_busy).mt(px(16.)).when(!s.ntfy_busy, |d| d.on_click(cx.listener(|this, _, _, cx| this.ntfy_remove(cx)))));
+        }
+        out.push(
+            Self::switch_box("nt-phone")
+                .flex_col()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(strong("Phone notifications (ntfy / UnifiedPush)"))
+                        .child(small("Mentions, DMs and incoming calls, even when the app is closed. Install the ntfy app, subscribe to a secret topic, and paste its URL here. Works with ntfy.sh or your own ntfy server.".into())),
+                )
+                .child(Self::field(&s.ntfy, window, cx))
+                .child(Self::field(&s.ntfy_token, window, cx).h(px(38.)))
+                .child(buttons)
+                .when_some(s.ntfy_status.clone(), |d, status| d.child(small(status)))
+                .into_any_element(),
+        );
+        // The weekly digest.
+        if let Some(digest) = &s.digest {
+            let mode = digest.get("mode").and_then(Value::as_str).unwrap_or("off").to_string();
+            let has_email = digest.get("hasEmail").and_then(Value::as_bool).unwrap_or(false);
+            let next = digest.get("nextAt").and_then(Value::as_str).and_then(crate::model::parse_time).filter(|_| mode != "off").map(|t| {
+                t.with_timezone(&chrono::Local).format_localized(" Next one: %A %-I:%M %p.", chrono::Locale::en_US).to_string()
+            });
+            let mut modes = div().flex().flex_wrap().gap(px(6.));
+            for (value, label) in [("off", "Off"), ("notes", "In my Notes"), ("email", "Notes + email")] {
+                let active = mode == value;
+                let disabled = value == "email" && !has_email;
+                modes = modes.child(
+                    div()
+                        .id(SharedString::from(format!("nt-digest-{value}")))
+                        .px(px(12.))
+                        .py(px(5.))
+                        .rounded_full()
+                        .border_1()
+                        .border_color(if active { Hsla::from(Theme::lavender()) } else { Theme::line().into() })
+                        .when(active, |d| d.bg(Hsla::from(Theme::lavender()).opacity(0.16)))
+                        .when(disabled, |d| d.opacity(0.5))
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .text_size(px(13.))
+                        .line_height(px(19.5))
+                        .text_color(Theme::ink())
+                        .when(!disabled, |d| d.cursor_pointer())
+                        .child(
+                            div()
+                                .size(px(17.))
+                                .rounded_full()
+                                .border_1()
+                                .border_color(rgb(0x9b9aa3))
+                                .bg(if active { rgb(0x2b2541) } else { rgb(0x3b3b3b) })
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .when(active, |d| d.child(div().size(px(11.)).rounded_full().bg(rgb(0x9d8cfa)))),
+                        )
+                        .child(label)
+                        .when(!disabled && !active, |d| d.on_click(cx.listener(move |this, _, _, cx| this.choose_digest(value, cx)))),
+                );
+            }
+            out.push(
+                Self::switch_box("nt-digest")
+                    .flex_col()
+                    .gap(px(8.))
+                    .child(
+                        div().flex().flex_col().gap(px(2.)).child(strong("Weekly digest")).child(small(format!(
+                            "Every Sunday: the messages people reacted to most, events coming up and who joined, on each of your servers.{}",
+                            next.unwrap_or_default()
+                        ))),
+                    )
+                    .child(modes)
+                    .when(!has_email, |d| d.child(small("Add an email address to your account to get it by email.".into())))
+                    .child(div().flex().child(
+                        Self::secondary("nt-digest-now".into(), "Send me this week's now", !s.digest_busy)
+                            .mt(px(16.))
+                            .when(!s.digest_busy, |d| d.on_click(cx.listener(|this, _, _, cx| this.digest_preview(cx)))),
+                    ))
+                    .when_some(s.digest_status.clone(), |d, status| d.child(small(status)))
+                    .into_any_element(),
+            );
+        }
+        out
+    }
+}
+
+/// A byte in base 36, as JavaScript's `toString(36)`.
+fn radix36(mut n: u32) -> String {
+    const DIGITS: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    if n == 0 {
+        return "0".into();
+    }
+    let mut out = Vec::new();
+    while n > 0 {
+        out.push(DIGITS[(n % 36) as usize]);
+        n /= 36;
+    }
+    out.reverse();
+    String::from_utf8(out).unwrap_or_default()
 }
