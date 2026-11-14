@@ -82,6 +82,7 @@ impl Shell {
                     this.save_note(cx);
                 }
                 AreaEvent::Changed => {}
+                _ => {}
             }),
             cx.on_blur(&note.focus_handle(cx), window, |this, _, cx| this.save_note(cx)),
         ];

@@ -123,7 +123,11 @@ pub fn active_theme() -> String {
 
 /// Applies the saved theme at start.
 pub fn load_theme() {
-    let id = theme_path().and_then(|p| std::fs::read_to_string(p).ok()).map(|s| s.trim().to_string()).unwrap_or_else(|| "cozy".into());
+    // HOFFLE_THEME=<id> (tests): that theme for this run, leaving the one saved on this computer alone.
+    let id = std::env::var("HOFFLE_THEME")
+        .ok()
+        .or_else(|| theme_path().and_then(|p| std::fs::read_to_string(p).ok()).map(|s| s.trim().to_string()))
+        .unwrap_or_else(|| "cozy".into());
     if let Some(def) = all_themes().into_iter().find(|t| t.id == id) {
         set_theme(&def, false);
     }

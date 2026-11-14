@@ -11,6 +11,8 @@ if [ -z "$HOFFLE_SESSION" ]; then
   export HOFFLE_SESSION="$(ssh -o ClearAllForwardings=yes home 'awk "\$6==\"hoffle_session\"{print \$7}" ~/.cache/claude-listener/cookies.txt')"
   [ -z "$HOFFLE_SESSION" ] && { echo "no QA session"; exit 1; }
 fi
+# The web references are Cozy; the theme saved on this Mac (the owner's app shares it) is left alone.
+export HOFFLE_THEME="${HOFFLE_THEME:-cozy}"
 pkill -x $name 2>/dev/null; rm -f "$out"
 (GPUI_SNAPSHOT="$out" "$bin" >"${out%.png}.log" 2>&1 &)
 sleep $secs

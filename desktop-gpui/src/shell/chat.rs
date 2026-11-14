@@ -1165,6 +1165,7 @@ impl Shell {
             // The composer's padding is clamp(18px, 3vw, 36px) each side.
             .children(self.render_gif_picker(f32::from(self.chat_panel_width(window)) - 2. - 2. * side, window, cx))
             .children(self.render_staged(cx))
+            .children(self.render_slash(cx))
             .children(reply_bar)
             .child(
                 div()

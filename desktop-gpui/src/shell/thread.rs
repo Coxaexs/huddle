@@ -35,6 +35,7 @@ impl Shell {
             AreaEvent::Submit => this.send_thread_reply(cx),
             AreaEvent::Escape => this.close_thread(window, cx),
             AreaEvent::Changed => cx.notify(),
+            _ => {}
         });
         let id = root.id.clone();
         self.ctx_menu = None;

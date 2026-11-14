@@ -31,6 +31,7 @@ mod rail;
 mod reaction_viewer;
 mod server_menu;
 mod settings;
+mod commands;
 mod sidebar;
 mod simple;
 mod simple_settings;
@@ -190,6 +191,7 @@ pub struct Shell {
     dev_forward_done: bool,
     dev_thread_done: bool,
     dev_settings_done: bool,
+    dev_draft_done: bool,
     dev_rv_done: bool,
     dev_extras_done: bool,
     /// Who is typing where: (user id, name, when it was last heard).
@@ -204,6 +206,15 @@ pub struct Shell {
     members_open: bool,
     /// Simple: the header's "More" menu is open.
     header_more: bool,
+    /// The / menu's highlighted row, and its scroll.
+    slash_index: usize,
+    slash_scroll: gpui::ScrollHandle,
+    /// The command just run and who ran it, for the bot's reply header (pendingCommandRef).
+    pending_command: Option<(String, String)>,
+    /// /api/features: session recording is switched on here.
+    features_record: bool,
+    /// Commands the server's connected bots registered (the / menu's Bots group).
+    bot_commands: Vec<commands::SlashCommand>,
     /// Simple: how many of Hoffy's tips were dismissed (kept on this computer).
     tips_seen: usize,
     /// The interface last drawn, so switching to Simple can close the member list once.
@@ -320,7 +331,16 @@ impl Shell {
         let composer = cx.new(|cx| TextArea::new("Message", cx).text(14., 20.3).placeholder_color(gpui::rgb(0x5a5275)));
         let subs = vec![cx.subscribe_in(&composer, window, |this, _, event, _window, cx| match event {
             AreaEvent::Submit => this.send_composer(cx),
-            AreaEvent::Changed => this.note_typing(),
+            AreaEvent::Changed => {
+                this.note_typing();
+                this.on_composer_changed(cx);
+            }
+            AreaEvent::MenuUp => this.slash_move(-1, cx),
+            AreaEvent::MenuDown => this.slash_move(1, cx),
+            AreaEvent::MenuPick => {
+                let index = this.slash_index;
+                this.pick_command(index, true, cx);
+            }
             AreaEvent::Escape => {
                 if this.reply_to.take().is_some() {
                     cx.notify();
@@ -406,6 +426,7 @@ impl Shell {
             dev_forward_done: false,
             dev_thread_done: false,
             dev_settings_done: false,
+            dev_draft_done: false,
             dev_rv_done: false,
             dev_extras_done: false,
             typing: HashMap::new(),
@@ -415,6 +436,11 @@ impl Shell {
             collapsed: HashSet::new(),
             members_open: true,
             header_more: std::env::var_os("HOFFLE_DEV_MORE").is_some(),
+            slash_index: 0,
+            slash_scroll: gpui::ScrollHandle::new(),
+            pending_command: None,
+            features_record: true,
+            bot_commands: Vec::new(),
             tips_seen: simple::load_tips_seen(),
             was_simple: false,
             emojis: HashMap::new(),
@@ -507,6 +533,15 @@ impl Shell {
     }
 
     fn load_servers(&mut self, cx: &mut Context<Self>) {
+        // /api/features: whether session recording is on here (it shows /record).
+        let features = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { features.settings_get("/api/features") }).await;
+            if let Ok(v) = result {
+                this.update(cx, |this, _| this.features_record = v.get("recordSessions").and_then(serde_json::Value::as_bool).unwrap_or(true)).ok();
+            }
+        })
+        .detach();
         let client = self.client.clone();
         cx.spawn(async move |this, cx| {
             let result = cx.background_executor().spawn(async move { client.servers() }).await;
@@ -752,7 +787,7 @@ impl Shell {
                 window.focus(&this.composer.focus_handle(cx));
                 cx.notify();
             }
-            AreaEvent::Changed => {}
+            _ => {}
         });
         window.focus(&editor.focus_handle(cx));
         self.editing = Some((message_id, editor, sub));
@@ -890,6 +925,7 @@ impl Shell {
             self.land_on_unread(&id, cx);
         }
         self.refresh_placeholder(cx);
+        self.load_bot_commands(cx);
         cx.notify();
     }
 
@@ -956,9 +992,16 @@ impl Shell {
         }
     }
 
-    fn send_composer(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn send_composer(&mut self, cx: &mut Context<Self>) {
         let Some(channel) = self.channel_id.clone() else { return };
         let text = self.composer.read(cx).value();
+        // sendMessage: a slash command (with nothing attached) runs instead of being sent.
+        if text.trim().starts_with('/') && self.pending_files.is_empty() {
+            self.composer.update(cx, |input, cx| input.clear(cx));
+            self.on_composer_changed(cx);
+            self.run_command(text.trim().to_string(), cx);
+            return;
+        }
         if !self.pending_files.is_empty() {
             self.composer.update(cx, |input, cx| input.clear(cx));
             let reply = self.reply_to.take().map(|(id, _)| id);

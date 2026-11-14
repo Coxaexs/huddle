@@ -16,7 +16,7 @@ fn main() {
             if path.is_dir() { walk(&path, out) } else { out.push(path) }
         }
     }
-    for dir in ["icons", "fonts", "images", "i18n", "cosmetics", "emoji", "sounds", "themes"] {
+    for dir in ["icons", "fonts", "images", "i18n", "cosmetics", "emoji", "sounds", "themes", "data"] {
         let mut files = Vec::new();
         walk(&Path::new("resources").join(dir), &mut files);
         files.sort();

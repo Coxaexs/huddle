@@ -88,6 +88,7 @@ impl Shell {
                 AreaEvent::Escape => this.close_forward(window, cx),
                 AreaEvent::Submit => this.send_forward(window, cx),
                 AreaEvent::Changed => {}
+                _ => {}
             }),
         ];
         window.focus(&gpui::Focusable::focus_handle(&search, cx));

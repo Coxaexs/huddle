@@ -19,7 +19,7 @@ actions!(
     text_area,
     [Backspace, Delete, Left, Right, Up, Down, SelectLeft, SelectRight, SelectUp, SelectDown, SelectAll,
      LineStart, LineEnd, WordLeft, WordRight, DeleteWordLeft, Paste, Cut, Copy, Submit, ForceSubmit, Newline, Escape,
-     ShowCharacterPalette]
+     ShowCharacterPalette, Tab]
 );
 
 pub fn bind_keys(cx: &mut App) {
@@ -51,6 +51,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("cmd-enter", ForceSubmit, ctx),
         KeyBinding::new("ctrl-enter", ForceSubmit, ctx),
         KeyBinding::new("escape", Escape, ctx),
+        KeyBinding::new("tab", Tab, ctx),
         KeyBinding::new("ctrl-cmd-space", ShowCharacterPalette, ctx),
     ]);
 }
@@ -59,6 +60,10 @@ pub enum AreaEvent {
     Submit,
     Changed,
     Escape,
+    /// While a menu sits on the box (`set_intercept`): Up and Down move in it, Tab or Enter picks.
+    MenuUp,
+    MenuDown,
+    MenuPick,
 }
 
 pub struct TextArea {
@@ -76,6 +81,8 @@ pub struct TextArea {
     max_height: Option<f32>,
     min_height: f32,
     placeholder_color: Option<gpui::Hsla>,
+    /// See `set_intercept`.
+    intercept: bool,
     /// The x the caret keeps while moving up and down through rows.
     goal_x: Option<Pixels>,
     scroll_y: Pixels,
@@ -148,6 +155,7 @@ impl TextArea {
             max_height: None,
             min_height: 0.,
             placeholder_color: None,
+            intercept: false,
             goal_x: None,
             scroll_y: px(0.),
             enter_newline: false,
@@ -293,6 +301,10 @@ impl TextArea {
         self.move_to(to, cx);
     }
     fn up(&mut self, _: &Up, _: &mut Window, cx: &mut Context<Self>) {
+        if self.intercept {
+            cx.emit(AreaEvent::MenuUp);
+            return;
+        }
         if let Some(to) = self.vertical(-1.) {
             let goal = self.goal_x;
             self.move_to(to, cx);
@@ -300,6 +312,10 @@ impl TextArea {
         }
     }
     fn down(&mut self, _: &Down, _: &mut Window, cx: &mut Context<Self>) {
+        if self.intercept {
+            cx.emit(AreaEvent::MenuDown);
+            return;
+        }
         if let Some(to) = self.vertical(1.) {
             let goal = self.goal_x;
             self.move_to(to, cx);
@@ -377,7 +393,9 @@ impl TextArea {
         }
     }
     fn submit(&mut self, _: &Submit, window: &mut Window, cx: &mut Context<Self>) {
-        if self.enter_newline {
+        if self.intercept {
+            cx.emit(AreaEvent::MenuPick);
+        } else if self.enter_newline {
             self.replace_text_in_range(None, "\n", window, cx);
         } else {
             cx.emit(AreaEvent::Submit);
@@ -391,6 +409,18 @@ impl TextArea {
     }
     fn escape(&mut self, _: &Escape, _: &mut Window, cx: &mut Context<Self>) {
         cx.emit(AreaEvent::Escape);
+    }
+    fn tab(&mut self, _: &Tab, _: &mut Window, cx: &mut Context<Self>) {
+        if self.intercept {
+            cx.emit(AreaEvent::MenuPick);
+        } else {
+            cx.propagate();
+        }
+    }
+
+    /// A menu on the box takes Up, Down, Tab and Enter (the composer's / menu).
+    pub fn set_intercept(&mut self, on: bool) {
+        self.intercept = on;
     }
     fn show_character_palette(&mut self, _: &ShowCharacterPalette, window: &mut Window, _: &mut Context<Self>) {
         window.show_character_palette();
@@ -676,6 +706,7 @@ impl Render for TextArea {
             .on_action(cx.listener(Self::force_submit))
             .on_action(cx.listener(Self::newline))
             .on_action(cx.listener(Self::escape))
+            .on_action(cx.listener(Self::tab))
             .on_action(cx.listener(Self::show_character_palette))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))

@@ -1,0 +1,679 @@
+{
+ "commands": [
+  {
+   "name": "play",
+   "args": "<song name or URL>",
+   "description": "Play in your voice channel, or add to the queue",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "playnext",
+   "args": "<song name or URL>",
+   "description": "Queue something as the next track",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "pause",
+   "description": "Pause playback",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "resume",
+   "description": "Resume playback",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "skip",
+   "description": "Skip to the next track",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "skipto",
+   "args": "<queue position>",
+   "description": "Jump straight to a queued track",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "stop",
+   "description": "Stop and clear the queue",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "disconnect",
+   "description": "Send the music bot away",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "seek",
+   "args": "<1:30>",
+   "description": "Jump to a position in the track",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "forward",
+   "args": "[seconds]",
+   "description": "Jump forward, 15 seconds by default",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "rewind",
+   "args": "[seconds]",
+   "description": "Jump back, 15 seconds by default",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "replay",
+   "description": "Start the track again",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "volume",
+   "args": "<0-100>",
+   "description": "Set the room general volume (Admins & Moderators)",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "loop",
+   "args": "<off|track|queue>",
+   "description": "Repeat the track or the queue",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "queue",
+   "description": "Show what is coming up",
+   "group": "Music"
+  },
+  {
+   "name": "nowplaying",
+   "description": "Show the player with a seek bar",
+   "group": "Music"
+  },
+  {
+   "name": "history",
+   "description": "What this room played before",
+   "group": "Music"
+  },
+  {
+   "name": "longhistory",
+   "description": "Everything this room played lately (up to 250)",
+   "group": "Music"
+  },
+  {
+   "name": "shuffle",
+   "description": "Shuffle the queue",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "clear",
+   "description": "Empty the queue",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "remove",
+   "args": "<position>",
+   "description": "Remove one track from the queue",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "removedupes",
+   "description": "Drop duplicate tracks from the queue",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "move",
+   "args": "<from> <to>",
+   "description": "Reorder the queue",
+   "group": "Music",
+   "voice": true
+  },
+  {
+   "name": "grab",
+   "description": "Send the current track to your DMs",
+   "group": "Music"
+  },
+  {
+   "name": "search",
+   "args": "<song name>",
+   "description": "Search without playing anything yet",
+   "group": "Music"
+  },
+  {
+   "name": "lyrics",
+   "args": "[song name]",
+   "description": "Lyrics for the current track",
+   "group": "Music"
+  },
+  {
+   "name": "lyricsnow",
+   "description": "The line playing right now",
+   "group": "Music"
+  },
+  {
+   "name": "autoplay",
+   "args": "<on|off>",
+   "description": "Keep playing smart related tracks",
+   "group": "Music"
+  },
+  {
+   "name": "radio",
+   "args": "<sad|party|dreamy|chill|…|off>",
+   "description": "Endless songs that fit a mood",
+   "group": "Music"
+  },
+  {
+   "name": "automix",
+   "args": "<on|off>",
+   "description": "Use smooth DJ-style transitions",
+   "group": "Music"
+  },
+  {
+   "name": "like",
+   "description": "Teach the bot you like this track",
+   "group": "Music"
+  },
+  {
+   "name": "dislike",
+   "description": "Keep this track out of autoplay",
+   "group": "Music"
+  },
+  {
+   "name": "stats",
+   "description": "Listening stats for this room",
+   "group": "Music"
+  },
+  {
+   "name": "wrapped",
+   "description": "This room's monthly music recap",
+   "group": "Music"
+  },
+  {
+   "name": "settings",
+   "description": "View the room's music settings",
+   "group": "Music"
+  },
+  {
+   "name": "join",
+   "description": "Bring the bot into your Discord voice channel",
+   "group": "Discord music"
+  },
+  {
+   "name": "karaoke",
+   "args": "<on|off>",
+   "description": "Duck the vocals (Discord)",
+   "group": "Discord music"
+  },
+  {
+   "name": "filter",
+   "args": "<preset>",
+   "description": "Audio filter preset (Discord)",
+   "group": "Discord music"
+  },
+  {
+   "name": "crossfade",
+   "args": "<seconds>",
+   "description": "Crossfade between tracks (Discord)",
+   "group": "Discord music"
+  },
+  {
+   "name": "sleeptimer",
+   "args": "<minutes>",
+   "description": "Stop playing after a while (Discord)",
+   "group": "Discord music"
+  },
+  {
+   "name": "247start",
+   "description": "Keep the bot in the channel (Discord)",
+   "group": "Discord music"
+  },
+  {
+   "name": "247stop",
+   "description": "Stop keeping the bot there (Discord)",
+   "group": "Discord music"
+  },
+  {
+   "name": "247status",
+   "description": "Is 24/7 mode on? (Discord)",
+   "group": "Discord music"
+  },
+  {
+   "name": "randomplay",
+   "description": "Play something from the library (Discord)",
+   "group": "Discord music"
+  },
+  {
+   "name": "artist",
+   "args": "<name>",
+   "description": "Play an artist (Discord)",
+   "group": "Discord music"
+  },
+  {
+   "name": "watch",
+   "args": "[link or search] [original|8|4]",
+   "description": "Watch Together in your voice room; with a link, add it to the party (or play it on the room's screen)",
+   "group": "Rooms"
+  },
+  {
+   "name": "reels",
+   "args": "[topics]",
+   "description": "Reels Together in your voice room: swipe Shorts as a group, the feed learns what you like",
+   "group": "Rooms"
+  },
+  {
+   "name": "web",
+   "description": "Open the music dashboard",
+   "group": "Rooms"
+  },
+  {
+   "name": "player",
+   "args": "[lyrics|queue|search|playlists|dj]",
+   "description": "Full-screen music player: synced lyrics, up next, search, playlists and a DJ",
+   "group": "Rooms"
+  },
+  {
+   "name": "dj",
+   "description": "Open the DJ booth: two decks, mixer, FX and Auto DJ",
+   "group": "Rooms"
+  },
+  {
+   "name": "roll",
+   "args": "<d20+5> [label] [adv|dis|crit]",
+   "description": "Roll dice: /roll d20+5 stealth adv, /roll 2d6+3 sword crit",
+   "group": "D&D"
+  },
+  {
+   "name": "gmroll",
+   "args": "<d20+5> [label] [adv|dis|crit]",
+   "description": "Roll in secret: only you see the result (/gmroll d20+4 perception)",
+   "group": "D&D"
+  },
+  {
+   "name": "v",
+   "args": "<pool> [h<hunger>] [d<difficulty>] [label]",
+   "description": "Vampire V5 roll: d10 pool with red Hunger dice (/v 7 h2 d3 Strength + Brawl)",
+   "group": "D&D"
+  },
+  {
+   "name": "gmv",
+   "args": "<pool> [h<hunger>] [d<difficulty>] [label]",
+   "description": "Vampire V5 roll in secret: only you see the result",
+   "group": "D&D"
+  },
+  {
+   "name": "rouse",
+   "args": "[2] [h<hunger>] [label]",
+   "description": "Rouse check: 6+ keeps your Hunger, anything less adds one (/rouse h2 Celerity)",
+   "group": "D&D"
+  },
+  {
+   "name": "w",
+   "args": "<name> <message>",
+   "description": "Whisper: only they see it, and it is never saved (/w sam meet me at the door · /w sam,kit you hear a click)",
+   "group": "Hoffle"
+  },
+  {
+   "name": "coinflip",
+   "description": "Flip a coin",
+   "group": "D&D"
+  },
+  {
+   "name": "spell",
+   "args": "<fireball> [2024]",
+   "description": "Look up a spell",
+   "group": "D&D"
+  },
+  {
+   "name": "monster",
+   "args": "<goblin> [2024]",
+   "description": "Look up a monster's stat block",
+   "group": "D&D"
+  },
+  {
+   "name": "item",
+   "args": "<longsword>",
+   "description": "Look up an item",
+   "group": "D&D"
+  },
+  {
+   "name": "feat",
+   "args": "<alert>",
+   "description": "Look up a feat",
+   "group": "D&D"
+  },
+  {
+   "name": "race",
+   "args": "<half-orc>",
+   "description": "Look up a race",
+   "group": "D&D"
+  },
+  {
+   "name": "class",
+   "args": "<paladin>",
+   "description": "Look up a class",
+   "group": "D&D"
+  },
+  {
+   "name": "subclass",
+   "args": "<oath of vengeance>",
+   "description": "Look up a subclass",
+   "group": "D&D"
+  },
+  {
+   "name": "character",
+   "description": "Your character sheet (companion app)",
+   "group": "D&D"
+  },
+  {
+   "name": "inventory",
+   "description": "Your inventory (companion app)",
+   "group": "D&D"
+  },
+  {
+   "name": "condition",
+   "description": "Track conditions (companion app)",
+   "group": "D&D"
+  },
+  {
+   "name": "levelup",
+   "description": "Level up (companion app)",
+   "group": "D&D"
+  },
+  {
+   "name": "rest",
+   "description": "Short or long rest (companion app)",
+   "group": "D&D"
+  },
+  {
+   "name": "deathsave",
+   "description": "Roll a death save (companion app)",
+   "group": "D&D"
+  },
+  {
+   "name": "gmview",
+   "description": "Open the GM panel (companion app)",
+   "group": "D&D"
+  },
+  {
+   "name": "dnd",
+   "description": "Open the D&D companion",
+   "group": "D&D"
+  },
+  {
+   "name": "record",
+   "args": "<setup|start|pause|resume|marker|scene|stop|status>",
+   "description": "Control a consent-gated D&D session recording",
+   "group": "D&D",
+   "voice": true
+  },
+  {
+   "name": "poll",
+   "description": "Start a poll: /poll Question? | option | option",
+   "group": "Hoffle",
+   "args": "Question? | option | option"
+  },
+  {
+   "name": "ask",
+   "args": "<question>",
+   "description": "Ask the AI; it searches the web when the question needs it",
+   "group": "Hoffle"
+  },
+  {
+   "name": "summarize",
+   "description": "Catch up: a private AI summary of this channel's recent messages",
+   "group": "Hoffle"
+  },
+  {
+   "name": "remind",
+   "args": "<10m | 2h | 1d | 18:30> <what>",
+   "description": "Remind yourself later; it arrives in your Notes even if you are offline",
+   "group": "Hoffle"
+  },
+  {
+   "name": "recap",
+   "args": "[weekly|start|stop]",
+   "description": "This server's week in numbers; /recap start keeps notes of your call and posts a recap here when it ends",
+   "group": "Hoffle"
+  },
+  {
+   "name": "schedule",
+   "args": "<10m | 2h | 18:30 | tomorrow 9:00> <message>",
+   "description": "Post a message here later, as you (/schedule alone lists and cancels them)",
+   "group": "Hoffle"
+  },
+  {
+   "name": "game",
+   "args": "<tictactoe | connect4 | rps | mines | rota>",
+   "description": "Invite the conversation to a game",
+   "group": "Hoffle"
+  },
+  {
+   "name": "tts",
+   "args": "<message>",
+   "description": "Send a message read aloud to everyone in the channel (/tts off to mute)",
+   "group": "Hoffle"
+  },
+  {
+   "name": "say",
+   "args": "<text>",
+   "description": "Speak text (up to 200 characters) aloud in your voice channel",
+   "group": "Hoffle",
+   "voice": true
+  },
+  {
+   "name": "ttsvoice",
+   "args": "[tempo 0.6-1.3] [pitch 0.75-1.15] [robot] | reset",
+   "description": "How your /tts and /say sound: slower tempo, deeper pitch, a robot voice (e.g. /ttsvoice tempo 0.85 robot)",
+   "group": "Hoffle"
+  },
+  {
+   "name": "ttsstop",
+   "description": "Admins: stop every /tts and /say playing right now, for everyone",
+   "group": "Hoffle"
+  },
+  {
+   "name": "flip",
+   "description": "Flip a coin",
+   "group": "Hoffle"
+  },
+  {
+   "name": "8ball",
+   "args": "[question]",
+   "description": "Ask the magic 8-ball",
+   "group": "Hoffle"
+  },
+  {
+   "name": "choose",
+   "args": "<a, b, c>",
+   "description": "Pick one for you: /choose pizza, tacos, sushi",
+   "group": "Hoffle"
+  },
+  {
+   "name": "rps",
+   "args": "<rock|paper|scissors>",
+   "description": "Rock, paper, scissors against the bot",
+   "group": "Hoffle"
+  },
+  {
+   "name": "shrug",
+   "description": "¯\\_(ツ)_/¯",
+   "group": "Hoffle"
+  },
+  {
+   "name": "markdown",
+   "description": "Toggle markdown tips and code snippet helpers (e.g. ```cpp)",
+   "group": "Hoffle"
+  },
+  {
+   "name": "purge",
+   "args": "<count 1-100> [@username]",
+   "description": "Moderators: bulk-delete recent messages in this channel",
+   "group": "Hoffle"
+  },
+  {
+   "name": "help",
+   "description": "How commands work here",
+   "group": "Hoffle"
+  }
+ ],
+ "aliases": {
+  "247": "247status",
+  "np": "nowplaying",
+  "previous": "history",
+  "campaign": "dnd",
+  "whisper": "w",
+  "webui": "web",
+  "music": "web",
+  "join": "join"
+ },
+ "music": [
+  "automix",
+  "autoplay",
+  "clear",
+  "disconnect",
+  "dislike",
+  "forward",
+  "grab",
+  "history",
+  "like",
+  "longhistory",
+  "loop",
+  "lyrics",
+  "lyricsnow",
+  "move",
+  "nowplaying",
+  "pause",
+  "play",
+  "playnext",
+  "queue",
+  "radio",
+  "remove",
+  "removedupes",
+  "replay",
+  "resume",
+  "rewind",
+  "search",
+  "seek",
+  "settings",
+  "shuffle",
+  "skip",
+  "skipto",
+  "stats",
+  "stop",
+  "volume",
+  "wrapped"
+ ],
+ "voiceRequiredMusic": [
+  "clear",
+  "disconnect",
+  "forward",
+  "loop",
+  "move",
+  "pause",
+  "play",
+  "playnext",
+  "remove",
+  "removedupes",
+  "replay",
+  "resume",
+  "rewind",
+  "seek",
+  "shuffle",
+  "skip",
+  "skipto",
+  "stop",
+  "volume"
+ ],
+ "discordOnly": [
+  "247start",
+  "247status",
+  "247stop",
+  "artist",
+  "crossfade",
+  "filter",
+  "join",
+  "karaoke",
+  "randomplay",
+  "sleeptimer"
+ ],
+ "lookup": [
+  "class",
+  "feat",
+  "item",
+  "monster",
+  "race",
+  "spell",
+  "subclass"
+ ],
+ "dndLink": [
+  "ask_gm",
+  "campaign",
+  "character",
+  "condition",
+  "create",
+  "deathsave",
+  "dnd",
+  "edit",
+  "gmview",
+  "importpdf",
+  "inventory",
+  "levelup",
+  "rest",
+  "switch"
+ ],
+ "roll": [
+  "blindroll",
+  "gmroll",
+  "gmv",
+  "roll",
+  "rouse",
+  "v",
+  "vroll",
+  "vtm"
+ ],
+ "speech": [
+  "say",
+  "tts",
+  "ttsstop",
+  "ttsvoice"
+ ],
+ "fun": [
+  "8ball",
+  "choose",
+  "rps"
+ ],
+ "player": [
+  "clear",
+  "forward",
+  "loop",
+  "move",
+  "pause",
+  "remove",
+  "removedupes",
+  "replay",
+  "resume",
+  "rewind",
+  "seek",
+  "shuffle",
+  "skip",
+  "skipto",
+  "stop",
+  "volume"
+ ]
+}

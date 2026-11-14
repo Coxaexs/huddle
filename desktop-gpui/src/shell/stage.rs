@@ -64,6 +64,7 @@ impl Shell {
                 }
             }
             AreaEvent::Changed => {}
+            _ => {}
         });
         if !self.messages.contains_key(&channel_id) {
             self.fetch_messages(channel_id.clone(), None, cx);

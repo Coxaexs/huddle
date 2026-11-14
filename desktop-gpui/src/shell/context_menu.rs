@@ -42,6 +42,8 @@ pub(super) enum ConfirmAction {
     LeaveServer(String),
     DeleteServer(String),
     DeleteAccount,
+    /// An alert: one button that only closes it.
+    Alert,
 }
 
 #[derive(Clone, Copy)]
@@ -585,6 +587,7 @@ impl Shell {
             cx.notify();
         });
         let action = confirm.action.clone();
+        let alert = matches!(action, ConfirmAction::Alert);
         Some(
             div()
                 .absolute()
@@ -617,14 +620,14 @@ impl Shell {
                                     cx.notify();
                                 }))),
                         )
-                        .child(div().mt(px(16.)).text_size(px(14.)).line_height(px(21.)).text_color(Theme::muted()).child(confirm.text.clone()))
+                        .child(div().mt(px(16.)).text_size(px(14.)).line_height(px(21.)).text_color(Theme::muted()).whitespace_normal().child(confirm.text.clone()))
                         .child(
                             div()
                                 .mt(px(24.))
                                 .flex()
                                 .justify_end()
                                 .gap(px(10.))
-                                .child(
+                                .when(!confirm.cancel.is_empty(), |d| d.child(
                                     div()
                                         .id("confirm-cancel")
                                         .px(px(18.))
@@ -638,7 +641,7 @@ impl Shell {
                                         .hover(|s| s.bg(Theme::hover()))
                                         .child(confirm.cancel.clone())
                                         .on_click(cancel),
-                                )
+                                ))
                                 .child(
                                     div()
                                         .id("confirm-ok")
@@ -650,6 +653,15 @@ impl Shell {
                                         .line_height(px(21.))
                                         .font_weight(FontWeight::SEMIBOLD)
                                         .text_color(gpui::white())
+                                        // An alert's button is `.custom-dialog-btn.primary`, focused: lavender, a 3px ring.
+                                        .when(alert, |d| {
+                                            d.bg(Theme::lavender()).text_color(gpui::rgb(0x15121f)).shadow(vec![gpui::BoxShadow {
+                                                color: gpui::Hsla::from(Theme::lavender()).opacity(0.32),
+                                                offset: gpui::point(px(0.), px(0.)),
+                                                blur_radius: px(0.),
+                                                spread_radius: px(3.),
+                                            }])
+                                        })
                                         .cursor_pointer()
                                         .hover(|s| s.opacity(0.9))
                                         .child(confirm.ok.clone())
@@ -668,6 +680,7 @@ impl Shell {
             ConfirmAction::LeaveServer(id) => self.leave_server(id, cx),
             ConfirmAction::DeleteServer(id) => self.delete_server(id, cx),
             ConfirmAction::DeleteAccount => self.delete_account_confirmed(cx),
+            ConfirmAction::Alert => cx.notify(),
             ConfirmAction::Report(id) => {
                 let client = self.client.clone();
                 let server = if self.home { None } else { self.server_id.clone() };

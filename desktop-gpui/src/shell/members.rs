@@ -277,6 +277,23 @@ impl gpui::Render for Shell {
                 self.ctx_menu = Some(super::context_menu::CtxMenu { message_id: id, at: gpui::point(px(x), px(y)), expanded: false });
             }
         }
+        // Development: HOFFLE_DEV_DRAFT=<text> types that into the composer once (never sends).
+        if let Ok(text) = std::env::var("HOFFLE_DEV_DRAFT")
+            && !self.dev_draft_done
+            && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
+        {
+            self.dev_draft_done = true;
+            self.composer.update(cx, |c, cx| c.set_value(text, cx));
+            self.on_composer_changed(cx);
+            // HOFFLE_DEV_DRAFT_DOWN=<n>: the / menu's highlight moved down n rows.
+            for _ in 0..std::env::var("HOFFLE_DEV_DRAFT_DOWN").ok().and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) {
+                self.slash_move(1, cx);
+            }
+            // HOFFLE_DEV_DRAFT_RUN=1: submits it (read-only commands only, like /schedule list).
+            if std::env::var_os("HOFFLE_DEV_DRAFT_RUN").is_some() {
+                self.send_composer(cx);
+            }
+        }
         // Development: HOFFLE_DEV_SETTINGS=<n> opens Settings on its n-th page.
         if let Ok(n) = std::env::var("HOFFLE_DEV_SETTINGS")
             && self.settings.is_none()

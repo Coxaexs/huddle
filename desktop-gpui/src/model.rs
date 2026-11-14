@@ -51,6 +51,10 @@ pub struct Server {
     pub owner_id: Option<String>,
     pub everyone_permissions: u64,
     pub roles: Vec<Role>,
+    /// Modules switched off for this server (their commands leave the / menu).
+    pub disabled_modules: Vec<String>,
+    /// False when this server uses another bot's player.
+    pub music_bot: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
