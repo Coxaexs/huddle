@@ -501,6 +501,11 @@ impl Client {
         read::<Value>(request.call()?, "delete server").map(|_| ())
     }
 
+    pub fn set_channel_pref_for(&self, key: &str, level: &str, duration_ms: Option<u64>) -> Result<()> {
+        let _: Value = self.post("/api/channels/prefs", json!({ "channelId": key, "level": level, "durationMs": duration_ms }))?;
+        Ok(())
+    }
+
     pub fn mark_read(&self, channel_id: &str) -> Result<()> {
         let _: Value = self.post("/api/channels/reads", json!({ "channelId": channel_id }))?;
         Ok(())

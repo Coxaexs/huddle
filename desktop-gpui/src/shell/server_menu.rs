@@ -45,7 +45,13 @@ impl Shell {
 
     /// markServerRead: every unread channel of the server, at once.
     fn mark_server_read(&mut self, cx: &mut Context<Self>) {
-        let Some(server) = self.server() else { return };
+        if let Some(id) = self.server().map(|s| s.id.clone()) {
+            self.mark_server_read_id(&id, cx);
+        }
+    }
+
+    pub(super) fn mark_server_read_id(&mut self, server_id: &str, cx: &mut Context<Self>) {
+        let Some(server) = self.servers.iter().find(|s| s.id == server_id) else { return };
         let ids: Vec<String> = server.channels.iter().map(|c| c.id.clone()).filter(|id| self.reads.get(id).is_some_and(|r| r.unread || r.count > 0)).collect();
         if ids.is_empty() {
             return;

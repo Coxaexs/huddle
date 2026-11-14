@@ -10,6 +10,7 @@ mod gif_picker;
 mod links;
 mod friends;
 mod members;
+mod notify_menu;
 mod profile_card;
 mod side_panels;
 mod stage;
@@ -228,6 +229,8 @@ pub struct Shell {
     volume_spot: profile_card::Spot,
     /// The ••• menu under the server's name, and notification levels by channel / `server:<id>`.
     server_menu: bool,
+    /// Right-click on a channel or a server icon.
+    notify_menu: Option<notify_menu::NotifyMenu>,
     server_menu_closed: Option<Instant>,
     channel_prefs: HashMap<String, String>,
     /// The GIF / sticker picker over the composer.
@@ -391,6 +394,7 @@ impl Shell {
             pending_files: Vec::new(),
             gif_picker: None,
             server_menu: false,
+            notify_menu: None,
             server_menu_closed: None,
             channel_prefs: HashMap::new(),
             user_menu: None,

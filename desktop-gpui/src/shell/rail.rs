@@ -119,6 +119,13 @@ impl Shell {
                             .child(icon("volume-2", 11., gpui::white())),
                     )
                 })
+                .on_mouse_down(gpui::MouseButton::Right, {
+                    let id = id.clone();
+                    cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                        cx.stop_propagation();
+                        this.open_notify_menu(super::notify_menu::NotifyTarget::Server(id.clone()), e.position, cx);
+                    })
+                })
                 .on_click(cx.listener(move |this, _, _, cx| this.open_server(id.clone(), cx)));
             rail = rail.child(rail_item(active, unread, mark.into_any_element()));
         }

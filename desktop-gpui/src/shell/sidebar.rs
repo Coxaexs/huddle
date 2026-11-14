@@ -214,6 +214,13 @@ impl Shell {
             .child(div().flex_1().min_w_0().truncate().child(channel.name.clone()))
             .when(channel.private, |d| d.child(icon("lock", 12., Theme::quiet())))
             .when(mentions > 0 && !selected, |d| d.child(ui::rail_badge(mentions)))
+            .on_mouse_down(gpui::MouseButton::Right, {
+                let id = channel.id.clone();
+                cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    this.open_notify_menu(super::notify_menu::NotifyTarget::Channel(id.clone()), e.position, cx);
+                })
+            })
             .on_click(cx.listener(move |this, _, _, cx| {
                 if text {
                     this.open_channel(id.clone(), cx);
@@ -279,6 +286,13 @@ impl Shell {
                         .items_center()
                         .child(t("voiceStage.live")),
                 )
+            })
+            .on_mouse_down(gpui::MouseButton::Right, {
+                let id = channel.id.clone();
+                cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    this.open_notify_menu(super::notify_menu::NotifyTarget::Channel(id.clone()), e.position, cx);
+                })
             })
             .on_click(cx.listener(move |this, _, window, cx| this.open_stage(id.clone(), window, cx)));
 

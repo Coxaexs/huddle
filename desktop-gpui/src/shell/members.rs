@@ -300,6 +300,15 @@ impl gpui::Render for Shell {
                     self.open_user_menu(id, gpui::point(px(*x), px(*y)), cx);
                 }
             }
+            // HOFFLE_DEV_CHANMENU=<channel id>,x,y
+            if let Ok(spec) = std::env::var("HOFFLE_DEV_CHANMENU") {
+                let mut parts = spec.split(',');
+                let id = parts.next().unwrap_or_default().to_string();
+                let n: Vec<f32> = parts.filter_map(|v| v.trim().parse().ok()).collect();
+                if let [x, y] = n.as_slice() {
+                    self.open_notify_menu(super::notify_menu::NotifyTarget::Channel(id), gpui::point(px(*x), px(*y)), cx);
+                }
+            }
             if std::env::var_os("HOFFLE_DEV_SERVERMENU").is_some() {
                 self.server_menu = true;
             }
@@ -409,6 +418,7 @@ impl gpui::Render for Shell {
             .children(self.render_panel(window, cx))
             .children(self.render_user_menu(window, cx))
             .children(self.render_server_menu(cx))
+            .children(self.render_notify_menu(window, cx))
             .children(self.render_profile(window, cx))
             .children(self.render_picker(window, cx))
             .children(self.render_context_menu(window, cx))
@@ -418,6 +428,10 @@ impl gpui::Render for Shell {
             .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
                 if event.keystroke.key == "escape" && this.ctx_menu.is_some() {
                     this.close_context_menu(cx);
+                    cx.stop_propagation();
+                } else if event.keystroke.key == "escape" && this.notify_menu.is_some() {
+                    this.notify_menu = None;
+                    cx.notify();
                     cx.stop_propagation();
                 } else if event.keystroke.key == "escape" && this.user_menu.is_some() {
                     this.user_menu = None;
