@@ -242,6 +242,7 @@ fn group_label(text: String) -> impl IntoElement {
 
 impl gpui::Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_badge();
         // Switching to Simple closes the member list (the header's faces open it), and the
         // composer's placeholder follows the interface.
         let simple = self.simple();
@@ -538,6 +539,8 @@ impl gpui::Render for Shell {
                     cx.notify();
                 }
             }))
+            // The menu-bar item's Toggle Mute (desktop.rs).
+            .on_action(cx.listener(|this, _: &crate::TrayToggleMute, _, cx| this.toggle_mute(cx)))
             // Escape closes the message menu before anything else hears it.
             .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
                 let k = &event.keystroke;

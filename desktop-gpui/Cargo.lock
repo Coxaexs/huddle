@@ -2790,10 +2790,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "cocoa 0.26.0",
  "dirs 7.0.0",
  "gpui",
  "image",
  "livekit",
+ "objc",
  "qrcodegen",
  "resvg",
  "serde",

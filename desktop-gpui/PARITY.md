@@ -87,4 +87,4 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | Living room / club / tabletop / meadow / board hall (3D) | living-room*.ts, club-*.ts, tabletop-*.ts | ⬜ |
 | Battlemap, dice, games, PDF viewer | battlemap.tsx, dice-*.ts, rota-board.tsx, pdf/* | ⬜ |
 | Themes (all built-in), retro skins (MSN, Winamp, TeamSpeak) | lib/themes.ts, msn-chrome.tsx, retro-chrome.tsx | ⬜ |
-| Notifications, tray, global hotkeys, updates | desktop shells | ⬜ |
+| Desktop shell (desktop/src/main.js): dock badge (mentions + unread DM messages), notifications for channels you are not looking at while Hoffle is not in front (desktop switch, Streamer Mode, levels, @silent), the menu-bar item (Open Hoffle, Toggle Mute, Quit Hoffle), closing the window hides it and the dock icon brings it back | desktop/src/main.js, notify-preload.js, app/lib/chat/browser.ts, app-badge.ts | 🟡 (notifications use NSUserNotification and need the bundled app; global mute hotkey, global push-to-talk, updates ⬜) |

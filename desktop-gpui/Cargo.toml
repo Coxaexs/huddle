@@ -23,6 +23,11 @@ ureq = { version = "3.5.2", features = ["json"] }
 url = "2.5.8"
 qrcodegen = "1.8.0"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# Dock badge, notifications and the menu-bar item (src/desktop.rs); both already come with gpui.
+cocoa = "0.26"
+objc = "0.2.7"
+
 [profile.dev]
 debug = 0
 incremental = true

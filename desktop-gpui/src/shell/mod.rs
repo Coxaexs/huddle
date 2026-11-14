@@ -215,6 +215,8 @@ pub struct Shell {
     pending_command: Option<(String, String)>,
     /// /api/features: session recording is switched on here.
     features_record: bool,
+    /// The number last put on the dock icon.
+    last_badge: Option<u32>,
     /// Commands the server's connected bots registered (the / menu's Bots group).
     bot_commands: Vec<commands::SlashCommand>,
     /// Simple: how many of Hoffy's tips were dismissed (kept on this computer).
@@ -447,6 +449,7 @@ impl Shell {
             pending_command: None,
             features_record: true,
             bot_commands: Vec::new(),
+            last_badge: None,
             tips_seen: simple::load_tips_seen(),
             was_simple: false,
             emojis: HashMap::new(),
@@ -649,8 +652,50 @@ impl Shell {
         let entry = self.reads.entry(channel.to_string()).or_default();
         entry.unread = true;
         entry.count += 1;
-        if mentions(&message.text, &self.me.username) {
+        let mentioned = mentions(&message.text, &self.me.username);
+        if mentioned {
             entry.mentions += 1;
+        }
+        self.notify_message(channel, message, mentioned);
+    }
+
+    /// use-shell-realtime.ts and showNotification: a message in a channel you are not looking at
+    /// pops up when Hoffle is not in front, notifications are on and Streamer Mode is off; a
+    /// mention unless the level is "nothing", anything else at "all"; @silent never.
+    fn notify_message(&self, channel: &str, message: &Message, mentioned: bool) {
+        if std::env::var_os("GPUI_SNAPSHOT").is_some() || !settings::notify_setting() || settings::streamer_setting() == "on" || crate::desktop::app_active() {
+            return;
+        }
+        if message.payload.as_ref().and_then(|p| p.get("silent")).and_then(Value::as_bool).unwrap_or(false) {
+            return;
+        }
+        let server = self.servers.iter().find(|s| s.channels.iter().any(|c| c.id == channel)).map(|s| s.id.clone());
+        let level = self
+            .channel_prefs
+            .get(channel)
+            .or_else(|| server.as_ref().and_then(|s| self.channel_prefs.get(&format!("server:{s}"))))
+            .map(String::as_str)
+            .unwrap_or("all");
+        let body: String = message.text.chars().take(140).collect();
+        if mentioned && level != "nothing" {
+            crate::desktop::notify(&format!("{} mentioned you", message.author), &body);
+        } else if level == "all" {
+            crate::desktop::notify(&message.author, &body);
+        }
+    }
+
+    /// The dock badge (updateAppBadge → setBadgeCount): unread mentions plus unread DM messages
+    /// that are not mentions.
+    pub(super) fn sync_badge(&mut self) {
+        if std::env::var_os("GPUI_SNAPSHOT").is_some() {
+            return;
+        }
+        let mentions: u32 = self.reads.values().map(|r| r.mentions).sum();
+        let dms: u32 = self.dms.iter().filter_map(|d| self.reads.get(&d.channel_id)).map(|r| if r.mentions > 0 { 0 } else { r.count }).sum();
+        let count = mentions + dms;
+        if self.last_badge != Some(count) {
+            self.last_badge = Some(count);
+            crate::desktop::set_badge(count);
         }
     }
 

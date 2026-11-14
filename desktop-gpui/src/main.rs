@@ -4,6 +4,7 @@ mod api;
 mod assets;
 mod cosmetics;
 mod cssbg;
+mod desktop;
 mod fonts;
 mod i18n;
 mod images;
@@ -33,7 +34,7 @@ use model::User;
 use shell::{Shell, ShellEvent};
 use theme::Theme;
 
-actions!(hoffle, [Quit, Minimize]);
+actions!(hoffle, [Quit, Minimize, TrayToggleMute]);
 
 /// `HOFFLE_DEBUG=1` traces what the app is doing on stderr.
 pub fn trace(message: impl std::fmt::Display) {
@@ -153,7 +154,10 @@ impl Render for Root {
 }
 
 fn main() {
-    Application::new().with_assets(assets::Assets).with_http_client(std::sync::Arc::new(images::Fetcher::new())).run(|cx: &mut App| {
+    let app = Application::new().with_assets(assets::Assets).with_http_client(std::sync::Arc::new(images::Fetcher::new()));
+    // Clicking the dock icon of a hidden Hoffle brings it back (Electron's "activate").
+    app.on_reopen(|cx| cx.activate(true));
+    app.run(|cx: &mut App| {
         assets::load_fonts(cx);
         theme::load_theme();
         input::bind_keys(cx);
@@ -199,12 +203,38 @@ fn main() {
             )
             .unwrap();
         window
-            .update(cx, |_, _, cx| {
+            .update(cx, |_, window, cx| {
                 // Test runs (screenshots) open without taking focus from whatever is in front.
                 if std::env::var_os("GPUI_SNAPSHOT").is_none() {
                     cx.activate(true);
+                    // As the Electron shell: closing the window keeps Hoffle running behind its
+                    // menu-bar item; Quit (Cmd-Q or the item) really quits.
+                    window.on_window_should_close(cx, |_, cx| {
+                        cx.hide();
+                        false
+                    });
                 }
             })
             .ok();
+        if std::env::var_os("HOFFLE_DEV_DESKTOP_PROBE").is_some() {
+            desktop::probe();
+        }
+        // The menu-bar item (desktop.rs), not for test runs.
+        if std::env::var_os("GPUI_SNAPSHOT").is_none() {
+            let picks = desktop::tray();
+            cx.spawn(async move |cx| {
+                while let Ok(pick) = picks.recv().await {
+                    cx.update(|cx| match pick {
+                        desktop::TrayAction::Open => cx.activate(true),
+                        desktop::TrayAction::Quit => cx.quit(),
+                        desktop::TrayAction::ToggleMute => {
+                            window.update(cx, |_, window, cx| window.dispatch_action(Box::new(TrayToggleMute), cx)).ok();
+                        }
+                    })
+                    .ok();
+                }
+            })
+            .detach();
+        }
     });
 }
