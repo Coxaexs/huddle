@@ -69,6 +69,7 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | Settings → Accessibility: preview, chat font size (12–24 with marks; message text follows it), always underline links (messages follow it), display name styles (off: plain names everywhere), name-effect motion, interface motion — kept on this computer | settings/accessibility-tab.tsx | ✅ (name motion / interface motion have nothing to slow yet) |
 | Settings → Open Source Licenses: AGPL card (Source Code; Ko-fi/Sponsors hidden as in the web's desktop shell), summaries, full text toggle, third-party packages with search and categories | licenses-tab.tsx | ✅ |
 | Settings → Tutorial (the tour itself is not in the app: says so) | settings-dialog.tsx | ✅ (the welcome tour ⬜) |
+| Settings → Activities: share music / games switches (this computer), what you are doing (set by hand, clear), Last.fm link and Spotify track sync through the API | settings/activities-tab.tsx | ✅ (detecting games and the Spotify desktop app ⬜, as in the browser) |
 | Settings: the other pages, server settings | settings/*, server-settings* | ⬜ |
 | Pins, saved, mentions (All/Unread) popovers; search strip with filter pills; jumping to a message (pages back until loaded, centred, blue flash) | side-panels.tsx, use-shell-history.ts | ✅ (Unpin needs the pin permission; DM header tools ⬜) |
 | Achievements, find users, follow channel, header "More" menu | achievements-panel.tsx | ⬜ |

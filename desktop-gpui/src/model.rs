@@ -19,6 +19,9 @@ pub struct User {
     pub custom_status: Option<serde_json::Value>,
     /// Only on your own account.
     pub email: Option<String>,
+    /// What they are doing (playing…), set by hand or detected.
+    pub activity: Option<serde_json::Value>,
+    pub lastfm_username: Option<String>,
 }
 
 impl User {

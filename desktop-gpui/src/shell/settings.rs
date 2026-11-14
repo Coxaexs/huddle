@@ -175,6 +175,12 @@ pub(super) struct Settings {
     agpl_open: bool,
     license_search: Entity<TextInput>,
     license_category: &'static str,
+    /// Activities: sharing switches (this computer) and the three fields.
+    share_music: bool,
+    share_apps: bool,
+    manual_activity: Entity<TextInput>,
+    lastfm: Entity<TextInput>,
+    track: Entity<TextInput>,
     _subs: Vec<Subscription>,
 }
 
@@ -238,6 +244,22 @@ impl Shell {
         let security = Security { password: Some(make("", true, "", window, cx)), code: Some(make("123456", false, "", window, cx)), ..Default::default() };
         let ntfy = make("https://ntfy.sh/your-secret-topic", false, "", window, cx);
         let ntfy_token = make("Access token (only for protected topics)", true, "", window, cx);
+        let small_look = Look { size: 14., line_height: 18.67, height: 18.67, color: gpui::white(), placeholder: gpui::hsla(0., 0., 1., 0.45) };
+        let mut small = |placeholder: &str, value: &str, window: &mut Window, cx: &mut Context<Self>| {
+            let input = cx.new(|cx| {
+                let mut i = TextInput::new(placeholder.to_string(), cx).look(small_look);
+                i.set_text(value.to_string(), cx);
+                i
+            });
+            subs.push(cx.subscribe_in(&input, window, |this, _, event, window, cx| match event {
+                InputEvent::Escape => this.close_settings(window, cx),
+                _ => cx.notify(),
+            }));
+            input
+        };
+        let manual_activity = small("Playing… (game or app name)", "", window, cx);
+        let lastfm = small("Your Last.fm username", &self.me.lastfm_username.clone().unwrap_or_default(), window, cx);
+        let track = small("Paste Spotify link (https://open.spotify.com/track/...) or search song title...", "", window, cx);
         let license_search = cx.new(|cx| {
             TextInput::new("Search dependencies...", cx).look(Look { size: 12., line_height: 16., height: 16., color: gpui::white(), placeholder: rgb(0x80848e).into() })
         });
@@ -283,6 +305,11 @@ impl Shell {
             agpl_open: false,
             license_search,
             license_category: "all",
+            share_music: sharing_flag("music"),
+            share_apps: sharing_flag("apps"),
+            manual_activity,
+            lastfm,
+            track,
             _subs: subs,
         });
         self.load_security(cx);
@@ -995,6 +1022,7 @@ impl Shell {
             Tab::Notifications => self.render_notifications_page(s, window, cx),
             Tab::Accessibility => self.render_accessibility_page(cx),
             Tab::Licenses => self.render_licenses_page(s, window, cx),
+            Tab::Activities => self.render_activities_page(s, window, cx),
             Tab::Tutorial => vec![
                 div()
                     .flex_none()
@@ -2728,5 +2756,306 @@ impl Shell {
             .child(pills)
             .child(grid);
         vec![hero.into_any_element(), third.into_any_element()]
+    }
+}
+
+/// `huddle-share-activity` / apps (localStorage on the web): on unless turned off, kept on this computer.
+fn sharing_flag(which: &str) -> bool {
+    dirs::config_dir().map(|d| d.join("Hoffle Lite").join(format!("share-{which}"))).and_then(|p| std::fs::read_to_string(p).ok()).is_none_or(|s| s.trim() != "off")
+}
+
+fn set_sharing_flag(which: &str, on: bool) {
+    if let Some(dir) = dirs::config_dir().map(|d| d.join("Hoffle Lite")) {
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(dir.join(format!("share-{which}")), if on { "on" } else { "off" });
+    }
+}
+
+impl Shell {
+    /// PATCH /api/settings/profile with one change; the account comes back.
+    fn save_profile_field(&mut self, body: Value, ok: Option<String>, fail: &'static str, cx: &mut Context<Self>) {
+        self.settings_call(
+            cx,
+            move |c| c.settings_patch("/api/settings/profile", body),
+            move |this, result, _| match result {
+                Ok(v) => {
+                    if let Some(user) = v.get("user") {
+                        if let Some(a) = user.get("activity") {
+                            this.me.activity = (!a.is_null()).then(|| a.clone());
+                        }
+                        if let Some(l) = user.get("lastfmUsername") {
+                            this.me.lastfm_username = l.as_str().map(str::to_string);
+                        }
+                    }
+                    if let (Some(s), Some(ok)) = (this.settings.as_mut(), ok) {
+                        s.status = Some(ok);
+                    }
+                }
+                Err(_) => {
+                    if let Some(s) = this.settings.as_mut() {
+                        s.error = Some(fail.into());
+                    }
+                }
+            },
+        );
+    }
+
+    fn set_manual_activity(&mut self, cx: &mut Context<Self>) {
+        let Some(s) = self.settings.as_mut() else { return };
+        let name = s.manual_activity.read(cx).text().trim().to_string();
+        if name.is_empty() {
+            return;
+        }
+        s.manual_activity.update(cx, |i, cx| i.set_text("", cx));
+        let now = chrono::Utc::now().timestamp_millis();
+        let activity = json!({ "kind": "playing", "name": name, "startedAt": now, "updatedAt": now, "manual": true });
+        self.save_profile_field(json!({ "activity": activity }), Some(format!("Now showing: Playing {name}")), "Could not set that.", cx);
+    }
+
+    fn lastfm_connect(&mut self, cx: &mut Context<Self>) {
+        let Some(s) = self.settings.as_mut() else { return };
+        let name = s.lastfm.read(cx).text().trim().to_string();
+        if name.is_empty() {
+            return;
+        }
+        self.settings_call(
+            cx,
+            move |c| {
+                c.settings_patch("/api/settings/profile", json!({ "lastfmUsername": name }))?;
+                let now = c.settings_get(&format!("/api/integrations/spotify?username={}", url::form_urlencoded::byte_serialize(name.as_bytes()).collect::<String>()))?;
+                if let (Some(song), true) = (now.get("song").and_then(Value::as_str), now.get("isPlaying").and_then(Value::as_bool).unwrap_or(false)) {
+                    let artist = now.get("artist").and_then(Value::as_str).unwrap_or("Spotify");
+                    c.settings_patch("/api/settings/profile", json!({ "spotifyActivity": { "song": song, "artist": artist, "albumArt": now.get("albumArt"), "isPlaying": true } }))?;
+                } else if now.get("error").is_none() {
+                    c.settings_patch("/api/settings/profile", json!({ "spotifyActivity": null }))?;
+                }
+                Ok(json!({ "now": now, "name": name }))
+            },
+            |this, result, _| {
+                let Some(s) = this.settings.as_mut() else { return };
+                match result {
+                    Ok(v) => {
+                        this.me.lastfm_username = v.get("name").and_then(Value::as_str).map(str::to_string);
+                        let now = &v["now"];
+                        if let Some(e) = now.get("error").and_then(Value::as_str) {
+                            s.error = Some(e.into());
+                        } else if let (Some(song), true) = (now.get("song").and_then(Value::as_str), now.get("isPlaying").and_then(Value::as_bool).unwrap_or(false)) {
+                            s.status = Some(format!("Now playing: {song} by {}", now.get("artist").and_then(Value::as_str).unwrap_or("Spotify")));
+                        } else {
+                            s.status = Some(now.get("message").and_then(Value::as_str).unwrap_or("Connected! Nothing is playing right now; checking every 10 seconds.").into());
+                        }
+                    }
+                    Err(e) => s.error = Some(format!("Connection failed: {e}")),
+                }
+            },
+        );
+    }
+
+    fn set_track(&mut self, cx: &mut Context<Self>) {
+        let Some(s) = self.settings.as_mut() else { return };
+        let query = s.track.read(cx).text().trim().to_string();
+        if query.is_empty() {
+            return;
+        }
+        self.settings_call(
+            cx,
+            move |c| {
+                let res = c.settings_get(&format!("/api/integrations/spotify?track={}", url::form_urlencoded::byte_serialize(query.as_bytes()).collect::<String>()))?;
+                if let Some(song) = res.get("song").and_then(Value::as_str) {
+                    c.settings_patch("/api/settings/profile", json!({ "spotifyActivity": { "song": song, "artist": res.get("artist").and_then(Value::as_str).unwrap_or("Spotify"), "albumArt": res.get("albumArt"), "isPlaying": true } }))?;
+                }
+                Ok(res)
+            },
+            |this, result, _| {
+                let Some(s) = this.settings.as_mut() else { return };
+                match result {
+                    Ok(res) => {
+                        if let Some(song) = res.get("song").and_then(Value::as_str) {
+                            s.status = Some(format!("Now playing: {song} by {}", res.get("artist").and_then(Value::as_str).unwrap_or("Spotify")));
+                        }
+                    }
+                    Err(_) => s.error = Some("Track search failed.".into()),
+                }
+            },
+        );
+    }
+
+    /// `.discord-btn` (Cozy paints the indigo one lavender with dark text).
+    fn discord_button(id: String, label: &str, primary: bool) -> gpui::Stateful<gpui::Div> {
+        div()
+            .id(SharedString::from(id))
+            .flex_none()
+            .h(px(40.7))
+            .px(px(18.))
+            .rounded(px(4.))
+            .bg(if primary { Hsla::from(Theme::lavender()) } else { rgb(0x4e5058).into() })
+            .flex()
+            .items_center()
+            .text_size(px(13.5))
+            .line_height(px(18.))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(if primary { rgb(0x15121f) } else { rgb(0xffffff) })
+            .cursor_pointer()
+            .when(!primary, |d| d.hover(|s| s.bg(rgb(0x6d6f78))))
+            .child(label.to_string())
+    }
+
+    /// `.discord-text-input`.
+    fn discord_input(input: &Entity<TextInput>, window: &Window, cx: &Context<Self>) -> gpui::Div {
+        let focused = gpui::Focusable::focus_handle(input.read(cx), cx).is_focused(window);
+        div()
+            .flex_1()
+            .min_w_0()
+            .h(px(40.7))
+            .px(px(12.))
+            .rounded(px(4.))
+            .bg(rgb(0x1e1f22))
+            .border_1()
+            .border_color(if focused { Hsla::from(Theme::lavender()) } else { rgba(0xffffff14).into() })
+            .flex()
+            .items_center()
+            .child(div().flex_1().child(input.clone()))
+    }
+
+    fn render_activities_page(&self, s: &Settings, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let muted: Hsla = Theme::muted().into();
+        let gray300: Hsla = rgb(0xd1d5dc).into();
+        let gray400: Hsla = rgb(0x99a1af).into();
+        let small = |text: &str| div().text_size(px(12.8)).line_height(px(19.2)).text_color(muted).child(text.to_string());
+        let strong = |text: &str| div().text_size(px(16.)).line_height(px(24.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(text.to_string());
+        let mut out = Vec::new();
+        out.push(
+            Self::switch_box("act-music")
+                .items_center()
+                .justify_between()
+                .cursor_pointer()
+                .child(div().flex().flex_col().gap(px(2.)).child(strong("Share Spotify / Music Listening")).child(small("Show live Spotify song titles, artists, and album art on your profile card automatically")))
+                .child(Self::checkbox(s.share_music))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    let Some(s) = this.settings.as_mut() else { return };
+                    s.share_music = !s.share_music;
+                    set_sharing_flag("music", s.share_music);
+                    // Turning it off takes the song off your profile now.
+                    if !s.share_music {
+                        this.save_profile_field(json!({ "spotifyActivity": null }), None, "Could not save.", cx);
+                    }
+                    cx.notify();
+                }))
+                .into_any_element(),
+        );
+        // Detecting games needs the desktop scanner, which this app does not have: the browser's text.
+        out.push(
+            Self::switch_box("act-apps")
+                .mt(px(16.))
+                .items_center()
+                .justify_between()
+                .cursor_pointer()
+                .child(div().flex().flex_col().gap(px(2.)).child(strong("Share games & apps")).child(small("Automatic detection needs the Hoffle desktop app. In the browser you can set what you are doing by hand below")))
+                .child(Self::checkbox(s.share_apps))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    let Some(s) = this.settings.as_mut() else { return };
+                    s.share_apps = !s.share_apps;
+                    set_sharing_flag("apps", s.share_apps);
+                    cx.notify();
+                }))
+                .into_any_element(),
+        );
+        // What you are doing now.
+        let now_ms = chrono::Utc::now().timestamp_millis() as f64;
+        let current = self.me.activity.as_ref().filter(|a| {
+            let manual = a.get("manual").and_then(Value::as_bool).unwrap_or(false);
+            let updated = a.get("updatedAt").and_then(Value::as_f64).unwrap_or(0.);
+            now_ms - updated <= if manual { 12. * 3_600_000. } else { 9. * 60_000. }
+        });
+        let indigo300: Hsla = rgb(0xa3b3ff).into();
+        let mut doing = div()
+            .mt(px(16.))
+            .p(px(12.))
+            .rounded(px(8.))
+            .bg(Hsla::from(rgb(0x1e1a4d)).opacity(0.2))
+            .border_1()
+            .border_color(Hsla::from(rgb(0x7c86ff)).opacity(0.3))
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .child(div().flex().items_center().gap(px(8.)).text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::BOLD).text_color(indigo300).child(ui::icon("gamepad-2", 14., indigo300)).child("WHAT YOU ARE DOING"));
+        doing = match current {
+            Some(a) => {
+                let manual = a.get("manual").and_then(Value::as_bool).unwrap_or(false);
+                let name = a.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
+                doing.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap(px(8.))
+                        .text_size(px(12.))
+                        .line_height(px(16.))
+                        .text_color(rgb(0xe5e7eb))
+                        .child(div().flex().child(format!("{}: ", if manual { "Set by you" } else { "Detected" })).child(div().font_weight(FontWeight::BOLD).child(name)))
+                        .child(Self::discord_button("act-clear".into(), "Clear", false).on_click(cx.listener(|this, _, _, cx| this.save_profile_field(json!({ "activity": null }), None, "Could not clear that.", cx)))),
+                )
+            }
+            None => doing.child(div().text_size(px(12.)).line_height(px(16.)).text_color(gray400).child("Nothing right now.")),
+        };
+        doing = doing.child(
+            div()
+                .flex()
+                .gap(px(8.))
+                .child(Self::discord_input(&s.manual_activity, window, cx))
+                .child(Self::discord_button("act-set".into(), "Set", true).on_click(cx.listener(|this, _, _, cx| this.set_manual_activity(cx)))),
+        );
+        out.push(doing.into_any_element());
+        if s.share_music {
+            let green400: Hsla = rgb(0x05df72).into();
+            let linked = self.me.lastfm_username.clone().filter(|n| !n.is_empty());
+            out.push(
+                div()
+                    .mt(px(16.))
+                    .p(px(12.))
+                    .rounded(px(8.))
+                    .bg(Hsla::from(rgb(0x032e15)).opacity(0.2))
+                    .border_1()
+                    .border_color(Hsla::from(rgb(0x00c758)).opacity(0.3))
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.))
+                    .child(div().flex().items_center().gap(px(8.)).text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::BOLD).text_color(green400).child(ui::icon("activity", 14., green400)).child("SPOTIFY REAL-TIME TRACK SYNC"))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .child(div().mb(px(4.)).text_size(px(12.)).line_height(px(16.)).text_color(gray300).child(match &linked {
+                                Some(n) => format!("Last.fm username (linked: {n}, follows your account)"),
+                                None => "Last.fm username".into(),
+                            }))
+                            .child(div().mb(px(4.)).text_size(px(11.)).line_height(px(16.5)).text_color(gray400).child("Link Spotify to Last.fm (last.fm/settings/applications), then enter your Last.fm username. Updates arrive within about 15 seconds."))
+                            .child(
+                                div()
+                                    .flex()
+                                    .gap(px(8.))
+                                    .child(Self::discord_input(&s.lastfm, window, cx))
+                                    .child(Self::discord_button("act-lastfm".into(), if linked.is_some() { "Update & Sync" } else { "Connect & Sync" }, true).on_click(cx.listener(|this, _, _, cx| this.lastfm_connect(cx))))
+                                    .when(linked.is_some(), |d| {
+                                        d.child(Self::discord_button("act-lastfm-off".into(), "Disconnect", false).on_click(cx.listener(|this, _, _, cx| {
+                                            if let Some(s) = this.settings.as_mut() {
+                                                s.lastfm.update(cx, |i, cx| i.set_text("", cx));
+                                            }
+                                            this.save_profile_field(json!({ "lastfmUsername": null, "spotifyActivity": null }), Some("Last.fm disconnected.".into()), "Could not disconnect.", cx);
+                                        })))
+                                    }),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .child(div().mb(px(4.)).text_size(px(12.)).line_height(px(16.)).text_color(gray300).child("Paste Spotify Song Link / Search Track"))
+                            .child(div().flex().gap(px(8.)).child(Self::discord_input(&s.track, window, cx)).child(Self::discord_button("act-track".into(), "Set Song", false).on_click(cx.listener(|this, _, _, cx| this.set_track(cx))))),
+                    )
+                    .into_any_element(),
+            );
+        }
+        out
     }
 }
