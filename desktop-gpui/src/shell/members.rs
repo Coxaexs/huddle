@@ -282,13 +282,25 @@ impl gpui::Render for Shell {
         // green, 1280x720) up as your own camera or screen once you are in a call.
         if let Ok(kind) = std::env::var("HOFFLE_DEV_FAKE_VIDEO")
             && self.videos.is_empty()
+            && self.offered_screens.is_empty()
             && let Some(call) = &self.call
             && let Some(conn) = self.connection_id.clone()
         {
             let _ = call;
             let identity = format!("{}|{}", self.me.id, conn);
-            let picture = crate::voice::test_picture(242, 163, 124, 1280, 720);
-            self.videos.insert((identity, kind == "screen"), picture);
+            // HOFFLE_DEV_FAKE_VIDEO=offer: a screen share offered, not tuned in to.
+            if kind == "offer" {
+                self.offered_screens.insert(identity.clone());
+            }
+            let picture = crate::voice::test_picture(0, 135, 0, 1280, 720);
+            let key = (identity, kind == "screen" || kind == "offer");
+            self.videos.insert(key.clone(), picture);
+            // HOFFLE_DEV_FOCUS=1: that picture focused.
+            if std::env::var_os("HOFFLE_DEV_FOCUS").is_some()
+                && let Some(stage) = self.stage.as_mut()
+            {
+                stage.focused = Some(key);
+            }
         }
         // Development: HOFFLE_DEV_BOTMENU=x,y opens the music bot's menu there once.
         if let Ok(spec) = std::env::var("HOFFLE_DEV_BOTMENU")

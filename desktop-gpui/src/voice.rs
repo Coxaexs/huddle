@@ -26,6 +26,8 @@ pub enum VoiceCmd {
     MuteFor(std::collections::HashSet<String>),
     /// Settings → Voice & Video: devices and libwebrtc's processing, now and for later calls.
     Audio(AudioPrefs),
+    /// Tune in to (or out of) someone's screen share, by LiveKit identity.
+    Watch(String, bool),
 }
 
 /// The microphone and speakers to use (None: the system's) and the processing switches, kept on
@@ -104,6 +106,8 @@ pub enum VoiceEvent {
     Speaking(HashSet<String>),
     /// A camera or screen share's newest picture (BGRA, as gpui draws), or None when it stopped.
     Video { identity: String, screen: bool, frame: Option<std::sync::Arc<gpui::RenderImage>> },
+    /// Someone shares their screen: nothing is received until you tune in (`VoiceCmd::Watch`).
+    ScreenOffered(String),
     Error(String),
 }
 
@@ -144,6 +148,8 @@ struct Session {
     mic: LocalAudioTrack,
     deafened: bool,
     muted_for: std::collections::HashSet<String>,
+    /// Screen shares in the call, by identity: kept off until tuned in.
+    screens: std::collections::HashMap<String, RemoteTrackPublication>,
     // Kept alive for as long as the call: dropping the last handle turns the devices off.
     audio: PlatformAudio,
     events: mpsc::UnboundedReceiver<RoomEvent>,
@@ -197,6 +203,11 @@ async fn run(mut commands: mpsc::UnboundedReceiver<VoiceCmd>, events: Sender<Voi
                             set_hearing(s);
                         }
                     }
+                    VoiceCmd::Watch(identity, on) => {
+                        if let Some(publication) = session.as_ref().and_then(|s| s.screens.get(&identity)) {
+                            publication.set_enabled(on);
+                        }
+                    }
                     VoiceCmd::MuteFor(users) => {
                         if let Some(s) = session.as_mut() {
                             s.muted_for = users;
@@ -225,7 +236,16 @@ async fn run(mut commands: mpsc::UnboundedReceiver<VoiceCmd>, events: Sender<Voi
                     RoomEvent::TrackSubscribed { track, publication, participant } => {
                         if let RemoteTrack::Video(video) = track {
                             let screen = publication.source() == TrackSource::Screenshare;
-                            tokio::spawn(watch_video(video, participant.identity().to_string(), screen, events.clone()));
+                            let identity = participant.identity().to_string();
+                            if screen {
+                                // Tune-in: a remote screen share arrives paused until you choose to see it.
+                                publication.set_enabled(false);
+                                if let Some(s) = session.as_mut() {
+                                    s.screens.insert(identity.clone(), publication.clone());
+                                }
+                                let _ = events.send(VoiceEvent::ScreenOffered(identity.clone())).await;
+                            }
+                            tokio::spawn(watch_video(video, identity, screen, events.clone()));
                             continue;
                         }
                         // Someone new while deafened (or muted for this app) stays unheard too.
@@ -274,7 +294,7 @@ async fn join(url: &str, token: &str, bitrate: u64, muted: bool, deafened: bool,
     if let Err(err) = room.local_participant().publish_track(LocalTrack::Audio(mic.clone()), options).await {
         log_err(format!("microphone not published: {err}"));
     }
-    let session = Session { room, mic, deafened, muted_for: Default::default(), audio, events: room_events };
+    let session = Session { room, mic, deafened, muted_for: Default::default(), screens: Default::default(), audio, events: room_events };
     if deafened {
         set_hearing(&session);
     }

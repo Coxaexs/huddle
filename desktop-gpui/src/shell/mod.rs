@@ -215,6 +215,9 @@ pub struct Shell {
     pending_command: Option<(String, String)>,
     /// /api/features: session recording is switched on here.
     features_record: bool,
+    /// Screen shares in the call (by identity), and the ones you tuned in to.
+    offered_screens: HashSet<String>,
+    tuned_screens: HashSet<String>,
     /// The newest picture of each camera and screen share in the call, by (LiveKit identity, screen).
     videos: HashMap<(String, bool), std::sync::Arc<gpui::RenderImage>>,
     /// Push to talk: its key is held right now.
@@ -456,6 +459,8 @@ impl Shell {
             last_badge: None,
             ptt_held: false,
             videos: HashMap::new(),
+            offered_screens: HashSet::new(),
+            tuned_screens: HashSet::new(),
             tips_seen: simple::load_tips_seen(),
             was_simple: false,
             emojis: HashMap::new(),
@@ -1421,6 +1426,8 @@ impl Shell {
         for (_, old) in self.videos.drain() {
             cx.drop_image(old, None);
         }
+        self.offered_screens.clear();
+        self.tuned_screens.clear();
         if self.call.take().is_some() {
             crate::sounds::play("disconnect");
             self.voice.send(VoiceCmd::Leave(None));
@@ -1485,7 +1492,16 @@ impl Shell {
     fn on_voice(&mut self, event: VoiceEvent, cx: &mut Context<Self>) {
         // A picture from a camera or screen share: kept as the newest for that person, the one it
         // replaces freed from the GPU (30 a second would fill it otherwise).
+        if let VoiceEvent::ScreenOffered(identity) = event {
+            self.offered_screens.insert(identity);
+            cx.notify();
+            return;
+        }
         if let VoiceEvent::Video { identity, screen, frame } = event {
+            if frame.is_none() && screen {
+                self.offered_screens.remove(&identity);
+                self.tuned_screens.remove(&identity);
+            }
             let key = (identity, screen);
             let old = match frame {
                 Some(frame) => self.videos.insert(key, frame),
@@ -1529,7 +1545,7 @@ impl Shell {
                 }
             }
             // Handled above.
-            VoiceEvent::Video { .. } => {}
+            VoiceEvent::Video { .. } | VoiceEvent::ScreenOffered(_) => {}
             VoiceEvent::Error(err) => {
                 self.status = Some(err.into());
                 if self.call.take().is_some() {

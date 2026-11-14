@@ -19,6 +19,8 @@ pub(super) struct Stage {
     pub channel_id: String,
     pub chat_open: bool,
     pub view: &'static str,
+    /// The video tile shown large (identity, screen), with the others in a strip under it.
+    pub focused: Option<(String, bool)>,
     composer: Entity<TextArea>,
     _sub: Subscription,
 }
@@ -69,7 +71,7 @@ impl Shell {
         if !self.messages.contains_key(&channel_id) {
             self.fetch_messages(channel_id.clone(), None, cx);
         }
-        self.stage = Some(Stage { channel_id, chat_open: true, view: "grid", composer, _sub: sub });
+        self.stage = Some(Stage { channel_id, chat_open: true, view: "grid", focused: None, composer, _sub: sub });
         cx.notify();
     }
 
@@ -159,7 +161,8 @@ impl Shell {
         for person in &people {
             let identity = format!("{}|{}", person.id, person.connection_id);
             for screen in [false, true] {
-                if self.videos.contains_key(&(identity.clone(), screen)) {
+                // A screen share is a tile from the moment it is offered (to tune in to).
+                if self.videos.contains_key(&(identity.clone(), screen)) || (screen && self.offered_screens.contains(&identity)) {
                     let me = self.connection_id.as_deref() == Some(person.connection_id.as_str());
                     let who = if me { "You" } else { person.name() };
                     videos.push((identity.clone(), screen, format!("{who} · {}", if screen { "screen" } else { "camera" })));
@@ -179,12 +182,29 @@ impl Shell {
         let rows = n.div_ceil(cols);
         let grid_h = rows as f32 * tile_h + gap * (rows as f32 - 1.);
         let mut grid = div().flex().flex_col().gap(px(gap)).items_center();
-        let mut all: Vec<AnyElement> = videos.iter().map(|(identity, screen, label)| self.render_video_tile(identity, *screen, label, tile_w, tile_h)).collect();
+        let mut all: Vec<AnyElement> = videos.iter().map(|(identity, screen, label)| self.render_video_tile(identity, *screen, label, tile_w, tile_h, window.scale_factor(), cx)).collect();
         all.extend(people.iter().map(|p| self.render_tile(p, tile_w, tile_h, window, cx)));
         let mut tiles_iter = all.into_iter().peekable();
         while tiles_iter.peek().is_some() {
             let row: Vec<_> = tiles_iter.by_ref().take(cols).collect();
             grid = grid.child(div().flex().gap(px(gap)).children(row));
+        }
+        // A focused video: large, with every tile in the film strip under it.
+        let focused = stage.focused.clone().filter(|key| self.videos.contains_key(key));
+        if let Some(key) = focused {
+            let bar = if self.simple() {
+                div().flex_none().w(px(stage_width)).flex().justify_center().child(self.render_simple_call_buttons(true, window, cx)).into_any_element()
+            } else {
+                self.render_stage_bar(stage_width, cx).into_any_element()
+            };
+            let height = f32::from(window.viewport_size().height) - 10. - 1. - 73. - if self.simple() { 77. } else { 126. } - 40.;
+            let focus = self.render_focus(&key, &videos, &people, inner, height, cx);
+            let left = div().w(px(stage_width)).h_full().flex().flex_col().child(div().flex_1().min_h_0().p(px(20.)).child(focus)).child(bar);
+            let mut split = div().flex_1().min_h_0().flex().child(left);
+            if stage.chat_open {
+                split = split.child(self.render_voice_chat(stage, chat_width, cx));
+            }
+            return Some(split.into_any_element());
         }
         let tiles = div()
             .id("stage-body")
@@ -210,10 +230,95 @@ impl Shell {
 
     /// `figure.stage-tile.video-tile`: the picture contained on black inside a 2px edge, and the
     /// "Name · camera" caption with its live dot.
-    fn render_video_tile(&self, identity: &str, screen: bool, label: &str, w: f32, h: f32) -> AnyElement {
+    fn render_video_tile(&self, identity: &str, screen: bool, label: &str, w: f32, h: f32, scale: f32, cx: &mut Context<Self>) -> AnyElement {
         let picture = self.videos.get(&(identity.to_string(), screen)).cloned();
+        let key = (identity.to_string(), screen);
+        // `.stream-tunein`: a screen share not yet tuned in to asks first.
+        let tune_in = screen && !self.tuned_screens.contains(identity) && !identity.is_empty();
+        if tune_in {
+            let name = label.trim_end_matches(" · screen").to_string();
+            let who = identity.to_string();
+            return div()
+                .id(SharedString::from(format!("video-{identity}-{screen}")))
+                .relative()
+                .flex_none()
+                .w(px(w))
+                .h(px(h))
+                .rounded(px(16.))
+                .bg(rgb(0xccc8d8))
+                .border_2()
+                .border_color(gpui::transparent_black())
+                .child(
+                    div()
+                        .relative()
+                        .size_full()
+                        .rounded(px(14.))
+                        .overflow_hidden()
+                        .bg(gpui::black())
+                        .cursor_pointer()
+                        // `.stream-tunein-blank`: a dark glow and the red monitor.
+                        .child(
+                            div()
+                                .absolute()
+                                .inset_0()
+                                .opacity(0.8)
+                                .children(
+                                    crate::cssbg::picture("radial-gradient(circle at 50% 40%, #2b2d31, #111214)", w - 4., h - 4., 0., scale)
+                                        .map(|bg| gpui::img(gpui::ImageSource::Render(bg)).absolute().top_0().left_0().w(px(w - 4.)).h(px(h - 4.))),
+                                )
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(ui::icon("monitor", 40., rgb(0xed4245))),
+                        )
+                        .child(
+                            div()
+                                .absolute()
+                                .inset_0()
+                                .p(px(16.))
+                                .bg(gpui::hsla(0., 0., 0., 0.3))
+                                .flex()
+                                .flex_col()
+                                .items_center()
+                                .justify_center()
+                                .gap(px(14.))
+                                .child(div().max_w(px(w * 0.9)).text_center().text_size(px(16.)).line_height(px(20.8)).font_weight(FontWeight::BOLD).text_color(gpui::white()).child(format!("Do you want to see {name}'s screen share?")))
+                                .child(div().px(px(28.)).py(px(8.)).rounded_full().bg(gpui::white()).text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::EXTRA_BOLD).text_color(gpui::black()).child("Go Ahead")),
+                        )
+                        .child(
+                            div()
+                                .absolute()
+                                .left(px(12.))
+                                .bottom(px(10.))
+                                .flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .max_w(px(w - 4. - 24.))
+                                .text_size(px(12.))
+                                .line_height(px(18.))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(rgb(0xfecdd3))
+                                .child(div().flex_none().size(px(8.)).rounded_full().bg(rgb(0xf43f5e)))
+                                .child(div().min_w_0().truncate().child(label.to_string())),
+                        ),
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.tuned_screens.insert(who.clone());
+                    this.voice.send(crate::voice::VoiceCmd::Watch(who.clone(), true));
+                    cx.notify();
+                }))
+                .into_any_element();
+        }
         div()
             .id(SharedString::from(format!("video-{identity}-{screen}")))
+            .cursor_pointer()
+            .tooltip(ui::tooltip("Click to focus"))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                if let Some(stage) = this.stage.as_mut() {
+                    stage.focused = Some(key.clone());
+                    cx.notify();
+                }
+            }))
             .relative()
             .flex_none()
             .w(px(w))
@@ -260,6 +365,171 @@ impl Shell {
                 ),
             )
             .into_any_element()
+    }
+
+    /// `.voice-focus`: the focused picture on black (click it to go back to the grid), the bar
+    /// with LIVE, whose it is, who is watching and full screen while the mouse is on it, the
+    /// streamer's name at the bottom left, and the film strip of every tile under it.
+    fn render_focus(&self, key: &(String, bool), videos: &[(String, bool, String)], people: &[VoiceParticipant], width: f32, height: f32, cx: &mut Context<Self>) -> AnyElement {
+        let picture = self.videos.get(key).cloned();
+        let connection = key.0.split('|').nth(1).unwrap_or("");
+        let person = people.iter().find(|p| p.connection_id == connection);
+        let name = person.map(|p| p.name().to_string()).unwrap_or_default();
+        let white: Hsla = gpui::white().into();
+        let red = rgb(0xed4245);
+        let main_h = height - 100. - 12.;
+        let small_button = |id: &'static str, glyph: &'static str| {
+            div()
+                .id(id)
+                .px(px(8.))
+                .py(px(4.))
+                .rounded(px(6.))
+                .bg(white.opacity(0.15))
+                .child(ui::icon(glyph, 15., gpui::white()))
+        };
+        let main = div()
+            .id("voice-focus-main")
+            .group("voice-focus-main")
+            .relative()
+            .flex_none()
+            .w(px(width))
+            .h(px(main_h))
+            .rounded(px(14.))
+            .bg(gpui::black())
+            .border_1()
+            .border_color(rgba(0xffffff12))
+            .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.45), offset: gpui::point(px(0.), px(8.)), blur_radius: px(24.), spread_radius: px(0.) }])
+            .overflow_hidden()
+            .cursor_pointer()
+            .tooltip(ui::tooltip("Click to return to the grid"))
+            .on_click(cx.listener(|this, _, _, cx| {
+                if let Some(stage) = this.stage.as_mut() {
+                    stage.focused = None;
+                    cx.notify();
+                }
+            }))
+            .children(picture.map(|p| gpui::img(gpui::ImageSource::Render(p)).size_full().object_fit(gpui::ObjectFit::Contain)))
+            .child(
+                div()
+                    .absolute()
+                    .top(px(11.))
+                    .right(px(15.))
+                    .opacity(0.)
+                    .group_hover("voice-focus-main", |s| s.opacity(1.))
+                    .px(px(12.))
+                    .py(px(6.))
+                    .rounded_full()
+                    .bg(gpui::hsla(0., 0., 0., 0.65))
+                    .border_1()
+                    .border_color(white.opacity(0.1))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .text_size(px(12.))
+                    .line_height(px(18.))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(gpui::white())
+                    .child(div().px(px(6.)).py(px(2.)).rounded(px(4.)).bg(red).text_size(px(10.)).line_height(px(10.)).font_weight(FontWeight::BLACK).child("LIVE"))
+                    .child(div().max_w(px(200.)).truncate().child(format!("{name}'s Screen")))
+                    .child(small_button("focus-viewers", "users"))
+                    .child(small_button("focus-full", "maximize-2")),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .left(px(16.))
+                    .bottom(px(11.))
+                    .opacity(0.)
+                    .group_hover("voice-focus-main", |s| s.opacity(1.))
+                    .px(px(14.))
+                    .py(px(6.))
+                    .rounded(px(8.))
+                    .bg(gpui::hsla(0., 0., 0., 0.78))
+                    .border_1()
+                    .border_color(white.opacity(0.12))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .text_size(px(13.))
+                    .line_height(px(19.5))
+                    .font_weight(FontWeight::EXTRA_BOLD)
+                    .text_color(gpui::white())
+                    .child(ui::icon("monitor", 14., white.opacity(0.9)))
+                    .child(name.clone()),
+            );
+        // `.voice-filmstrip`: 135x88 tiles, 10px apart.
+        let mut strip = div().flex_none().mt(px(12.)).px(px(2.)).py(px(6.)).flex().gap(px(10.));
+        for (identity, screen, _) in videos {
+            let k = (identity.clone(), *screen);
+            let active = &k == key;
+            let who = people.iter().find(|p| identity.ends_with(&format!("|{}", p.connection_id))).map(|p| p.name().to_string()).unwrap_or_default();
+            let picture = self.videos.get(&k).cloned();
+            strip = strip.child(
+                div()
+                    .id(SharedString::from(format!("film-{identity}-{screen}")))
+                    .relative()
+                    .flex_none()
+                    .w(px(135.))
+                    .h(px(88.))
+                    .rounded(px(10.))
+                    .bg(rgb(0x1a1628))
+                    .border_2()
+                    .border_color(if active { Theme::lavender().into() } else { Hsla::from(rgba(0xffffff12)) })
+                    .when(active, |d| d.shadow(vec![gpui::BoxShadow { color: Hsla::from(Theme::lavender()).opacity(0.25), offset: gpui::point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(3.) }]))
+                    .overflow_hidden()
+                    .cursor_pointer()
+                    .child(div().size_full().bg(gpui::black()).children(picture.map(|p| gpui::img(gpui::ImageSource::Render(p)).size_full().object_fit(gpui::ObjectFit::Cover))))
+                    .child(div().absolute().top(px(6.)).right(px(6.)).px(px(5.)).py(px(1.)).rounded(px(3.)).bg(red).text_size(px(9.)).line_height(px(13.5)).font_weight(FontWeight::BLACK).text_color(gpui::white()).child("LIVE"))
+                    .child(
+                        div()
+                            .absolute()
+                            .left_0()
+                            .right_0()
+                            .bottom_0()
+                            .px(px(6.))
+                            .py(px(4.))
+                            .bg(gpui::linear_gradient(180., gpui::linear_color_stop(gpui::hsla(0., 0., 0., 0.), 0.), gpui::linear_color_stop(gpui::hsla(0., 0., 0., 0.88), 1.)))
+                            .flex()
+                            .justify_center()
+                            .items_center()
+                            .gap(px(4.))
+                            .text_size(px(11.))
+                            .line_height(px(16.5))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(gpui::white())
+                            .child(ui::icon("monitor", 11., gpui::white()))
+                            .child(div().truncate().child(who)),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(stage) = this.stage.as_mut() {
+                            stage.focused = Some(k.clone());
+                            cx.notify();
+                        }
+                    })),
+            );
+        }
+        for person in people {
+            let me = self.connection_id.as_deref() == Some(person.connection_id.as_str());
+            let elapsed = ((self.hub_now() - person.joined_at) / 1000.).max(0.) as u64;
+            strip = strip.child(
+                div()
+                    .flex_none()
+                    .w(px(135.))
+                    .h(px(88.))
+                    .rounded(px(10.))
+                    .bg(rgb(0x1a1628))
+                    .border_2()
+                    .border_color(rgba(0xffffff12))
+                    .px(px(8.))
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .child(div().mt(px(-2.5)).child(ui::avatar_with(self.picture(&person.avatar_url), &person.avatar, &person.color, person.name(), 44., 16., FontWeight::NORMAL, Theme::ink().into())))
+                    .child(div().mt(px(6.)).max_w_full().truncate().text_size(px(11.)).line_height(px(16.5)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(if me { "You".to_string() } else { person.name().to_string() }))
+                    .child(div().mt(px(6.)).text_size(px(11.)).line_height(px(16.5)).text_color(Theme::ink()).opacity(0.8).child(super::sidebar::duration(elapsed))),
+            );
+        }
+        div().w(px(width)).flex().flex_col().child(main).child(strip).into_any_element()
     }
 
     fn render_tile(&self, person: &VoiceParticipant, w: f32, h: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
