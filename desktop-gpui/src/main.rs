@@ -173,7 +173,12 @@ fn main() {
             Menu { name: "Window".into(), items: vec![MenuItem::action("Minimize", Minimize)] },
         ]);
 
-        let bounds = Bounds::centered(None, size(px(1180.), px(760.)), cx);
+        // HOFFLE_SIZE=WxH (tests): the window size; 1180x760 otherwise, as the web reference.
+        let (w, h) = std::env::var("HOFFLE_SIZE")
+            .ok()
+            .and_then(|v| v.split_once('x').and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?))))
+            .unwrap_or((1180., 760.));
+        let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
         let window = cx
             .open_window(
                 WindowOptions {

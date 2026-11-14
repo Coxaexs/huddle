@@ -413,7 +413,7 @@ impl Shell {
             dms: Vec::new(),
             collapsed: HashSet::new(),
             members_open: true,
-            header_more: false,
+            header_more: std::env::var_os("HOFFLE_DEV_MORE").is_some(),
             tips_seen: simple::load_tips_seen(),
             was_simple: false,
             emojis: HashMap::new(),

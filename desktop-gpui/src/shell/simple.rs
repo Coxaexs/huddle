@@ -21,7 +21,7 @@ pub(super) fn load_tips_seen() -> usize {
 impl Shell {
     /// chat-header.tsx with `simpleHeader`: the channel's name, a few online faces (they open the
     /// member list), Invite for those allowed, mentions only while some are unread, and "More".
-    pub(super) fn render_simple_header(&self, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn render_simple_header(&self, window: &gpui::Window, cx: &mut Context<Self>) -> AnyElement {
         let channel = self.channel();
         let name = channel.map(|c| c.name.clone()).unwrap_or_default();
         let kind_icon = channel.map(|c| c.icon()).unwrap_or("hash");
@@ -33,9 +33,16 @@ impl Shell {
             .unwrap_or_default();
         let chat_bg: Hsla = Theme::chat_bg().into();
         let ink: Hsla = Theme::ink().into();
+        // GPUI collapses these nested rows, so their widths are worked out here: 26px faces
+        // overlapping by 6, Invite's 12px padding, 15px icon and 5px gap around its label.
+        let shown = online.len().min(3) as f32;
+        let faces_w = if shown > 0. { 26. + (shown - 1.) * 20. } else { 0. };
+        let invite_w = if self.can_invite() { 12. * 2. + 2. + 15. + 5. + f32::from(ui::text_width(window, &t("simple.invite"), FontWeight::NORMAL, 12.5)) } else { 0. };
+        let left_w = faces_w + invite_w + if faces_w > 0. && invite_w > 0. { 8. } else { 0. };
         let mut faces = div()
             .id("simple-faces")
             .flex_none()
+            .w(px(faces_w))
             .flex()
             .items_center()
             .cursor_pointer()
@@ -53,12 +60,13 @@ impl Shell {
                     .rounded_full()
                     .border_2()
                     .border_color(chat_bg)
-                    .child(ui::avatar(self.picture(&member.avatar_url), &member.avatar, &member.color, member.name(), 22.)),
+                    // <Avatar size={22}>: a 10px regular letter in ink when there is no picture.
+                    .child(ui::avatar_with(self.picture(&member.avatar_url), &member.avatar, &member.color, member.name(), 22., 10., FontWeight::NORMAL, Theme::ink().into())),
             );
         }
         let mentions: u32 = self.reads.values().map(|r| r.mentions).sum();
         let mut right = div().flex().items_center().gap(px(3.));
-        let mut left_part = div().flex_none().flex().items_center().gap(px(8.));
+        let mut left_part = div().flex_none().w(px(left_w)).flex().items_center().gap(px(8.));
         if !online.is_empty() {
             left_part = left_part.child(faces);
         }
@@ -96,6 +104,8 @@ impl Shell {
             );
         }
         right = right.child(self.render_header_more(cx));
+        let right_w = left_w + if left_w > 0. { 3. } else { 0. } + if mentions > 0 { 37. } else { 0. } + 34.;
+        let right = right.w(px(right_w));
         div()
             .h(px(73.))
             .flex_none()
@@ -137,7 +147,7 @@ impl Shell {
             .when(open, |d| d.bg(Theme::lavender_soft()))
             .hover(|s| s.bg(Theme::hover()))
             .tooltip(ui::tooltip(t("header.more")))
-            .child(icon("ellipsis", 18., if open { Theme::lavender().into() } else { muted }))
+            .child(icon("ellipsis", 18., if open { Theme::ink().into() } else { muted }))
             .on_click(cx.listener(|this, _, _, cx| {
                 this.header_more = !this.header_more;
                 cx.notify();

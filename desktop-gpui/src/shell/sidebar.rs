@@ -621,7 +621,7 @@ impl Shell {
                     .rounded_full()
                     .border_2()
                     .border_color(Theme::panel())
-                    .child(ui::avatar(self.picture(&person.avatar_url), &person.avatar, &person.color, person.name(), 22.)),
+                    .child(ui::avatar_with(self.picture(&person.avatar_url), &person.avatar, &person.color, person.name(), 22., 10., FontWeight::NORMAL, Theme::ink().into())),
             );
         }
         if people.len() > 5 {

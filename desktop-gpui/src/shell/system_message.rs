@@ -146,7 +146,7 @@ impl Shell {
         // the time no longer fit after it (GPUI does not break at a zero-width space).
         if let Some(cut) = text.find('\u{200b}') {
             let head = &text[..cut];
-            let width = self.chat_panel_width(window) - px(2. + super::chat::ROW_LEFT + super::chat::ROW_RIGHT + 38.);
+            let width = self.chat_panel_width(window) - px(2. + self.row_left(window) + self.row_right(window) + 38.);
             let runs: Vec<gpui::TextRun> = {
                 let mut runs = Vec::new();
                 let mut at = 0;

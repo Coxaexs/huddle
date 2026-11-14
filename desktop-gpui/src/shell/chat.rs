@@ -17,13 +17,40 @@ use crate::ui::{self, card_shadow, icon};
 /// lane on the right; each `article.message` adds an 8px margin and 10px padding on both sides; its
 /// grid is the avatar, a 13px gap and the body (433.6px at 1180 wide).
 const GUTTER: f32 = 15.;
-pub(super) const ROW_LEFT: f32 = 47.2 + 8. + 10.;
-pub(super) const ROW_RIGHT: f32 = 47.2 + 8. + 10. + GUTTER;
 
 impl Shell {
+    /// `.messages` side padding (globals.css): clamp(22px, 4vw, 54px); clamp(18px, 3vw, 40px) from
+    /// 761 to 1120px wide; clamp(40px, 5vw, 72px) from 1400px. In Simple from 1100px wide (easy.css):
+    /// clamp(22px, 4vw, 54px), or more to keep the conversation in an 880px column in the middle.
+    pub(super) fn messages_pad(&self, window: &gpui::Window) -> f32 {
+        let vw = f32::from(window.viewport_size().width);
+        if self.simple() && vw >= 1100. {
+            return (vw * 0.04).clamp(22., 54.).max((f32::from(self.chat_panel_width(window)) - 2. - 880.) / 2.);
+        }
+        if vw >= 1400. {
+            (vw * 0.05).clamp(40., 72.)
+        } else if (761. ..=1120.).contains(&vw) {
+            (vw * 0.03).clamp(18., 40.)
+        } else {
+            (vw * 0.04).clamp(22., 54.)
+        }
+    }
+
+    /// Where a message's content starts: the list padding, the article's 8px margin and 10px padding.
+    pub(super) fn row_left(&self, window: &gpui::Window) -> f32 {
+        self.messages_pad(window) + 8. + 10.
+    }
+
+    /// The same on the right, plus the 15px scrollbar lane.
+    pub(super) fn row_right(&self, window: &gpui::Window) -> f32 {
+        self.messages_pad(window) + 8. + 10. + GUTTER
+    }
+
     pub(super) fn render_chat_panel(&self, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         // `.chat-panel` sits 10px below the window top and runs to the bottom edge.
-        div().flex_1().min_w_0().h_full().pt(px(10.)).flex().flex_col().child(
+        // With no member list (or thread) beside it, the card stops 10px short of the window edge.
+        let alone = !(self.members_open && (!self.home || self.channel_id.is_some()) && self.stage.is_none()) && self.thread.is_none();
+        div().flex_1().min_w_0().h_full().pt(px(10.)).when(alone, |d| d.pr(px(10.))).flex().flex_col().child(
         div()
             .flex_1()
             .min_h_0()
@@ -51,7 +78,7 @@ impl Shell {
             return self.render_dm_header(dm.clone(), window, cx).into_any_element();
         }
         if self.simple() && !self.home && self.stage.is_none() {
-            return self.render_simple_header(cx);
+            return self.render_simple_header(window, cx);
         }
         // In a voice room's stage: its speaker icon and name, "· N in call", and the stage controls.
         let staged = self.stage.as_ref().and_then(|s| self.channel_by_id(&s.channel_id));
@@ -275,6 +302,7 @@ impl Shell {
     }
 
     fn render_message(&mut self, ix: usize, window: &mut gpui::Window, cx: &mut Context<Self>) -> AnyElement {
+        let (row_left, row_right) = (self.row_left(window), self.row_right(window));
         let Some(list) = self.channel_id.as_ref().and_then(|c| self.messages.get(c)) else {
             return div().into_any_element();
         };
@@ -588,7 +616,8 @@ impl Shell {
         let last = ix + 1 == list.len();
         // Appearance → Customize → Message spacing: compact 5px, cozy 7px, roomy 15px.
         let spacing = crate::theme::load_customize().spacing;
-        let pad = if continuation { 1. } else if spacing == "compact" { 5. } else if spacing == "roomy" { 15. } else { 7. };
+        // Simple (easy.css): every message, continuations too, gets 10px above and below.
+        let pad = if self.simple() { 10. } else if continuation { 1. } else if spacing == "compact" { 5. } else if spacing == "roomy" { 15. } else { 7. };
         // The list's padding and the article's margin sit outside the card that lights up on hover.
         let group = SharedString::from(format!("msg-{}", message.id));
         // Development: HOFFLE_DEV_HOVER=1 draws the last message as hovered (screenshots get no mouse).
@@ -633,30 +662,30 @@ impl Shell {
         let side = if system { 18. } else { 10. };
         let row = div()
             .w_full()
-            .pl(px(ROW_LEFT - side))
-            .pr(px(ROW_RIGHT - side))
+            .pl(px(row_left - side))
+            .pr(px(row_right - side))
             .child(article);
         let gap = |h: f32| div().flex_none().h(px(h));
         let mut column = div().w_full().flex().flex_col();
         let channel_id = self.channel_id.clone().unwrap_or_default();
         let has_more = self.has_more.get(&channel_id).copied().unwrap_or(true);
         if ix == 0 && !has_more {
-            column = column.child(self.render_intro(&channel_id));
+            column = column.child(self.render_intro(&channel_id, row_left));
         } else if ix == 0 {
             // `.messages` padding-top.
             column = column.child(gap(36.));
         }
         if self.new_from.get(&channel_id).is_some_and(|&n| n > 0 && ix + n == list.len()) {
-            column = column.child(new_divider());
+            column = column.child(new_divider(row_left, row_right));
         }
         // Articles have 1px margins that collapse into one between neighbours; a new day's article
         // has 40px instead, with the date drawn 32px above it (refresh.css `[data-day]::before`):
         // a 20px line, the rules running in from each edge to 96px short of the middle.
         if let Some(label) = day {
-            let width = f32::from(self.chat_panel_width(window)) - 2. - ROW_LEFT - ROW_RIGHT;
+            let width = f32::from(self.chat_panel_width(window)) - 2. - row_left - row_right;
             let rule = (width / 2. - 96.).max(0.);
             column = column.child(
-                div().h(px(40.)).pt(px(8.)).pl(px(ROW_LEFT)).pr(px(ROW_RIGHT)).child(
+                div().h(px(40.)).pt(px(8.)).pl(px(row_left)).pr(px(row_right)).child(
                     div()
                         .relative()
                         .h(px(20.))
@@ -936,7 +965,7 @@ impl Shell {
     }
 
     /// `.channel-intro`: Hoffy waving, then the pill that says where the conversation begins.
-    fn render_intro(&self, channel_id: &str) -> impl IntoElement {
+    fn render_intro(&self, channel_id: &str, row_left: f32) -> impl IntoElement {
         let (glyph, text) = match self.dm(channel_id) {
             Some(dm) if dm.user.id == self.me.id => ("sticky-note", "This is your personal space for notes, drafts, and reminders.".to_string()),
             Some(dm) => ("at-sign", format!("This is the beginning of your conversation with {}", dm.user.name())),
@@ -949,7 +978,7 @@ impl Shell {
         };
         // Measured: Hoffy's top is 40px under the list's top, the first day line 12px under the pill.
         div()
-            .pl(px(ROW_LEFT - 24.))
+            .pl(px(row_left - 24.))
             .flex()
             .flex_col()
             .items_start()
@@ -980,7 +1009,7 @@ impl Shell {
     /// members panel when it shows.
     /// The right edge of a message's card, in window coordinates.
     pub(super) fn article_right(&self, window: &gpui::Window) -> f32 {
-        299. + f32::from(self.chat_panel_width(window)) - (ROW_RIGHT - 10.)
+        299. + f32::from(self.chat_panel_width(window)) - (self.row_right(window) - 10.)
     }
 
     pub(super) fn chat_panel_width(&self, window: &gpui::Window) -> gpui::Pixels {
@@ -992,7 +1021,7 @@ impl Shell {
 
     /// Width of a message's text column: 434px when the conversation card is 630px wide.
     fn text_column_width(&self, window: &gpui::Window) -> gpui::Pixels {
-        (self.chat_panel_width(window) - px(2.) - px(ROW_LEFT) - px(ROW_RIGHT) - px(36.) - px(13.)).max(px(120.))
+        (self.chat_panel_width(window) - px(2.) - px(self.row_left(window)) - px(self.row_right(window)) - px(36.) - px(13.)).max(px(120.))
     }
 
     /// Rich cards by message kind. Only the now-playing card is native so far.
@@ -1021,6 +1050,8 @@ impl Shell {
                 Some(
                     div()
                         .mt(px(8.))
+                        // `.now-playing { max-width: 520px }` (reached in Simple's wider column).
+                        .max_w(px(520.))
                         .p(px(14.))
                         .rounded(px(16.))
                         .bg(gpui::rgba(0xffffff0a))
@@ -1036,7 +1067,7 @@ impl Shell {
                                 .line_height(px(19.5))
                                 .font_weight(FontWeight::BOLD)
                                 .text_color(Theme::muted())
-                                .child(ui::fit(window, &title, FontWeight::BOLD, 13., self.text_column_width(window) - px(30.))),
+                                .child(ui::fit(window, &title, FontWeight::BOLD, 13., self.text_column_width(window).min(px(520.)) - px(30.))),
                         )
                         .child(div().text_size(px(16.)).line_height(px(24.8)).text_color(Theme::ink()).child(sub))
                         .into_any_element(),
@@ -1114,13 +1145,19 @@ impl Shell {
                         })),
                 )
         });
+        let vw = f32::from(window.viewport_size().width);
+        // `.composer-wrap` sides: clamp(18px, 3vw, 36px); clamp(32px, 4vw, 64px) from 1400px wide.
+        let side = if vw >= 1400. { (vw * 0.04).clamp(32., 64.) } else { (vw * 0.03).clamp(18., 36.) };
+        // Simple from 1100px wide: `.composer-wrap { max-width: 952px; margin-inline: auto }`.
+        let column = simple && vw >= 1100.;
         div()
             .flex_none()
+            .when(column, |d| d.w_full().max_w(px(952.)).mx_auto())
             .pt(px(8.))
-            .px(px(35.4))
-            .pb(px(if simple { 18. } else { 25. }))
+            .px(px(side))
+            .pb(px(25.))
             // The composer's padding is clamp(18px, 3vw, 36px) each side.
-            .children(self.render_gif_picker(f32::from(self.chat_panel_width(window)) - 2. - 2. * (f32::from(window.viewport_size().width) * 0.03).clamp(18., 36.), window, cx))
+            .children(self.render_gif_picker(f32::from(self.chat_panel_width(window)) - 2. - 2. * side, window, cx))
             .children(self.render_staged(cx))
             .children(reply_bar)
             .child(
@@ -1299,12 +1336,12 @@ fn day_label(prev: Option<&Message>, message: &Message) -> Option<String> {
 }
 
 /// `.unread-divider`: a rose line with the "New" badge at its right end.
-fn new_divider() -> impl IntoElement {
+fn new_divider(row_left: f32, row_right: f32) -> impl IntoElement {
     let rose = gpui::rgb(0xf43f5e);
     div()
         .h(px(24.))
-        .pl(px(ROW_LEFT - 2.))
-        .pr(px(ROW_RIGHT - 2.))
+        .pl(px(row_left - 2.))
+        .pr(px(row_right - 2.))
         .relative()
         .flex()
         .items_center()
@@ -1312,7 +1349,7 @@ fn new_divider() -> impl IntoElement {
         .child(
             div()
                 .absolute()
-                .right(px(ROW_RIGHT - 2.))
+                .right(px(row_right - 2.))
                 .top(px(4.))
                 .px(px(6.4))
                 .h(px(16.))
