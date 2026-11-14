@@ -1163,6 +1163,8 @@ interface SongResult {
   duration: number | null;
   thumbnail: string | null;
   url: string;
+  /** Its lyrics light up word by word. */
+  words?: boolean;
 }
 
 function SearchPane({
@@ -1245,7 +1247,19 @@ function SearchPane({
               <div className="mp-row-main static">
                 <Thumb src={result.thumbnail} />
                 <span className="mp-row-text">
-                  <strong>{result.title}</strong>
+                  <strong>
+                    {result.title}
+                    {result.words && (
+                      <span
+                        className="mp-words-mark"
+                        role="img"
+                        aria-label="Lyrics light up word by word"
+                        title="Lyrics light up word by word"
+                      >
+                        <MicVocal size={13} aria-hidden="true" />
+                      </span>
+                    )}
+                  </strong>
                   <small>{result.artist}</small>
                 </span>
                 <span className="mp-row-time">{result.duration ? clock(result.duration) : ""}</span>

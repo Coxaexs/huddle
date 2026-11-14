@@ -559,3 +559,23 @@ it("sings the line word by word once its words are timed", async () => {
   expect(fill).toBeLessThan(0.67);
   expect(Number(more.style.getPropertyValue("--fill"))).toBe(0);
 });
+
+it("marks search results whose lyrics light up word by word", async () => {
+  apiFetch.mockImplementation(async (path: string) =>
+    path.startsWith("/api/music/search")
+      ? {
+          results: [
+            { title: "Zehir", artist: "manifest", duration: 201, thumbnail: null, url: "https://www.youtube.com/watch?v=abcdefghijk", words: true },
+            { title: "Zehir (live)", artist: "someone", duration: 240, thumbnail: null, url: "https://www.youtube.com/watch?v=bcdefghijkl" },
+          ],
+        }
+      : path.startsWith("/api/music/playlists") ? PLAYLISTS : {},
+  );
+  show();
+  act(() => openMusicPlayer({ seed, tab: "search" }));
+  fireEvent.change(screen.getByLabelText("Search for music"), { target: { value: "manifest zehir" } });
+  fireEvent.submit(screen.getByRole("search"));
+  expect(await screen.findByText("Zehir (live)")).toBeTruthy();
+  expect(screen.getAllByRole("img", { name: "Lyrics light up word by word" })).toHaveLength(1);
+  expect(screen.getByText("Zehir").closest("li")!.querySelector(".mp-words-mark")).toBeTruthy();
+});

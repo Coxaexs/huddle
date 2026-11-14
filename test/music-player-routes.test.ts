@@ -54,7 +54,7 @@ it("a room you can't open gets nothing", async () => {
 it("hands on timed words only when there is a word list for every line", async () => {
   const words = [[[1, 1.4, "x", [200, 400]]]];
   fetchLyrics.mockResolvedValue({ track: "Zehir", artist: "manifest", lines: [[1, "x"]], words });
-  expect((await (await GET(new Request("https://x/api/music/lyrics?voiceChannelId=room-1"))).json()).words).toEqual(words);
+  expect(((await (await GET(new Request("https://x/api/music/lyrics?voiceChannelId=room-1"))).json()) as { words: unknown }).words).toEqual(words);
   fetchLyrics.mockResolvedValue({ track: "Zehir", artist: "manifest", lines: [[1, "x"], [2, "y"]], words });
-  expect((await (await GET(new Request("https://x/api/music/lyrics?voiceChannelId=room-1"))).json()).words).toBeNull();
+  expect(((await (await GET(new Request("https://x/api/music/lyrics?voiceChannelId=room-1"))).json()) as { words: unknown }).words).toBeNull();
 });

@@ -321,6 +321,8 @@ export interface SongResult {
   thumbnail: string | null;
   /** What /play gets when this one is picked. */
   url: string;
+  /** Its lyrics light up word by word. */
+  words?: boolean;
 }
 
 /** Several YouTube matches for the full-screen player's search. */
@@ -338,6 +340,8 @@ export async function searchSongs(query: string): Promise<SongResult[]> {
       duration: Number(item.duration) || null,
       thumbnail: typeof item.thumbnail === "string" ? item.thumbnail : null,
       url: item.url as string,
+      // Its lyrics light up word by word (the bot's words.py: timed on Oracle, or another upload's, shifted).
+      ...(item.words === true ? { words: true } : {}),
     }));
 }
 
