@@ -673,17 +673,17 @@ function WordsBorrow({
   };
 
   return (
-    <div className="mp-list-wrap">
-      <div className="mp-picker-head">
-        <button type="button" className="mp-link" onClick={onClose}>
-          <ArrowLeft size={14} /> Back to the lyrics
+    <div className="mp-list-wrap mp-picker">
+      <header className="mp-list-head">
+        <strong>Word by word from another version</strong>
+        <button type="button" className="mp-icon-btn small" onClick={onClose} aria-label="Back to the lyrics" title="Back to the lyrics">
+          <X size={16} />
         </button>
-        <h3>Word by word from another version</h3>
-        <p className="mp-lyrics-note">
-          These versions of the song have every word timed. Pick one: its timing is used for this song, starting where
-          the lyrics put each line. If it's off, line it up with the timing buttons and save it.
-        </p>
-      </div>
+      </header>
+      <p className="mp-lyrics-note">
+        These versions of the song have every word timed. Pick one: its timing is used for this song, starting where
+        the lyrics put each line. If it's off, line it up with the timing buttons and save it.
+      </p>
       {error && <p className="mp-error">{error}</p>}
       {!donors && !error && (
         <Empty icon={<LoaderCircle size={28} className="mp-spin" />} title="Looking for timed versions…" />

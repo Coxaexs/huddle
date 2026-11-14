@@ -579,3 +579,26 @@ it("marks search results whose lyrics light up word by word", async () => {
   expect(screen.getAllByRole("img", { name: "Lyrics light up word by word" })).toHaveLength(1);
   expect(screen.getByText("Zehir").closest("li")!.querySelector(".mp-words-mark")).toBeTruthy();
 });
+
+it("borrows word timing from another version of the song", async () => {
+  apiFetch.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (path === "/api/music/lyrics/words") {
+      const body = JSON.parse(String(init?.body));
+      return body.action === "donors"
+        ? { donors: [{ id: "abc", title: "Şebnem Ferah - Mayın Tarlası (album)", duration: 241, match: 0.94 }] }
+        : { words: [] };
+    }
+    if (path.startsWith("/api/music/lyrics")) return { trackId: "t1", lines: seed.lines.map(({ at, line }) => [at, line]) };
+    return path.startsWith("/api/music/playlists") ? PLAYLISTS : {};
+  });
+  show();
+  act(() => openMusicPlayer({ channelId: room, tab: "lyrics" }));
+  fireEvent.click(await screen.findByText("Word by word…"));
+  expect(await screen.findByText("94% of the words match")).toBeTruthy();
+  fireEvent.click(screen.getByText("Use this"));
+  await waitFor(() => {
+    const sent = apiFetch.mock.calls.filter(([path]) => path === "/api/music/lyrics/words").map(([, init]) => JSON.parse(String(init.body)));
+    expect(sent.at(-1)).toEqual({ voiceChannelId: room, trackId: "t1", action: "borrow", from: "abc" });
+  });
+  expect(await screen.findByText(/Word timing from Şebnem Ferah/)).toBeTruthy();
+});
