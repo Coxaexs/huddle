@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+    />
+    <title>Hoffle</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        user-select: none;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: #1b1b21;
+        color: #e8e8ee;
+        font: 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        overflow: hidden;
+        -webkit-app-region: drag;
+      }
+      .wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        height: 100%;
+        padding: 36px 28px 24px;
+        text-align: center;
+      }
+      .brand {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        margin-top: 8px;
+      }
+      .logo {
+        width: 72px;
+        height: 72px;
+        border-radius: 18px;
+        background: linear-gradient(135deg, #5865f2 0%, #7b5cf5 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 10px 28px rgba(88, 101, 242, 0.35);
+      }
+      .logo svg {
+        width: 40px;
+        height: 40px;
+        fill: #ffffff;
+      }
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+      .version {
+        font-size: 12px;
+        color: #7c7c8a;
+        margin-top: -6px;
+      }
+      .progress-area {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: center;
+      }
+      .status {
+        font-size: 13px;
+        color: #b5b5c2;
+        min-height: 18px;
+      }
+      .bar-track {
+        width: 100%;
+        height: 6px;
+        border-radius: 999px;
+        background: #2b2b35;
+        overflow: hidden;
+        position: relative;
+      }
+      .bar-fill {
+        height: 100%;
+        width: 0%;
+        border-radius: 999px;
+        background: #5865f2;
+        transition: width 180ms ease-out;
+      }
+      .bar-track.indeterminate .bar-fill {
+        width: 38%;
+        position: absolute;
+        animation: slide 1.15s ease-in-out infinite;
+      }
+      @keyframes slide {
+        0% {
+          left: -40%;
+        }
+        100% {
+          left: 105%;
+        }
+      }
+      .actions {
+        -webkit-app-region: no-drag;
+      }
+      button {
+        padding: 7px 16px;
+        border-radius: 6px;
+        border: 1px solid #32323e;
+        background: #25252e;
+        color: #c8c8d4;
+        font: 12px/1.2 inherit;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+      }
+      button:hover {
+        background: #30303c;
+        color: #ffffff;
+        border-color: #464656;
+      }
+      button:active {
+        transform: translateY(1px);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M6.5 4.5a1.5 1.5 0 0 1 1.5 1.5v4.5h8V6a1.5 1.5 0 0 1 3 0v12a1.5 1.5 0 0 1-3 0v-4.5H8V18a1.5 1.5 0 0 1-3 0V6a1.5 1.5 0 0 1 1.5-1.5Z"
+            />
+          </svg>
+        </div>
+        <h1>Hoffle</h1>
+        <div class="version" id="version"></div>
+      </div>
+
+      <div class="progress-area">
+        <div class="status" id="status">Checking for updates…</div>
+        <div class="bar-track indeterminate" id="track">
+          <div class="bar-fill" id="fill"></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" id="skip">Skip</button>
+      </div>
+    </div>
+
+    <script>
+      const statusEl = document.getElementById("status");
+      const versionEl = document.getElementById("version");
+      const trackEl = document.getElementById("track");
+      const fillEl = document.getElementById("fill");
+      const skipBtn = document.getElementById("skip");
+
+      window.splash.onState((state) => {
+        if (!state) return;
+        if (state.appVersion) versionEl.textContent = "v" + state.appVersion;
+
+        if (state.status === "downloading") {
+          trackEl.classList.remove("indeterminate");
+          const pct = Math.max(0, Math.min(100, Number(state.percent) || 0));
+          fillEl.style.width = pct + "%";
+          const ver = state.version ? " v" + state.version : "";
+          statusEl.textContent = "Downloading update" + ver + "… " + pct + "%";
+        } else if (state.status === "ready") {
+          trackEl.classList.remove("indeterminate");
+          fillEl.style.width = "100%";
+          statusEl.textContent = "Installing update…";
+          skipBtn.disabled = true;
+        } else if (state.status === "checking" || state.status === "idle") {
+          trackEl.classList.add("indeterminate");
+          statusEl.textContent = "Checking for updates…";
+        }
+      });
+
+      const doSkip = () => window.splash.skip();
+      skipBtn.addEventListener("click", doSkip);
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") doSkip();
+      });
+    </script>
+  </body>
+</html>

@@ -94,6 +94,9 @@ function isAppUrl(url) {
 }
 
 let mainWindow = null;
+let splashWindow = null;
+let splashTimer = null;
+const SPLASH_CHECK_TIMEOUT_MS = 8000;
 let tray = null;
 let isQuitting = false;
 /** True while the page reports a live call ("set-in-call"); an update then waits to be asked. */
@@ -194,6 +197,55 @@ function refreshTrayMenu() {
       },
     },
   ]));
+}
+
+function finishSplash({ skipped = false } = {}) {
+  if (splashTimer) {
+    clearTimeout(splashTimer);
+    splashTimer = null;
+  }
+  if (skipped && updater && typeof updater.markSkipped === "function") {
+    updater.markSkipped();
+  }
+  if (!mainWindow && !isQuitting) createWindow();
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    const win = splashWindow;
+    splashWindow = null;
+    win.close();
+  }
+}
+
+function createSplashWindow() {
+  if (splashWindow && !splashWindow.isDestroyed()) return;
+  splashWindow = new BrowserWindow({
+    width: 320,
+    height: 380,
+    frame: false,
+    resizable: false,
+    center: true,
+    backgroundColor: "#1b1b21",
+    show: false,
+    title: "Hoffle",
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, "splash-preload.js"),
+    },
+  });
+  splashWindow.loadFile(path.join(__dirname, "splash.html"));
+  splashWindow.once("ready-to-show", () => {
+    if (!splashWindow || splashWindow.isDestroyed()) return;
+    splashWindow.show();
+    splashWindow.webContents.send("splash:state", {
+      status: "checking",
+      appVersion: app.getVersion(),
+    });
+  });
+  splashWindow.on("closed", () => {
+    splashWindow = null;
+    if (!mainWindow && !isQuitting) finishSplash({ skipped: true });
+  });
+  splashTimer = setTimeout(() => finishSplash(), SPLASH_CHECK_TIMEOUT_MS);
 }
 
 function createWindow() {
@@ -571,15 +623,21 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    if (!mainWindow) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
+    const target = mainWindow || splashWindow;
+    if (!target || target.isDestroyed()) return;
+    if (target.isMinimized()) target.restore();
+    target.focus();
   });
 
   app.whenReady().then(() => {
     configureSession();
     buildMenu();
-    createWindow();
+    ipcMain.on("splash:skip", () => finishSplash({ skipped: true }));
+    if (app.isPackaged) {
+      createSplashWindow();
+    } else {
+      createWindow();
+    }
     createTray();
 
     // Native OS push notification handler
@@ -636,8 +694,18 @@ if (!app.requestSingleInstanceLock()) {
     });
     startUpdater({
       isBusy: () => inCall,
+      isSplashOpen: () => Boolean(splashWindow && !splashWindow.isDestroyed()),
       onChange: (state) => {
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("update:state", state);
+        if (splashWindow && !splashWindow.isDestroyed()) {
+          splashWindow.webContents.send("splash:state", { ...state, appVersion: app.getVersion() });
+          if (state.status === "downloading" && splashTimer) {
+            clearTimeout(splashTimer);
+            splashTimer = null;
+          } else if (state.status === "idle" || state.status === "error" || state.status === "manual") {
+            finishSplash();
+          }
+        }
         refreshTrayMenu();
       },
       // The windows would otherwise hide to the tray instead of closing.
@@ -647,6 +715,7 @@ if (!app.requestSingleInstanceLock()) {
     }).then((started) => {
       updater = started;
       refreshTrayMenu();
+      if (!started) finishSplash();
     });
     // Per-app screen-share audio (startAppAudio): is this share using it, and
     // the page's stop when the share ends.
