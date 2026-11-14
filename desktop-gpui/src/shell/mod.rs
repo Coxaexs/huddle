@@ -11,6 +11,7 @@ mod thread;
 mod gif_picker;
 mod links;
 mod message_link;
+mod music_cards;
 mod friends;
 mod members;
 mod notify_menu;
@@ -121,8 +122,12 @@ impl Lists {
 
     /// Puts message `ix` at the top of the list.
     pub(crate) fn scroll_to_item(&self, ix: usize) {
+        self.scroll_to_offset(ix, 0.);
+    }
+
+    pub(crate) fn scroll_to_offset(&self, ix: usize, offset: f32) {
         for list in [&self.bottom, &self.top] {
-            list.scroll_to(gpui::ListOffset { item_ix: ix, offset_in_item: px(0.) });
+            list.scroll_to(gpui::ListOffset { item_ix: ix, offset_in_item: px(offset) });
         }
     }
 
@@ -233,6 +238,8 @@ pub struct Shell {
     unfurl_pending: std::cell::RefCell<HashSet<String>>,
     /// Messages that message links point at (`None`: unavailable to us).
     linked_messages: std::cell::RefCell<HashMap<String, Option<serde_json::Value>>>,
+    /// A settings card's state since its buttons were used (the web keeps it per card).
+    music_settings: HashMap<String, serde_json::Map<String, serde_json::Value>>,
     /// The menu for a person (right-click), their voice settings, and where its slider was drawn.
     user_menu: Option<user_menu::UserMenu>,
     voice_prefs: HashMap<String, user_menu::VoicePref>,
@@ -432,6 +439,7 @@ impl Shell {
             unfurls: Default::default(),
             unfurl_pending: Default::default(),
             linked_messages: Default::default(),
+            music_settings: HashMap::new(),
             unread_bar: None,
             unread_pending: None,
             sized: Default::default(),

@@ -171,7 +171,7 @@ fn emoji_painter(layout: gpui::TextLayout, emojis: Vec<(usize, String)>) -> impl
 /// Chrome's `text-wrap: pretty`, the part that shows: when a paragraph's last line would be a single
 /// word, the word before it moves down too. The space between them becomes a line break, which keeps
 /// every byte offset (styles, links) where it was.
-fn pretty(text: &mut String, wrap: &Wrap) {
+pub(crate) fn pretty(text: &mut String, wrap: &Wrap) {
     let mut wrapper = wrap.window.text_system().line_wrapper(wrap.font.clone(), wrap.size);
     let mut breaks = Vec::new();
     let mut offset = 0;

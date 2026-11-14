@@ -458,6 +458,9 @@ impl Shell {
         if let Some(translation) = self.render_translation(&message.id, cx) {
             body = body.child(div().text_size(px(16.)).line_height(px(24.8)).text_color(Theme::ink()).child(translation));
         }
+        if let Some(card) = self.render_music_card(message, f32::from(self.text_column_width(window)), window, cx) {
+            body = body.child(card);
+        }
         if let Some(card) = self.render_card(message, window) {
             body = body.child(card);
         }

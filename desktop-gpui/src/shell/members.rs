@@ -402,8 +402,10 @@ impl gpui::Render for Shell {
         // (pages loading above it would move it otherwise).
         if let Ok(prefix) = std::env::var("HOFFLE_DEV_SCROLL_TO") {
             let ix = self.channel_id.as_ref().and_then(|c| self.messages.get(c)).and_then(|l| l.iter().position(|m| m.id.starts_with(&prefix)));
+            // HOFFLE_DEV_SCROLL_OFFSET=<px>: that far down into it.
+            let offset = std::env::var("HOFFLE_DEV_SCROLL_OFFSET").ok().and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.);
             if let Some(ix) = ix {
-                self.list.scroll_to_item(ix);
+                self.list.scroll_to_offset(ix, offset);
             }
         }
         // HOFFLE_DEV_RV=<message id prefix>,x,y,w,h: who reacted (first reaction), as if from there.

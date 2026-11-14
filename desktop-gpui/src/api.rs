@@ -171,6 +171,11 @@ impl Client {
         self.get(&format!("/api/messages/{}", encode(id)))
     }
 
+    /// runMusicUiCommand: a music command in a voice room; answers the room's state.
+    pub fn music_command(&self, command: &str, voice_channel_id: &str, text_channel_id: Option<&str>, silent: bool) -> Result<Value> {
+        self.post("/api/music/command", json!({ "command": command, "voiceChannelId": voice_channel_id, "textChannelId": text_channel_id, "silent": silent }))
+    }
+
     /// A thread's replies, oldest first.
     pub fn thread(&self, root_id: &str) -> Result<Vec<Message>> {
         let page: MessagePage = self.get(&format!("/api/messages?threadId={}", encode(root_id)))?;
