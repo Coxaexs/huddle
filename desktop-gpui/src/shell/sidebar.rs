@@ -525,7 +525,7 @@ impl Shell {
             .child(
                 control("settings", "settings", false)
                     .tooltip(ui::tooltip(t("footer.userSettings")))
-                    .on_click(cx.listener(|this, _, _, cx| this.sign_out_menu(cx))),
+                    .on_click(cx.listener(|this, _, window, cx| this.open_settings(window, cx))),
             )
     }
 }

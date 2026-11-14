@@ -17,6 +17,8 @@ pub struct User {
     /// A Hoffle-wide admin: every permission in every server.
     pub is_admin: bool,
     pub custom_status: Option<serde_json::Value>,
+    /// Only on your own account.
+    pub email: Option<String>,
 }
 
 impl User {

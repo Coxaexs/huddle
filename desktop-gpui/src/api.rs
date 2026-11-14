@@ -99,6 +99,40 @@ impl Client {
         read(response, path)
     }
 
+    /// DELETE with a JSON body (the settings endpoints take one).
+    fn delete_json<T: DeserializeOwned>(&self, path: &str, body: Value) -> Result<T> {
+        let mut request = self.agent.delete(format!("{}{path}", self.base)).header("Origin", self.absolute("")).header("Content-Type", "application/json");
+        if let Some(cookie) = self.cookie_header() {
+            request = request.header("Cookie", &cookie);
+        }
+        let response = request.force_send_body().send(body.to_string().as_bytes()).with_context(|| format!("DELETE {path}"))?;
+        read(response, path)
+    }
+
+    // -------------------------------------------------------------- settings
+
+    pub fn settings_get(&self, path: &str) -> Result<Value> {
+        self.get(path)
+    }
+
+    pub fn settings_post(&self, path: &str, body: Value) -> Result<Value> {
+        self.post(path, body)
+    }
+
+    pub fn settings_delete(&self, path: &str, body: Value) -> Result<Value> {
+        self.delete_json(path, body)
+    }
+
+    /// The account's data export, as the bytes of the file the web downloads.
+    pub fn export_data(&self) -> Result<Vec<u8>> {
+        let mut request = self.agent.get(format!("{}/api/settings/export", self.base));
+        if let Some(cookie) = self.cookie_header() {
+            request = request.header("Cookie", &cookie);
+        }
+        let response = request.call().context("GET /api/settings/export")?;
+        Ok(response.into_body().read_to_vec()?)
+    }
+
     fn take_cookie(&self, response: &ureq::http::Response<ureq::Body>) {
         for value in response.headers().get_all("set-cookie") {
             let Ok(value) = value.to_str() else { continue };

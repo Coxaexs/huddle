@@ -39,6 +39,7 @@ pub(super) enum ConfirmAction {
     Report(String),
     LeaveServer(String),
     DeleteServer(String),
+    DeleteAccount,
 }
 
 #[derive(Clone, Copy)]
@@ -631,6 +632,7 @@ impl Shell {
             ConfirmAction::Delete(id) => self.delete_message(id, cx),
             ConfirmAction::LeaveServer(id) => self.leave_server(id, cx),
             ConfirmAction::DeleteServer(id) => self.delete_server(id, cx),
+            ConfirmAction::DeleteAccount => self.delete_account_confirmed(cx),
             ConfirmAction::Report(id) => {
                 let client = self.client.clone();
                 let server = if self.home { None } else { self.server_id.clone() };

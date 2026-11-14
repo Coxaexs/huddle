@@ -30,6 +30,7 @@ pub use side_panels::{MentionEntry, SavedEntry, SearchResult};
 mod rail;
 mod reaction_viewer;
 mod server_menu;
+mod settings;
 mod sidebar;
 
 use std::collections::{HashMap, HashSet};
@@ -186,6 +187,7 @@ pub struct Shell {
     dev_ctx_done: bool,
     dev_forward_done: bool,
     dev_thread_done: bool,
+    dev_settings_done: bool,
     dev_rv_done: bool,
     dev_extras_done: bool,
     /// Who is typing where: (user id, name, when it was last heard).
@@ -242,6 +244,9 @@ pub struct Shell {
     /// A settings card's state since its buttons were used (the web keeps it per card).
     music_settings: HashMap<String, serde_json::Map<String, serde_json::Value>>,
     polls: std::cell::RefCell<HashMap<String, poll::PollState>>,
+    settings: Option<settings::Settings>,
+    /// The account's email, once Settings asked (None: none set or not asked yet).
+    account_email: Option<String>,
     /// The menu for a person (right-click), their voice settings, and where its slider was drawn.
     user_menu: Option<user_menu::UserMenu>,
     voice_prefs: HashMap<String, user_menu::VoicePref>,
@@ -389,6 +394,7 @@ impl Shell {
             dev_ctx_done: false,
             dev_forward_done: false,
             dev_thread_done: false,
+            dev_settings_done: false,
             dev_rv_done: false,
             dev_extras_done: false,
             typing: HashMap::new(),
@@ -443,6 +449,8 @@ impl Shell {
             linked_messages: Default::default(),
             music_settings: HashMap::new(),
             polls: Default::default(),
+            settings: None,
+            account_email: None,
             unread_bar: None,
             unread_pending: None,
             sized: Default::default(),

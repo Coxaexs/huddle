@@ -263,6 +263,20 @@ impl gpui::Render for Shell {
                 self.ctx_menu = Some(super::context_menu::CtxMenu { message_id: id, at: gpui::point(px(x), px(y)) });
             }
         }
+        // Development: HOFFLE_DEV_SETTINGS=<n> opens Settings on its n-th page.
+        if let Ok(n) = std::env::var("HOFFLE_DEV_SETTINGS")
+            && self.settings.is_none()
+            && !self.dev_settings_done
+            && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
+        {
+            self.dev_settings_done = true;
+            self.open_settings(window, cx);
+            let _ = n;
+            // HOFFLE_DEV_SETTINGS_SCROLL=<px>: the page scrolled that far.
+            if let Some(y) = std::env::var("HOFFLE_DEV_SETTINGS_SCROLL").ok().and_then(|v| v.parse::<f32>().ok()) {
+                self.dev_settings_scroll(y);
+            }
+        }
         // Development: HOFFLE_DEV_THREAD=1 opens the last message's thread; HOFFLE_DEV_THREAD_SEND=<text>
         // replies there (only in the QA account's own notes DM).
         if std::env::var("HOFFLE_DEV_THREAD").is_ok() && !self.dev_thread_done {
@@ -467,6 +481,7 @@ impl gpui::Render for Shell {
             .children(self.render_picker(window, cx))
             .children(self.render_context_menu(window, cx))
             .children(self.render_toasts(cx))
+            .children(self.render_settings(window, cx))
             .children(self.render_confirm(cx))
             .children(self.render_forward(window, cx))
             .on_modifiers_changed(cx.listener(|this, e: &gpui::ModifiersChangedEvent, _, cx| {
@@ -480,7 +495,11 @@ impl gpui::Render for Shell {
             }))
             // Escape closes the message menu before anything else hears it.
             .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
-                if event.keystroke.key == "escape" && this.ctx_menu.is_some() {
+                if event.keystroke.key == "escape" && this.confirm.is_none() && this.settings.is_some() {
+                    this.settings = None;
+                    cx.notify();
+                    cx.stop_propagation();
+                } else if event.keystroke.key == "escape" && this.ctx_menu.is_some() {
                     this.close_context_menu(cx);
                     cx.stop_propagation();
                 } else if event.keystroke.key == "escape" && this.notify_menu.is_some() {

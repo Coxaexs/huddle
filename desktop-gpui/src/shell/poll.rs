@@ -1,7 +1,7 @@
 //! PollCard (poll-card.tsx): the question with Public/Private, a bar per option (click to vote,
 //! again to take it back), who voted (public polls), and the totals. Tallies arrive over the hub.
 
-use gpui::{AnyElement, Context, FontWeight, Hsla, SharedString, Window, div, prelude::*, px, rgb, rgba};
+use gpui::{AnyElement, Context, FontWeight, Hsla, SharedString, Window, div, prelude::*, px, rgb};
 use serde_json::Value;
 
 use super::Shell;
