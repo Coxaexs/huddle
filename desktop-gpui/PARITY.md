@@ -34,6 +34,7 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | Message context menu: every item in Full mode, Pin greyed without MANAGE_MESSAGES, edit, delete/report confirms, copy text/link/ID with the notice bar, pin, bookmark with its toast, translate under the message, Esc and click-away close | message-context-menu.tsx, message-row.tsx, toast.tsx, message-translation.tsx | ✅ (Speak opens nothing yet; bot menus; Simple mode's short list ⬜) |
 | Forward dialog (DMs then every text channel, Current badge, search, radio, comment with Ctrl/Cmd+Enter, Forward to …, toast) and the forwarded card in messages | forward-message-dialog.tsx, forwarded-message-card.tsx | ✅ (no backdrop blur in GPUI; long lines with emoji can wrap a word earlier) |
 | Thread panel (420px beside the chat, closes members under 1300px; root, N REPLIES, empty state, replies, composer with send; hub replies land there and bump the root's pill) and the `N replies` pill | panels.tsx ThreadPanel, use-shell-messaging.ts, use-shell-realtime.ts | ✅ (drag-to-resize handle, AI-thread follow-ups and :+emoji: quick reactions ⬜) |
+| System lines (`system-*`: pinned a message with its links to the message and the pins, group add/leave/remove/rename, activity) with the inline time | message-row.tsx | ✅ |
 | Custom `:emoji:` inline in text (the server's images, 1.35em, painted into the text's own slot), standard `:shortcode:` → emoji (`tools/export-shortcodes.mjs`) | message-body.tsx, lib/emoji-shortcodes.ts | ✅ |
 | Author line: role colour (top role), role icon, DISCORD / NEWS / BOT tags, reply line (bold author, 340px snippet) | message-row.tsx, role-icon.tsx | ✅ (owner crown, pride badges, TTS tag ⬜) |
 | Composer: multi-line textarea (Shift-Enter, grows to 40vh), reply bar, + (pick files: staged thumbnails / file tiles with ×, pictures shrunk like shrinkImage, uploaded then sent in one message), emoji picker, send/mic | composer.tsx, use-shell-messaging.ts, shrink-image.ts | 🟡 (ALT text, send original, files over 40 MB, drag and drop, paste, slash commands, voice messages ⬜) |
@@ -60,7 +61,7 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | User menu (right-click on a member row, name or avatar): name, @username, time in voice, Message, Block/Unblock, Mute for me (works in calls), their volume (saved; the call itself has no per-person volume) | user-menu.tsx | 🟡 (nickname, server avatar, pin DM, moderation: server mute, move, timeout, kick, ban, invites ⬜) |
 | Settings (all tabs), server settings | settings-dialog.tsx, settings/*, server-settings* | ⬜ |
 | Pins, saved, mentions (All/Unread) popovers; search strip with filter pills; jumping to a message (pages back until loaded, centred, blue flash) | side-panels.tsx, use-shell-history.ts | ✅ (Unpin needs the pin permission; DM header tools ⬜) |
-| Threads, achievements, find users, follow channel, header "More" menu | thread panel, achievements-panel.tsx | ⬜ |
+| Achievements, find users, follow channel, header "More" menu | achievements-panel.tsx | ⬜ |
 | Events, forums, polls | events-panel.tsx, forum-board.tsx | ⬜ |
 | Music player, DJ booth, widgets | music-player.tsx, widgets/* | ⬜ |
 | Living room / club / tabletop / meadow / board hall (3D) | living-room*.ts, club-*.ts, tabletop-*.ts | ⬜ |

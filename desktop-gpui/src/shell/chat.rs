@@ -17,8 +17,8 @@ use crate::ui::{self, card_shadow, icon};
 /// lane on the right; each `article.message` adds an 8px margin and 10px padding on both sides; its
 /// grid is the avatar, a 13px gap and the body (433.6px at 1180 wide).
 const GUTTER: f32 = 15.;
-const ROW_LEFT: f32 = 47.2 + 8. + 10.;
-const ROW_RIGHT: f32 = 47.2 + 8. + 10. + GUTTER;
+pub(super) const ROW_LEFT: f32 = 47.2 + 8. + 10.;
+pub(super) const ROW_RIGHT: f32 = 47.2 + 8. + 10. + GUTTER;
 
 impl Shell {
     pub(super) fn render_chat_panel(&self, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -567,10 +567,15 @@ impl Shell {
                     this.open_context_menu(id.clone(), event.position, cx);
                 })
             });
+        // `.system-message` (pins, people joining or leaving a group) takes the article's place.
+        let system = message.kind.as_deref().is_some_and(|k| k.starts_with("system-"));
+        let article: AnyElement = if system { self.render_system_message(message, window, cx) } else { article.into_any_element() };
+        // Articles have 8px side margins; a system line has none.
+        let side = if system { 18. } else { 10. };
         let row = div()
             .w_full()
-            .pl(px(ROW_LEFT - 10.))
-            .pr(px(ROW_RIGHT - 10.))
+            .pl(px(ROW_LEFT - side))
+            .pr(px(ROW_RIGHT - side))
             .child(article);
         let gap = |h: f32| div().flex_none().h(px(h));
         let mut column = div().w_full().flex().flex_col();
@@ -605,12 +610,14 @@ impl Shell {
                 ),
             );
         } else {
-            column = column.child(gap(1.));
+            // Its 2px margin collapses with an article's 1px.
+            let after_system = prev.is_some_and(|p| p.kind.as_deref().is_some_and(|k| k.starts_with("system-")));
+            column = column.child(gap(if system || after_system { 2. } else { 1. }));
         }
         column = column.child(row);
         if last {
             // The last margin and `.messages` padding-bottom.
-            column = column.child(gap(1. + 8.));
+            column = column.child(gap(if system { 2. } else { 1. } + 8.));
         }
         column.into_any_element()
     }
@@ -919,7 +926,9 @@ impl Shell {
 
     pub(super) fn chat_panel_width(&self, window: &gpui::Window) -> gpui::Pixels {
         let members = self.members_open && (!self.home || self.channel_id.is_some()) && self.stage.is_none();
-        window.bounds().size.width - px(300.) - if members { px(250.) } else { px(10.) }
+        // An open thread sits right against the chat, 420px wide.
+        let thread = if self.thread.is_some() { px(super::thread::THREAD_WIDTH) } else { px(0.) };
+        window.bounds().size.width - px(300.) - thread - if members { px(250.) } else if self.thread.is_some() { px(0.) } else { px(10.) }
     }
 
     /// Width of a message's text column: 434px when the conversation card is 630px wide.

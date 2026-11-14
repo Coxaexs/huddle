@@ -16,6 +16,7 @@ mod notify_menu;
 mod profile_card;
 mod side_panels;
 mod stage;
+mod system_message;
 mod unread;
 mod user_menu;
 
