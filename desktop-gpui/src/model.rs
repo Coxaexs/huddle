@@ -22,6 +22,8 @@ pub struct User {
     /// What they are doing (playing…), set by hand or detected.
     pub activity: Option<serde_json::Value>,
     pub lastfm_username: Option<String>,
+    /// Features hidden on this account (Appearance → Extras → Features).
+    pub disabled_modules: Vec<String>,
 }
 
 impl User {

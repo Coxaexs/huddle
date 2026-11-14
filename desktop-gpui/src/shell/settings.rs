@@ -194,6 +194,12 @@ pub(super) struct Settings {
     pub capturing_key: Option<&'static str>,
     /// Appearance: its sub-tab and the layout choices (kept on this computer).
     appearance_tab: &'static str,
+    /// Community themes (None until searched) and the search box.
+    community: Option<Vec<Value>>,
+    community_search: Entity<TextInput>,
+    /// Extras switches kept on this computer, and the features hidden on the account.
+    extras: std::collections::HashMap<String, bool>,
+    disabled_modules: Vec<String>,
     _subs: Vec<Subscription>,
 }
 
@@ -273,6 +279,7 @@ impl Shell {
         let manual_activity = small("Playing… (game or app name)", "", window, cx);
         let lastfm = small("Your Last.fm username", &self.me.lastfm_username.clone().unwrap_or_default(), window, cx);
         let track = small("Paste Spotify link (https://open.spotify.com/track/...) or search song title...", "", window, cx);
+        let community_search = small("Search community themes...", "", window, cx);
         let license_search = cx.new(|cx| {
             TextInput::new("Search dependencies...", cx).look(Look { size: 12., line_height: 16., height: 16., color: gpui::white(), placeholder: rgb(0x80848e).into() })
         });
@@ -332,6 +339,10 @@ impl Shell {
             sounds_more: false,
             capturing_key: None,
             appearance_tab: "installed",
+            community: None,
+            community_search,
+            extras: load_extras(),
+            disabled_modules: self.me.disabled_modules.clone(),
             _subs: subs,
         });
         self.load_security(cx);
@@ -3774,7 +3785,7 @@ fn save_layout(l: &LayoutPrefs) {
 
 impl Shell {
     fn apply_theme(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(def) = crate::theme::builtin_themes().into_iter().find(|t| t.id == id) {
+        if let Some(def) = crate::theme::all_themes().into_iter().find(|t| t.id == id) {
             crate::theme::set_theme(&def, true);
             if let Some(list) = self.channel_id.as_ref().and_then(|c| self.messages.get(c)) {
                 self.list.splice(0..list.len(), list.len());
@@ -4044,6 +4055,10 @@ impl Shell {
             out.extend(self.render_theme_grid(window, cx));
         } else if s.appearance_tab == "look" {
             out.extend(self.render_customize(cx));
+        } else if s.appearance_tab == "community" {
+            out.extend(self.render_community(s, window, cx));
+        } else if s.appearance_tab == "extras" {
+            out.extend(self.render_extras(s, cx));
         } else {
             out.push(Self::hint("This part of Appearance is not in this app yet.").flex_none().into_any_element());
         }
@@ -4090,7 +4105,7 @@ impl Shell {
                     .child(Self::icon_button("ap-import", "download", "Import", false).on_click(cx.listener(|this, _, _, cx| this.settings_note("Importing themes is not in this app yet.", cx)))),
             );
         let mut grid = div().flex_none().mt(px(12.)).flex().flex_col().gap(px(10.));
-        let themes = crate::theme::builtin_themes();
+        let themes = crate::theme::all_themes();
         for pair in themes.chunks(2) {
             let mut row = div().flex().gap(px(10.));
             for def in pair {
@@ -4321,4 +4336,258 @@ impl Shell {
         out.push(Self::hint("Animation and motion settings are under Accessibility.").flex_none().into_any_element());
         out
     }
+}
+
+fn extras_path() -> Option<std::path::PathBuf> {
+    Some(dirs::config_dir()?.join("Hoffle Lite").join("extras.json"))
+}
+
+fn load_extras() -> std::collections::HashMap<String, bool> {
+    let mut map: std::collections::HashMap<String, bool> = extras_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    map.entry("profileParticles".into()).or_insert(true);
+    map
+}
+
+const EXTRAS: [(&str, &str, &str, Option<&str>); 5] = [
+    ("cozyHoffle", "Cozy Hoffle", "Room pet, sparkles, tiny charms, and celebrations", Some("sparkles")),
+    ("buddy", "Desktop buddy", "A little companion that matches your theme, with desk tools and break timers", Some("fish")),
+    ("clickParticles", "Button click particles", "Themed sparks when you click buttons", Some("sparkles")),
+    ("profileParticles", "Profile & background particles", "Animated scenes on profile cards and backgrounds", Some("sparkles")),
+    ("retroSounds", "Retro 2000s sound effects", "Y2K-style chimes, nudges and old Windows sounds", None),
+];
+
+const MODULES: [(&str, &str, &str); 5] = [
+    ("dnd", "D&D & Tabletop", "Character sheets, battlemaps, initiative tracker, /srd & /lookup commands"),
+    ("games", "Mini-Games", "Chess, Checkers, Connect 4, Wordle, Poker, Uno & Trivia in chat"),
+    ("music", "Music & Jam Synth", "Shared music player, Jam synth keyboard, and /music commands"),
+    ("living_room", "3D Living Room & Cinema", "3D spatial lounge, meadow fishing, and cinema room in voice calls"),
+    ("cosmetics", "Profile Cosmetics & FX", "Animated profile effects, avatar decorations, frames, and nameplates"),
+];
+
+impl Shell {
+    fn search_community(&mut self, cx: &mut Context<Self>) {
+        let Some(s) = self.settings.as_ref() else { return };
+        let query = s.community_search.read(cx).text().trim().to_string();
+        self.settings_call(
+            cx,
+            move |c| c.settings_get(&if query.is_empty() { "/api/themes".to_string() } else { format!("/api/themes?query={}", url::form_urlencoded::byte_serialize(query.as_bytes()).collect::<String>()) }),
+            |this, result, _| {
+                if let Some(s) = this.settings.as_mut() {
+                    s.community = Some(result.ok().and_then(|v| v.get("themes").and_then(Value::as_array).cloned()).unwrap_or_default());
+                }
+            },
+        );
+    }
+
+    fn install_theme(&mut self, theme: Value, window: &mut Window, cx: &mut Context<Self>) {
+        let Ok(def) = serde_json::from_value::<crate::theme::ThemeDef>(theme) else { return };
+        crate::theme::save_custom_theme(&def);
+        let name = def.name.clone();
+        self.apply_theme(def.id.clone(), window, cx);
+        self.settings_note(&format!("Installed & applied \"{name}\"!"), cx);
+    }
+
+    fn render_community(&self, s: &Settings, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        if s.community.is_none() {
+            // Loaded on first view, as the web does.
+            let weak = cx.weak_entity();
+            cx.defer(move |cx| {
+                weak.update(cx, |this, cx| {
+                    if this.settings.as_ref().is_some_and(|s| s.community.is_none()) {
+                        if let Some(s) = this.settings.as_mut() {
+                            s.community = Some(Vec::new());
+                        }
+                        this.search_community(cx);
+                    }
+                })
+                .ok();
+            });
+        }
+        let gray400: Hsla = rgb(0x99a1af).into();
+        let mut out = vec![
+            div()
+                .flex_none()
+                .flex()
+                .gap(px(8.))
+                .child(Self::discord_input(&s.community_search, window, cx))
+                .child(Self::discord_button("comm-search".into(), "Search", false).on_click(cx.listener(|this, _, _, cx| this.search_community(cx))))
+                .into_any_element(),
+        ];
+        let themes = s.community.clone().unwrap_or_default();
+        let mut grid = div().flex_none().mt(px(14.)).flex().flex_col().gap(px(10.));
+        for pair in themes.chunks(2) {
+            let mut row = div().flex().gap(px(10.));
+            for theme in pair {
+                let f = |k: &str| theme.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+                let author = theme.pointer("/author/displayName").or_else(|| theme.pointer("/author/username")).and_then(Value::as_str).unwrap_or_default().to_string();
+                let mut dots = div().flex().gap(px(6.));
+                for key in ["paper", "panel", "chatBg", "lavender", "coral", "mint"] {
+                    let color = theme.pointer(&format!("/colors/{key}")).and_then(Value::as_str).and_then(crate::theme::css_color).unwrap_or(gpui::black());
+                    dots = dots.child(div().size(px(16.)).rounded_full().bg(color).border_1().border_color(rgba(0xffffff33)));
+                }
+                let (code_theme, install) = (theme.clone(), theme.clone());
+                row = row.child(
+                    div()
+                        .w(px(381.))
+                        .p(px(12.))
+                        .rounded(px(12.))
+                        .bg(rgba(0x0000004d))
+                        .border_1()
+                        .border_color(rgba(0xffffff1a))
+                        .flex()
+                        .flex_col()
+                        .gap(px(8.))
+                        .child(
+                            div()
+                                .flex()
+                                .justify_between()
+                                .child(div().text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::BOLD).text_color(gpui::white()).child(f("name")))
+                                .when(!author.is_empty(), |d| d.child(div().text_size(px(10.)).line_height(px(15.)).text_color(gray400).child(format!("by {author}")))),
+                        )
+                        .child(div().text_size(px(11.)).line_height(px(16.5)).text_color(gray400).child(ui::fit(window, &f("description"), FontWeight::NORMAL, 11., px(355.))))
+                        .child(dots)
+                        .child(
+                            div()
+                                .mt(px(4.))
+                                .pt(px(8.))
+                                .border_t_1()
+                                .border_color(rgba(0xffffff0d))
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .child(
+                                    div()
+                                        .id(SharedString::from(format!("comm-code-{}", f("id"))))
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(4.))
+                                        .text_size(px(11.))
+                                        .text_color(gray400)
+                                        .cursor_pointer()
+                                        .hover(|s| s.text_color(gpui::white()))
+                                        .child(ui::icon("copy", 12., gray400))
+                                        .child("Copy Code")
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            let mut data = code_theme.clone();
+                                            if let Some(o) = data.as_object_mut() {
+                                                o.retain(|k, _| ["id", "name", "description", "baseTheme", "colors", "corners", "backdrop", "customCss", "author"].contains(&k.as_str()));
+                                            }
+                                            let code = format!("huddle-theme:v1:{}", base64_encode(data.to_string().as_bytes()));
+                                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(code));
+                                            this.settings_note("Theme code copied.", cx);
+                                        })),
+                                )
+                                .child(
+                                    div()
+                                        .id(SharedString::from(format!("comm-install-{}", f("id"))))
+                                        .h(px(36.))
+                                        .px(px(14.))
+                                        .rounded(px(4.))
+                                        .bg(Theme::lavender())
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(4.))
+                                        .text_size(px(13.5))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(rgb(0x15121f))
+                                        .cursor_pointer()
+                                        .child(ui::icon("download", 12., rgb(0x15121f)))
+                                        .child("Install & Apply")
+                                        .on_click(cx.listener(move |this, _, window, cx| this.install_theme(install.clone(), window, cx))),
+                                ),
+                        ),
+                );
+            }
+            grid = grid.child(row);
+        }
+        out.push(grid.into_any_element());
+        out
+    }
+
+    fn render_extras(&self, s: &Settings, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let muted: Hsla = Theme::muted().into();
+        let row = |id: String, title: &str, desc: &str, icon: Option<&str>, on: bool| {
+            Self::switch_box(&id)
+                .flex_none()
+                .items_center()
+                .justify_between()
+                .cursor_pointer()
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(div().flex().items_center().gap(px(6.)).text_size(px(16.)).line_height(px(24.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(title.to_string()).when_some(icon, |d, i| d.child(ui::icon(i, 14., Theme::ink()))))
+                        .child(div().text_size(px(12.8)).line_height(px(19.2)).text_color(muted).child(desc.to_string())),
+                )
+                .child(Self::checkbox(on))
+        };
+        let mut out = Vec::new();
+        for (key, title, desc, icon) in EXTRAS {
+            let on = s.extras.get(key).copied().unwrap_or(false);
+            out.push(
+                row(format!("extra-{key}"), title, desc, icon, on)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(s) = this.settings.as_mut() {
+                            let v = s.extras.entry(key.to_string()).or_insert(false);
+                            *v = !*v;
+                            if let Some(path) = extras_path() {
+                                let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+                                let _ = std::fs::write(path, serde_json::to_vec(&s.extras).unwrap_or_default());
+                            }
+                            cx.notify();
+                        }
+                    }))
+                    .into_any_element(),
+            );
+        }
+        out.push(div().flex_none().my(px(16.)).h(px(1.)).bg(Theme::line()).into_any_element());
+        out.push(
+            div()
+                .flex_none()
+                .mb(px(8.))
+                .flex()
+                .flex_col()
+                .child(div().flex().items_center().gap(px(6.)).text_size(px(15.)).line_height(px(22.)).text_color(Theme::ink()).child(ui::icon("layers", 14., Theme::ink())).child("Features"))
+                .child(div().text_size(px(11.5)).line_height(px(17.)).text_color(muted).child("Hide what you don't use to keep chat and slash commands tidy."))
+                .into_any_element(),
+        );
+        for (key, title, desc) in MODULES {
+            let on = !s.disabled_modules.iter().any(|m| m == key);
+            out.push(
+                row(format!("module-{key}"), title, desc, None, on)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        let Some(s) = this.settings.as_mut() else { return };
+                        if s.disabled_modules.iter().any(|m| m == key) {
+                            s.disabled_modules.retain(|m| m != key);
+                        } else {
+                            s.disabled_modules.push(key.to_string());
+                        }
+                        let next = s.disabled_modules.clone();
+                        this.me.disabled_modules = next.clone();
+                        this.save_profile_field(json!({ "disabledModules": next }), None, "Could not save that.", cx);
+                        cx.notify();
+                    }))
+                    .into_any_element(),
+            );
+        }
+        out
+    }
+}
+
+/// Standard base64, as `btoa` gives.
+fn base64_encode(bytes: &[u8]) -> String {
+    const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let n = chunk.iter().enumerate().fold(0u32, |a, (i, b)| a | (*b as u32) << (16 - 8 * i));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(T[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }

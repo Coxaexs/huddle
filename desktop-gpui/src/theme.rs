@@ -66,7 +66,7 @@ fn p() -> Palette {
 }
 
 /// A built-in theme from lib/themes.ts (exported to resources/themes.json).
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThemeDef {
     pub id: String,
@@ -85,6 +85,32 @@ pub fn builtin_themes() -> Vec<ThemeDef> {
     crate::assets::ASSETS.iter().find(|(p, _)| *p == "themes/builtin.json").and_then(|(_, b)| serde_json::from_slice(b).ok()).unwrap_or_default()
 }
 
+fn custom_path() -> Option<std::path::PathBuf> {
+    Some(dirs::config_dir()?.join("Hoffle Lite").join("custom-themes.json"))
+}
+
+/// Themes installed from Community (kept on this computer, like the web's stored themes).
+pub fn custom_themes() -> Vec<ThemeDef> {
+    custom_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+pub fn save_custom_theme(def: &ThemeDef) {
+    let mut all = custom_themes();
+    all.retain(|t| t.id != def.id);
+    all.push(def.clone());
+    if let Some(path) = custom_path() {
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+        let _ = std::fs::write(path, serde_json::to_vec(&all).unwrap_or_default());
+    }
+}
+
+/// Built-in themes, then installed ones.
+pub fn all_themes() -> Vec<ThemeDef> {
+    let mut all = builtin_themes();
+    all.extend(custom_themes());
+    all
+}
+
 fn theme_path() -> Option<std::path::PathBuf> {
     Some(dirs::config_dir()?.join("Hoffle Lite").join("theme"))
 }
@@ -98,7 +124,7 @@ pub fn active_theme() -> String {
 /// Applies the saved theme at start.
 pub fn load_theme() {
     let id = theme_path().and_then(|p| std::fs::read_to_string(p).ok()).map(|s| s.trim().to_string()).unwrap_or_else(|| "cozy".into());
-    if let Some(def) = builtin_themes().into_iter().find(|t| t.id == id) {
+    if let Some(def) = all_themes().into_iter().find(|t| t.id == id) {
         set_theme(&def, false);
     }
 }
@@ -134,7 +160,7 @@ pub fn set_customize(c: &Customize) {
         let _ = std::fs::write(path, serde_json::to_vec(c).unwrap_or_default());
     }
     let id = active_theme();
-    if let Some(def) = builtin_themes().into_iter().find(|t| t.id == id) {
+    if let Some(def) = all_themes().into_iter().find(|t| t.id == id) {
         set_theme(&def, false);
     }
 }
