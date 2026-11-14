@@ -77,6 +77,7 @@ fn anchors(tab: Tab) -> Vec<(String, usize)> {
     match tab {
         Tab::Password => vec![("Username".into(), 0), ("Email".into(), 1), ("Password".into(), 2), ("Delete account".into(), 7)],
         Tab::Privacy => vec![(t("privacy.dmTitle"), 0), (t("privacy.streamerTitle"), 1)],
+        Tab::Appearance => vec![("Themes".into(), 100), ("Community".into(), 101), ("Customize".into(), 102), ("Extras".into(), 103)],
         _ => Vec::new(),
     }
 }
@@ -191,6 +192,8 @@ pub(super) struct Settings {
     open_details: std::collections::HashSet<&'static str>,
     sounds_more: bool,
     pub capturing_key: Option<&'static str>,
+    /// Appearance: its sub-tab and the layout choices (kept on this computer).
+    appearance_tab: &'static str,
     _subs: Vec<Subscription>,
 }
 
@@ -328,6 +331,7 @@ impl Shell {
             open_details: Default::default(),
             sounds_more: false,
             capturing_key: None,
+            appearance_tab: "installed",
             _subs: subs,
         });
         self.load_security(cx);
@@ -960,6 +964,37 @@ impl Shell {
         if list.len() < 2 {
             return None;
         }
+        if s.tab == Tab::Appearance {
+            let rail_color: Hsla = Hsla::from(Theme::muted()).opacity(0.35);
+            let mut rail = div().mt(px(2.)).mb(px(6.)).ml(px(20.)).border_l_1().border_color(rail_color).flex().flex_col();
+            for (label, key) in [("Themes", "installed"), ("Community", "community"), ("Customize", "look"), ("Extras", "extras")] {
+                let active = s.appearance_tab == key;
+                rail = rail.child(
+                    div()
+                        .id(SharedString::from(format!("rail-ap-{key}")))
+                        .ml(px(-1.))
+                        .pl(px(14.))
+                        .pr(px(12.))
+                        .py(px(6.))
+                        .border_l_2()
+                        .border_color(if active { Theme::ink().into() } else { gpui::transparent_black() })
+                        .text_size(px(13.))
+                        .line_height(px(19.5))
+                        .font_weight(if active { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+                        .text_color(if active { Theme::ink() } else { Theme::muted() })
+                        .cursor_pointer()
+                        .hover(|s| s.text_color(Theme::ink()))
+                        .child(label)
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if let Some(s) = this.settings.as_mut() {
+                                s.appearance_tab = key;
+                                cx.notify();
+                            }
+                        })),
+                );
+            }
+            return Some(rail.into_any_element());
+        }
         let top = s.scroll.logical_scroll_top().0;
         // Scrolled to the end, the last section is the one being read.
         let at_end = s.scroll.max_offset().height > px(0.) && -s.scroll.offset().y >= s.scroll.max_offset().height - px(1.);
@@ -1054,6 +1089,7 @@ impl Shell {
             Tab::Licenses => self.render_licenses_page(s, window, cx),
             Tab::Activities => self.render_activities_page(s, window, cx),
             Tab::Voice => self.render_voice_page(s, window, cx),
+            Tab::Appearance => self.render_appearance_page(s, window, cx),
             Tab::Tutorial => vec![
                 div()
                     .flex_none()
@@ -3690,5 +3726,437 @@ impl Shell {
         out.push(Self::hint("Saved on this device. Switching the microphone in a call doesn't drop the call.").flex_none().mt(px(8.)).opacity(0.8).into_any_element());
         let _ = window;
         out
+    }
+}
+
+/// Appearance layout choices (layout-picker.tsx), kept on this computer. This app draws the default
+/// layout only so far.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LayoutPrefs {
+    pub channels: String,
+    pub members: String,
+    pub call: String,
+    pub banner: bool,
+    pub events: bool,
+    pub topic: bool,
+}
+
+impl Default for LayoutPrefs {
+    fn default() -> Self {
+        Self { channels: "left".into(), members: "right".into(), call: "bottom".into(), banner: true, events: true, topic: true }
+    }
+}
+
+fn layout_path() -> Option<std::path::PathBuf> {
+    Some(dirs::config_dir()?.join("Hoffle Lite").join("layout.json"))
+}
+
+pub fn load_layout() -> LayoutPrefs {
+    layout_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+fn save_layout(l: &LayoutPrefs) {
+    if let Some(path) = layout_path() {
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+        let _ = std::fs::write(path, serde_json::to_vec(l).unwrap_or_default());
+    }
+}
+
+impl Shell {
+    fn apply_theme(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(def) = crate::theme::builtin_themes().into_iter().find(|t| t.id == id) {
+            crate::theme::set_theme(&def, true);
+            if let Some(list) = self.channel_id.as_ref().and_then(|c| self.messages.get(c)) {
+                self.list.splice(0..list.len(), list.len());
+            }
+            window.refresh();
+            cx.notify();
+        }
+    }
+
+    fn change_layout(&mut self, change: impl FnOnce(&mut LayoutPrefs), cx: &mut Context<Self>) {
+        let mut l = load_layout();
+        change(&mut l);
+        save_layout(&l);
+        cx.notify();
+    }
+
+    fn render_appearance_page(&self, s: &Settings, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let muted: Hsla = Theme::muted().into();
+        let ink: Hsla = Theme::ink().into();
+        let lavender: Hsla = Theme::lavender().into();
+        let mut out = Vec::new();
+        // Interface: Simple or Full (this app has the full interface only so far).
+        let mut switch = div().flex_none().flex().p(px(3.)).rounded_full().bg(ink.opacity(0.08));
+        for (mode, label) in [("simple", "Simple"), ("full", "Full")] {
+            let on = mode == "full";
+            switch = switch.child(
+                div()
+                    .id(SharedString::from(format!("ui-mode-{mode}")))
+                    .px(px(14.))
+                    .py(px(6.))
+                    .rounded_full()
+                    .when(on, |d| d.bg(Theme::send()))
+                    .text_size(px(12.5))
+                    .line_height(px(18.75))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(if on { rgb(0x15121f).into() } else { muted })
+                    .cursor_pointer()
+                    .child(label)
+                    .when(!on, |d| d.on_click(cx.listener(|this, _, _, cx| this.settings_note("Simple mode is not in this app yet.", cx)))),
+            );
+        }
+        out.push(
+            div()
+                .flex_none()
+                .px(px(15.))
+                .py(px(13.))
+                .rounded(px(12.))
+                .bg(ink.opacity(0.03))
+                .border_1()
+                .border_color(Theme::line())
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap(px(16.))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(div().text_size(px(16.)).line_height(px(24.)).text_color(ink).child(t("userSettings.uiMode")))
+                        .child(div().text_size(px(12.)).line_height(px(18.)).text_color(rgb(0xaaaeba)).child(t("userSettings.uiMode.desc"))),
+                )
+                .child(switch)
+                .into_any_element(),
+        );
+        // Layout.
+        let layout = load_layout();
+        let option = |id: String, label: &'static str, active: bool, diagram: gpui::Div| {
+            div()
+                .id(SharedString::from(id))
+                .w(px(82.))
+                .h(px(81.))
+                .pt(px(8.))
+                .px(px(8.))
+                .pb(px(6.))
+                .rounded(px(12.))
+                .border_1()
+                .border_color(if active { lavender } else { Theme::line().into() })
+                .flex()
+                .flex_col()
+                .items_center()
+                .gap(px(5.))
+                .cursor_pointer()
+                .child(diagram.w(px(64.)).h(px(42.)).rounded(px(6.)).bg(Theme::chat_bg()).border_1().border_color(Theme::line()).relative())
+                .child(div().text_size(px(12.)).line_height(px(18.)).font_weight(FontWeight::SEMIBOLD).text_color(ink).child(label))
+        };
+        let block = |x: f32, y: f32, w: f32, h: f32, c: Hsla| div().absolute().left(px(x)).top(px(y)).w(px(w)).h(px(h)).rounded(px(2.)).bg(c);
+        let dim = ink.opacity(0.06);
+        let mid = ink.opacity(0.16);
+        let group = |label: &str, options: Vec<gpui::Stateful<gpui::Div>>| {
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(6.))
+                .child(div().text_size(px(11.)).line_height(px(16.5)).font_weight(FontWeight(750.)).text_color(muted).child(label.to_uppercase()))
+                .child(div().flex().gap(px(8.)).children(options))
+        };
+        let channels: Vec<_> = [("left", "Left"), ("right", "Right"), ("top", "Top"), ("bottom", "Bottom")]
+            .into_iter()
+            .map(|(v, l)| {
+                let d = match v {
+                    "left" => div().child(block(3., 3., 14., 34., lavender)).child(block(19., 3., 26., 34., dim)).child(block(47., 3., 12., 34., mid)),
+                    "right" => div().child(block(45., 3., 14., 34., lavender)).child(block(3., 3., 26., 34., dim)).child(block(31., 3., 12., 34., mid)),
+                    "top" => div().child(block(3., 3., 56., 8., lavender)).child(block(3., 13., 42., 24., dim)).child(block(47., 13., 12., 24., mid)),
+                    _ => div().child(block(3., 29., 56., 8., lavender)).child(block(3., 3., 42., 24., dim)).child(block(47., 3., 12., 24., mid)),
+                };
+                option(format!("lay-ch-{v}"), l, layout.channels == v, d).on_click(cx.listener(move |this, _, _, cx| {
+                    this.change_layout(|l| l.channels = v.into(), cx);
+                    if v != "left" {
+                        this.settings_note("Only the default layout is in this app so far; this is saved for later.", cx);
+                    }
+                }))
+            })
+            .collect();
+        let members: Vec<_> = [("right", "Right"), ("left", "Left")]
+            .into_iter()
+            .map(|(v, l)| {
+                let d = if v == "right" {
+                    div().child(block(3., 3., 14., 34., mid)).child(block(19., 3., 26., 34., dim)).child(block(47., 3., 12., 34., lavender))
+                } else {
+                    div().child(block(3., 3., 14., 34., mid)).child(block(33., 3., 26., 34., dim)).child(block(19., 3., 12., 34., lavender))
+                };
+                option(format!("lay-mem-{v}"), l, layout.members == v, d).on_click(cx.listener(move |this, _, _, cx| {
+                    this.change_layout(|l| l.members = v.into(), cx);
+                    if v != "right" {
+                        this.settings_note("Only the default layout is in this app so far; this is saved for later.", cx);
+                    }
+                }))
+            })
+            .collect();
+        let calls: Vec<_> = [("bottom", "Bottom"), ("top", "Top"), ("left", "Left"), ("right", "Right")]
+            .into_iter()
+            .map(|(v, l)| {
+                let bar = match v {
+                    "bottom" => block(18., 30., 26., 5., lavender),
+                    "top" => block(18., 5., 26., 5., lavender),
+                    "left" => block(5., 9., 5., 22., lavender),
+                    _ => block(52., 9., 5., 22., lavender),
+                };
+                option(format!("lay-call-{v}"), l, layout.call == v, div().child(block(3., 3., 56., 34., dim)).child(bar)).on_click(cx.listener(move |this, _, _, cx| {
+                    this.change_layout(|l| l.call = v.into(), cx);
+                    if v != "bottom" {
+                        this.settings_note("Only the default layout is in this app so far; this is saved for later.", cx);
+                    }
+                }))
+            })
+            .collect();
+        let show = |id: &'static str, label: &'static str, on: bool, cx: &mut Context<Self>| {
+            div()
+                .id(id)
+                .px(px(4.))
+                .py(px(3.))
+                .flex()
+                .items_center()
+                .gap(px(7.))
+                .text_size(px(12.5))
+                .line_height(px(18.75))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(ink)
+                .cursor_pointer()
+                .child(
+                    div()
+                        .size(px(16.))
+                        .rounded(px(5.))
+                        .border_1()
+                        .border_color(if on { lavender } else { Theme::line().into() })
+                        .when(on, |d| d.bg(lavender))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .text_size(px(11.))
+                        .text_color(gpui::white())
+                        .when(on, |d| d.child("✓")),
+                )
+                .child(label)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.change_layout(
+                        |l| match id {
+                            "show-banner" => l.banner = !l.banner,
+                            "show-events" => l.events = !l.events,
+                            _ => l.topic = !l.topic,
+                        },
+                        cx,
+                    )
+                }))
+        };
+        out.push(
+            div()
+                .flex_none()
+                .mt(px(18.))
+                .p(px(14.))
+                .rounded(px(14.))
+                .border_1()
+                .border_color(Theme::line())
+                .flex()
+                .flex_col()
+                .gap(px(10.))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .child(div().pt(px(2.)).text_size(px(16.)).line_height(px(20.)).text_color(ink).child("Layout"))
+                        .child(div().mt(px(4.)).text_size(px(13.)).line_height(px(19.5)).text_color(rgb(0xaaaeba)).child("Move the channel list and member list. The default is how Hoffle looks out of the box.")),
+                )
+                .child(group("Channels", channels))
+                .child(group("Members", members))
+                .child(group("Call controls", calls))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(6.))
+                        .child(div().text_size(px(11.)).line_height(px(16.5)).font_weight(FontWeight(750.)).text_color(muted).child("SHOW"))
+                        .child(div().flex().gap(px(8.)).child(show("show-banner", "Server banner", layout.banner, cx)).child(show("show-events", "Events", layout.events, cx)).child(show("show-topic", "Channel topic", layout.topic, cx))),
+                )
+                .child(div().text_size(px(12.)).line_height(px(18.)).text_color(muted).child("On phones the channel list always opens from the menu button."))
+                .child(div().flex().child(
+                    div()
+                        .id("lay-customize")
+                        .px(px(14.))
+                        .py(px(7.))
+                        .rounded(px(10.))
+                        .bg(lavender)
+                        .text_size(px(13.))
+                        .line_height(px(19.5))
+                        .font_weight(FontWeight(650.))
+                        .text_color(gpui::white())
+                        .cursor_pointer()
+                        .child("Customize layout & widgets…")
+                        .on_click(cx.listener(|this, _, _, cx| this.settings_note("The layout and widget editor is not in this app yet.", cx))),
+                ))
+                .into_any_element(),
+        );
+        // Sub-tabs.
+        let mut tabs = div().flex_none().mt(px(18.)).mb(px(14.)).flex().gap(px(8.));
+        for (key, label) in [("installed", "Themes"), ("community", "Community"), ("look", "Customize"), ("extras", "Extras")] {
+            let on = s.appearance_tab == key;
+            tabs = tabs.child(
+                div()
+                    .id(SharedString::from(format!("ap-tab-{key}")))
+                    .flex_1()
+                    .h(px(44.))
+                    .rounded(px(10.))
+                    .border_1()
+                    .border_color(if on { lavender } else { Theme::line().into() })
+                    .bg(if on { lavender } else { Theme::panel().into() })
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_size(px(16.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(if on { rgb(0x15121f).into() } else { ink })
+                    .cursor_pointer()
+                    .child(label)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(s) = this.settings.as_mut() {
+                            s.appearance_tab = key;
+                            cx.notify();
+                        }
+                    })),
+            );
+        }
+        out.push(tabs.into_any_element());
+        if s.appearance_tab == "installed" {
+            out.extend(self.render_theme_grid(window, cx));
+        } else {
+            out.push(Self::hint("This part of Appearance is not in this app yet.").flex_none().into_any_element());
+        }
+        out
+    }
+
+    /// A `.discord-btn` with its icon before the label, 36px (`text-xs` buttons).
+    fn icon_button(id: &'static str, icon: &'static str, label: &'static str, primary: bool) -> gpui::Stateful<gpui::Div> {
+        let fg: Hsla = if primary { rgb(0x15121f).into() } else { gpui::white() };
+        div()
+            .id(id)
+            .flex_none()
+            .h(px(36.))
+            .px(px(18.))
+            .rounded(px(4.))
+            .bg(if primary { Hsla::from(Theme::lavender()) } else { rgb(0x4e5058).into() })
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .text_size(px(13.5))
+            .line_height(px(18.))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(fg)
+            .cursor_pointer()
+            .child(ui::icon(icon, 14., fg))
+            .child(label)
+    }
+
+    fn render_theme_grid(&self, window: &mut Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let _ = window;
+        let active = crate::theme::active_theme();
+        let gray400: Hsla = rgb(0x99a1af).into();
+        let head = div()
+            .flex_none()
+            .flex()
+            .items_center()
+            .justify_between()
+            .child(Self::hint("Pick a theme. Fine-tune it under Customize."))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(8.))
+                    .child(Self::icon_button("ap-create", "plus", "Create", true).on_click(cx.listener(|this, _, _, cx| this.settings_note("Making themes is not in this app yet.", cx))))
+                    .child(Self::icon_button("ap-import", "download", "Import", false).on_click(cx.listener(|this, _, _, cx| this.settings_note("Importing themes is not in this app yet.", cx)))),
+            );
+        let mut grid = div().flex_none().mt(px(12.)).flex().flex_col().gap(px(10.));
+        let themes = crate::theme::builtin_themes();
+        for pair in themes.chunks(2) {
+            let mut row = div().flex().gap(px(10.));
+            for def in pair {
+                let on = def.id == active;
+                let purple: Hsla = rgb(0xad46ff).into();
+                let mut dots = div().flex().gap(px(6.));
+                for key in ["paper", "panel", "chatBg", "lavender", "coral", "mint"] {
+                    let color = def.colors.get(key).and_then(|c| crate::theme::css_color(c)).unwrap_or(gpui::black());
+                    dots = dots.child(div().size(px(16.)).rounded_full().bg(color).border_1().border_color(rgba(0xffffff33)));
+                }
+                let id = def.id.clone();
+                row = row.child(
+                    div()
+                        .w(px(381.))
+                        .h(px(125.5))
+                        .p(px(12.))
+                        .rounded(px(12.))
+                        .bg(if on { Hsla::from(rgb(0x3c0366)).opacity(0.2) } else { rgba(0x0000004d).into() })
+                        .border_1()
+                        .border_color(if on { purple } else { rgba(0xffffff1a).into() })
+                        .flex()
+                        .flex_col()
+                        .gap(px(8.))
+                        .child(
+                            div()
+                                .flex()
+                                .items_start()
+                                .justify_between()
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .gap(px(2.))
+                                        .child(
+                                            div()
+                                                .flex()
+                                                .items_center()
+                                                .gap(px(6.))
+                                                .child(div().text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::BOLD).text_color(gpui::white()).child(def.name.clone()))
+                                                .child(div().px(px(6.)).rounded(px(4.)).bg(rgba(0xffffff1a)).text_size(px(9.)).line_height(px(13.5)).text_color(rgb(0xd1d5dc)).child(if def.id == "cozy" { "DEFAULT" } else { "BUILT-IN" })),
+                                        )
+                                        .child(div().w(px(326.)).text_size(px(11.)).line_height(px(16.5)).text_color(gray400).child(ui::fit(window, &def.description, FontWeight::NORMAL, 11., px(326.)))),
+                                )
+                                .child(div().p(px(4.)).rounded(px(4.)).child(ui::icon("share-2", 13., gray400))),
+                        )
+                        .child(dots)
+                        .child(
+                            div()
+                                .pt(px(8.))
+                                .border_t_1()
+                                .border_color(rgba(0xffffff0d))
+                                .flex()
+                                .justify_end()
+                                .child(if on {
+                                    div().px(px(10.)).py(px(4.)).rounded(px(4.)).bg(rgb(0x9810fa)).text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::MEDIUM).text_color(gpui::white()).child("✓ Active").into_any_element()
+                                } else {
+                                    div()
+                                        .id(SharedString::from(format!("apply-{id}")))
+                                        .px(px(10.))
+                                        .py(px(4.))
+                                        .rounded(px(4.))
+                                        .bg(rgba(0xffffff1a))
+                                        .hover(|s| s.bg(rgba(0xffffff26)))
+                                        .text_size(px(12.))
+                                        .line_height(px(16.))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .text_color(rgb(0xe5e7eb))
+                                        .cursor_pointer()
+                                        .child("Apply")
+                                        .on_click(cx.listener(move |this, _, window, cx| this.apply_theme(id.clone(), window, cx)))
+                                        .into_any_element()
+                                }),
+                        ),
+                );
+            }
+            grid = grid.child(row);
+        }
+        vec![head.into_any_element(), grid.into_any_element()]
     }
 }

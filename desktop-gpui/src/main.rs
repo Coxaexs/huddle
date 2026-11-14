@@ -155,6 +155,7 @@ impl Render for Root {
 fn main() {
     Application::new().with_assets(assets::Assets).with_http_client(std::sync::Arc::new(images::Fetcher::new())).run(|cx: &mut App| {
         assets::load_fonts(cx);
+        theme::load_theme();
         input::bind_keys(cx);
         textarea::bind_keys(cx);
         cx.bind_keys([
