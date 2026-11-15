@@ -26,6 +26,8 @@ pub(super) enum PromptKind {
     CreateRole,
     /// Server settings → Emoji: the picked picture's name.
     EmojiName,
+    /// Server settings → Integrations → Tabletop: homebrew JSON.
+    Homebrew,
 }
 
 /// CREATABLE_CHANNEL_KINDS with CHANNEL_KIND_COPY: kind, label, icon, title, message, placeholder.
@@ -305,6 +307,7 @@ impl Shell {
                 self.patch_channel(id, json!({ "bitrate": bitrate }), move || format!("Voice bitrate set to {} kbps", bitrate / 1000), cx);
             }
             PromptKind::EmojiName => self.upload_emoji(value, cx),
+            PromptKind::Homebrew => self.import_homebrew(value, cx),
             PromptKind::CreateRole => {
                 if value.is_empty() {
                     return;

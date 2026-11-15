@@ -53,6 +53,8 @@ pub(super) enum ConfirmAction {
     /// Server settings: remove an emoji, sticker or sound ("emojis" / "stickers" / "sounds", id).
     RemoveExpression(&'static str, String),
     DeleteAutomod(String),
+    /// Server settings → Integrations.
+    Integration(super::integrations::IntegAct),
 }
 
 #[derive(Clone, Copy)]
@@ -735,6 +737,7 @@ impl Shell {
             ConfirmAction::Moderate(server, member, name, action) => self.moderate_member(server, member, name, action, cx),
             ConfirmAction::RemoveExpression(kind, id) => self.remove_expression(kind, id, cx),
             ConfirmAction::DeleteAutomod(id) => self.delete_automod(id, cx),
+            ConfirmAction::Integration(act) => self.integ_confirmed(act, cx),
             ConfirmAction::DeleteCategory(id) => self.delete_category_confirmed(id, cx),
             ConfirmAction::Report(id) => {
                 let client = self.client.clone();

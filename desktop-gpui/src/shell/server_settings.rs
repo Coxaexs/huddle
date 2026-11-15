@@ -93,6 +93,7 @@ pub(super) struct ServerSettings {
     tpl_token: Entity<TextInput>,
     tpl_json: Entity<crate::textarea::TextArea>,
     importing: bool,
+    pub(super) integ: super::integrations::Integ,
     _subs: Vec<Subscription>,
 }
 
@@ -357,7 +358,7 @@ impl Shell {
             cx.notify();
         }));
         let purge_channel = server.channels.iter().find(|c| !c.is_voice()).map(|c| c.id.clone());
-        let small_look = || Look { size: 12., line_height: 16., height: 16., color: Theme::ink().into(), placeholder: Theme::muted().into() };
+        let small_look = || Look { size: 12., line_height: 16., height: 16., color: Theme::ink().into(), placeholder: Hsla::from(Theme::ink()).opacity(0.5) };
         let tpl_link = cx.new(|cx| TextInput::new(t("discordMove.templatePlaceholder"), cx).look(small_look()));
         let tpl_guild = cx.new(|cx| TextInput::new("e.g. 123456789012345678", cx).look(small_look()));
         let tpl_token = cx.new(|cx| TextInput::new("Bot token with View Channels permission", cx).look(small_look()).masked());
@@ -466,6 +467,7 @@ impl Shell {
             tpl_token,
             tpl_json,
             importing: false,
+            integ: super::integrations::Integ::new(window, cx),
             _subs: subs,
         });
         cx.notify();
@@ -490,7 +492,7 @@ impl Shell {
         cx.notify();
     }
 
-    fn server_notice(&mut self, text: String, cx: &mut Context<Self>) {
+    pub(super) fn server_notice(&mut self, text: String, cx: &mut Context<Self>) {
         if let Some(s) = self.server_settings.as_mut() {
             s.notice = Some(text);
         }
@@ -745,6 +747,7 @@ impl Shell {
             "automod" => self.render_server_automod(s, server, can, cx),
             "safety" => self.render_server_safety(s, server, can, cx),
             "template" => self.render_server_template(s, server, cx),
+            "integrations" => self.render_server_integrations(s, server, window, cx),
             other => self.render_server_tab(other, s, server, can, window, cx),
         };
         let main = div()

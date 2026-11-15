@@ -9,6 +9,7 @@ mod files;
 mod forward;
 mod invite;
 mod server_settings;
+mod integrations;
 mod channel_tools;
 mod music_player;
 mod thread;
