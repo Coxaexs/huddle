@@ -15,6 +15,7 @@ mod forum;
 mod composer_tools;
 mod games;
 mod rota;
+mod voice_card;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -341,6 +342,10 @@ pub struct Shell {
     rota_subs: std::cell::RefCell<Vec<gpui::Subscription>>,
     /// Rota's names in Turkish (its own TR / EN switch; Turkish by default for a Turkish app).
     rota_tr: bool,
+    /// Voice messages: the one playing, positions, speeds, decoded clips, transcripts.
+    voice_msgs: voice_card::VoiceState,
+    /// Where each voice message's wave starts on screen, for seeking.
+    voice_wave_x: std::rc::Rc<std::cell::RefCell<HashMap<String, f32>>>,
     server_settings: Option<server_settings::ServerSettings>,
     /// Create Role answered: open the newest role when the servers come back.
     pending_new_role: bool,
@@ -471,6 +476,8 @@ impl Shell {
 
         // Cmd-Q while in a room: leave properly, so nobody sees a ghost seat until LiveKit times it out.
         let quit = cx.on_app_quit(|this: &mut Self, _cx| {
+            // A voice message's afplay would play on after the app.
+            this.stop_voice_message();
             if this.call.take().is_some() {
                 this.hub.send(json!({ "t": "voice-leave" }));
                 let left = this.voice.leave_blocking(Duration::from_millis(700));
@@ -576,6 +583,8 @@ impl Shell {
             rota_inputs: Default::default(),
             rota_subs: Default::default(),
             rota_tr: crate::i18n::locale().starts_with("tr"),
+            voice_msgs: Default::default(),
+            voice_wave_x: Default::default(),
             server_settings: None,
             pending_new_role: false,
             kind_menu: None,

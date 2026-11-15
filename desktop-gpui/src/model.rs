@@ -183,6 +183,8 @@ pub struct Message {
     /// On a bot-styled post: who sent it (they may delete it).
     pub sender_id: Option<String>,
     pub payload: Option<serde_json::Value>,
+    /// A voice message's sound file.
+    pub audio: Option<String>,
     pub pinned: bool,
 }
 

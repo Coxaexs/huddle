@@ -531,6 +531,14 @@ impl gpui::Render for Shell {
             let server = self.server_id.clone();
             self.jump_to_message(server, channel, id, window, cx);
         }
+        // Development: HOFFLE_DEV_PLAY_VOICE=<message id> plays that voice message (muted with HOFFLE_DEV_MUTED).
+        static DEV_VOICE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(id) = std::env::var("HOFFLE_DEV_PLAY_VOICE")
+            && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
+            && !DEV_VOICE.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            self.dev_play_voice(id, cx);
+        }
         // Development: HOFFLE_DEV_RENAME=1 opens the Rename Server prompt once (only to look at).
         if std::env::var("HOFFLE_DEV_RENAME").is_ok() && self.confirm.is_none() && !self.dev_invite_done
             && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))

@@ -565,6 +565,9 @@ impl Shell {
         if let Some(card) = self.render_game(message, f32::from(self.text_column_width(window)), window, cx) {
             body = body.child(card);
         }
+        if let Some(card) = self.render_voice(message, f32::from(self.text_column_width(window)), window, cx) {
+            body = body.child(card);
+        }
         if let Some(card) = self.render_music_card(message, f32::from(self.text_column_width(window)), window, cx) {
             body = body.child(card);
         }

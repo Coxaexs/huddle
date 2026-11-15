@@ -16,6 +16,7 @@ pub fn replaces_text(message: &Message) -> bool {
         Some("ai") => true,
         Some("poll") => message.payload.as_ref().and_then(|p| p.get("pollId")).is_some(),
         Some("game") => message.payload.as_ref().and_then(|p| p.get("game")).is_some(),
+        Some("voice") => message.audio.as_ref().is_some_and(|a| !a.is_empty()),
         Some(k) if super::music_cards::KINDS.contains(&k) => message.payload.is_some(),
         Some("dnd") => message.payload.as_ref().and_then(|p| p.get("type")).and_then(Value::as_str) == Some("roll"),
         _ => false,
