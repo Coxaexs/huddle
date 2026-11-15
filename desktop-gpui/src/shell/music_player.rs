@@ -52,8 +52,41 @@ pub(super) struct Room {
 /// LyricsData: timed lines (or plain text) for the playing song.
 struct Lyrics {
     track: String,
-    lines: Vec<(f64, String)>,
+    /// (start in s, text, the words when the song is timed word by word)
+    lines: Vec<(f64, String, Option<Vec<Word>>)>,
     plain: String,
+}
+
+/// TimedWord (lib/musicbot.ts): when a word starts and ends (s), the word, and when each of its
+/// letters is reached (ms from its start).
+#[derive(Clone)]
+struct Word {
+    start: Option<f64>,
+    end: Option<f64>,
+    text: String,
+    letters: Vec<f64>,
+}
+
+/// wordFill(): how much of a word is sung `ms` after it starts, letter by letter when known.
+fn word_fill(w: &Word, ms: f64) -> f64 {
+    let (Some(start), Some(end)) = (w.start, w.end) else { return if ms >= 0. { 1. } else { 0. } };
+    if ms <= 0. {
+        return 0.;
+    }
+    let length = ((end - start) * 1000.).max(1.);
+    if ms >= length {
+        return 1.;
+    }
+    if w.letters.is_empty() {
+        return ms / length;
+    }
+    let done = w.letters.iter().take_while(|l| **l <= ms).count();
+    if done >= w.letters.len() {
+        return 1.;
+    }
+    let from = if done > 0 { w.letters[done - 1] } else { 0. };
+    let to = (from + 1.).max(w.letters[done]);
+    (done as f64 + (ms - from) / (to - from)) / w.letters.len() as f64
 }
 
 pub(super) struct MusicPlayer {
@@ -911,10 +944,31 @@ impl Shell {
                         if body.get("unavailable").and_then(Value::as_bool).unwrap_or(false) {
                             p.lyrics_error = Some("The lyrics site didn't answer just now. Try again in a moment.".into());
                         } else {
-                            let lines: Vec<(f64, String)> = body
+                            let words_of = |n: usize| -> Option<Vec<Word>> {
+                                let list: Vec<Word> = body.get("words")?.get(n)?.as_array()?.iter().filter_map(|w| {
+                                    Some(Word {
+                                        start: w.get(0).and_then(Value::as_f64),
+                                        end: w.get(1).and_then(Value::as_f64),
+                                        text: w.get(2)?.as_str()?.to_string(),
+                                        letters: w.get(3).and_then(Value::as_array).map(|l| l.iter().filter_map(Value::as_f64).collect()).unwrap_or_default(),
+                                    })
+                                }).collect();
+                                (!list.is_empty()).then_some(list)
+                            };
+                            // Timed words also correct the line's own start (lrclib often times another version).
+                            let lines: Vec<(f64, String, Option<Vec<Word>>)> = body
                                 .get("lines")
                                 .and_then(Value::as_array)
-                                .map(|a| a.iter().filter_map(|l| Some((l.get(0)?.as_f64()?, l.get(1)?.as_str()?.to_string()))).collect())
+                                .map(|a| {
+                                    a.iter()
+                                        .enumerate()
+                                        .filter_map(|(n, l)| {
+                                            let words = words_of(n);
+                                            let at = words.as_ref().and_then(|w| w.iter().find_map(|w| w.start)).or_else(|| l.get(0)?.as_f64())?;
+                                            Some((at, l.get(1)?.as_str()?.to_string(), words))
+                                        })
+                                        .collect()
+                                })
                                 .unwrap_or_default();
                             let plain = body.get("lyrics").and_then(Value::as_str).unwrap_or_default().to_string();
                             p.lyrics = Some(Lyrics { track: key, lines, plain });
@@ -1314,7 +1368,7 @@ impl Shell {
         }
 
         let pane_inner: AnyElement = match p.tab {
-            "lyrics" => self.render_player_lyrics(p, track.as_ref(), position_ms, controls, vh, cx),
+            "lyrics" => self.render_player_lyrics(p, track.as_ref(), position_ms, controls, vh, window, cx),
             "queue" => self.render_player_queue(state.as_ref(), in_room, vw - 2. * body_x - gap - left_w, window, cx),
             "search" => self.render_player_search(p, in_room, track.is_some(), vw - 2. * body_x - gap - left_w, window, cx),
             "playlists" => self.render_player_playlists(p, in_room, vw - 2. * body_x - gap - left_w, window, cx),
@@ -2247,7 +2301,7 @@ impl Shell {
 
     /// LyricsPane: the saved lyrics, timed lines following the song (click one to go there), or
     /// the offer to search for them.
-    fn render_player_lyrics(&self, p: &MusicPlayer, track: Option<&Song>, position_ms: f64, can_seek: bool, vh: f32, cx: &mut Context<Self>) -> AnyElement {
+    fn render_player_lyrics(&self, p: &MusicPlayer, track: Option<&Song>, position_ms: f64, can_seek: bool, vh: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let ink: Hsla = Theme::ink().into();
         let Some(track) = track else {
             return empty_state("mic-vocal", "Lyrics show up here".into(), Some("Play a song and its words scroll along with it.".into()), None, None::<Click>, cx);
@@ -2259,6 +2313,31 @@ impl Shell {
             // Asked for once per song, right after this frame.
             cx.spawn(async move |this, cx| {
                 this.update(cx, |this, cx| this.load_player_lyrics(false, cx)).ok();
+            })
+            .detach();
+        }
+        // Development: HOFFLE_DEV_PLAYER_WORDS=1 shows made-up timed lines for the song (to look at).
+        if std::env::var_os("HOFFLE_DEV_PLAYER_WORDS").is_some() && have.is_none_or(|l| l.lines.is_empty()) {
+            let w = |start: f64, end: f64, text: &str| Word { start: Some(start), end: Some(end), text: text.into(), letters: vec![] };
+            let fake = Lyrics {
+                track: key.clone(),
+                lines: vec![
+                    (55., "The city is my church".into(), None),
+                    (58., "It wraps me in the sparkling twilight".into(), None),
+                    (60.5, "Waiting in a car".into(), Some(vec![w(60.5, 60.8, "Waiting"), w(60.8, 61.2, "in"), w(61.2, 61.4, "a"), w(61.4, 62., "car")])),
+                    (63., "Waiting for a ride in the dark".into(), None),
+                    (66., "At night the city grows".into(), None),
+                ],
+                plain: String::new(),
+            };
+            cx.spawn(async move |this, cx| {
+                this.update(cx, |this, cx| {
+                    if let Some(p) = this.music_player.as_mut() {
+                        p.lyrics = Some(fake);
+                    }
+                    cx.notify();
+                })
+                .ok();
             })
             .detach();
         }
@@ -2306,7 +2385,8 @@ impl Shell {
                 .child(div().mt(px(16.)).text_size(px(18.)).line_height(px(30.6)).font_weight(FontWeight::SEMIBOLD).text_color(ink).child(lyrics.plain.clone()))
                 .into_any_element();
         }
-        let current = lyrics.lines.iter().rposition(|(at, _)| *at * 1000. <= position_ms + 150.);
+        let current = lyrics.lines.iter().rposition(|(at, _, _)| *at * 1000. <= position_ms + 150.);
+        let playing = self.room_player(&room).is_some_and(|r| !r.paused);
         // Keep the sung line a little above the middle, as the web scrolls it.
         if let Some(n) = current
             && p.last_line.get() != Some(n)
@@ -2321,13 +2401,37 @@ impl Shell {
         }
         let size = 27.14f32.clamp(20., 32.);
         let mut list = div().id("mp-lyrics").flex_1().min_h_0().overflow_y_scroll().track_scroll(&p.lyrics_scroll).pt(px(vh * 0.16)).pb(px(vh * 0.3)).px(px(side));
-        for (n, (at, text)) in lyrics.lines.iter().enumerate() {
+        for (n, (at, text, words)) in lyrics.lines.iter().enumerate() {
             let color = match current {
                 Some(c) if c == n => ink,
                 Some(c) if n < c => ink.opacity(0.55),
                 _ => ink.opacity(0.36),
             };
             let at = *at;
+            // SungLine: the sung line word by word, each word filling with the ink as it is sung.
+            let sung: Option<AnyElement> = (current == Some(n)).then_some(()).and(words.as_ref()).map(|words| {
+                if playing {
+                    window.request_animation_frame();
+                }
+                let seconds = position_ms / 1000.;
+                let mut row = div().flex().flex_wrap().gap_x(px(size * 0.26));
+                for (i, w) in words.iter().enumerate() {
+                    let fill = match w.start {
+                        None => if i == 0 { 1. } else { 0. },
+                        Some(start) => word_fill(w, (seconds - start) * 1000.),
+                    } as f32;
+                    row = row.child(
+                        div()
+                            .relative()
+                            .flex_none()
+                            .whitespace_nowrap()
+                            .text_color(ink.opacity(0.38))
+                            .child(w.text.clone())
+                            .child(div().absolute().top_0().left_0().h_full().w(gpui::relative(fill)).overflow_hidden().whitespace_nowrap().text_color(ink).child(w.text.clone())),
+                    );
+                }
+                row.into_any_element()
+            });
             list = list.child(
                 div()
                     .id(SharedString::from(format!("mp-line-{n}")))
@@ -2338,7 +2442,10 @@ impl Shell {
                     .line_height(px(size * 1.3))
                     .font_weight(FontWeight::BOLD)
                     .text_color(color)
-                    .child(if text.is_empty() { "♪".to_string() } else { text.clone() })
+                    .map(|d| match sung {
+                        Some(row) => d.child(row),
+                        None => d.child(if text.is_empty() { "♪".to_string() } else { text.clone() }),
+                    })
                     .when(can_seek, |d| d.cursor_pointer().hover(move |s| s.bg(ink.opacity(0.07)).text_color(ink)).on_click(cx.listener(move |this, _, _, cx| this.player_seek(at * 1000., cx)))),
             );
         }
@@ -2419,4 +2526,22 @@ fn empty_state_with(
 
 fn window_width(shell: &Shell) -> gpui::Pixels {
     shell.music_window_width.get()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn word_fill_follows_letters() {
+        let w = Word { start: Some(1.), end: Some(2.), text: "word".into(), letters: vec![250., 500., 750., 1000.] };
+        assert_eq!(word_fill(&w, -5.), 0.);
+        assert!((word_fill(&w, 125.) - 0.125).abs() < 1e-9);
+        assert!((word_fill(&w, 500.) - 0.5).abs() < 1e-9);
+        assert_eq!(word_fill(&w, 1500.), 1.);
+        let plain = Word { letters: vec![], ..w.clone() };
+        assert!((word_fill(&plain, 400.) - 0.4).abs() < 1e-9);
+        let untimed = Word { start: None, ..w };
+        assert_eq!(word_fill(&untimed, 0.), 1.);
+    }
 }
