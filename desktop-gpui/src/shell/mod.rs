@@ -314,6 +314,8 @@ pub struct Shell {
     reaction_viewer: Option<reaction_viewer::ReactionViewer>,
     forward: Option<forward::Forward>,
     invite: Option<invite::InviteDialog>,
+    /// The hub said ready at least once (HOFFLE_DEV_JOIN waits for it and the servers).
+    dev_hub_ready: bool,
     music_player: Option<music_player::MusicPlayer>,
     music_tick: std::cell::Cell<bool>,
     music_bar_spot: profile_card::Spot,
@@ -524,6 +526,7 @@ impl Shell {
             reaction_viewer: None,
             forward: None,
             invite: None,
+            dev_hub_ready: false,
             music_player: None,
             music_tick: std::cell::Cell::new(false),
             music_bar_spot: profile_card::spot(),
@@ -612,6 +615,9 @@ impl Shell {
                     Ok(servers) => {
                         crate::trace(format!("servers loaded: {}", servers.len()));
                         this.servers = servers;
+                        if this.dev_hub_ready {
+                            this.dev_join(cx);
+                        }
                         // Development: HOFFLE_DEV_HOME=1 starts on the DMs home.
                         if std::env::var_os("HOFFLE_DEV_HOME").is_some() && this.server_id.is_none() {
                             this.server_id = this.servers.first().map(|s| s.id.clone());
@@ -747,6 +753,20 @@ impl Shell {
         if self.last_badge != Some(count) {
             self.last_badge = Some(count);
             crate::desktop::set_badge(count);
+        }
+    }
+
+    /// Development: HOFFLE_DEV_JOIN=<room name or id> joins that voice room once, as soon as both
+    /// the hub is ready and the servers are in (either can come first).
+    fn dev_join(&mut self, cx: &mut Context<Self>) {
+        if self.call.is_some() || self.dev_joined {
+            return;
+        }
+        let Ok(want) = std::env::var("HOFFLE_DEV_JOIN") else { return };
+        let room = self.servers.iter().flat_map(|s| s.channels.iter()).find(|c| c.is_voice() && (c.id == want || c.name == want)).map(|c| c.id.clone());
+        if let Some(room) = room {
+            self.dev_joined = true;
+            self.join_voice(room, cx);
         }
     }
 
@@ -1229,17 +1249,8 @@ impl Shell {
                 if let Some(players) = value.get("players").and_then(Value::as_object) {
                     self.players = players.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                 }
-                // Development: HOFFLE_DEV_JOIN=<room name or id> joins that voice room once.
-                if self.call.is_none()
-                    && let Ok(want) = std::env::var("HOFFLE_DEV_JOIN")
-                    && !std::mem::replace(&mut self.dev_joined, true)
-                {
-                    let room = self.servers.iter().flat_map(|s| s.channels.iter())
-                        .find(|c| c.is_voice() && (c.id == want || c.name == want)).map(|c| c.id.clone());
-                    if let Some(room) = room {
-                        self.join_voice(room, cx);
-                    }
-                }
+                self.dev_hub_ready = true;
+                self.dev_join(cx);
                 if let Some(rooms) = value.get("voice").and_then(Value::as_object) {
                     self.rooms = rooms
                         .iter()

@@ -15,6 +15,10 @@ fi
 export HOFFLE_THEME="${HOFFLE_THEME:-cozy}"
 pkill -x $name 2>/dev/null; rm -f "$out"
 (GPUI_SNAPSHOT="$out" "$bin" >"${out%.png}.log" 2>&1 &)
+# A kept run (KEEP=1, quitting by itself after a call) still ends after KEEP_MAX seconds, in case
+# it never got that far. Only this build's path is matched, never an installed app.
+# The Mac must not sleep meanwhile: a sleeping Mac runs no timers, so a voice test would sit in its room.
+[ -n "$KEEP" ] && ( caffeinate -i -t ${KEEP_MAX:-90} & sleep ${KEEP_MAX:-90}; pkill -f "^$bin\$" ) >/dev/null 2>&1 &
 sleep $secs
 [ -z "$KEEP" ] && pkill -x $name
 [ -f "$out" ] && echo "shot $out" || { echo "no frame"; tail -5 "${out%.png}.log"; }

@@ -445,6 +445,14 @@ impl gpui::Render for Shell {
                 if let Some(p) = self.music_player.as_mut() {
                     p.dev_tab(&view);
                 }
+                // HOFFLE_DEV_PLAYER_SEARCH=<words> searches for them (a read).
+                if let Ok(q) = std::env::var("HOFFLE_DEV_PLAYER_SEARCH") {
+                    if let Some(mut p) = self.music_player.take() {
+                        p.dev_search(&q, cx);
+                        self.music_player = Some(p);
+                    }
+                    self.player_search_pub(cx);
+                }
             }
         }
         // Development: HOFFLE_DEV_RENAME=1 opens the Rename Server prompt once (only to look at).
@@ -724,7 +732,7 @@ impl gpui::Render for Shell {
                     this.notify_menu = None;
                     cx.notify();
                     cx.stop_propagation();
-                } else if this.music_player.is_some() && (event.keystroke.key == "escape" || event.keystroke.key == "space") {
+                } else if this.music_player.as_ref().is_some_and(|p| event.keystroke.key == "escape" || (event.keystroke.key == "space" && !p.typing(window, cx))) {
                     // The player takes Esc (close) and Space (play / pause) while it is open.
                     if event.keystroke.key == "escape" {
                         this.close_music_player(cx);

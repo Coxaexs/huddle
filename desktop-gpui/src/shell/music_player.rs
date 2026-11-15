@@ -67,6 +67,25 @@ pub(super) struct MusicPlayer {
     last_line: Cell<Option<usize>>,
     lyrics_asked: std::cell::RefCell<Option<String>>,
     volume_spot: super::profile_card::Spot,
+    search: gpui::Entity<crate::input::TextInput>,
+    results: Option<Vec<Found>>,
+    searched: String,
+    searching: bool,
+    search_error: Option<String>,
+    /// "next" or "queue" by url, once added.
+    added: std::collections::HashMap<String, &'static str>,
+    _search_sub: gpui::Subscription,
+}
+
+/// SongResult: a search hit.
+#[derive(Clone)]
+struct Found {
+    title: String,
+    artist: String,
+    duration: Option<f64>,
+    thumbnail: Option<String>,
+    url: String,
+    words: bool,
 }
 
 /// clock(): m:ss, or h:mm:ss; "–:––" when unknown.
@@ -80,6 +99,15 @@ fn clock(seconds: Option<f64>) -> String {
 const TABS: [(&str, &str, &str); 5] = [("lyrics", "Lyrics", "mic-vocal"), ("queue", "Up next", "list-music"), ("search", "Search", "search"), ("playlists", "Playlists", "library"), ("dj", "DJ", "disc-3")];
 
 impl MusicPlayer {
+    /// Typing in the search bar: Space is a space there, not play / pause.
+    pub(super) fn typing(&self, window: &Window, cx: &gpui::App) -> bool {
+        gpui::Focusable::focus_handle(&self.search, cx).is_focused(window)
+    }
+
+    pub(super) fn dev_search(&mut self, q: &str, cx: &mut gpui::App) {
+        self.search.update(cx, |i, cx| i.set_text(q.to_string(), cx));
+    }
+
     pub(super) fn dev_tab(&mut self, tab: &str) {
         self.tab = TABS.iter().find(|t| t.0 == tab).map(|t| t.0).unwrap_or("lyrics");
     }
@@ -127,6 +155,14 @@ impl Shell {
         let room = room.or_else(|| self.call.as_ref().map(|c| c.channel_id.clone())).or_else(|| {
             self.server().and_then(|s| s.channels.iter().find(|c| c.kind == "voice" && self.players.get(&c.id).is_some_and(|p| !p["track"].is_null())).map(|c| c.id.clone()))
         });
+        let search = cx.new(|cx| {
+            crate::input::TextInput::new("Songs, artists, or a YouTube / Spotify link", cx).look(crate::input::Look { size: 15., line_height: 20., height: 20., color: Theme::ink().into(), placeholder: Theme::muted().into() })
+        });
+        let search_sub = cx.subscribe(&search, |this, _, event, cx| match event {
+            crate::input::InputEvent::Submit => this.player_search(cx),
+            crate::input::InputEvent::Escape => this.close_music_player(cx),
+            _ => cx.notify(),
+        });
         self.music_player = Some(MusicPlayer {
             room,
             tab: "lyrics",
@@ -140,6 +176,13 @@ impl Shell {
             last_line: Cell::new(None),
             lyrics_asked: std::cell::RefCell::new(None),
             volume_spot: super::profile_card::spot(),
+            search,
+            results: None,
+            searched: String::new(),
+            searching: false,
+            search_error: None,
+            added: Default::default(),
+            _search_sub: search_sub,
         });
         cx.notify();
     }
@@ -228,6 +271,72 @@ impl Shell {
         if state.track.is_some() && self.music_in_room() {
             self.player_command(if state.paused { "/resume" } else { "/pause" }.into(), false, cx);
         }
+    }
+
+    pub(super) fn player_search_pub(&mut self, cx: &mut Context<Self>) {
+        self.player_search(cx);
+    }
+
+    /// submit(): GET /api/music/search for what was typed.
+    fn player_search(&mut self, cx: &mut Context<Self>) {
+        let Some(p) = self.music_player.as_mut() else { return };
+        let text = p.search.read(cx).text().trim().to_string();
+        if text.is_empty() || p.searching {
+            return;
+        }
+        p.searching = true;
+        p.search_error = None;
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let q = text.clone();
+            let result = cx.background_executor().spawn(async move { client.music_search(&q) }).await;
+            this.update(cx, |this, cx| {
+                let Some(p) = this.music_player.as_mut() else { return };
+                p.searching = false;
+                match result {
+                    Ok(v) => {
+                        p.results = Some(
+                            v.get("results")
+                                .and_then(Value::as_array)
+                                .map(|a| {
+                                    a.iter()
+                                        .filter_map(|r| {
+                                            Some(Found {
+                                                title: r.get("title")?.as_str()?.to_string(),
+                                                artist: r.get("artist").and_then(Value::as_str).unwrap_or_default().to_string(),
+                                                duration: r.get("duration").and_then(Value::as_f64),
+                                                thumbnail: r.get("thumbnail").and_then(Value::as_str).filter(|t| !t.is_empty()).map(str::to_string),
+                                                url: r.get("url")?.as_str()?.to_string(),
+                                                words: r.get("words").and_then(Value::as_bool).unwrap_or(false),
+                                            })
+                                        })
+                                        .collect()
+                                })
+                                .unwrap_or_default(),
+                        );
+                        p.searched = text;
+                        p.added.clear();
+                    }
+                    Err(e) => p.search_error = Some(if e.to_string().is_empty() { "Search failed.".into() } else { e.to_string() }),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// add(): /playnext (or /play when nothing plays) or /play to the end; marks it added.
+    fn player_add(&mut self, url: String, how: &'static str, playing: bool, cx: &mut Context<Self>) {
+        if !self.music_in_room() {
+            return;
+        }
+        let command = if how == "next" && playing { "/playnext" } else { "/play" };
+        if let Some(p) = self.music_player.as_mut() {
+            p.added.insert(url.clone(), how);
+        }
+        self.player_command(format!("{command} {url}"), true, cx);
     }
 
     /// GET /api/music/lyrics: the saved lyrics, or (`find`) a search for them.
@@ -410,9 +519,12 @@ impl Shell {
                     .child(ui::icon(icon, 15., color))
                     .child(label)
                     .when_some(count, |d, n| d.child(div().min_w(px(6.)).px(px(5.)).rounded_full().bg(color.opacity(0.18)).text_size(px(11.)).line_height(px(16.)).flex().justify_center().child(n.to_string())))
-                    .on_click(cx.listener(move |this, _, _, cx| {
+                    .on_click(cx.listener(move |this, _, window, cx| {
                         if let Some(p) = this.music_player.as_mut() {
                             p.tab = id;
+                            if id == "search" {
+                                window.focus(&gpui::Focusable::focus_handle(&p.search, cx));
+                            }
                             cx.notify();
                         }
                     })),
@@ -647,10 +759,10 @@ impl Shell {
 
         let pane_inner: AnyElement = match p.tab {
             "lyrics" => self.render_player_lyrics(p, track.as_ref(), position_ms, controls, vh, cx),
-            "queue" => self.render_player_queue(state.as_ref(), in_room, cx),
+            "queue" => self.render_player_queue(state.as_ref(), in_room, vw - 2. * body_x - gap - left_w, window, cx),
+            "search" => self.render_player_search(p, in_room, track.is_some(), vw - 2. * body_x - gap - left_w, window, cx),
             other => {
                 let (icon, title) = match other {
-                    "search" => ("search", "Search"),
                     "playlists" => ("library", "Playlists"),
                     _ => ("disc-3", "DJ booth"),
                 };
@@ -721,8 +833,172 @@ impl Shell {
         Some(root.into_any_element())
     }
 
+    /// SearchPane: the search bar, then the songs with Play / Next, add to the end, and + playlist.
+    fn render_player_search(&self, p: &MusicPlayer, in_room: bool, playing: bool, pane_w: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        let lavender: Hsla = Theme::lavender().into();
+        let on_accent: Hsla = rgb(0x15121f).into();
+        let paper: Hsla = Theme::paper().into();
+        let can = !p.search.read(cx).text().trim().is_empty() && !p.searching;
+        let bar = div()
+            .flex_none()
+            .mb(px(12.))
+            .h(px(46.))
+            .pl(px(16.))
+            .pr(px(6.))
+            .rounded_full()
+            .border_1()
+            .border_color(Theme::line())
+            .bg(paper.opacity(0.72))
+            .flex()
+            .items_center()
+            .gap(px(10.))
+            .child(ui::icon("search", 18., muted))
+            .child(div().flex_1().min_w_0().child(p.search.clone()))
+            .child(
+                div()
+                    .id("mp-search-go")
+                    .h(px(34.))
+                    .px(px(16.))
+                    .rounded_full()
+                    .bg(lavender)
+                    .flex()
+                    .items_center()
+                    .text_size(px(13.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(on_accent)
+                    .when(!can, |d| d.opacity(0.42))
+                    .when(can, |d| d.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.player_search(cx))))
+                    .child(if p.searching { ui::icon("loader-2", 16., on_accent).into_any_element() } else { "Search".into_any_element() }),
+            );
+        let mut wrap = div().id("mp-search").flex_1().min_h_0().overflow_y_scroll().p(px(16.)).flex().flex_col().child(bar);
+        if !in_room {
+            wrap = wrap.child(div().mx(px(16.)).mt(px(14.)).px(px(12.)).py(px(8.)).rounded(px(10.)).bg(Hsla::from(Theme::coral()).opacity(0.14)).text_size(px(13.)).line_height(px(18.2)).text_color(ink).child("Join the voice room to play songs, or press + to save one to a playlist."));
+        }
+        if let Some(err) = &p.search_error {
+            wrap = wrap.child(div().px(px(8.)).my(px(13.)).text_size(px(13.)).text_color(Theme::coral()).child(err.clone()));
+        }
+        match &p.results {
+            None if p.search_error.is_none() => {
+                wrap = wrap.child(empty_state("search", "Find something to play".into(), Some("Search YouTube, or paste a YouTube or Spotify link (playlists too).".into()), None, None::<Click>, cx));
+            }
+            Some(results) if results.is_empty() && p.search_error.is_none() => {
+                wrap = wrap.child(empty_state("search", format!("Nothing found for \u{201c}{}\u{201d}", p.searched), Some("Try other words, or paste a link.".into()), None, None::<Click>, cx));
+            }
+            Some(results) => {
+                let mut list = div().flex_none().flex().flex_col().gap(px(2.));
+                for (n, r) in results.iter().enumerate() {
+                    let thumb: AnyElement = match &r.thumbnail {
+                        Some(src) => gpui::img(self.client.absolute(&super::links::proxied(src))).size(px(44.)).flex_none().rounded(px(8.)).object_fit(gpui::ObjectFit::Cover).into_any_element(),
+                        None => div().size(px(44.)).flex_none().rounded(px(8.)).bg(rgb(0x252040)).flex().items_center().justify_center().child(ui::icon("music-2", 16., muted)).into_any_element(),
+                    };
+                    // gpui draws no ellipsis of its own: the text is cut to the room `.mp-row-text` has.
+                    let row_w = pane_w - 2. - 32.;
+                    let actions = match p.added.get(&r.url) {
+                        Some(how) => f32::from(ui::text_width(window, if *how == "next" { "Plays next" } else { "Added" }, FontWeight::SEMIBOLD, 12.)) + 12.,
+                        None => 12. + 14. + 6. + f32::from(ui::text_width(window, if playing { "Next" } else { "Play" }, FontWeight::SEMIBOLD, 12.)) + 12. + if playing { 38. } else { 0. } + 6.,
+                    };
+                    let time_w = r.duration.map(|d| clock(Some(d)).chars().count() as f32 * 7.2).unwrap_or(0.);
+                    let text_w = row_w - 6. - actions - 6. - 32. - 10. - 44. - 12. - 12. - time_w - 10.;
+                    let title_w = text_w - if r.words { 27. } else { 0. };
+                    let mut title = div().flex().items_center().min_w_0().child(div().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(ink).child(ui::fit(window, &r.title, FontWeight::SEMIBOLD, 14., px(title_w))));
+                    if r.words {
+                        title = title.child(div().flex_none().ml(px(7.)).size(px(20.)).rounded_full().bg(lavender.opacity(0.16)).flex().items_center().justify_center().child(ui::icon("mic-vocal", 13., lavender)));
+                    }
+                    let mut row = div()
+                        .id(SharedString::from(format!("mp-found-{n}")))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .rounded(px(12.))
+                        .hover(move |s| s.bg(ink.opacity(0.06)))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .h(px(60.))
+                                .px(px(10.))
+                                .flex()
+                                .items_center()
+                                .gap(px(12.))
+                                .child(thumb)
+                                .child(div().flex_1().min_w_0().flex().flex_col().child(title).child(div().text_size(px(12.)).line_height(px(18.)).text_color(muted).child(ui::fit(window, &r.artist, FontWeight::NORMAL, 12., px(text_w)))))
+                                .child(div().flex_none().font_family(MONO_FONT).text_size(px(12.)).line_height(px(16.)).text_color(muted).child(r.duration.map(|d| clock(Some(d))).unwrap_or_default())),
+                        );
+                    if let Some(how) = p.added.get(&r.url) {
+                        row = row.child(div().pr(px(12.)).text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).text_color(Theme::mint()).child(if *how == "next" { "Plays next" } else { "Added" }));
+                    } else {
+                        let (u1, u2) = (r.url.clone(), r.url.clone());
+                        row = row.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .pr(px(6.))
+                                .child(
+                                    div()
+                                        .id(SharedString::from(format!("mp-found-play-{n}")))
+                                        .h(px(29.))
+                                        .px(px(12.))
+                                        .rounded_full()
+                                        .bg(lavender)
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(6.))
+                                        .text_size(px(12.))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(on_accent)
+                                        .tooltip(ui::tooltip(if playing { "Play this after the current song" } else { "Play this now" }.to_string()))
+                                        .child(ui::icon("play", 14., on_accent))
+                                        .child(if playing { "Next" } else { "Play" })
+                                        .when(!in_room, |d| d.opacity(0.42))
+                                        .when(in_room, |d| d.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| this.player_add(u1.clone(), "next", playing, cx)))),
+                                )
+                                .when(playing, |d| {
+                                    d.child(
+                                        div()
+                                            .id(SharedString::from(format!("mp-found-queue-{n}")))
+                                            .size(px(32.))
+                                            .rounded_full()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .tooltip(ui::tooltip("Add to the end of the queue".to_string()))
+                                            .child(ui::icon("list-plus", 16., ink))
+                                            .when(!in_room, |d| d.opacity(0.42))
+                                            .when(in_room, |d| d.cursor_pointer().hover(move |s| s.bg(ink.opacity(0.1))).on_click(cx.listener(move |this, _, _, cx| this.player_add(u2.clone(), "queue", playing, cx)))),
+                                    )
+                                }),
+                        );
+                    }
+                    row = row.child(
+                        div()
+                            .id(SharedString::from(format!("mp-found-save-{n}")))
+                            .flex_none()
+                            .size(px(32.))
+                            .rounded_full()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .hover(move |s| s.bg(ink.opacity(0.1)))
+                            .tooltip(ui::tooltip("Add to playlist".to_string()))
+                            .child(ui::icon("circle-plus", 16., ink))
+                            .on_click(cx.listener(|this, _, _, cx| this.music_note("Adding to playlists is not in this app yet; use the web player.".into(), cx))),
+                    );
+                    list = list.child(row);
+                }
+                wrap = wrap.child(list);
+            }
+            _ => {}
+        }
+        wrap.into_any_element()
+    }
+
     /// QueuePane: Up next with its count and length, each song (click plays it now, × removes it).
-    fn render_player_queue(&self, state: Option<&Room>, in_room: bool, cx: &mut Context<Self>) -> AnyElement {
+    fn render_player_queue(&self, state: Option<&Room>, in_room: bool, pane_w: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let ink: Hsla = Theme::ink().into();
         let muted: Hsla = Theme::muted().into();
         let queue = state.map(|s| s.queue.clone()).unwrap_or_default();
@@ -749,6 +1025,9 @@ impl Shell {
                 None => div().size(px(44.)).flex_none().rounded(px(8.)).bg(rgb(0x252040)).flex().items_center().justify_center().child(ui::icon("music-2", 16., muted)).into_any_element(),
             };
             let index = n + 1;
+            let time_w = song.duration.map(|d| clock(Some(d)).chars().count() as f32 * 7.2).unwrap_or(0.);
+            let text_w = pane_w - 2. - 32. - if in_room { 38. } else { 0. } - 10. - 22. - 12. - 44. - 12. - 12. - time_w - 10.;
+            let sub = if song.artist.is_empty() { format!("Added by {}", song.requested_by) } else { song.artist.clone() };
             list = list.child(
                 div()
                     .id(SharedString::from(format!("mp-row-{n}")))
@@ -776,8 +1055,8 @@ impl Shell {
                                     .min_w_0()
                                     .flex()
                                     .flex_col()
-                                    .child(div().truncate().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(ink).child(song.title.clone()))
-                                    .child(div().truncate().text_size(px(12.)).line_height(px(18.)).text_color(muted).child(if song.artist.is_empty() { format!("Added by {}", song.requested_by) } else { song.artist.clone() })),
+                                    .child(div().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(ink).child(ui::fit(window, &song.title, FontWeight::SEMIBOLD, 14., px(text_w))))
+                                    .child(div().text_size(px(12.)).line_height(px(18.)).text_color(muted).child(ui::fit(window, &sub, FontWeight::NORMAL, 12., px(text_w)))),
                             )
                             .child(div().flex_none().font_family(MONO_FONT).text_size(px(12.)).line_height(px(16.)).text_color(muted).child(song.duration.map(|d| clock(Some(d))).unwrap_or_default())),
                     )

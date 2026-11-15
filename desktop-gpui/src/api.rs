@@ -228,6 +228,11 @@ impl Client {
         self.post("/api/music/command", json!({ "command": command, "voiceChannelId": voice_channel_id, "textChannelId": text_channel_id, "silent": silent }))
     }
 
+    /// /api/music/search: songs for a few words or a link.
+    pub fn music_search(&self, q: &str) -> Result<Value> {
+        self.get(&format!("/api/music/search?q={}", encode(q)))
+    }
+
     /// The playing song's lyrics in a voice room: saved ones, or (`find`) searched for.
     pub fn music_lyrics(&self, voice_channel_id: &str, find: bool) -> Result<Value> {
         self.get(&format!("/api/music/lyrics?voiceChannelId={}{}", encode(voice_channel_id), if find { "&find=1" } else { "" }))
