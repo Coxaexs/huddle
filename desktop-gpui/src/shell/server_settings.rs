@@ -49,6 +49,8 @@ pub(super) struct ServerSettings {
     banner_url: String,
     gradient: usize,
     notice: Option<String>,
+    member_search: Entity<TextInput>,
+    role_menu: Option<String>,
     _subs: Vec<Subscription>,
 }
 
@@ -108,6 +110,14 @@ impl Shell {
             }
             cx.notify();
         })];
+        let member_search = cx.new(|cx| TextInput::new("Search Members, Roles, or Invites", cx).look(Look { size: 14., line_height: 21., height: 21., color: Theme::ink().into(), placeholder: Theme::muted().into() }));
+        let mut subs = subs;
+        subs.push(cx.subscribe_in(&member_search, window, |this, _, event, _, cx| {
+            if matches!(event, InputEvent::Escape) {
+                this.server_settings = None;
+            }
+            cx.notify();
+        }));
         self.server_menu = false;
         self.server_settings = Some(ServerSettings {
             server_id: server.id.clone(),
@@ -118,6 +128,8 @@ impl Shell {
             banner_url: server.banner_url.clone().unwrap_or_default(),
             gradient: 0,
             notice: None,
+            member_search,
+            role_menu: None,
             _subs: subs,
         });
         cx.notify();
@@ -370,6 +382,7 @@ impl Shell {
 
         let page: AnyElement = match tab {
             "profile" => self.render_server_profile(s, server, can, window, cx),
+            "members" => self.render_server_members(s, server, can, window, cx),
             other => self.render_server_tab(other, s, server, can, window, cx),
         };
         let main = div()
@@ -614,6 +627,310 @@ impl Shell {
                     .child(div().mt(px(10.)).text_size(px(11.)).line_height(px(16.5)).text_color(muted).child("Est. Jun 2026")),
             );
         div().flex().items_start().gap(px(48.)).child(left).child(card).into_any_element()
+    }
+
+    /// moderate (kick or ban) once confirmed.
+    pub(super) fn moderate_member(&mut self, server: String, member: String, name: String, action: &'static str, cx: &mut Context<Self>) {
+        let path = format!("/api/members/{}", url::form_urlencoded::byte_serialize(member.as_bytes()).collect::<String>());
+        let body = json!({ "serverId": server, "action": action });
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.settings_post(&path, body) }).await;
+            this.update(cx, |this, cx| match result {
+                Ok(_) => {
+                    if let Some(list) = this.members.get_mut(&server) {
+                        list.retain(|m| m.id != member);
+                    }
+                    this.server_notice(format!("{} {name}.", if action == "kick" { "Kicked" } else { "Banned" }), cx);
+                    this.load_servers(cx);
+                }
+                Err(e) => this.server_notice(if e.to_string().is_empty() { format!("Could not {action} member.") } else { e.to_string() }, cx),
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// toggleMemberRole(): shown at once, then POST /api/roles/assign.
+    fn toggle_member_role(&mut self, server: String, user: String, role: String, add: bool, cx: &mut Context<Self>) {
+        if let Some(m) = self.members.get_mut(&server).and_then(|l| l.iter_mut().find(|m| m.id == user)) {
+            let mut held: Vec<String> = m.role_ids.get(&server).and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+            held.retain(|r| r != &role);
+            if add {
+                held.push(role.clone());
+            }
+            if !m.role_ids.is_object() {
+                m.role_ids = json!({});
+            }
+            m.role_ids[&server] = json!(held);
+        }
+        let body = json!({ "serverId": server, "userId": user, "roleId": role, "add": add });
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.settings_post("/api/roles/assign", body) }).await;
+            this.update(cx, |this, cx| {
+                if let Err(e) = result {
+                    this.server_notice(e.to_string(), cx);
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// ServerMembersTab: search, then each member with where they came from, their roles (add /
+    /// remove), and kick / ban — the grid's fourth column wraps under the first, as on the web.
+    fn render_server_members(&self, s: &ServerSettings, server: &crate::model::Server, can: Can, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        let grey: Hsla = rgb(0x949ba4).into();
+        let query = s.member_search.read(cx).text().trim().to_lowercase();
+        let mut roles = server.roles.clone();
+        roles.sort_by_key(|r| -r.position);
+        let held = |m: &crate::model::Member| -> Vec<String> { m.role_ids.get(&server.id).and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default() };
+        let all = self.members.get(&server.id).cloned().unwrap_or_default();
+        let shown: Vec<&crate::model::Member> = all
+            .iter()
+            .filter(|m| {
+                query.is_empty()
+                    || m.display_name.to_lowercase().contains(&query)
+                    || m.username.to_lowercase().contains(&query)
+                    || m.joined_via.as_ref().is_some_and(|j| j.code.to_lowercase().contains(&query) || j.creator_username.as_deref().unwrap_or("").to_lowercase().contains(&query) || j.creator_name.as_deref().unwrap_or("").to_lowercase().contains(&query))
+                    || roles.iter().any(|r| held(m).contains(&r.id) && r.name.to_lowercase().contains(&query))
+            })
+            .collect();
+        let main_w = f32::from(window.viewport_size().width) - 240. - 120.;
+        let mid_w = (main_w - 32. - 280. - 140.).max(60.);
+        let head = |text: &str, w: f32| div().w(px(w)).flex_none().text_size(px(11.)).line_height(px(16.5)).font_weight(FontWeight::EXTRA_BOLD).text_color(grey).child(text.to_string());
+        let mut list = div().flex().flex_col().gap(px(4.));
+        for m in shown.iter() {
+            let owner = server.owner_id.as_deref() == Some(m.id.as_str());
+            let mine = held(m);
+            let member_roles: Vec<&crate::model::Role> = roles.iter().filter(|r| mine.contains(&r.id)).collect();
+            let open_menu = s.role_menu.as_deref() == Some(m.id.as_str());
+            let online = self.presence_of(&m.id) != "offline";
+            let joined: AnyElement = match (&m.joined_via, owner) {
+                (Some(j), _) => div()
+                    .flex()
+                    .items_center()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(4.))
+                            .h(px(20.5))
+                            .px(px(6.))
+                            .rounded(px(4.))
+                            .border_1()
+                            .border_color(rgba(0x5865f24d))
+                            .bg(rgba(0x5865f226))
+                            .font_family(crate::theme::MONO_FONT)
+                            .text_size(px(11.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(0xa5b4fc))
+                            .child(ui::icon("link", 12., rgb(0xa5b4fc)))
+                            .child(j.code.clone()),
+                    )
+                    .children(j.creator_username.clone().or(j.creator_name.clone()).map(|by| div().text_size(px(11.)).text_color(grey).child(format!("by @{by}"))))
+                    .into_any_element(),
+                (None, true) => div().flex().items_center().gap(px(4.)).text_size(px(11.)).italic().text_color(rgb(0x80848e)).child(ui::icon("crown", 12., rgb(0x80848e))).child("Server Owner").into_any_element(),
+                (None, false) => div().text_size(px(11.)).italic().text_color(rgb(0x80848e)).child("Direct / Default").into_any_element(),
+            };
+            let mut role_col = div().w(px(140.)).flex_none().flex().flex_wrap().items_center().gap(px(4.));
+            for r in &member_roles {
+                let color = crate::theme::css_color(&r.color);
+                let (sid, uid, rid) = (server.id.clone(), m.id.clone(), r.id.clone());
+                role_col = role_col.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .px(px(8.))
+                        .py(px(3.))
+                        .rounded(px(4.))
+                        .bg(gpui::white().opacity(0.08))
+                        .border_1()
+                        .border_color(color.map(|c| c.opacity(0.4)).unwrap_or(gpui::transparent_black()))
+                        .text_size(px(11.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(div().size(px(8.)).rounded_full().bg(color.unwrap_or(rgb(0x99aab5).into())))
+                        .child(div().text_color(color.unwrap_or(rgb(0xdbdee1).into())).child(r.name.clone()))
+                        .when(can.roles, |d| {
+                            d.child(
+                                div()
+                                    .id(SharedString::from(format!("rr-{}-{}", m.id, r.id)))
+                                    .opacity(0.6)
+                                    .hover(|s| s.opacity(1.))
+                                    .cursor_pointer()
+                                    .child(ui::icon("x", 12., color.unwrap_or(rgb(0xdbdee1).into())))
+                                    .on_click(cx.listener(move |this, _, _, cx| this.toggle_member_role(sid.clone(), uid.clone(), rid.clone(), false, cx))),
+                            )
+                        }),
+                );
+            }
+            if can.roles {
+                let uid = m.id.clone();
+                let mut add = div().relative().child(
+                    div()
+                        .id(SharedString::from(format!("ra-{}", m.id)))
+                        .size(px(22.))
+                        .rounded(px(4.))
+                        .bg(gpui::white().opacity(0.06))
+                        .border_1()
+                        .border_dashed()
+                        .border_color(gpui::white().opacity(0.2))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .hover(|s| s.bg(gpui::white().opacity(0.12)))
+                        .tooltip(ui::tooltip("Add Role".to_string()))
+                        .child(ui::icon("plus", 14., rgb(0xb5bac1)))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if let Some(s) = this.server_settings.as_mut() {
+                                s.role_menu = if s.role_menu.as_deref() == Some(uid.as_str()) { None } else { Some(uid.clone()) };
+                            }
+                            cx.notify();
+                        })),
+                );
+                if open_menu {
+                    let missing: Vec<&crate::model::Role> = roles.iter().filter(|r| !mine.contains(&r.id)).collect();
+                    let mut menu = div().absolute().top(px(22.)).left_0().min_w(px(160.)).p(px(6.)).rounded(px(8.)).bg(rgb(0x111214)).border_1().border_color(gpui::white().opacity(0.12)).shadow(ui::card_shadow()).flex().flex_col();
+                    if missing.is_empty() {
+                        menu = menu.child(div().px(px(8.)).py(px(6.)).text_size(px(11.)).text_color(grey).child("No more roles to add"));
+                    }
+                    for r in missing {
+                        let color = crate::theme::css_color(&r.color);
+                        let (sid, uid, rid) = (server.id.clone(), m.id.clone(), r.id.clone());
+                        menu = menu.child(
+                            div()
+                                .id(SharedString::from(format!("rao-{}-{}", m.id, r.id)))
+                                .flex()
+                                .items_center()
+                                .gap(px(8.))
+                                .px(px(8.))
+                                .py(px(6.))
+                                .rounded(px(4.))
+                                .text_size(px(12.))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(Hsla::from(Theme::lavender()).opacity(0.15)))
+                                .child(div().size(px(8.)).rounded_full().bg(color.unwrap_or(rgb(0x99aab5).into())))
+                                .child(div().text_color(color.unwrap_or(rgb(0xdbdee1).into())).child(r.name.clone()))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    if let Some(s) = this.server_settings.as_mut() {
+                                        s.role_menu = None;
+                                    }
+                                    this.toggle_member_role(sid.clone(), uid.clone(), rid.clone(), true, cx);
+                                })),
+                        );
+                    }
+                    add = add.child(gpui::deferred(menu).with_priority(3));
+                }
+                role_col = role_col.child(add);
+            }
+            let mut actions = div().w(px(280.)).flex().justify_end().items_center().gap(px(6.));
+            if !owner && (can.members || can.ban) {
+                let act = |id: String, icon: &'static str, tip: &'static str, danger: bool| {
+                    div()
+                        .id(SharedString::from(id))
+                        .p(px(6.))
+                        .rounded(px(4.))
+                        .cursor_pointer()
+                        .hover(move |s| if danger { s.bg(rgba(0xef444433)) } else { s.bg(gpui::white().opacity(0.08)) })
+                        .tooltip(ui::tooltip(tip.to_string()))
+                        .child(ui::icon(icon, 15., grey))
+                };
+                let (sid, uid, name) = (server.id.clone(), m.id.clone(), m.display_name_or_name());
+                let server_name = server.name.clone();
+                let (sid2, uid2, name2, server_name2) = (sid.clone(), uid.clone(), name.clone(), server_name.clone());
+                actions = actions
+                    .child(act(format!("kick-{}", m.id), "user-minus", "Kick Member", false).on_click(cx.listener(move |this, _, _, cx| {
+                        this.confirm = Some(Confirm {
+                            title: format!("Kick {name}?"),
+                            text: format!("Are you sure you want to remove {name} from {server_name}? They will be able to rejoin with an invite."),
+                            ok: "Kick Member".into(),
+                            cancel: t("common.cancel"),
+                            action: ConfirmAction::Moderate(sid.clone(), uid.clone(), name.clone(), "kick"),
+                        });
+                        cx.notify();
+                    })))
+                    .when(can.ban, |d| {
+                        d.child(act(format!("ban-{}", m.id), "hammer", "Ban Member", true).on_click(cx.listener(move |this, _, _, cx| {
+                            this.confirm = Some(Confirm {
+                                title: format!("Ban {name2}?"),
+                                text: format!("Are you sure you want to ban {name2} from {server_name2}? They will not be able to rejoin unless unbanned."),
+                                ok: "Ban Member".into(),
+                                cancel: t("common.cancel"),
+                                action: ConfirmAction::Moderate(sid2.clone(), uid2.clone(), name2.clone(), "ban"),
+                            });
+                            cx.notify();
+                        })))
+                    });
+            }
+            let face = div()
+                .relative()
+                .flex_none()
+                .child(ui::avatar(self.picture(&m.avatar_url), &m.avatar, &m.color, m.name(), 36.))
+                .child(div().absolute().right(px(-1.)).bottom(px(-1.)).size(px(12.)).rounded_full().border_2().border_color(rgb(0x1e1f22)).bg(if online { rgb(0x3ba55d) } else { rgb(0x80848e) }));
+            list = list.child(
+                div()
+                    .px(px(16.))
+                    .py(px(10.))
+                    .rounded(px(8.))
+                    .bg(Theme::panel())
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .child(
+                                div()
+                                    .w(px(280.))
+                                    .flex_none()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(12.))
+                                    .child(face)
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .flex()
+                                            .flex_col()
+                                            .child(div().flex().items_center().gap(px(4.)).text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::BOLD).text_color(rgb(0xf2f3f5)).child(m.display_name_or_name()).when(owner, |d| d.child(ui::icon("crown", 14., rgb(0xf59e0b)))))
+                                            .child(div().text_size(px(11.)).line_height(px(16.5)).text_color(grey).child(format!("@{}", m.username))),
+                                    ),
+                            )
+                            .child(div().w(px(mid_w)).flex_none().child(joined))
+                            .child(role_col),
+                    )
+                    .child(actions),
+            );
+        }
+        let _ = (ink, muted);
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(div().font_family(DISPLAY_FONT).text_size(px(26.)).line_height(px(39.)).font_weight(FontWeight::MEDIUM).text_color(ink).child("Server Members"))
+            .child(div().mt(px(-4.)).mb(px(12.)).text_size(px(13.5)).line_height(px(18.9)).text_color(muted).child(format!("{} {} in {}. Manage their server roles, view invite sources, and moderate members here.", shown.len(), if shown.len() == 1 { "member" } else { "members" }, server.name)))
+            .child(div().relative().h(px(43.)).pl(px(36.)).pr(px(14.)).rounded(px(6.)).bg(Theme::paper()).border_1().border_color(Theme::line()).flex().items_center().child(div().absolute().left(px(12.)).top(px(14.)).opacity(0.6).child(ui::icon("search", 14., ink))).child(div().flex_1().child(s.member_search.clone())))
+            .child(
+                div()
+                    .mt(px(-8.))
+                    .px(px(16.))
+                    .py(px(8.))
+                    .border_b_1()
+                    .border_color(Theme::divider())
+                    .flex()
+                    .flex_col()
+                    .child(div().flex().child(head("MEMBER", 280.)).child(head("JOINED VIA", mid_w)).child(head("ROLES", 140.)))
+                    .child(div().w(px(280.)).flex().justify_end().child(head("ACTIONS", 60.).flex().justify_end())),
+            )
+            .child(list.mt(px(-8.)))
+            .into_any_element()
     }
 
     /// The tabs still to come in this app: what they are, and the way to them on the web.

@@ -298,6 +298,16 @@ pub struct Member {
     pub global_name: Option<String>,
     pub profile_frame: Option<String>,
     pub pride_badges: Vec<String>,
+    /// The invite they came in with, when known (server settings → Members).
+    pub joined_via: Option<JoinedVia>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct JoinedVia {
+    pub code: String,
+    pub creator_username: Option<String>,
+    pub creator_name: Option<String>,
 }
 
 impl Member {

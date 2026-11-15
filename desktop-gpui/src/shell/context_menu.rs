@@ -48,6 +48,8 @@ pub(super) enum ConfirmAction {
     Prompt(super::channel_tools::PromptKind, gpui::Entity<crate::input::TextInput>),
     DeleteChannel(String),
     DeleteCategory(String),
+    /// Server settings → Members: (server, member, name, "kick" or "ban").
+    Moderate(String, String, String, &'static str),
 }
 
 #[derive(Clone, Copy)]
@@ -727,6 +729,7 @@ impl Shell {
                 cx.notify();
             }
             ConfirmAction::DeleteChannel(id) => self.delete_channel_confirmed(id, cx),
+            ConfirmAction::Moderate(server, member, name, action) => self.moderate_member(server, member, name, action, cx),
             ConfirmAction::DeleteCategory(id) => self.delete_category_confirmed(id, cx),
             ConfirmAction::Report(id) => {
                 let client = self.client.clone();
