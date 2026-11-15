@@ -115,6 +115,12 @@ impl TextInput {
         self.select_to(self.content.len(), cx)
     }
 
+    /// The caret at the start, so a long value shows its beginning.
+    pub fn move_to_start(&mut self, cx: &mut Context<Self>) {
+        self.move_to(0, cx);
+        self.scroll_x = gpui::px(0.);
+    }
+
     pub fn centered(mut self) -> Self {
         self.centered = true;
         self

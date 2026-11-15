@@ -77,3 +77,15 @@ pub fn preview(id: &str) {
         let _ = std::process::Command::new("/usr/bin/afplay").arg(&file).status();
     });
 }
+
+/// Plays a downloaded clip once (Server Settings → Soundboard's Play), at 70% like the web.
+pub fn play_clip(bytes: Vec<u8>, ext: &str) {
+    let ext = ext.to_string();
+    std::thread::spawn(move || {
+        let file = std::env::temp_dir().join(format!("hoffle-clip-{:x}.{ext}", bytes.len() ^ bytes.first().copied().unwrap_or(0) as usize));
+        if std::fs::write(&file, &bytes).is_ok() {
+            let _ = std::process::Command::new("/usr/bin/afplay").arg("-v").arg("0.7").arg(&file).status();
+            let _ = std::fs::remove_file(&file);
+        }
+    });
+}

@@ -24,6 +24,8 @@ pub(super) enum PromptKind {
     Bitrate(String),
     Region(String),
     CreateRole,
+    /// Server settings → Emoji: the picked picture's name.
+    EmojiName,
 }
 
 /// CREATABLE_CHANNEL_KINDS with CHANNEL_KIND_COPY: kind, label, icon, title, message, placeholder.
@@ -302,6 +304,7 @@ impl Shell {
                 let bitrate = clamp_bitrate(Some(kbps * 1000));
                 self.patch_channel(id, json!({ "bitrate": bitrate }), move || format!("Voice bitrate set to {} kbps", bitrate / 1000), cx);
             }
+            PromptKind::EmojiName => self.upload_emoji(value, cx),
             PromptKind::CreateRole => {
                 if value.is_empty() {
                     return;

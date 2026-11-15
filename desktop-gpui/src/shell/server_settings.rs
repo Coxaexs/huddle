@@ -66,6 +66,15 @@ pub(super) struct ServerSettings {
     ban_search: Entity<TextInput>,
     audit_query: Entity<TextInput>,
     audit_cat: &'static str,
+    emojis: Option<Vec<Value>>,
+    stickers: Option<Vec<Value>>,
+    sounds: Option<Vec<Value>>,
+    /// The editable names (and a sound's emoji) by item id, saved on Enter.
+    expr_inputs: std::collections::HashMap<String, Entity<TextInput>>,
+    expr_subs: Vec<Subscription>,
+    uploading: bool,
+    /// The picture picked for a new emoji, waiting for its name.
+    pub(super) pending_emoji: Option<std::path::PathBuf>,
     _subs: Vec<Subscription>,
 }
 
@@ -231,6 +240,13 @@ impl Shell {
             ban_search,
             audit_query,
             audit_cat: "all",
+            emojis: None,
+            stickers: None,
+            sounds: None,
+            expr_inputs: Default::default(),
+            expr_subs: Vec::new(),
+            uploading: false,
+            pending_emoji: None,
             _subs: subs,
         });
         cx.notify();
@@ -502,6 +518,9 @@ impl Shell {
             "invites" => self.render_server_invites(s, server, can, cx),
             "bans" => self.render_server_bans(s, cx),
             "audit_log" => self.render_server_audit(s, server, window, cx),
+            "emoji" => self.render_server_emoji(s, can, cx),
+            "stickers" => self.render_server_stickers(s, can, window, cx),
+            "soundboard" => self.render_server_sounds(s, can, cx),
             other => self.render_server_tab(other, s, server, can, window, cx),
         };
         let main = div()
@@ -1361,6 +1380,9 @@ impl Shell {
         let (path, key) = match kind {
             "invites" => (format!("/api/invites?serverId={sid}"), "invites"),
             "bans" => (format!("/api/bans?serverId={sid}"), "bans"),
+            "emojis" => (format!("/api/emojis?serverId={sid}"), "emojis"),
+            "stickers" => (format!("/api/stickers/packs?serverId={sid}"), "stickers"),
+            "sounds" => (format!("/api/sounds?serverId={sid}"), "sounds"),
             _ => (format!("/api/audit?serverId={sid}"), "entries"),
         };
         let client = self.client.clone();
@@ -1373,6 +1395,15 @@ impl Shell {
                 match kind {
                     "invites" => s.invites = Some(list),
                     "bans" => s.bans = Some(list),
+                    "emojis" => s.emojis = Some(list),
+                    "stickers" | "sounds" => {
+                        if kind == "stickers" {
+                            s.stickers = Some(list.clone());
+                        } else {
+                            s.sounds = Some(list.clone());
+                        }
+                        this.make_expr_inputs(kind, &list, cx);
+                    }
                     _ => s.audit = Some(list),
                 }
                 cx.notify();
@@ -1387,6 +1418,9 @@ impl Shell {
             match kind {
                 "invites" => s.invites = None,
                 "bans" => s.bans = None,
+                "emojis" => s.emojis = None,
+                "stickers" => s.stickers = None,
+                "sounds" => s.sounds = None,
                 _ => s.audit = None,
             }
         }
@@ -1793,6 +1827,493 @@ impl Shell {
                         );
                     }
                     page = page.child(ul);
+                }
+            }
+        }
+        page.into_any_element()
+    }
+
+    /// InlineName: a field per sticker / sound (and a sound's emoji) that saves on Enter.
+    fn make_expr_inputs(&mut self, kind: &'static str, list: &[Value], cx: &mut Context<Self>) {
+        let Some(s) = self.server_settings.as_mut() else { return };
+        let mut made = Vec::new();
+        for item in list {
+            let id = item["id"].as_str().unwrap_or_default().to_string();
+            let fields: Vec<(&str, usize, f32)> = if kind == "sounds" { vec![("name", 40, 14.), ("emoji", 8, 20.)] } else { vec![("name", 40, 13.)] };
+            for (field, max, size) in fields {
+                let key = format!("{kind}:{field}:{id}");
+                if s.expr_inputs.contains_key(&key) {
+                    continue;
+                }
+                let value = item[field].as_str().unwrap_or_default().to_string();
+                let input = cx.new(|cx| {
+                    let mut i = TextInput::new("", cx).look(Look { size, line_height: size * 1.5, height: size * 1.5, color: Theme::ink().into(), placeholder: Theme::muted().into() });
+                    i.set_text(value, cx);
+                    i.move_to_start(cx);
+                    i
+                });
+                made.push((key, input, id.clone(), field, max));
+            }
+        }
+        for (key, input, id, field, max) in made {
+            let sub = cx.subscribe(&input, move |this, input, event, cx| match event {
+                InputEvent::Submit => {
+                    let next = input.read(cx).text().trim().to_string();
+                    if next.is_empty() {
+                        return;
+                    }
+                    let (path, body) = if kind == "sounds" { ("/api/sounds".to_string(), json!({ "id": id, field: next })) } else { ("/api/stickers/packs".to_string(), json!({ "id": id, "name": next })) };
+                    this.ss_call(move |c| c.settings_patch(&path, body), |_, cx| cx.notify(), cx);
+                }
+                InputEvent::Changed => {
+                    let text = input.read(cx).text();
+                    if text.chars().count() > max {
+                        let cut: String = text.chars().take(max).collect();
+                        input.update(cx, |i, cx| i.set_text(cut, cx));
+                    }
+                }
+                _ => {}
+            });
+            if let Some(s) = self.server_settings.as_mut() {
+                s.expr_inputs.insert(key, input);
+                s.expr_subs.push(sub);
+            }
+        }
+    }
+
+    /// Upload Stickers / Upload Sounds: several files, each uploaded then added under its file name.
+    fn upload_expressions(&mut self, kind: &'static str, cx: &mut Context<Self>) {
+        let Some(sid) = self.server_settings.as_ref().map(|s| s.server_id.clone()) else { return };
+        let picked = cx.prompt_for_paths(gpui::PathPromptOptions { files: true, directories: false, multiple: true, prompt: None });
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let Ok(Ok(Some(paths))) = picked.await else { return };
+            this.update(cx, |this, cx| {
+                if let Some(s) = this.server_settings.as_mut() {
+                    s.uploading = true;
+                }
+                cx.notify();
+            })
+            .ok();
+            let count = paths.len();
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    for path in paths {
+                        let file = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "file".into());
+                        let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+                        let mime = match ext.as_str() {
+                            "png" => "image/png",
+                            "gif" => "image/gif",
+                            "webp" => "image/webp",
+                            "jpg" | "jpeg" => "image/jpeg",
+                            "mp3" => "audio/mpeg",
+                            "ogg" => "audio/ogg",
+                            "wav" => "audio/wav",
+                            "m4a" => "audio/mp4",
+                            _ => "application/octet-stream",
+                        };
+                        let key = client.upload_field("file", &file, mime, &std::fs::read(&path)?)?;
+                        let name: String = path.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default().chars().take(40).collect();
+                        let name = if name.is_empty() { "untitled".to_string() } else { name };
+                        let body = json!({ "serverId": sid, "key": key, "name": name });
+                        client.settings_post(if kind == "sounds" { "/api/sounds" } else { "/api/stickers/packs" }, body)?;
+                    }
+                    anyhow::Ok(())
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                if let Some(s) = this.server_settings.as_mut() {
+                    s.uploading = false;
+                }
+                let what = if kind == "sounds" { "sound" } else { "sticker" };
+                match result {
+                    Ok(()) => this.server_notice(if count == 1 { format!("{}{} added.", what[..1].to_uppercase(), &what[1..]) } else { format!("{count} {what}s added.") }, cx),
+                    Err(e) => this.server_notice(e.to_string(), cx),
+                }
+                this.ss_refresh(kind, cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// handleFileSelect(): pick the picture, then name it (the prompt), then it uploads.
+    fn pick_emoji(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let picked = cx.prompt_for_paths(gpui::PathPromptOptions { files: true, directories: false, multiple: false, prompt: None });
+        let handle = window.window_handle();
+        cx.spawn(async move |this, cx| {
+            let Ok(Ok(Some(paths))) = picked.await else { return };
+            let Some(path) = paths.into_iter().next() else { return };
+            let default: String = path.file_stem().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').take(32).collect();
+            cx.update_window(handle, |_, window, cx| {
+                this.update(cx, |this, cx| {
+                    if let Some(s) = this.server_settings.as_mut() {
+                        s.pending_emoji = Some(path);
+                    }
+                    this.open_prompt(super::channel_tools::PromptKind::EmojiName, "Upload Custom Emoji".into(), "Enter emoji name (letters, numbers, underscores):".into(), default, "e.g. party_cat", "Upload Emoji", None, window, cx);
+                })
+                .ok();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// The named emoji: upload the picture, then add it.
+    pub(super) fn upload_emoji(&mut self, name: String, cx: &mut Context<Self>) {
+        let Some(s) = self.server_settings.as_mut() else { return };
+        let Some(path) = s.pending_emoji.take() else { return };
+        if name.trim().is_empty() {
+            return;
+        }
+        s.uploading = true;
+        let sid = s.server_id.clone();
+        let client = self.client.clone();
+        let label = name.trim().to_string();
+        cx.spawn(async move |this, cx| {
+            let n = label.clone();
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let file = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "emoji".into());
+                    let mime = match path.extension().map(|e| e.to_string_lossy().to_lowercase()).as_deref() {
+                        Some("png") => "image/png",
+                        Some("gif") => "image/gif",
+                        Some("webp") => "image/webp",
+                        _ => "image/jpeg",
+                    };
+                    let key = client.upload_field("file", &file, mime, &std::fs::read(&path)?)?;
+                    client.settings_post("/api/emojis", json!({ "serverId": sid, "key": key, "name": n }))
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                if let Some(s) = this.server_settings.as_mut() {
+                    s.uploading = false;
+                }
+                match result {
+                    Ok(_) => {
+                        this.server_notice(format!("Uploaded emoji :{label}:"), cx);
+                        this.load_servers(cx);
+                    }
+                    Err(e) => this.server_notice(if e.to_string().is_empty() { "Failed to add emoji".into() } else { e.to_string() }, cx),
+                }
+                this.ss_refresh("emojis", cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// A removal once confirmed: emoji, sticker or sound by id.
+    pub(super) fn remove_expression(&mut self, kind: &'static str, id: String, cx: &mut Context<Self>) {
+        let enc = url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>();
+        let path = match kind {
+            "emojis" => format!("/api/emojis?id={enc}"),
+            "stickers" => format!("/api/stickers/packs?id={enc}"),
+            _ => format!("/api/sounds?id={enc}"),
+        };
+        self.ss_call(move |c| c.settings_delete(&path, json!({})), move |this, cx| {
+            if kind == "emojis" {
+                this.load_servers(cx);
+            }
+            this.ss_refresh(kind, cx);
+        }, cx);
+    }
+
+    fn expr_table_head() -> gpui::Div {
+        div()
+            .px(px(14.))
+            .py(px(10.))
+            .bg(rgba(0x0000002e))
+            .flex()
+            .gap(px(12.))
+            .text_size(px(11.))
+            .line_height(px(16.5))
+            .font_weight(FontWeight::BOLD)
+            .text_color(rgb(0x949ba4))
+            .child(div().w(px(72.)).child("EMOJI"))
+            .child(div().flex_1().child("NAME"))
+            .child("ACTIONS")
+    }
+
+    fn table_button_icon(id: SharedString, label: &str, icon: &'static str) -> gpui::Stateful<gpui::Div> {
+        div()
+            .id(id)
+            .h(px(30.))
+            .px(px(10.))
+            .rounded(px(8.))
+            .bg(gpui::white().opacity(0.06))
+            .border_1()
+            .border_color(rgba(0xffffff1a))
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .text_size(px(12.))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(rgb(0xdbdee1))
+            .cursor_pointer()
+            .child(ui::icon(icon, 13., rgb(0xdbdee1)))
+            .child(label.to_string())
+    }
+
+    fn table_button(id: SharedString, label: &str, danger: bool) -> gpui::Stateful<gpui::Div> {
+        div()
+            .id(id)
+            .h(px(30.))
+            .px(px(10.))
+            .rounded(px(8.))
+            .bg(gpui::white().opacity(0.06))
+            .border_1()
+            .border_color(if danger { rgba(0xf871714d) } else { rgba(0xffffff1a) })
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .text_size(px(12.))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(if danger { rgb(0xf87171) } else { rgb(0xdbdee1) })
+            .cursor_pointer()
+            .child(label.to_string())
+    }
+
+    fn expr_header(title: &str, text: String, button: Option<gpui::Stateful<gpui::Div>>, note: &str) -> gpui::Div {
+        let ink: Hsla = Theme::ink().into();
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .when(!title.is_empty(), |d| d.child(div().flex().flex_col().child(div().font_family(DISPLAY_FONT).text_size(px(26.)).line_height(px(39.)).font_weight(FontWeight::MEDIUM).text_color(ink).child(title.to_string())).child(div().mt(px(4.)).mb(px(12.)).text_size(px(13.5)).line_height(px(18.9)).text_color(Theme::muted()).child(text))))
+            .children(button.map(|b| div().flex().flex_col().gap(px(12.)).child(div().flex().child(b)).child(div().text_size(px(12.)).line_height(px(18.)).text_color(rgb(0x949ba4)).child(note.to_string()))))
+    }
+
+    fn upload_button(id: &'static str, label: &str, busy: bool) -> gpui::Stateful<gpui::Div> {
+        div().id(id).h(px(38.25)).px(px(18.)).rounded(px(8.)).bg(Theme::lavender()).flex().items_center().text_size(px(13.5)).font_weight(FontWeight::SEMIBOLD).text_color(rgb(0x15121f)).when(busy, |d| d.opacity(0.5)).when(!busy, |d| d.cursor_pointer()).child(label.to_string())
+    }
+
+    fn empty_box(icons: Vec<&'static str>, title: &str, text: &str) -> gpui::Div {
+        let ink: Hsla = Theme::ink().into();
+        div()
+            .px(px(20.))
+            .py(px(60.))
+            .rounded(px(16.))
+            .bg(Theme::panel())
+            .border_1()
+            .border_color(Theme::line())
+            .flex()
+            .flex_col()
+            .items_center()
+            .child(div().size(px(120.)).rounded_full().bg(ink.opacity(0.06)).flex().items_center().justify_center().gap(px(6.)).children(icons.into_iter().map(|i| ui::icon(i, if title.contains("EMOJI") { 22. } else { 42. }, ink))))
+            .child(div().mt(px(12.)).text_size(px(18.)).line_height(px(27.)).font_weight(FontWeight::EXTRA_BOLD).text_color(ink).child(title.to_string()))
+            .child(div().mt(px(12.)).text_size(px(14.)).line_height(px(21.)).text_color(Theme::muted()).child(text.to_string()))
+    }
+
+    /// ServerEmojiTab: Upload Emoji (picture, then its name), and the emoji with Remove.
+    fn render_server_emoji(&self, s: &ServerSettings, can: Can, cx: &mut Context<Self>) -> AnyElement {
+        if s.emojis.is_none() {
+            self.ss_load("emojis", cx);
+        }
+        let manage = can.manage_server || can.owner;
+        let button = manage.then(|| Self::upload_button("ss-emoji-up", if s.uploading { "Uploading..." } else { "Upload Emoji" }, s.uploading).on_click(cx.listener(|this, _, window, cx| this.pick_emoji(window, cx))));
+        // `.emoji-pane`: the title and the line are the pane's own children, 24px apart.
+        let mut page = Self::expr_header("", String::new(), None, "").child(div().font_family(DISPLAY_FONT).text_size(px(26.)).line_height(px(39.)).font_weight(FontWeight::MEDIUM).text_color(Theme::ink()).child("Emoji")).child(div().mt(px(4.)).mb(px(12.)).text_size(px(13.5)).line_height(px(18.9)).text_color(Theme::muted()).child("Add up to 50 custom emoji that anyone can use in this server. Animated GIF emoji may be used by members with Discord Nitro.")).children(button.map(|b| div().flex().flex_col().gap(px(12.)).child(div().flex().child(b)).child(div().text_size(px(12.)).line_height(px(18.)).text_color(rgb(0x949ba4)).child("If you want to upload multiple emojis or skip the editor, drag and drop the file(s) onto this page."))));
+        let _unused = Self::expr_header("Emoji", "Add up to 50 custom emoji that anyone can use in this server. Animated GIF emoji may be used by members with Discord Nitro.".into(), None, "");
+        match &s.emojis {
+            None => page = page.child(div().text_size(px(14.)).text_color(Theme::muted()).child("Loading emojis...")),
+            Some(list) if list.is_empty() => page = page.child(Self::empty_box(vec!["crown", "smile", "ellipsis", "skull"], "NO EMOJI", "Get the party started by uploading an emoji")),
+            Some(list) => {
+                let mut table = div().rounded(px(12.)).border_1().border_color(Theme::divider()).overflow_hidden().flex().flex_col().child(Self::expr_table_head());
+                for (n, e) in list.iter().enumerate() {
+                    let (id, name) = (e["id"].as_str().unwrap_or_default().to_string(), e["name"].as_str().unwrap_or_default().to_string());
+                    let url = e["url"].as_str().map(|u| self.client.absolute(u)).unwrap_or_default();
+                    let label = name.clone();
+                    table = table.child(
+                        div()
+                            .px(px(14.))
+                            .py(px(10.))
+                            .when(n > 0, |d| d.border_t_1().border_color(rgba(0xffffff0d)))
+                            .flex()
+                            .items_center()
+                            .gap(px(12.))
+                            .child(div().w(px(72.)).child(gpui::img(url).size(px(32.)).object_fit(gpui::ObjectFit::Contain)))
+                            .child(div().flex_1().text_size(px(14.)).line_height(px(21.)).text_color(rgb(0xdbdee1)).child(format!(":{name}:")))
+                            .when(manage, |d| {
+                                d.child(Self::table_button(SharedString::from(format!("emoji-rm-{n}")), "Remove", true).on_click(cx.listener(move |this, _, _, cx| {
+                                    this.confirm = Some(Confirm {
+                                        title: format!("Remove :{label}:?"),
+                                        text: "This emoji will be permanently removed from this server.".into(),
+                                        ok: "Remove Emoji".into(),
+                                        cancel: t("common.cancel"),
+                                        action: ConfirmAction::RemoveExpression("emojis", id.clone()),
+                                    });
+                                    cx.notify();
+                                })))
+                            }),
+                    );
+                }
+                page = page.child(table);
+            }
+        }
+        page.into_any_element()
+    }
+
+    /// StickersTab: Upload Stickers (several at once), and each sticker with its name and remove.
+    fn render_server_stickers(&self, s: &ServerSettings, can: Can, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        if s.stickers.is_none() {
+            self.ss_load("stickers", cx);
+        }
+        let manage = can.expressions;
+        let button = manage.then(|| Self::upload_button("ss-sticker-up", if s.uploading { "Uploading…" } else { "Upload Stickers" }, s.uploading).on_click(cx.listener(|this, _, _, cx| this.upload_expressions("stickers", cx))));
+        let mut page = Self::expr_header("Stickers", "Stickers anyone in this server can send from the sticker picker. PNG, GIF and WebP images up to 8 MB work best.".into(), button, "You can pick several images at once.");
+        match &s.stickers {
+            None => page = page.child(div().text_size(px(14.)).text_color(Theme::muted()).child("Loading stickers…")),
+            Some(list) if list.is_empty() => page = page.child(Self::empty_box(vec!["sticker"], "NO STICKERS", if manage { "Upload an image to make the first one." } else { "Nobody has added any yet." })),
+            Some(list) => {
+                let main_w = f32::from(window.viewport_size().width) - 240. - 120.;
+                let cols = ((main_w + 12.) / 152.).floor().max(1.);
+                let card_w = (main_w - 12. * (cols - 1.)) / cols;
+                let mut grid = div().flex().flex_wrap().gap(px(12.));
+                for (n, st) in list.iter().enumerate() {
+                    let (id, name) = (st["id"].as_str().unwrap_or_default().to_string(), st["name"].as_str().unwrap_or_default().to_string());
+                    let url = st["url"].as_str().map(|u| self.client.absolute(u)).unwrap_or_default();
+                    let input = s.expr_inputs.get(&format!("stickers:name:{id}")).cloned();
+                    let group = SharedString::from(format!("sticker-card-{n}"));
+                    grid = grid.child(
+                        div()
+                            .id(SharedString::from(format!("ss-sticker-{n}")))
+                            .group(group.clone())
+                            .relative()
+                            .w(px(card_w))
+                            .p(px(12.))
+                            .rounded(px(12.))
+                            .bg(rgba(0x00000033))
+                            .border_1()
+                            .border_color(Theme::divider())
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap(px(8.))
+                            .child(gpui::img(url).size(px(96.)).object_fit(gpui::ObjectFit::Contain))
+                            .children(input.map(|i| div().w_full().h(px(29.5)).px(px(6.)).rounded(px(6.)).border_1().border_color(gpui::transparent_black()).hover(|s| s.border_color(Theme::line())).flex().items_center().child(i)))
+                            .when(manage, |d| {
+                                d.child(
+                                    div()
+                                        .id(SharedString::from(format!("ss-sticker-rm-{n}")))
+                                        .absolute()
+                                        .top(px(6.))
+                                        .right(px(6.))
+                                        .size(px(26.))
+                                        .rounded_full()
+                                        .bg(rgba(0x0000008c))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .opacity(0.)
+                                        .group_hover(group, |s| s.opacity(1.))
+                                        .cursor_pointer()
+                                        .child(ui::icon("trash-2", 14., rgb(0xf87171)))
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.confirm = Some(Confirm {
+                                                title: format!("Remove \"{name}\"?"),
+                                                text: "It will disappear from the sticker picker for everyone.".into(),
+                                                ok: "Remove Sticker".into(),
+                                                cancel: t("common.cancel"),
+                                                action: ConfirmAction::RemoveExpression("stickers", id.clone()),
+                                            });
+                                            cx.notify();
+                                        })),
+                                )
+                            }),
+                    );
+                }
+                page = page.child(grid);
+            }
+        }
+        page.into_any_element()
+    }
+
+    /// SoundboardTab: Upload Sounds, the server's clips (emoji, name, Play, Remove), then your own pack.
+    fn render_server_sounds(&self, s: &ServerSettings, can: Can, cx: &mut Context<Self>) -> AnyElement {
+        if s.sounds.is_none() {
+            self.ss_load("sounds", cx);
+        }
+        let manage = can.expressions;
+        let button = manage.then(|| Self::upload_button("ss-sound-up", if s.uploading { "Uploading…" } else { "Upload Sounds" }, s.uploading).on_click(cx.listener(|this, _, _, cx| this.upload_expressions("sounds", cx))));
+        let mut page = Self::expr_header("Soundboard", "Clips anyone in a voice channel here can play for the room. MP3, OGG, WAV or M4A up to 3 MB. Click a name or emoji to change it.".into(), button, "You can pick several clips at once.");
+        let row = |n: usize, snd: &Value, editable: bool, cx: &mut Context<Self>| {
+            let (id, name) = (snd["id"].as_str().unwrap_or_default().to_string(), snd["name"].as_str().unwrap_or_default().to_string());
+            let url = snd["url"].as_str().map(|u| self.client.absolute(u)).unwrap_or_default();
+            let emoji_in = s.expr_inputs.get(&format!("sounds:emoji:{id}")).cloned();
+            let name_in = s.expr_inputs.get(&format!("sounds:name:{id}")).cloned();
+            let personal = snd["personal"].as_bool().unwrap_or(false);
+            let client = self.client.clone();
+            div()
+                .px(px(14.))
+                .py(px(10.))
+                .when(n > 0, |d| d.border_t_1().border_color(rgba(0xffffff0d)))
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .child(div().w(px(72.)).h(px(40.)).px(px(6.)).rounded(px(6.)).flex().items_center().justify_center().children(emoji_in))
+                .child(div().flex_1().h(px(31.)).px(px(6.)).rounded(px(6.)).flex().items_center().text_color(rgb(0xdbdee1)).children(name_in))
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(6.))
+                        .child(Self::table_button_icon(SharedString::from(format!("snd-play-{id}")), "Play", "play").on_click(cx.listener(move |this, _, _, cx| {
+                            let (client, url) = (client.clone(), url.clone());
+                            cx.spawn(async move |this, cx| {
+                                let ext = url.rsplit('.').next().filter(|e| e.len() <= 4).unwrap_or("mp3").to_string();
+                                let bytes = cx.background_executor().spawn(async move { client.fetch(&url).map(|(_, b)| b) }).await;
+                                this.update(cx, |this, cx| match bytes {
+                                    Ok(b) => crate::sounds::play_clip(b, &ext),
+                                    Err(_) => this.server_notice("That clip could not be played.".into(), cx),
+                                })
+                                .ok();
+                            })
+                            .detach();
+                            let _ = this;
+                        })))
+                        .when(editable, |d| {
+                            d.child(Self::table_button(SharedString::from(format!("snd-rm-{id}")), "Remove", true).on_click(cx.listener(move |this, _, _, cx| {
+                                this.confirm = Some(Confirm {
+                                    title: format!("Remove \"{name}\"?"),
+                                    text: if personal { "It will be removed from your personal pack.".into() } else { "It will disappear from the soundboard for everyone.".into() },
+                                    ok: "Remove Sound".into(),
+                                    cancel: t("common.cancel"),
+                                    action: ConfirmAction::RemoveExpression("sounds", id.clone()),
+                                });
+                                cx.notify();
+                            })))
+                        }),
+                )
+        };
+        match &s.sounds {
+            None => page = page.child(div().text_size(px(14.)).text_color(Theme::muted()).child("Loading sounds…")),
+            Some(list) => {
+                let shared: Vec<&Value> = list.iter().filter(|x| !x["personal"].as_bool().unwrap_or(false)).collect();
+                let personal: Vec<&Value> = list.iter().filter(|x| x["personal"].as_bool().unwrap_or(false)).collect();
+                if shared.is_empty() {
+                    page = page.child(Self::empty_box(vec!["music"], "NO SERVER SOUNDS", if manage { "Upload a clip to start the soundboard. The built-in sounds are always there too." } else { "Only the built-in sounds for now." }));
+                } else {
+                    let mut table = div().rounded(px(12.)).border_1().border_color(Theme::divider()).overflow_hidden().flex().flex_col().child(Self::expr_table_head());
+                    for (n, snd) in shared.iter().enumerate() {
+                        table = table.child(row(n, snd, manage, cx));
+                    }
+                    page = page.child(table);
+                }
+                if !personal.is_empty() {
+                    let mut table = div().rounded(px(12.)).border_1().border_color(Theme::divider()).overflow_hidden().flex().flex_col();
+                    for (n, snd) in personal.iter().enumerate() {
+                        table = table.child(row(n, snd, true, cx));
+                    }
+                    page = page.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .child(div().text_size(px(18.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child("Your personal pack"))
+                            .child(div().mt(px(4.)).mb(px(12.)).text_size(px(13.5)).text_color(Theme::muted()).child("Only you can play these. They follow you to every server."))
+                            .child(table),
+                    );
                 }
             }
         }
