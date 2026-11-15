@@ -34,6 +34,7 @@ mod settings;
 mod achievements;
 mod bot_menu;
 mod commands;
+mod settings_dice;
 mod sidebar;
 mod user_search;
 mod simple;

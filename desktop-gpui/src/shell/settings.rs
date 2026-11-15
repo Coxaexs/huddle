@@ -1149,6 +1149,7 @@ impl Shell {
             Tab::Voice => self.render_voice_page(s, window, cx),
             Tab::Appearance => self.render_appearance_page(s, window, cx),
             Tab::Tts => self.render_tts_page(s, window, cx),
+            Tab::Dice => self.render_dice_page(window, cx),
             Tab::Tutorial => vec![
                 div()
                     .flex_none()

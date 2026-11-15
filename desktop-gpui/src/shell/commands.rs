@@ -636,7 +636,21 @@ impl Shell {
         }
         if DATA.roll.contains(&name) {
             let bot = if ["v", "vroll", "vtm", "gmv", "rouse"].contains(&name.as_str()) { json!({ "author": "Storyteller", "avatar": "🩸" }) } else { json!({ "author": "D&D Bot", "avatar": "⚔" }) };
-            let body = json!({ "command": raw, "theme": crate::theme::active_theme(), "themeColor": "#2563eb", "channelId": voice_room, "textChannelId": channel });
+            // runRollCommand: your dice from Settings → Dice & Tabletop (Solid Colour takes the theme's own).
+            let dice = super::settings_dice::load_dice();
+            let mut body = json!({
+                "command": raw,
+                "theme": super::settings_dice::inherit_dice_style(&dice.theme, &crate::theme::active_theme()),
+                "themeColor": dice.color,
+                "channelId": voice_room,
+                "textChannelId": channel,
+            });
+            if dice.material != "auto" {
+                body["material"] = json!(dice.material);
+            }
+            if dice.texture != "auto" {
+                body["texture"] = json!(dice.texture);
+            }
             self.command_call(cx, move |c| c.settings_post("/api/integrations/dnd/roll", body), move |this, r, cx| match r {
                 Ok(v) => {
                     if let Some(error) = v.get("error").and_then(Value::as_str) {
