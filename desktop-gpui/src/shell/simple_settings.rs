@@ -77,7 +77,7 @@ impl Shell {
             .child(div().mb(px(-2.)).child(ui::avatar_with(self.picture(&me.avatar_url), &me.avatar, &me.color, me.name(), 56., 24., FontWeight::NORMAL, ink)))
             .child(strong(t("simpleSettings.you")))
             .child(small(t("simpleSettings.youHint")))
-            .on_click(cx.listener(|this, _, _, cx| this.settings_note("Editing your profile is not in this app yet.", cx)));
+            .on_click(cx.listener(|this, _, window, cx| this.open_profile_editor(window, cx)));
 
         // Four looks always fit in the tile's width, so no wrapping is needed.
         let mut looks = div().mt(px(4.)).flex().gap(px(8.));

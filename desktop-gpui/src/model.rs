@@ -28,7 +28,27 @@ pub struct User {
     pub ui_mode: Option<String>,
     /// The site lets this account make invites wherever it is (user.canInvite).
     pub can_invite: bool,
+    pub pronouns: String,
+    pub tagline: String,
+    pub bio: String,
+    pub banner_url: Option<String>,
+    pub created_at: String,
+    /// Up to four ids from PRIDE_BADGES, public on the profile.
+    pub pride_badges: Vec<String>,
 }
+
+/// lib/users.ts PRIDE_BADGES: id, label, short label, flag stripes top to bottom.
+pub const PRIDE_BADGES: [(&str, &str, &str, &[&str]); 9] = [
+    ("trans", "Transgender", "TRANS", &["#5bcffa", "#f5abb9", "#ffffff"]),
+    ("pride", "LGBTQ+ Pride", "PRIDE", &["#e40303", "#ff8c00", "#ffed00", "#008026", "#24408e", "#732982"]),
+    ("nonbinary", "Nonbinary", "ENBY", &["#fff430", "#ffffff", "#9c59d1", "#2d2d2d"]),
+    ("bisexual", "Bisexual", "BI", &["#d60270", "#9b4f96", "#0038a8"]),
+    ("lesbian", "Lesbian", "LESBIAN", &["#d52d00", "#ff9a56", "#ffffff", "#d362a4", "#a30262"]),
+    ("gay", "Gay", "GAY", &["#078d70", "#98e8c1", "#ffffff", "#7bade2", "#3d1a78"]),
+    ("pansexual", "Pansexual", "PAN", &["#ff218c", "#ffd800", "#21b1ff"]),
+    ("asexual", "Asexual", "ACE", &["#2d2d2d", "#a3a3a3", "#ffffff", "#800080"]),
+    ("intersex", "Intersex", "INTERSEX", &["#ffd800", "#7902aa"]),
+];
 
 impl User {
     pub fn name(&self) -> &str {

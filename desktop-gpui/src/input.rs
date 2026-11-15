@@ -81,6 +81,8 @@ pub struct TextInput {
     /// How far the line is scrolled left so the caret stays inside the field.
     scroll_x: Pixels,
     is_selecting: bool,
+    /// `text-align: center` (the profile editor's avatar letters).
+    centered: bool,
 }
 
 impl EventEmitter<InputEvent> for TextInput {}
@@ -103,7 +105,13 @@ impl TextInput {
             last_bounds: None,
             scroll_x: px(0.),
             is_selecting: false,
+            centered: false,
         }
+    }
+
+    pub fn centered(mut self) -> Self {
+        self.centered = true;
+        self
     }
 
     pub fn bare(mut self) -> Self {
@@ -630,7 +638,9 @@ impl Element for TextElement {
             scroll_x = cursor_pos;
         }
         if line.width <= width {
-            scroll_x = px(0.);
+            // A centred line is "scrolled" left by minus half the free room, which the caret,
+            // selection, paint and mouse all already allow for.
+            scroll_x = if input.centered { -(width - line.width) / 2. } else { px(0.) };
         }
         let left = bounds.left() - scroll_x;
 

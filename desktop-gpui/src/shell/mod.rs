@@ -37,6 +37,7 @@ mod commands;
 mod settings_css;
 mod settings_dice;
 mod settings_requests;
+mod profile_editor;
 mod sidebar;
 mod user_search;
 mod simple;
@@ -201,6 +202,7 @@ pub struct Shell {
     dev_botmenu_done: bool,
     dev_find_done: bool,
     dev_ach_done: bool,
+    dev_editor_done: bool,
     dev_rv_done: bool,
     dev_extras_done: bool,
     /// Who is typing where: (user id, name, when it was last heard).
@@ -291,6 +293,8 @@ pub struct Shell {
     user_menu: Option<user_menu::UserMenu>,
     /// Find people (the header's person-plus).
     user_search: Option<user_search::UserSearch>,
+    /// Edit Profiles.
+    profile_editor: Option<profile_editor::ProfileEditor>,
     /// The achievement board (the header's award).
     achievements: Option<achievements::Board>,
     /// A bot's right-click menu, and each server's bot-registered menus by bot.
@@ -455,6 +459,7 @@ impl Shell {
             dev_botmenu_done: false,
             dev_find_done: false,
             dev_ach_done: false,
+            dev_editor_done: false,
             dev_rv_done: false,
             dev_extras_done: false,
             typing: HashMap::new(),
@@ -516,6 +521,7 @@ impl Shell {
             channel_prefs: HashMap::new(),
             user_menu: None,
             user_search: None,
+            profile_editor: None,
             achievements: None,
             bot_menu: None,
             bot_menus: HashMap::new(),

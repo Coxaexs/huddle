@@ -8,7 +8,6 @@ use serde_json::{Value, json};
 use super::Shell;
 use crate::input::{InputEvent, Look, TextInput};
 use crate::textarea::{AreaEvent, TextArea};
-use crate::theme::Theme;
 use crate::ui;
 
 const KIWI: &str = "b4203f0e-38a7-43f1-b1b5-374116afb49d";

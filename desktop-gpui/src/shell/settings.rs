@@ -902,7 +902,8 @@ impl Shell {
                             .cursor_pointer()
                             .hover(|s| s.underline())
                             .child(t("userSettings.editProfiles"))
-                            .child(ui::icon("pen-line", 11., Theme::lavender())),
+                            .child(ui::icon("pen-line", 11., Theme::lavender()))
+                            .on_click(cx.listener(|this, _, window, cx| this.open_profile_editor(window, cx))),
                     ),
             );
         let search = div()

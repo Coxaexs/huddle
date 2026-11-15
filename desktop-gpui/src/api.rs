@@ -275,10 +275,15 @@ impl Client {
 
     /// `POST /api/uploads` (multipart, one `file` field); answers the stored file's key.
     pub fn upload(&self, name: &str, mime: &str, bytes: &[u8]) -> Result<String> {
+        self.upload_field("file", name, mime, bytes)
+    }
+
+    /// The same with another form field name (profile pictures and banners send `image`).
+    pub fn upload_field(&self, field: &str, name: &str, mime: &str, bytes: &[u8]) -> Result<String> {
         let boundary = format!("hoffle{:016x}", rand_u64());
         let safe = name.replace(['"', '\r', '\n'], "_");
         let mut body = Vec::with_capacity(bytes.len() + 256);
-        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{safe}\"\r\nContent-Type: {mime}\r\n\r\n").as_bytes());
+        body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{field}\"; filename=\"{safe}\"\r\nContent-Type: {mime}\r\n\r\n").as_bytes());
         body.extend_from_slice(bytes);
         body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
         let mut request = self

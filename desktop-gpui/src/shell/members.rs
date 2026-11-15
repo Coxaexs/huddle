@@ -302,6 +302,29 @@ impl gpui::Render for Shell {
                 stage.focused = Some(key);
             }
         }
+        // Development: HOFFLE_DEV_EDITOR=1 opens Edit Profiles once.
+        if std::env::var_os("HOFFLE_DEV_EDITOR").is_some()
+            && self.profile_editor.is_none()
+            && !self.dev_editor_done
+            && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
+        {
+            self.dev_editor_done = true;
+            self.open_profile_editor(window, cx);
+            // HOFFLE_DEV_EDITOR=<px> also scrolls the right side down that far.
+            if let Some(y) = std::env::var("HOFFLE_DEV_EDITOR").ok().and_then(|v| v.parse::<f32>().ok()).filter(|y| *y > 1.) {
+                if let Some(e) = self.profile_editor.as_ref() {
+                    e.scroll.set_offset(gpui::point(px(0.), px(-y)));
+                }
+            }
+            // HOFFLE_DEV_EDITOR_TAB=about picks a details tab.
+            if let (Ok(tab), Some(e)) = (std::env::var("HOFFLE_DEV_EDITOR_TAB"), self.profile_editor.as_mut()) {
+                e.details = match tab.as_str() { "about" => "about", "links" => "links", "music" => "music", "css" => "css", _ => "identity" };
+            }
+            // HOFFLE_DEV_EDITOR_PRIDE=trans,gay picks badges (unsaved) to look at.
+            if let (Ok(ids), Some(e)) = (std::env::var("HOFFLE_DEV_EDITOR_PRIDE"), self.profile_editor.as_mut()) {
+                e.dev_pride(ids.split(',').map(str::to_string).collect());
+            }
+        }
         // Development: HOFFLE_DEV_ACH=1 opens the achievement board once.
         if std::env::var_os("HOFFLE_DEV_ACH").is_some()
             && !self.dev_ach_done
@@ -568,6 +591,7 @@ impl gpui::Render for Shell {
             .children(self.render_bot_menu(window, cx))
             .children(self.render_user_search(window, cx))
             .children(self.render_achievements(window, cx))
+            .children(self.render_profile_editor(window, cx))
             .children(self.render_server_menu(cx))
             .children(self.render_notify_menu(window, cx))
             .children(self.render_reaction_viewer(window, cx))
@@ -595,7 +619,7 @@ impl gpui::Render for Shell {
                 }
             }))
             // Escape closes the message menu before anything else hears it.
-            .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _, cx| {
+            .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
                 let k = &event.keystroke;
                 let combo = k.unparse();
                 let has_modifier = k.modifiers.control || k.modifiers.alt || k.modifiers.platform;
@@ -648,6 +672,9 @@ impl gpui::Render for Shell {
                 } else if event.keystroke.key == "escape" && this.notify_menu.is_some() {
                     this.notify_menu = None;
                     cx.notify();
+                    cx.stop_propagation();
+                } else if event.keystroke.key == "escape" && this.profile_editor.is_some() {
+                    this.request_close_profile(window, cx);
                     cx.stop_propagation();
                 } else if event.keystroke.key == "escape" && this.achievements.is_some() {
                     this.close_achievements(cx);
