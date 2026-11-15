@@ -18,6 +18,11 @@ impl Shell {
         if self.me.is_admin || server.owner_id.as_deref() == Some(self.me.id.as_str()) {
             return u64::MAX;
         }
+        // Development: HOFFLE_DEV_PERMS=all draws the manager controls (only to look at: the server
+        // still refuses anything this account may not do).
+        if std::env::var("HOFFLE_DEV_PERMS").as_deref() == Ok("all") {
+            return u64::MAX;
+        }
         let held: Vec<String> = self
             .members
             .get(&server.id)
@@ -125,34 +130,7 @@ impl Shell {
 
     /// showCustomPrompt: Rename Server with the name selected, "Save Name" PATCHes it.
     pub(super) fn open_rename_server(&mut self, id: String, name: String, window: &mut Window, cx: &mut Context<Self>) {
-        let input = cx.new(|cx| {
-            let mut i = crate::input::TextInput::new("", cx).look(crate::input::Look { size: 14., line_height: 21., height: 21., color: Theme::ink().into(), placeholder: Theme::muted().into() });
-            i.set_text(name, cx);
-            i.select_everything(cx);
-            i
-        });
-        window.focus(&gpui::Focusable::focus_handle(&input, cx));
-        self.prompt_sub = Some(cx.subscribe_in(&input, window, |this, _, event, _, cx| match event {
-            crate::input::InputEvent::Submit => {
-                if let Some(action) = this.confirm.as_ref().map(|c| c.action.clone()) {
-                    this.confirmed_public(action, cx);
-                }
-            }
-            crate::input::InputEvent::Escape => {
-                this.confirm = None;
-                this.prompt_sub = None;
-                cx.notify();
-            }
-            _ => {}
-        }));
-        self.confirm = Some(Confirm {
-            title: t("sidebar.menu.rename"),
-            text: t("sidebar.menu.renamePrompt"),
-            ok: t("sidebar.menu.saveName"),
-            cancel: t("common.cancel"),
-            action: ConfirmAction::RenameServer(id, input),
-        });
-        cx.notify();
+        self.open_prompt(super::channel_tools::PromptKind::RenameServer(id), t("sidebar.menu.rename"), t("sidebar.menu.renamePrompt"), name, "", &t("sidebar.menu.saveName"), None, window, cx);
     }
 
     pub(super) fn render_server_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -225,7 +203,12 @@ impl Shell {
             })));
         }
         if manage_channels {
-            menu = menu.child(item("sm-channel", "plus", 16., t("sidebar.menu.createChannel"), false));
+            menu = menu.child(item("sm-channel", "plus", 16., t("sidebar.menu.createChannel"), false).on_click(cx.listener(|this, _, _, cx| {
+                // The same five-kind picker as the channel list's "+".
+                this.server_menu = false;
+                this.kind_menu = Some(None);
+                cx.notify();
+            })));
         }
         menu = menu
             .child(item("sm-read", "check-check", 16., t("sidebar.menu.markRead"), false).on_click(cx.listener(|this, _, _, cx| {

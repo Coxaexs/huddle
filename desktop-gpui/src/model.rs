@@ -109,6 +109,10 @@ pub struct Channel {
     pub private: bool,
     /// Voice rooms: the most each speaker sends, in bits per second.
     pub bitrate: Option<u64>,
+    pub nsfw: bool,
+    pub slowmode: Option<i64>,
+    pub soundboard: Option<bool>,
+    pub rtc_region: Option<String>,
 }
 
 impl Channel {

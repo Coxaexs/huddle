@@ -144,10 +144,53 @@ impl Shell {
                 card = card.child(strip);
             }
         }
-        if matches!(menu.target, NotifyTarget::Channel(_)) && self.my_permissions() & (1 << 1) != 0 {
+        if let NotifyTarget::Channel(cid) = &menu.target
+            && self.my_permissions() & (1 << 1) != 0
+            && let Some(channel) = self.channel_by_id(cid).cloned()
+        {
+            use super::channel_tools::{clamp_bitrate, convertible, kind_icon, kind_label, with_article};
             card = card.child(div().my(px(6.)).h(px(1.)).bg(rgb(0x41434f)));
-            for (n, label) in ["channelMenu.rename", "channelMenu.permissions", "channelMenu.editTopic", "channelMenu.setSlowmode", "channelMenu.delete"].into_iter().enumerate() {
-                card = card.child(item(SharedString::from(format!("nm-tool-{n}")), t(label), false).when(label == "channelMenu.delete", |d| d.text_color(Theme::coral())));
+            let voice = channel.is_voice();
+            let mut tools: Vec<(String, String, Option<&'static str>)> = vec![
+                ("rename".into(), t("channelMenu.rename"), None),
+                ("permissions".into(), t("channelMenu.permissions"), None),
+                ("topic".into(), t("channelMenu.editTopic"), None),
+                ("slowmode".into(), t("channelMenu.setSlowmode"), None),
+            ];
+            if !voice {
+                tools.push(("nsfw".into(), t(if channel.nsfw { "nsfw.unmark" } else { "nsfw.mark" }), None));
+            } else {
+                tools.push(("bitrate".into(), crate::i18n::tv("channelMenu.voiceBitrate", &[("bitrate", &(clamp_bitrate(channel.bitrate) / 1000).to_string())]), None));
+                tools.push(("soundboard".into(), t(if channel.soundboard == Some(false) { "channelMenu.soundboardOn" } else { "channelMenu.soundboardOff" }), None));
+                let region = t(match channel.rtc_region.as_deref() { Some("de") => "channelMenu.region.de", Some("nl") => "channelMenu.region.nl", _ => "channelMenu.region.auto" });
+                tools.push(("region".into(), crate::i18n::tv("channelMenu.regionOverride", &[("region", &region)]), None));
+            }
+            for kind in convertible(&channel.kind) {
+                tools.push((format!("kind:{kind}"), crate::i18n::tv("channelMenu.makeKind", &[("kind", &with_article(kind_label(kind)))]), Some(kind_icon(kind))));
+            }
+            tools.push(("delete".into(), t("channelMenu.delete"), None));
+            for (n, (tool, label, glyph)) in tools.into_iter().enumerate() {
+                let danger = tool == "delete";
+                let id = channel.id.clone();
+                // The kind rows: `flex items-center gap-2`, its icon before the words.
+                let row = match glyph {
+                    Some(g) => div()
+                        .id(SharedString::from(format!("nm-tool-{n}")))
+                        .p(px(8.))
+                        .rounded(px(8.))
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .text_size(px(13.))
+                        .line_height(px(19.5))
+                        .text_color(rgb(0xe6e7ee))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(Hsla::from(Theme::lavender()).opacity(0.24)))
+                        .child(crate::ui::icon(g, 14., rgb(0xe6e7ee)))
+                        .child(label),
+                    None => item(SharedString::from(format!("nm-tool-{n}")), label, false).when(danger, |d| d.text_color(Theme::coral())),
+                };
+                card = card.child(row.on_click(cx.listener(move |this, _, window, cx| this.channel_tool(&tool, id.clone(), window, cx))));
             }
         }
         // left: min(x, innerWidth − 240); top: min(y, innerHeight − 280).

@@ -8,6 +8,7 @@ mod emoji_picker;
 mod files;
 mod forward;
 mod invite;
+mod channel_tools;
 mod music_player;
 mod thread;
 mod gif_picker;
@@ -314,9 +315,14 @@ pub struct Shell {
     reaction_viewer: Option<reaction_viewer::ReactionViewer>,
     forward: Option<forward::Forward>,
     invite: Option<invite::InviteDialog>,
+    /// The five-kind channel picker, open under the "+" of the channel list (None) or of a category.
+    kind_menu: Option<Option<String>>,
+    /// A channel just made, opened once the servers come back with it.
+    pending_open_channel: Option<String>,
     /// The hub said ready at least once (HOFFLE_DEV_JOIN waits for it and the servers).
     dev_hub_ready: bool,
     dev_sheet_done: bool,
+    dev_kind_done: bool,
     music_player: Option<music_player::MusicPlayer>,
     music_tick: std::cell::Cell<bool>,
     music_bar_spot: profile_card::Spot,
@@ -527,8 +533,11 @@ impl Shell {
             reaction_viewer: None,
             forward: None,
             invite: None,
+            kind_menu: None,
+            pending_open_channel: None,
             dev_hub_ready: false,
             dev_sheet_done: false,
+            dev_kind_done: false,
             music_player: None,
             music_tick: std::cell::Cell::new(false),
             music_bar_spot: profile_card::spot(),
@@ -617,6 +626,11 @@ impl Shell {
                     Ok(servers) => {
                         crate::trace(format!("servers loaded: {}", servers.len()));
                         this.servers = servers;
+                        if let Some(id) = this.pending_open_channel.take()
+                            && this.servers.iter().any(|s| s.channels.iter().any(|c| c.id == id && c.is_text()))
+                        {
+                            this.open_channel(id, cx);
+                        }
                         if this.dev_hub_ready {
                             this.dev_join(cx);
                         }

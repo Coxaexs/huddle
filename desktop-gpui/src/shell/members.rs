@@ -460,6 +460,21 @@ impl gpui::Render for Shell {
             self.dev_sheet_done = true;
             self.dev_open_sheet(window, cx);
         }
+        // Development: HOFFLE_DEV_KIND_MENU=1 opens the channel list's kind picker; HOFFLE_DEV_CHANNEL_MENU=
+        // <channel id>,x,y its right-click menu (both only to look at).
+        if !self.dev_kind_done && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c)) {
+            self.dev_kind_done = true;
+            if std::env::var_os("HOFFLE_DEV_KIND_MENU").is_some() {
+                self.kind_menu = Some(None);
+            }
+            if let Ok(spec) = std::env::var("HOFFLE_DEV_CHANNEL_MENU") {
+                let parts: Vec<&str> = spec.split(',').collect();
+                if let [id, x, y] = parts.as_slice() {
+                    let at = gpui::point(px(x.parse().unwrap_or(100.)), px(y.parse().unwrap_or(100.)));
+                    self.open_notify_menu(super::notify_menu::NotifyTarget::Channel(id.to_string()), at, cx);
+                }
+            }
+        }
         // Development: HOFFLE_DEV_RENAME=1 opens the Rename Server prompt once (only to look at).
         if std::env::var("HOFFLE_DEV_RENAME").is_ok() && self.confirm.is_none() && !self.dev_invite_done
             && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))

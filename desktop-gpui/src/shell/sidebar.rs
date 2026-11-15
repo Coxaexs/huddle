@@ -89,6 +89,7 @@ impl Shell {
             .flex_col()
             .gap(px(2.));
 
+        let manage = self.my_permissions() & (1 << 1) != 0;
         nav = nav
             // Measured: the label's text box is 109–127 and the events chip starts at 134.
             .child(
@@ -97,12 +98,58 @@ impl Shell {
                     .pt(px(16.))
                     .pb(px(5.))
                     .pl(px(8.))
+                    .pr(px(7.))
                     .h(px(39.))
+                    .flex()
+                    .items_center()
+                    .justify_between()
                     .text_size(px(12.))
                     .line_height(px(18.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(Theme::muted())
-                    .child(t("sidebar.channels")),
+                    .child(t("sidebar.channels"))
+                    // `.section-actions`: add a category, and the five-kind "+".
+                    .when(manage, |d| {
+                        let soft = rgb(0xa09ca4);
+                        d.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(4.))
+                                .child(
+                                    div()
+                                        .id("add-category")
+                                        .px(px(4.))
+                                        .py(px(2.))
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(1.))
+                                        .cursor_pointer()
+                                        .tooltip(ui::tooltip(t("sidebar.addCategory")))
+                                        .child(icon("chevron-down", 14., soft))
+                                        .child(icon("plus", 14., soft))
+                                        .on_click(cx.listener(|this, _, window, cx| this.prompt_add_category(window, cx))),
+                                )
+                                .child(
+                                    div()
+                                        .relative()
+                                        .child(
+                                            div()
+                                                .id("create-channel")
+                                                .px(px(4.))
+                                                .py(px(2.))
+                                                .cursor_pointer()
+                                                .tooltip(ui::tooltip(t("sidebar.createChannel")))
+                                                .child(icon("plus", 14., soft))
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.kind_menu = if this.kind_menu == Some(None) { None } else { Some(None) };
+                                                    cx.notify();
+                                                })),
+                                        )
+                                        .children((self.kind_menu == Some(None)).then(|| self.render_kind_menu(None, cx))),
+                                ),
+                        )
+                    }),
             )
             .child(
                 div().flex_none().h(px(39.)).pb(px(5.)).px(px(9.)).child(
@@ -135,6 +182,43 @@ impl Shell {
             let members: Vec<&&Channel> = channels.iter().filter(|c| c.category_id.as_deref() == Some(&category.id)).collect();
             let collapsed = self.collapsed.contains(&category.id);
             let id = category.id.clone();
+            let (rid, rname) = (category.id.clone(), category.name.clone());
+            let (pid, did, dname) = (category.id.clone(), category.id.clone(), category.name.clone());
+            let menu_here = self.kind_menu.as_ref().is_some_and(|m| m.as_deref() == Some(category.id.as_str()));
+            let actions = manage.then(|| {
+                let btn = |id: String, label: &'static str| {
+                    div()
+                        .id(SharedString::from(id))
+                        .px(px(5.))
+                        .py(px(2.))
+                        .rounded(px(6.))
+                        .text_size(px(13.))
+                        .line_height(px(19.5))
+                        .text_color(Theme::muted())
+                        .cursor_pointer()
+                        .hover(|s| s.text_color(Theme::ink()).bg(Theme::lavender_soft()))
+                        .child(label)
+                };
+                div()
+                    .ml_auto()
+                    .flex()
+                    .gap(px(2.))
+                    .child(
+                        div()
+                            .relative()
+                            .child(btn(format!("cat-add-{}", category.id), "+").tooltip(ui::tooltip(t("sidebar.addChannelHere"))).on_click(cx.listener(move |this, _, _, cx| {
+                                cx.stop_propagation();
+                                let here = Some(pid.clone());
+                                this.kind_menu = if this.kind_menu.as_ref() == Some(&here) { None } else { Some(here) };
+                                cx.notify();
+                            })))
+                            .children(menu_here.then(|| self.render_kind_menu(Some(category.id.clone()), cx))),
+                    )
+                    .child(btn(format!("cat-del-{}", category.id), "×").tooltip(ui::tooltip(t("sidebar.deleteCategory"))).on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.confirm_delete_category(did.clone(), dname.clone(), cx);
+                    })))
+            });
             nav = nav.child(
                 div()
                     .id(SharedString::from(format!("cat-{}", category.id)))
@@ -145,6 +229,12 @@ impl Shell {
                     .flex()
                     .items_center()
                     .gap(px(6.))
+                    .when(manage, |d| {
+                        d.on_mouse_down(gpui::MouseButton::Right, cx.listener(move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.prompt_rename_category(rid.clone(), rname.clone(), window, cx);
+                        }))
+                    })
                     .cursor_pointer()
                     .text_color(Theme::muted())
                     .hover(|s| s.text_color(Theme::ink()))
@@ -161,6 +251,7 @@ impl Shell {
                             .font_weight(FontWeight::BOLD)
                             .child(category.name.to_uppercase()),
                     )
+                    .children(actions)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if !this.collapsed.remove(&id) {
                             this.collapsed.insert(id.clone());
@@ -189,6 +280,57 @@ impl Shell {
             .children(self.render_mini_music_bar(window, cx))
                 .children(self.render_mini_voice_bar(window, cx))
             .into_any_element()
+    }
+
+    /// renderKindMenu(): the five kinds to make, under the "+" that opened it.
+    fn render_kind_menu(&self, category: Option<String>, cx: &mut Context<Self>) -> AnyElement {
+        let mut menu = div()
+            .id("kind-menu")
+            .absolute()
+            .top(px(26.))
+            .right_0()
+            .w(px(200.))
+            .p(px(6.))
+            .rounded(px(12.))
+            .bg(Theme::paper())
+            .border_1()
+            .border_color(Theme::line())
+            .shadow(vec![
+                gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.55), offset: gpui::point(px(0.), px(20.)), blur_radius: px(50.), spread_radius: px(0.) },
+                gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.4), offset: gpui::point(px(0.), px(4.)), blur_radius: px(14.), spread_radius: px(0.) },
+            ])
+            .flex()
+            .flex_col()
+            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                this.kind_menu = None;
+                cx.notify();
+            }));
+        for (kind, label, glyph, ..) in super::channel_tools::CHANNEL_KINDS {
+            let category = category.clone();
+            menu = menu.child(
+                div()
+                    .id(SharedString::from(format!("kind-{kind}")))
+                    .px(px(12.))
+                    .py(px(8.))
+                    .rounded(px(8.))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .text_size(px(13.5))
+                    .line_height(px(16.2))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(Theme::ink())
+                    .cursor_pointer()
+                    .hover(|s| s.bg(Theme::lavender_soft()).text_color(Theme::lavender()))
+                    .child(icon(glyph, 14., Theme::ink()))
+                    .child(label)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        cx.stop_propagation();
+                        this.prompt_create_channel(kind, category.clone(), window, cx);
+                    })),
+            );
+        }
+        gpui::deferred(menu).with_priority(3).into_any_element()
     }
 
     fn render_channel(&self, channel: &Channel, window: &gpui::Window, cx: &mut Context<Self>) -> AnyElement {
@@ -302,6 +444,13 @@ impl Shell {
             .hover(|s| s.bg(Theme::hover()).text_color(Theme::ink()))
             .when(connected, |d| d.bg(Theme::lavender_soft()))
             .tooltip(ui::tooltip(title.clone()))
+            .on_mouse_down(gpui::MouseButton::Right, {
+                let id = channel.id.clone();
+                cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                    cx.stop_propagation();
+                    this.open_notify_menu(super::notify_menu::NotifyTarget::Channel(id.clone()), e.position, cx);
+                })
+            })
             .child(icon(channel.icon(), 16., if connected { Theme::mint() } else { Theme::quiet() }))
             .child(div().flex_1().min_w_0().truncate().when(connected, |d| d.text_color(Theme::lavender_light())).child(channel.name.clone()))
             .when(connected, |d| {

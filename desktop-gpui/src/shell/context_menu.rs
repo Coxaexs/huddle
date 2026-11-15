@@ -44,8 +44,10 @@ pub(super) enum ConfirmAction {
     DeleteAccount,
     /// An alert: one button that only closes it.
     Alert,
-    /// showCustomPrompt for Rename Server: the name field, "Save Name".
-    RenameServer(String, gpui::Entity<crate::input::TextInput>),
+    /// showCustomPrompt: what the answer is for, and its field.
+    Prompt(super::channel_tools::PromptKind, gpui::Entity<crate::input::TextInput>),
+    DeleteChannel(String),
+    DeleteCategory(String),
 }
 
 #[derive(Clone, Copy)]
@@ -592,9 +594,9 @@ impl Shell {
         let action = confirm.action.clone();
         let alert = matches!(action, ConfirmAction::Alert);
         // A prompt's button is the plain primary one: lavender, not the danger red.
-        let primary = matches!(action, ConfirmAction::RenameServer(..));
+        let primary = matches!(action, ConfirmAction::Prompt(..));
         let prompt_input = match &action {
-            ConfirmAction::RenameServer(_, input) => Some(input.clone()),
+            ConfirmAction::Prompt(_, input) => Some(input.clone()),
             _ => None,
         };
         Some(
@@ -719,26 +721,13 @@ impl Shell {
             ConfirmAction::DeleteServer(id) => self.delete_server(id, cx),
             ConfirmAction::DeleteAccount => self.delete_account_confirmed(cx),
             ConfirmAction::Alert => cx.notify(),
-            ConfirmAction::RenameServer(id, input) => {
-                self.prompt_sub = None;
-                let name = input.read(cx).text().trim().to_string();
-                if name.is_empty() {
-                    return cx.notify();
-                }
-                let client = self.client.clone();
-                cx.spawn(async move |this, cx| {
-                    let result = cx.background_executor().spawn(async move { client.settings_patch(&format!("/api/servers/{}", url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>()), serde_json::json!({ "name": name })) }).await;
-                    this.update(cx, |this, cx| {
-                        if result.is_ok() {
-                            this.load_servers(cx);
-                        }
-                        cx.notify();
-                    })
-                    .ok();
-                })
-                .detach();
+            ConfirmAction::Prompt(kind, input) => {
+                let value = input.read(cx).text();
+                self.run_prompt(kind, value, cx);
                 cx.notify();
             }
+            ConfirmAction::DeleteChannel(id) => self.delete_channel_confirmed(id, cx),
+            ConfirmAction::DeleteCategory(id) => self.delete_category_confirmed(id, cx),
             ConfirmAction::Report(id) => {
                 let client = self.client.clone();
                 let server = if self.home { None } else { self.server_id.clone() };
