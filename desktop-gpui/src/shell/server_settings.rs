@@ -77,8 +77,28 @@ pub(super) struct ServerSettings {
     pub(super) pending_emoji: Option<std::path::PathBuf>,
     description: Entity<TextInput>,
     saving_access: bool,
+    welcome: Option<Welcome>,
     _subs: Vec<Subscription>,
 }
+
+/// WelcomeConfig as edited here.
+struct Welcome {
+    enabled: bool,
+    rules: Entity<crate::textarea::TextArea>,
+    fields: Vec<WelcomeField>,
+    saving: bool,
+    type_open: Option<usize>,
+    _subs: Vec<Subscription>,
+}
+
+struct WelcomeField {
+    id: String,
+    label: Entity<TextInput>,
+    kind: &'static str,
+    required: bool,
+}
+
+const WELCOME_TYPES: [(&str, &str); 3] = [("text", "Short answer"), ("long", "Paragraph"), ("date", "Date")];
 
 /// lib/features.ts FEATURE_MODULES (resources/data/feature-modules.json): key, label, description.
 static FEATURE_MODULES: std::sync::LazyLock<Vec<(String, String, String)>> = std::sync::LazyLock::new(|| {
@@ -288,6 +308,7 @@ impl Shell {
             pending_emoji: None,
             description,
             saving_access: false,
+            welcome: None,
             _subs: subs,
         });
         cx.notify();
@@ -563,6 +584,7 @@ impl Shell {
             "stickers" => self.render_server_stickers(s, can, window, cx),
             "soundboard" => self.render_server_sounds(s, can, cx),
             "access" | "community" => self.render_server_access(s, server, can, cx),
+            "welcome" => self.render_server_welcome(s, cx),
             other => self.render_server_tab(other, s, server, can, window, cx),
         };
         let main = div()
@@ -2519,6 +2541,286 @@ impl Shell {
             .child(div().mt(px(4.)).mb(px(12.)).text_size(px(13.5)).line_height(px(18.9)).text_color(muted).child(format!("Control whether anyone on this Hoffle can discover and join {}, and choose which feature modules are active here.", server.name)))
             .child(top.mt(px(24.)))
             .child(bottom.mt(px(24.)))
+            .into_any_element()
+    }
+
+    fn welcome_field(&self, id: String, label: String, kind: &'static str, required: bool, cx: &mut Context<Self>) -> WelcomeField {
+        let input = cx.new(|cx| {
+            let mut i = TextInput::new("Question, e.g. What should we call you?", cx).look(Look { size: 14., line_height: 21., height: 21., color: Theme::ink().into(), placeholder: Theme::muted().into() });
+            i.set_text(label, cx);
+            i
+        });
+        WelcomeField { id, label: input, kind, required }
+    }
+
+    /// GET /api/servers/<id>/welcome, then the editors for it.
+    fn load_welcome(&mut self, cx: &mut Context<Self>) {
+        let Some(s) = self.server_settings.as_ref() else { return };
+        if !s.loading.borrow_mut().insert("welcome") {
+            return;
+        }
+        let path = format!("/api/servers/{}/welcome", url::form_urlencoded::byte_serialize(s.server_id.as_bytes()).collect::<String>());
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.get_value(&path) }).await;
+            this.update(cx, |this, cx| {
+                let w = result.ok().and_then(|v| v.get("welcome").cloned()).unwrap_or(Value::Null);
+                this.set_welcome(&w, cx);
+                if let Some(s) = this.server_settings.as_ref() {
+                    s.loading.borrow_mut().remove("welcome");
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn set_welcome(&mut self, w: &Value, cx: &mut Context<Self>) {
+        let rules_text = w["rules"].as_str().unwrap_or_default().to_string();
+        let rules = cx.new(|cx| {
+            let mut a = crate::textarea::TextArea::new("1. Be kind to each other.\n2. No spam or self-promotion.\n3. Keep it safe for work.", cx).text(14., 21.).min_height(147.).enter_newline().placeholder_color(Hsla::from(Theme::muted()).opacity(0.75));
+            a.set_value(rules_text, cx);
+            a
+        });
+        let fields: Vec<WelcomeField> = w["fields"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|f| {
+                        let kind = WELCOME_TYPES.iter().find(|t| f["type"] == t.0).map(|t| t.0).unwrap_or("text");
+                        self.welcome_field(f["id"].as_str().unwrap_or_default().to_string(), f["label"].as_str().unwrap_or_default().to_string(), kind, f["required"].as_bool().unwrap_or(false), cx)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let sub = cx.subscribe(&rules, |_, _, _, cx| cx.notify());
+        if let Some(s) = self.server_settings.as_mut() {
+            s.welcome = Some(Welcome { enabled: w["enabled"].as_bool().unwrap_or(false), rules, fields, saving: false, type_open: None, _subs: vec![sub] });
+        }
+    }
+
+    fn add_welcome_field(&mut self, label: &str, kind: &'static str, cx: &mut Context<Self>) {
+        let id = format!("f{:x}{}", chrono::Utc::now().timestamp_millis(), self.server_settings.as_ref().and_then(|s| s.welcome.as_ref()).map(|w| w.fields.len()).unwrap_or(0));
+        let field = self.welcome_field(id, label.to_string(), kind, false, cx);
+        if let Some(w) = self.server_settings.as_mut().and_then(|s| s.welcome.as_mut())
+            && w.fields.len() < 10
+        {
+            w.fields.push(field);
+        }
+        cx.notify();
+    }
+
+    /// save(): PUT the whole config; the answer replaces it.
+    fn save_welcome(&mut self, cx: &mut Context<Self>) {
+        let Some(s) = self.server_settings.as_mut() else { return };
+        let path = format!("/api/servers/{}/welcome", url::form_urlencoded::byte_serialize(s.server_id.as_bytes()).collect::<String>());
+        let Some(w) = s.welcome.as_mut() else { return };
+        w.saving = true;
+        let body = json!({
+            "enabled": w.enabled,
+            "rules": w.rules.read(cx).value(),
+            "fields": w.fields.iter().map(|f| json!({ "id": f.id, "label": f.label.read(cx).text(), "type": f.kind, "required": f.required })).collect::<Vec<_>>(),
+        });
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.settings_put(&path, body) }).await;
+            this.update(cx, |this, cx| {
+                match result {
+                    Ok(v) => {
+                        if let Some(w) = v.get("welcome").cloned() {
+                            this.set_welcome(&w, cx);
+                        }
+                        this.server_notice("Welcome screen saved.".into(), cx);
+                    }
+                    Err(e) => {
+                        if let Some(w) = this.server_settings.as_mut().and_then(|s| s.welcome.as_mut()) {
+                            w.saving = false;
+                        }
+                        this.server_notice(if e.to_string().is_empty() { "Could not save the welcome screen.".into() } else { e.to_string() }, cx);
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// WelcomeTab: switch it on, the rules, the intro form's questions, Save Changes.
+    fn render_server_welcome(&self, s: &ServerSettings, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        let Some(w) = s.welcome.as_ref() else {
+            cx.spawn(async move |this, cx| {
+                this.update(cx, |this, cx| this.load_welcome(cx)).ok();
+            })
+            .detach();
+            return div().text_size(px(14.)).text_color(muted).child("Loading…").into_any_element();
+        };
+        let label = |text: &str| div().text_size(px(12.)).line_height(px(18.)).font_weight(FontWeight::EXTRA_BOLD).text_color(muted).child(text.to_uppercase());
+        let hint = |text: &str| div().text_size(px(13.)).line_height(px(19.5)).text_color(muted).child(text.to_string());
+        let secondary = |id: SharedString| div().id(id).h(px(38.25)).px(px(18.)).rounded(px(8.)).bg(Theme::card()).border_1().border_color(Theme::line()).flex().items_center().gap(px(6.)).text_size(px(13.5)).font_weight(FontWeight::SEMIBOLD).text_color(ink).cursor_pointer();
+        let enabled = w.enabled;
+        let mut form = div().flex().flex_col().gap(px(8.)).child(label("Intro form (optional)")).child(hint("Questions newcomers answer before they start. Leave empty for rules only."));
+        for (n, f) in w.fields.iter().enumerate() {
+            let kind_label = WELCOME_TYPES.iter().find(|t| t.0 == f.kind).map(|t| t.1).unwrap_or("Short answer");
+            let open = w.type_open == Some(n);
+            let mut select = div().relative().child(
+                div()
+                    .id(SharedString::from(format!("wf-type-{n}")))
+                    .h(px(43.))
+                    .px(px(14.))
+                    .rounded(px(6.))
+                    .bg(Theme::paper())
+                    .border_1()
+                    .border_color(Theme::line())
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .text_size(px(14.))
+                    .text_color(ink)
+                    .cursor_pointer()
+                    .child(kind_label)
+                    .child(ui::icon("chevron-down", 14., ink))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(w) = this.server_settings.as_mut().and_then(|s| s.welcome.as_mut()) {
+                            w.type_open = if w.type_open == Some(n) { None } else { Some(n) };
+                        }
+                        cx.notify();
+                    })),
+            );
+            if open {
+                let mut menu = div().absolute().top(px(46.)).left_0().w(px(160.)).p(px(4.)).rounded(px(8.)).bg(Theme::panel()).border_1().border_color(Theme::line()).shadow(ui::card_shadow()).flex().flex_col();
+                for (k, l) in WELCOME_TYPES {
+                    menu = menu.child(div().id(SharedString::from(format!("wf-type-{n}-{k}"))).px(px(10.)).py(px(6.)).rounded(px(6.)).text_size(px(13.)).text_color(ink).hover(|s| s.bg(gpui::white().opacity(0.08))).cursor_pointer().child(l).on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(w) = this.server_settings.as_mut().and_then(|s| s.welcome.as_mut()) {
+                            w.fields[n].kind = k;
+                            w.type_open = None;
+                        }
+                        cx.notify();
+                    })));
+                }
+                select = select.child(gpui::deferred(menu).with_priority(3));
+            }
+            let required = f.required;
+            form = form.child(
+                div()
+                    .mb(px(8.))
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(div().flex_1().min_w(px(220.)).h(px(43.)).px(px(14.)).rounded(px(6.)).bg(Theme::paper()).border_1().border_color(Theme::line()).flex().items_center().child(f.label.clone()))
+                    .child(select)
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("wf-req-{n}")))
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .cursor_pointer()
+                            .text_size(px(16.))
+                            .text_color(ink)
+                            .child(checkbox(required, false))
+                            .child("Required")
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if let Some(w) = this.server_settings.as_mut().and_then(|s| s.welcome.as_mut()) {
+                                    w.fields[n].required = !required;
+                                }
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("wf-rm-{n}")))
+                            .p(px(6.))
+                            .rounded(px(4.))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(gpui::white().opacity(0.08)))
+                            .child(ui::icon("trash-2", 16., rgb(0xb5bac1)))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if let Some(w) = this.server_settings.as_mut().and_then(|s| s.welcome.as_mut()) {
+                                    w.fields.remove(n);
+                                }
+                                cx.notify();
+                            })),
+                    ),
+            );
+        }
+        if w.fields.len() < 10 {
+            let empty = w.fields.is_empty();
+            form = form.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.))
+                    .child(secondary("wf-add".into()).child(ui::icon("plus", 14., ink)).child("Add question").on_click(cx.listener(|this, _, _, cx| this.add_welcome_field("", "text", cx))))
+                    .when(empty, |d| {
+                        d.child(secondary("wf-preset".into()).child("Name + birthdate + about").on_click(cx.listener(|this, _, _, cx| {
+                            this.add_welcome_field("Name", "text", cx);
+                            this.add_welcome_field("Birthdate", "date", cx);
+                            this.add_welcome_field("Tell us a bit about yourself", "long", cx);
+                        })))
+                    }),
+            );
+        }
+        let saving = w.saving;
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(div().flex().flex_col().child(div().font_family(DISPLAY_FONT).text_size(px(26.)).line_height(px(39.)).font_weight(FontWeight::MEDIUM).text_color(ink).child("Welcome Screen")).child(div().mt(px(4.)).mb(px(12.)).text_size(px(13.5)).line_height(px(18.9)).text_color(muted).child("Show people who join the server your rules, and optionally a short form to introduce themselves. Only people who join after you switch it on are asked.")))
+            .child(
+                div()
+                    .id("wf-enabled")
+                    .mt(px(4.))
+                    .mb(px(16.))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .cursor_pointer()
+                    .text_size(px(16.))
+                    .line_height(px(24.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(ink)
+                    .child(checkbox(enabled, false))
+                    .child("Show the welcome screen to new members")
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(w) = this.server_settings.as_mut().and_then(|s| s.welcome.as_mut()) {
+                            w.enabled = !enabled;
+                        }
+                        cx.notify();
+                    })),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(8.))
+                    .child(label("Rules"))
+                    .child(hint("One rule per line works well. Markdown-style text is shown as written."))
+                    .child(div().min_h(px(169.)).px(px(14.)).py(px(10.)).rounded(px(6.)).bg(Theme::paper()).border_1().border_color(Theme::line()).child(w.rules.clone())),
+            )
+            .child(form)
+            .child(
+                div().flex().child(
+                    div()
+                        .id("wf-save")
+                        .h(px(38.25))
+                        .px(px(18.))
+                        .rounded(px(8.))
+                        .bg(Theme::lavender())
+                        .flex()
+                        .items_center()
+                        .text_size(px(13.5))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(rgb(0x15121f))
+                        .when(saving, |d| d.opacity(0.5))
+                        .when(!saving, |d| d.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.save_welcome(cx))))
+                        .child(if saving { "Saving…" } else { "Save Changes" }),
+                ),
+            )
             .into_any_element()
     }
 
