@@ -56,7 +56,33 @@ pub(super) struct ServerSettings {
     /// The role open in the editor ("@everyone" for the server's defaults).
     active_role: Option<String>,
     pub(super) main_scroll: gpui::ScrollHandle,
+    invites: Option<Vec<Value>>,
+    bans: Option<Vec<Value>>,
+    audit: Option<Vec<Value>>,
+    /// What is on its way ("invites", "bans", "audit").
+    loading: std::cell::RefCell<std::collections::HashSet<&'static str>>,
+    creating_invite: bool,
+    vanity: Entity<TextInput>,
+    ban_search: Entity<TextInput>,
+    audit_query: Entity<TextInput>,
+    audit_cat: &'static str,
     _subs: Vec<Subscription>,
+}
+
+/// AUDIT_LABELS (server-settings/constants.ts → resources/data/audit-labels.json).
+static AUDIT_LABELS: std::sync::LazyLock<std::collections::HashMap<String, String>> = std::sync::LazyLock::new(|| {
+    crate::assets::ASSETS.iter().find(|(p, _)| *p == "data/audit-labels.json").and_then(|(_, b)| serde_json::from_slice(b).ok()).unwrap_or_default()
+});
+
+/// matchesCategory() in audit-log-tab.tsx.
+fn audit_matches(action: &str, cat: &str) -> bool {
+    match cat {
+        "moderation" => ["moderation.", "message.", "report."].iter().any(|p| action.starts_with(p)) || matches!(action, "member.kick" | "member.ban" | "member.unban" | "member.timeout" | "member.timeout_remove"),
+        "structure" => ["server.", "channel.", "role."].iter().any(|p| action.starts_with(p)),
+        "members" => action.starts_with("member.") || action.starts_with("invite."),
+        "integrations" => ["webhook.", "bot.", "feed."].iter().any(|p| action.starts_with(p)),
+        _ => true,
+    }
 }
 
 /// lib/permissions.ts PERMISSION_INFO (tools: esbuild + node, resources/data/permissions.json):
@@ -156,6 +182,30 @@ impl Shell {
             }));
         }
         let active_role = server.roles.first().map(|r| r.id.clone());
+        let look = || Look { size: 14., line_height: 21., height: 21., color: Theme::ink().into(), placeholder: Theme::muted().into() };
+        let vanity = cx.new(|cx| {
+            let mut i = TextInput::new(t("vanity.placeholder"), cx).look(look());
+            i.set_text(server.vanity_code.clone().unwrap_or_default(), cx);
+            i
+        });
+        let ban_search = cx.new(|cx| TextInput::new("Search Bans by User Id or Username", cx).look(look()));
+        let audit_query = cx.new(|cx| TextInput::new("Filter by moderator, target, or action…", cx).look(Look { size: 12., line_height: 16., height: 16., color: Theme::ink().into(), placeholder: Theme::muted().into() }));
+        for input in [&vanity, &ban_search, &audit_query] {
+            subs.push(cx.subscribe_in(input, window, |this, input, event, _, cx| {
+                if matches!(event, InputEvent::Escape) {
+                    this.server_settings = None;
+                }
+                // The vanity code: spaces become dashes, at most 32 long.
+                if matches!(event, InputEvent::Changed) && this.server_settings.as_ref().is_some_and(|s| s.vanity == *input) {
+                    let text = input.read(cx).text();
+                    let fixed: String = text.split_whitespace().collect::<Vec<_>>().join("-").chars().take(32).collect();
+                    if fixed != text && !text.ends_with(' ') {
+                        input.update(cx, |i, cx| i.set_text(fixed, cx));
+                    }
+                }
+                cx.notify();
+            }));
+        }
         self.server_menu = false;
         self.server_settings = Some(ServerSettings {
             server_id: server.id.clone(),
@@ -172,6 +222,15 @@ impl Shell {
             role_emoji,
             active_role,
             main_scroll: gpui::ScrollHandle::new(),
+            invites: None,
+            bans: None,
+            audit: None,
+            loading: Default::default(),
+            creating_invite: false,
+            vanity,
+            ban_search,
+            audit_query,
+            audit_cat: "all",
             _subs: subs,
         });
         cx.notify();
@@ -440,6 +499,9 @@ impl Shell {
             "profile" => self.render_server_profile(s, server, can, window, cx),
             "members" => self.render_server_members(s, server, can, window, cx),
             "roles" => self.render_server_roles(s, server, can, window, cx),
+            "invites" => self.render_server_invites(s, server, can, cx),
+            "bans" => self.render_server_bans(s, cx),
+            "audit_log" => self.render_server_audit(s, server, window, cx),
             other => self.render_server_tab(other, s, server, can, window, cx),
         };
         let main = div()
@@ -698,6 +760,15 @@ impl Shell {
                 Ok(_) => {
                     if let Some(list) = this.members.get_mut(&server) {
                         list.retain(|m| m.id != member);
+                    }
+                    if action == "unban" {
+                        if let Some(s) = this.server_settings.as_mut()
+                            && let Some(list) = s.bans.as_mut()
+                        {
+                            list.retain(|b| b["userId"].as_str() != Some(member.as_str()));
+                        }
+                        this.server_notice(format!("{name} can rejoin the conversation."), cx);
+                        return;
                     }
                     this.server_notice(format!("{} {name}.", if action == "kick" { "Kicked" } else { "Banned" }), cx);
                     this.load_servers(cx);
@@ -1276,6 +1347,454 @@ impl Shell {
                 );
             }
             page = page.child(editor);
+        }
+        page.into_any_element()
+    }
+
+    /// The tab's list, fetched once when it is first shown (and on Refresh).
+    fn ss_load(&self, kind: &'static str, cx: &mut Context<Self>) {
+        let Some(s) = self.server_settings.as_ref() else { return };
+        if !s.loading.borrow_mut().insert(kind) {
+            return;
+        }
+        let sid = url::form_urlencoded::byte_serialize(s.server_id.as_bytes()).collect::<String>();
+        let (path, key) = match kind {
+            "invites" => (format!("/api/invites?serverId={sid}"), "invites"),
+            "bans" => (format!("/api/bans?serverId={sid}"), "bans"),
+            _ => (format!("/api/audit?serverId={sid}"), "entries"),
+        };
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.get_value(&path) }).await;
+            this.update(cx, |this, cx| {
+                let Some(s) = this.server_settings.as_mut() else { return };
+                s.loading.borrow_mut().remove(kind);
+                let list = result.ok().and_then(|v| v.get(key).and_then(Value::as_array).cloned()).unwrap_or_default();
+                match kind {
+                    "invites" => s.invites = Some(list),
+                    "bans" => s.bans = Some(list),
+                    _ => s.audit = Some(list),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn ss_refresh(&mut self, kind: &'static str, cx: &mut Context<Self>) {
+        if let Some(s) = self.server_settings.as_mut() {
+            match kind {
+                "invites" => s.invites = None,
+                "bans" => s.bans = None,
+                _ => s.audit = None,
+            }
+        }
+        self.ss_load(kind, cx);
+        cx.notify();
+    }
+
+    /// A server-settings call; `then` runs on success, errors become the notice.
+    fn ss_call(&mut self, call: impl FnOnce(&crate::api::Client) -> anyhow::Result<Value> + Send + 'static, then: impl FnOnce(&mut Self, &mut Context<Self>) + 'static, cx: &mut Context<Self>) {
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { call(&client) }).await;
+            this.update(cx, |this, cx| match result {
+                Ok(_) => then(this, cx),
+                Err(e) => this.server_notice(e.to_string(), cx),
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn ss_button(id: SharedString, label: &str, kind: &str) -> gpui::Stateful<gpui::Div> {
+        let ink: Hsla = Theme::ink().into();
+        let base = div().id(id).flex_none().h(px(34.25)).px(px(10.)).rounded(px(8.)).flex().items_center().text_size(px(13.5)).font_weight(FontWeight::SEMIBOLD).cursor_pointer().child(label.to_string());
+        match kind {
+            "secondary" => base.bg(Theme::card()).border_1().border_color(rgb(0x4b4d5b)).text_color(ink),
+            "danger" => base.bg(Hsla::from(Theme::coral()).opacity(0.14)).border_1().border_color(Hsla::from(Theme::coral()).opacity(0.35)).text_color(Theme::coral()),
+            _ => base.border_1().border_color(rgb(0x4b4d5b)).text_color(rgb(0xaaaeba)),
+        }
+    }
+
+    /// ServerInvitesTab: Create Invite Code, the vanity URL, and every code with copy and revoke.
+    fn render_server_invites(&self, s: &ServerSettings, server: &crate::model::Server, can: Can, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        let lavender: Hsla = Theme::lavender().into();
+        let on_accent: Hsla = rgb(0x15121f).into();
+        if s.invites.is_none() {
+            self.ss_load("invites", cx);
+        }
+        let sid = server.id.clone();
+        let mut page = div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(div().font_family(DISPLAY_FONT).text_size(px(26.)).line_height(px(39.)).font_weight(FontWeight::MEDIUM).text_color(ink).child("Invite People"))
+            .child(div().mt(px(4.)).mb(px(12.)).text_size(px(13.5)).line_height(px(18.9)).text_color(muted).child(format!("Share one of these codes to let someone join {}. A code with no use limit works until you revoke it.", server.name)));
+        if can.invites {
+            let creating = s.creating_invite;
+            let sid = sid.clone();
+            page = page.child(
+                div()
+                    .id("ss-new-invite")
+                    .h(px(38.25))
+                    .rounded(px(8.))
+                    .bg(lavender)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_size(px(13.5))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(on_accent)
+                    .when(creating, |d| d.opacity(0.5))
+                    .when(!creating, |d| d.cursor_pointer())
+                    .child(if creating { "Creating…" } else { "Create Invite Code" })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(s) = this.server_settings.as_mut() {
+                            s.creating_invite = true;
+                        }
+                        let sid = sid.clone();
+                        this.ss_call(
+                            move |c| c.create_invite(json!({ "serverId": sid, "maxUses": 100 })),
+                            |this, cx| {
+                                if let Some(s) = this.server_settings.as_mut() {
+                                    s.creating_invite = false;
+                                }
+                                this.ss_refresh("invites", cx);
+                            },
+                            cx,
+                        );
+                    })),
+            );
+        } else {
+            page = page.child(div().mt(px(8.)).text_size(px(13.5)).text_color(rgb(0xf0b232)).child("Only the server owner and designated members can create invite codes."));
+        }
+        // VanityInviteCard.
+        let current = server.vanity_code.clone().unwrap_or_default();
+        if can.manage_server || !current.is_empty() {
+            let draft = s.vanity.read(cx).text().trim().to_string();
+            let save_ok = !draft.is_empty() && draft.to_uppercase() != current;
+            let mut card = div()
+                .my(px(16.))
+                .flex()
+                .flex_col()
+                .gap(px(8.))
+                .child(div().text_size(px(16.)).line_height(px(24.)).font_weight(FontWeight::BOLD).text_color(ink).child(t("vanity.title")))
+                .child(div().text_size(px(13.5)).line_height(px(18.9)).text_color(muted).child(t("vanity.desc")));
+            if can.manage_server {
+                let (sid1, sid2) = (sid.clone(), sid.clone());
+                card = card.child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(div().flex_1().min_w(px(180.)).h(px(43.)).px(px(14.)).rounded(px(6.)).bg(Theme::paper()).border_1().border_color(Theme::line()).flex().items_center().child(s.vanity.clone()))
+                        .child(
+                            div()
+                                .id("ss-vanity-save")
+                                .h(px(38.25))
+                                .px(px(18.))
+                                .rounded(px(8.))
+                                .bg(lavender)
+                                .flex()
+                                .items_center()
+                                .text_size(px(13.5))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(on_accent)
+                                .when(!save_ok, |d| d.opacity(0.5))
+                                .when(save_ok, |d| {
+                                    d.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| {
+                                        let path = format!("/api/servers/{}", url::form_urlencoded::byte_serialize(sid1.as_bytes()).collect::<String>());
+                                        let code = draft.clone();
+                                        this.ss_call(move |c| c.settings_patch(&path, json!({ "vanityCode": code })), |this, cx| {
+                                            this.load_servers(cx);
+                                            this.server_notice(t("vanity.saved"), cx);
+                                        }, cx);
+                                    }))
+                                })
+                                .child(t("vanity.save")),
+                        )
+                        .when(!current.is_empty(), |d| {
+                            d.child(Self::ss_button("ss-vanity-remove".into(), &t("vanity.remove"), "plain").on_click(cx.listener(move |this, _, _, cx| {
+                                let path = format!("/api/servers/{}", url::form_urlencoded::byte_serialize(sid2.as_bytes()).collect::<String>());
+                                this.ss_call(move |c| c.settings_patch(&path, json!({ "vanityCode": Value::Null })), |this, cx| {
+                                    this.load_servers(cx);
+                                    this.server_notice(t("vanity.removed"), cx);
+                                }, cx);
+                            })))
+                        }),
+                );
+            }
+            if !current.is_empty() {
+                let link = format!("https://hoffle.online/i/{}", current.to_uppercase());
+                let copy = link.clone();
+                card = card.child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(div().px(px(8.)).py(px(2.)).rounded(px(6.)).bg(Theme::card()).font_family(crate::theme::MONO_FONT).text_size(px(15.)).font_weight(FontWeight::BOLD).text_color(ink).child(link))
+                        .child(Self::ss_button("ss-vanity-copy".into(), &t("vanity.copy"), "plain").on_click(cx.listener(move |this, _, _, cx| {
+                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(copy.clone()));
+                            this.server_notice(t("vanity.copied"), cx);
+                        }))),
+                );
+            }
+            page = page.child(card);
+        }
+        match &s.invites {
+            None => page = page.child(div().text_size(px(13.5)).text_color(muted).child("Loading invites…")),
+            Some(list) if list.is_empty() => page = page.child(div().text_size(px(13.5)).text_color(muted).child("No invites yet — create one above.")),
+            Some(list) => {
+                let mut ul = div().mt(px(16.)).flex().flex_col().gap(px(10.));
+                for inv in list {
+                    let code = inv["code"].as_str().unwrap_or_default().to_string();
+                    let revoked = inv["revoked"].as_bool().unwrap_or(false);
+                    let max = inv["maxUses"].as_i64().unwrap_or(0);
+                    let uses = inv["uses"].as_i64().unwrap_or(0);
+                    let meta = if revoked { "revoked".to_string() } else if inv["spent"].as_bool().unwrap_or(false) { "used up".into() } else if max > 0 { format!("{uses}/{max} uses") } else { format!("{uses} uses · unlimited") };
+                    let (c1, c2, c3) = (code.clone(), code.clone(), code.clone());
+                    ul = ul.child(
+                        div()
+                            .py(px(10.))
+                            .rounded(px(10.))
+                            .bg(Theme::panel())
+                            .border_1()
+                            .border_color(Theme::line())
+                            .flex()
+                            .items_center()
+                            .gap(px(10.))
+                            .child(div().px(px(8.)).py(px(2.)).rounded(px(6.)).bg(Theme::card()).font_family(crate::theme::MONO_FONT).text_size(px(15.)).line_height(px(22.5)).font_weight(FontWeight::BOLD).text_color(ink).child(code.clone()))
+                            .child(div().flex_1().text_size(px(12.)).line_height(px(18.)).text_color(muted).child(meta))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.))
+                                    .child(Self::ss_button(SharedString::from(format!("inv-link-{code}")), "Copy Link", "plain").on_click(cx.listener(move |this, _, _, cx| {
+                                        cx.write_to_clipboard(gpui::ClipboardItem::new_string(format!("https://hoffle.online/i/{}", c1.to_uppercase())));
+                                        this.server_notice("Invite link copied to clipboard.".into(), cx);
+                                    })))
+                                    .child(Self::ss_button(SharedString::from(format!("inv-code-{code}")), "Copy Code", "secondary").on_click(cx.listener(move |this, _, _, cx| {
+                                        cx.write_to_clipboard(gpui::ClipboardItem::new_string(c2.clone()));
+                                        this.server_notice("Invite code copied.".into(), cx);
+                                    })))
+                                    .when(!revoked, |d| {
+                                        d.child(Self::ss_button(SharedString::from(format!("inv-revoke-{code}")), "Revoke", "danger").on_click(cx.listener(move |this, _, _, cx| {
+                                            let path = format!("/api/invites?code={}", url::form_urlencoded::byte_serialize(c3.as_bytes()).collect::<String>());
+                                            this.ss_call(move |c| c.settings_delete(&path, json!({})), |this, cx| this.ss_refresh("invites", cx), cx);
+                                        })))
+                                    }),
+                            ),
+                    );
+                }
+                page = page.child(ul);
+            }
+        }
+        page.into_any_element()
+    }
+
+    /// ServerBansTab: search, Refresh, and each banned account with Unban (confirmed).
+    fn render_server_bans(&self, s: &ServerSettings, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        let lavender: Hsla = Theme::lavender().into();
+        let on_accent: Hsla = rgb(0x15121f).into();
+        if s.bans.is_none() {
+            self.ss_load("bans", cx);
+        }
+        let term = s.ban_search.read(cx).text().trim().to_lowercase();
+        let mut page = div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(div().font_family(DISPLAY_FONT).text_size(px(26.)).line_height(px(39.)).font_weight(FontWeight::MEDIUM).text_color(ink).child("Server Ban List"))
+            .child(div().mt(px(4.)).mb(px(12.)).text_size(px(13.5)).line_height(px(18.9)).text_color(muted).child("A ban applies to the account: it removes them from the server and stops that account rejoining. Someone could still come back with a new account, so a verification level in Safety Setup helps keep throwaway accounts out."))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(div().relative().h(px(43.)).pl(px(36.)).pr(px(14.)).rounded(px(6.)).bg(Theme::panel()).border_1().border_color(Theme::line()).flex().items_center().child(div().absolute().left(px(12.)).top(px(14.)).opacity(0.6).child(ui::icon("search", 14., ink))).child(div().flex_1().child(s.ban_search.clone())))
+                    .child(div().flex().child(div().id("ss-bans-refresh").h(px(38.25)).px(px(18.)).rounded(px(8.)).bg(lavender).flex().items_center().text_size(px(13.5)).font_weight(FontWeight::SEMIBOLD).text_color(on_accent).cursor_pointer().child("Refresh").on_click(cx.listener(|this, _, _, cx| this.ss_refresh("bans", cx))))),
+            );
+        match &s.bans {
+            None => page = page.child(div().text_size(px(13.5)).text_color(muted).child("Loading the ban list…")),
+            Some(list) if list.is_empty() => {
+                page = page.child(
+                    div()
+                        .mt(px(20.))
+                        .px(px(20.))
+                        .py(px(60.))
+                        .rounded(px(16.))
+                        .bg(Theme::panel())
+                        .border_1()
+                        .border_color(Theme::line())
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .child(div().size(px(120.)).rounded_full().bg(ink.opacity(0.06)).flex().flex_col().items_center().justify_center().child(ui::icon("hammer", 26., ink)).child(ui::icon("zap", 26., ink)))
+                        .child(div().mt(px(12.)).text_size(px(18.)).line_height(px(27.)).font_weight(FontWeight::EXTRA_BOLD).text_color(ink).child("NO BANS"))
+                        .child(div().mt(px(12.)).text_size(px(14.)).line_height(px(21.)).text_color(muted).child("You haven't banned anybody... but if and when you must, do not hesitate!")),
+                )
+            }
+            Some(list) => {
+                let shown: Vec<&Value> = list
+                    .iter()
+                    .filter(|b| term.is_empty() || ["username", "displayName", "userId"].iter().any(|k| b[*k].as_str().unwrap_or_default().to_lowercase().contains(&term)))
+                    .collect();
+                if shown.is_empty() {
+                    page = page.child(div().text_size(px(13.5)).text_color(muted).child("Nobody matched that search."));
+                } else {
+                    let mut ul = div().flex().flex_col().gap(px(8.));
+                    for b in shown {
+                        let (uid, name) = (b["userId"].as_str().unwrap_or_default().to_string(), b["displayName"].as_str().unwrap_or_default().to_string());
+                        let mut sub = format!("@{}", b["username"].as_str().unwrap_or_default());
+                        if let Some(by) = b["bannedBy"].as_str() {
+                            sub.push_str(&format!(" · banned by {by}"));
+                        }
+                        if let Some(at) = b["bannedAt"].as_str().and_then(crate::model::parse_time) {
+                            sub.push_str(&format!(" · {}", at.with_timezone(&chrono::Local).format("%-m/%-d/%Y")));
+                        }
+                        let avatar_url = b["avatarUrl"].as_str().filter(|u| !u.is_empty()).map(str::to_string);
+                        let sid = s.server_id.clone();
+                        ul = ul.child(
+                            div()
+                                .px(px(12.))
+                                .py(px(10.))
+                                .rounded(px(10.))
+                                .bg(Theme::panel())
+                                .flex()
+                                .items_center()
+                                .gap(px(12.))
+                                .child(ui::avatar(self.picture(&avatar_url), b["avatar"].as_str().unwrap_or_default(), b["color"].as_str().unwrap_or_default(), &name, 36.))
+                                .child(div().flex_1().flex().flex_col().child(div().text_size(px(14.)).font_weight(FontWeight::BOLD).text_color(ink).child(name.clone())).child(div().text_size(px(12.)).text_color(muted).child(sub)))
+                                .child(Self::ss_button(SharedString::from(format!("unban-{uid}")), "Unban", "plain").on_click(cx.listener(move |this, _, _, cx| {
+                                    this.confirm = Some(Confirm {
+                                        title: format!("Unban {name}?"),
+                                        text: "They will be able to read and post here again.".into(),
+                                        ok: "Unban".into(),
+                                        cancel: t("common.cancel"),
+                                        action: ConfirmAction::Moderate(sid.clone(), uid.clone(), name.clone(), "unban"),
+                                    });
+                                    cx.notify();
+                                }))),
+                        );
+                    }
+                    page = page.child(ul);
+                }
+            }
+        }
+        page.into_any_element()
+    }
+
+    /// ServerAuditLogTab: Refresh, the five filters and a search, then who did what, newest first.
+    fn render_server_audit(&self, s: &ServerSettings, server: &crate::model::Server, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        let lavender: Hsla = Theme::lavender().into();
+        let on_accent: Hsla = rgb(0x15121f).into();
+        if s.audit.is_none() {
+            self.ss_load("audit", cx);
+        }
+        let _ = window;
+        let q = s.audit_query.read(cx).text().trim().to_lowercase();
+        let mut chips = div().my(px(12.)).flex().flex_wrap().items_center().gap(px(8.));
+        for (id, label) in [("all", "All Actions"), ("moderation", "Moderation"), ("structure", "Channels & Roles"), ("members", "Members & Invites"), ("integrations", "Webhooks & Bots")] {
+            let on = s.audit_cat == id;
+            chips = chips.child(
+                div()
+                    .id(SharedString::from(format!("audit-cat-{id}")))
+                    .h(px(24.))
+                    .px(px(12.))
+                    .rounded_full()
+                    .flex()
+                    .items_center()
+                    .text_size(px(12.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .bg(if on { rgb(0x6366f1).into() } else { Hsla::from(Theme::panel()) })
+                    .text_color(if on { gpui::white().into() } else { Hsla::from(rgb(0xd4d4d8)) })
+                    .cursor_pointer()
+                    .child(label)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(s) = this.server_settings.as_mut() {
+                            s.audit_cat = id;
+                        }
+                        cx.notify();
+                    })),
+            );
+        }
+        chips = chips.child(div().ml_auto().w(px(220.)).h(px(28.)).px(px(12.)).flex().items_center().child(s.audit_query.clone()));
+        let mut page = div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(div().font_family(DISPLAY_FONT).text_size(px(26.)).line_height(px(39.)).font_weight(FontWeight::MEDIUM).text_color(ink).child("Audit Log"))
+                    .child(div().mt(px(4.)).mb(px(12.)).text_size(px(13.5)).line_height(px(18.9)).text_color(muted).child(format!("Who did what in {}, newest first.", server.name)))
+                    .child(div().flex().child(div().id("ss-audit-refresh").h(px(38.25)).px(px(18.)).rounded(px(8.)).bg(lavender).flex().items_center().text_size(px(13.5)).font_weight(FontWeight::SEMIBOLD).text_color(on_accent).cursor_pointer().child("Refresh").on_click(cx.listener(|this, _, _, cx| this.ss_refresh("audit", cx))))),
+            )
+            .child(chips);
+        match &s.audit {
+            None => page = page.child(div().text_size(px(13.5)).text_color(muted).child("Loading the audit log…")),
+            Some(all) => {
+                let shown: Vec<&Value> = all
+                    .iter()
+                    .filter(|e| {
+                        let action = e["action"].as_str().unwrap_or_default();
+                        if !audit_matches(action, s.audit_cat) {
+                            return false;
+                        }
+                        if q.is_empty() {
+                            return true;
+                        }
+                        let label = AUDIT_LABELS.get(action).map(String::as_str).unwrap_or(action);
+                        [e["actorName"].as_str(), Some(action), Some(label), e["targetName"].as_str(), e["detail"].as_str()].iter().flatten().any(|t| t.to_lowercase().contains(&q))
+                    })
+                    .collect();
+                if shown.is_empty() {
+                    page = page.child(div().p(px(24.)).text_size(px(14.)).text_color(muted).child(if all.is_empty() { "Nothing has happened here yet." } else { "No audit entries match your filter." }));
+                } else {
+                    let mut ul = div().mt(px(14.)).flex().flex_col().gap(px(2.));
+                    for (n, e) in shown.iter().enumerate() {
+                        let action = e["action"].as_str().unwrap_or_default();
+                        let label = AUDIT_LABELS.get(action).cloned().unwrap_or_else(|| action.to_string());
+                        let when = e["createdAt"].as_str().and_then(crate::model::parse_time).map(|t| t.with_timezone(&chrono::Local).format("%-m/%-d/%Y, %-I:%M:%S %p").to_string()).unwrap_or_default();
+                        let mut text = vec![(e["actorName"].as_str().unwrap_or_default().to_string(), FontWeight::BOLD, ink), (format!(" {label}"), FontWeight::NORMAL, ink)];
+                        if let Some(target) = e["targetName"].as_str() {
+                            text.push((format!(" {target}"), FontWeight::NORMAL, lavender));
+                        }
+                        if let Some(detail) = e["detail"].as_str() {
+                            text.push((format!(" ({detail})"), FontWeight::NORMAL, muted));
+                        }
+                        let mut line = div().flex_1().min_w_0().flex().flex_wrap().text_size(px(13.)).line_height(px(19.5));
+                        for (part, weight, color) in text {
+                            line = line.child(div().font_weight(weight).text_color(color).whitespace_nowrap().child(part));
+                        }
+                        ul = ul.child(
+                            div()
+                                .px(px(10.))
+                                .py(px(8.))
+                                .rounded(px(8.))
+                                .when(n % 2 == 0, |d| d.bg(ink.opacity(0.04)))
+                                .flex()
+                                .items_center()
+                                .gap(px(8.))
+                                .child(div().text_size(px(16.)).line_height(px(16.)).text_color(lavender).child("•"))
+                                .child(line)
+                                .child(div().flex_none().text_size(px(11.)).line_height(px(16.5)).text_color(muted).child(when)),
+                        );
+                    }
+                    page = page.child(ul);
+                }
+            }
         }
         page.into_any_element()
     }

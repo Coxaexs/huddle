@@ -75,6 +75,8 @@ pub struct Server {
     pub disabled_modules: Vec<String>,
     /// False when this server uses another bot's player.
     pub music_bot: Option<bool>,
+    /// The server's own invite code, when it has one.
+    pub vanity_code: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

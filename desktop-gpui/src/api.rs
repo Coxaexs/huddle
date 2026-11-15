@@ -119,6 +119,11 @@ impl Client {
         self.post(path, body)
     }
 
+    /// GET a path, as JSON.
+    pub fn get_value(&self, path: &str) -> Result<Value> {
+        self.get(path)
+    }
+
     pub fn settings_patch(&self, path: &str, body: Value) -> Result<Value> {
         let mut request = self.agent.patch(format!("{}{path}", self.base)).header("Origin", self.absolute(""));
         if let Some(cookie) = self.cookie_header() {
