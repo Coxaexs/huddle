@@ -233,6 +233,21 @@ impl Client {
         self.get(&format!("/api/music/search?q={}", encode(q)))
     }
 
+    /// The DJ booth in a voice room (/api/music/club).
+    pub fn music_club(&self, voice_channel_id: &str) -> Result<Value> {
+        self.get(&format!("/api/music/club?voiceChannelId={}", encode(voice_channel_id)))
+    }
+
+    /// A booth control (start a set, mix, a move, stop…); answers the booth.
+    pub fn music_club_post(&self, body: Value) -> Result<Value> {
+        self.post("/api/music/club", body)
+    }
+
+    /// A signed link into the bot's web pages (the full DJ booth).
+    pub fn musicwatch_link(&self, voice_channel_id: &str, page: &str) -> Result<Value> {
+        self.post("/api/integrations/musicwatch/web-link", json!({ "voiceChannelId": voice_channel_id, "page": page }))
+    }
+
     /// A voice room's playlists.
     pub fn music_playlists(&self, voice_channel_id: &str) -> Result<Value> {
         self.get(&format!("/api/music/playlists?voiceChannelId={}", encode(voice_channel_id)))

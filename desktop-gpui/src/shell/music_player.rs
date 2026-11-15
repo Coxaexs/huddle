@@ -82,7 +82,22 @@ pub(super) struct MusicPlayer {
     playlists_loading: bool,
     open_list: Option<String>,
     pub(super) sheet: Option<Sheet>,
+    dj: Option<Value>,
+    dj_error: Option<String>,
+    dj_busy: bool,
+    dj_mode: &'static str,
+    dj_vibe: &'static str,
+    dj_style: &'static str,
+    dj_style_open: bool,
+    dj_polled: Cell<Option<std::time::Instant>>,
+    settings: Option<Value>,
+    settings_asked: Cell<bool>,
 }
+
+const DJ_MODES: [(&str, &str, &str); 2] = [("real", "Real DJ", "Picks the order and remixes as it goes"), ("auto", "Auto DJ", "Mixes your queue in order")];
+const VIBES: [(&str, &str); 3] = [("chill", "Chill"), ("club", "Club"), ("hype", "Hype")];
+const MIX_STYLES: [(&str, &str); 10] = [("auto", "DJ's choice"), ("blend", "Blend"), ("fade", "Fade"), ("echo", "Echo out"), ("filter", "Filter sweep"), ("brake", "Brake"), ("spinback", "Spinback"), ("cut", "Cut"), ("drum_bridge", "Drum bridge"), ("mashup", "Mashup")];
+const MOVES: [(&str, &str); 5] = [("drop", "Drop"), ("acapella", "Acapella"), ("beatbreak", "Beat break"), ("stutter", "Stutter"), ("echo", "Echo")];
 
 /// RoomPlaylist.
 #[derive(Clone)]
@@ -242,6 +257,16 @@ impl Shell {
             playlists_loading: false,
             open_list: None,
             sheet: None,
+            dj: None,
+            dj_error: None,
+            dj_busy: false,
+            dj_mode: "real",
+            dj_vibe: "club",
+            dj_style: "auto",
+            dj_style_open: false,
+            dj_polled: Cell::new(None),
+            settings: None,
+            settings_asked: Cell::new(false),
         });
         // Fetched as soon as the player opens, as the web does (the bot can take a few seconds).
         self.load_playlists(cx);
@@ -654,6 +679,125 @@ impl Shell {
                 .child(card)
                 .into_any_element(),
         )
+    }
+
+    /// The booth's state, every 3s while the DJ view is open.
+    fn poll_dj(&mut self, cx: &mut Context<Self>) {
+        let Some(room) = self.music_player.as_ref().and_then(|p| p.room.clone()) else { return };
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.music_club(&room) }).await;
+            this.update(cx, |this, cx| {
+                if let Some(p) = this.music_player.as_mut() {
+                    match result {
+                        Ok(v) => {
+                            p.dj = Some(v);
+                            p.dj_error = None;
+                        }
+                        Err(e) => p.dj_error = Some(if e.to_string().is_empty() { "The DJ booth did not answer.".into() } else { e.to_string() }),
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// /settings, read (works from outside the room): AutoMix, Smart Autoplay, the radios.
+    fn load_room_settings(&mut self, cx: &mut Context<Self>) {
+        let Some(room) = self.music_player.as_ref().and_then(|p| p.room.clone()) else { return };
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.music_command("/settings", &room, None, true) }).await;
+            this.update(cx, |this, cx| {
+                if let (Ok(v), Some(p)) = (result, this.music_player.as_mut())
+                    && let Some(state) = v.get("state").filter(|s| s.is_object())
+                {
+                    p.settings = Some(state.clone());
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// change(): a settings command; its answer's state replaces ours.
+    fn change_room_setting(&mut self, text: String, cx: &mut Context<Self>) {
+        if !self.music_in_room() {
+            return;
+        }
+        let Some(room) = self.music_player.as_ref().and_then(|p| p.room.clone()) else { return };
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.music_command(&text, &room, None, true) }).await;
+            this.update(cx, |this, cx| {
+                match result {
+                    Ok(v) => {
+                        if let (Some(state), Some(p)) = (v.get("state").filter(|s| s.is_object()), this.music_player.as_mut()) {
+                            p.settings = Some(state.clone());
+                        }
+                    }
+                    Err(e) => this.music_note(e.to_string(), cx),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// booth(): a DJ booth control, in the room only.
+    fn booth(&mut self, body: Value, cx: &mut Context<Self>) {
+        if !self.music_in_room() {
+            return self.music_note("Join the room to DJ.".into(), cx);
+        }
+        let Some(p) = self.music_player.as_mut() else { return };
+        let Some(room) = p.room.clone() else { return };
+        p.dj_busy = true;
+        let mut body = body;
+        body["voiceChannelId"] = json!(room);
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.music_club_post(body) }).await;
+            this.update(cx, |this, cx| {
+                if let Some(p) = this.music_player.as_mut() {
+                    p.dj_busy = false;
+                }
+                match result {
+                    Ok(v) => {
+                        let notice = v.get("notice").and_then(Value::as_str).filter(|n| !n.is_empty()).map(str::to_string);
+                        if let Some(p) = this.music_player.as_mut() {
+                            p.dj = Some(v);
+                        }
+                        if let Some(n) = notice {
+                            this.music_note(n, cx);
+                        }
+                    }
+                    Err(e) => this.music_note(if e.to_string().is_empty() { "The DJ booth did not answer.".into() } else { e.to_string() }, cx),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// openBooth(): the bot's full DJ booth, in the browser.
+    fn open_booth(&mut self, cx: &mut Context<Self>) {
+        let Some(room) = self.music_player.as_ref().and_then(|p| p.room.clone()) else { return };
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.musicwatch_link(&room, "dj") }).await;
+            this.update(cx, |this, cx| match result.ok().and_then(|v| v.get("url").and_then(Value::as_str).map(str::to_string)) {
+                Some(url) => cx.open_url(&url),
+                None => this.music_note("The DJ booth did not open.".into(), cx),
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// playPlaylist(): play or queue it in the room, from a song if given.
@@ -1174,6 +1318,7 @@ impl Shell {
             "queue" => self.render_player_queue(state.as_ref(), in_room, vw - 2. * body_x - gap - left_w, window, cx),
             "search" => self.render_player_search(p, in_room, track.is_some(), vw - 2. * body_x - gap - left_w, window, cx),
             "playlists" => self.render_player_playlists(p, in_room, vw - 2. * body_x - gap - left_w, window, cx),
+            "dj" => self.render_player_dj(p, in_room, vw - 2. * body_x - gap - left_w, window, cx),
             other => {
                 let (icon, title) = match other {
                     _ => ("disc-3", "DJ booth"),
@@ -1642,6 +1787,359 @@ impl Shell {
             )
             .child(grid)
             .into_any_element()
+    }
+
+    /// DjPane: start a set (Real or Auto DJ, a vibe) or, on air, the decks, the next transition,
+    /// moves, who picks and the vibe, the crate; then AutoMix, Smart Autoplay and the mood radios.
+    fn render_player_dj(&self, p: &MusicPlayer, in_room: bool, pane_w: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        let lavender: Hsla = Theme::lavender().into();
+        let on_accent: Hsla = rgb(0x15121f).into();
+        let line: Hsla = Theme::line().into();
+        if p.room.is_none() {
+            return empty_state("disc-3", "No voice room".into(), Some("The DJ plays in a voice room.".into()), None, None::<Click>, cx);
+        }
+        // Follow the booth every 3s while this view is open, and read the room's settings once.
+        if p.dj_polled.get().is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(3)) {
+            p.dj_polled.set(Some(std::time::Instant::now()));
+            cx.spawn(async move |this, cx| {
+                this.update(cx, |this, cx| this.poll_dj(cx)).ok();
+                cx.background_executor().timer(std::time::Duration::from_secs(3)).await;
+                this.update(cx, |_, cx| cx.notify()).ok();
+            })
+            .detach();
+        }
+        if !p.settings_asked.replace(true) {
+            cx.spawn(async move |this, cx| {
+                this.update(cx, |this, cx| this.load_room_settings(cx)).ok();
+            })
+            .detach();
+        }
+        let locked = !in_room || p.dj_busy;
+        let card = || div().flex_none().p(px(16.)).rounded(px(16.)).border_1().border_color(line).bg(ink.opacity(0.04)).flex().flex_col().gap(px(12.));
+        let head_text = |title: String, text: String| {
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .child(div().font_family(DISPLAY_FONT).text_size(px(17.)).line_height(px(21.)).font_weight(FontWeight::BOLD).text_color(ink).child(title))
+                .child(div().mt(px(2.)).text_size(px(13.)).line_height(px(18.85)).text_color(muted).child(text))
+        };
+        let label = |text: &'static str, first: bool| div().mr(px(2.)).when(!first, |d| d.ml(px(10.))).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(muted).child(text.to_uppercase());
+        let chip = |id: SharedString, text: String, on: bool, enabled: bool| {
+            div()
+                .id(id)
+                .h(px(29.))
+                .px(px(12.))
+                .rounded_full()
+                .border_1()
+                .border_color(if on { lavender } else { line })
+                .when(on, |d| d.bg(lavender))
+                .flex()
+                .items_center()
+                .text_size(px(12.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(if on { on_accent } else { ink })
+                .when(!enabled, |d| d.opacity(0.45))
+                .when(enabled, |d| d.cursor_pointer().hover(move |s| s.border_color(lavender)))
+                .child(text)
+        };
+        let button = |id: &'static str, icon: &'static str, text: &'static str, ghost: bool, enabled: bool| {
+            div()
+                .id(id)
+                .h(px(if ghost { 34. } else { 32. }))
+                .px(px(16.))
+                .rounded_full()
+                .when(ghost, |d| d.border_1().border_color(line))
+                .when(!ghost, |d| d.bg(lavender))
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .text_size(px(13.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(if ghost { ink } else { on_accent })
+                .when(!enabled, |d| d.opacity(0.42))
+                .when(enabled, |d| d.cursor_pointer())
+                .child(ui::icon(icon, 15., if ghost { ink } else { on_accent }))
+                .child(text)
+        };
+        let dj = p.dj.as_ref();
+        let on_air = dj.and_then(|d| d.get("active")).and_then(Value::as_bool).unwrap_or(false);
+        let mut wrap = div().id("mp-dj").flex_1().min_h_0().overflow_y_scroll().p(px(16.)).flex().flex_col().gap(px(14.));
+        if let (Some(err), None) = (&p.dj_error, dj) {
+            wrap = wrap.child(div().px(px(8.)).text_size(px(13.)).text_color(Theme::coral()).child(err.clone()));
+        }
+        if !on_air {
+            let mut choice = div().flex().gap(px(8.));
+            let half = (pane_w - 2. - 32. - 32. - 2. - 8.) / 2.;
+            for (id, name, hint) in DJ_MODES {
+                let on = p.dj_mode == id;
+                choice = choice.child(
+                    div()
+                        .id(SharedString::from(format!("mp-dj-mode-{id}")))
+                        .w(px(half))
+                        .px(px(14.))
+                        .py(px(12.))
+                        .rounded(px(12.))
+                        .border_1()
+                        .border_color(if on { lavender } else { line })
+                        .when(on, |d| d.bg(lavender.opacity(0.14)))
+                        .cursor_pointer()
+                        .flex()
+                        .flex_col()
+                        .gap(px(2.))
+                        .child(div().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::BOLD).text_color(ink).child(name))
+                        .child(div().text_size(px(12.)).line_height(px(18.)).text_color(muted).child(hint))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if let Some(p) = this.music_player.as_mut() {
+                                p.dj_mode = id;
+                                cx.notify();
+                            }
+                        })),
+                );
+            }
+            let mut vibes = div().flex().flex_wrap().items_center().gap(px(6.)).child(label("Vibe", true));
+            for (id, name) in VIBES {
+                vibes = vibes.child(chip(SharedString::from(format!("mp-dj-vibe-{id}")), name.into(), p.dj_vibe == id, true).on_click(cx.listener(move |this, _, _, cx| {
+                    if let Some(p) = this.music_player.as_mut() {
+                        p.dj_vibe = id;
+                        cx.notify();
+                    }
+                })));
+            }
+            let (mode, vibe) = (p.dj_mode, p.dj_vibe);
+            wrap = wrap.child(
+                card()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(12.))
+                            .child(div().flex_none().size(px(52.)).rounded_full().bg(lavender.opacity(0.16)).flex().items_center().justify_center().child(ui::icon("disc-3", 26., lavender)))
+                            .child(head_text("DJ set".into(), "The bot mixes the room's music like a DJ: beat-matched transitions, remixes and drops, for everyone in the room.".into())),
+                    )
+                    .child(choice)
+                    .child(vibes)
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .items_center()
+                            .gap(px(10.))
+                            .child(button("mp-dj-start", "zap", "Start the set", false, !locked).when(!locked, |d| d.on_click(cx.listener(move |this, _, _, cx| this.booth(json!({ "op": "club", "mode": mode, "vibe": vibe }), cx)))))
+                            .child(button("mp-dj-booth", "external-link", "Full DJ booth", true, true).on_click(cx.listener(|this, _, _, cx| this.open_booth(cx)))),
+                    )
+                    .child(div().text_size(px(12.)).line_height(px(18.)).text_color(muted).child(if in_room { "If the queue is short, the DJ adds songs that have stems so the set keeps going." } else { "Join the room to start a set." })),
+            );
+        } else if let Some(dj) = dj {
+            let auto = dj.get("auto").cloned().unwrap_or(Value::Null);
+            let auto_on = auto["on"].as_bool().unwrap_or(false);
+            let auto_mode = auto["mode"].as_str().unwrap_or("real").to_string();
+            let auto_vibe = auto["vibe"].as_str().unwrap_or("club").to_string();
+            let vibe_label = VIBES.iter().find(|v| v.0 == auto_vibe).map(|v| v.1).unwrap_or("Club");
+            let paused = dj["paused"].as_bool().unwrap_or(false);
+            let master = dj["master"].as_str().map(str::to_string);
+            let pulse = gpui::Animation::new(std::time::Duration::from_secs(2)).repeat();
+            let coral: Hsla = Theme::coral().into();
+            let mut c = card().child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.))
+                    .child(div().flex_none().px(px(10.)).py(px(4.)).rounded_full().bg(coral.opacity(0.22)).text_size(px(11.)).font_weight(FontWeight::BOLD).text_color(coral).child("ON AIR").with_animation("mp-onair", pulse, |d, t| d.opacity(1. - 0.45 * (1. - (t * std::f32::consts::TAU).cos()) / 2.)))
+                    .child(head_text(if auto_on { if auto_mode == "real" { "Real DJ" } else { "Auto DJ" } } else { "Hands on the decks" }.into(), format!("{vibe_label} vibe{}", if paused { " · paused" } else { "" })))
+                    .child(
+                        div()
+                            .id("mp-dj-stop")
+                            .h(px(29.))
+                            .px(px(12.))
+                            .rounded_full()
+                            .bg(crate::theme::mix(Theme::coral(), 0.85, gpui::black()))
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .text_size(px(12.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(gpui::white())
+                            .child(ui::icon("circle-stop", 14., gpui::white()))
+                            .child("End the set")
+                            .when(locked, |d| d.opacity(0.42))
+                            .when(!locked, |d| d.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.booth(json!({ "op": "stop" }), cx)))),
+                    ),
+            );
+            let mut decks = div().flex().flex_wrap().gap(px(8.));
+            let deck_list: Vec<(String, Value)> = ["A", "B"].iter().filter_map(|n| dj["decks"].get(*n).filter(|d| d["loaded"].as_bool().unwrap_or(false) || d["loading"].is_string()).map(|d| (n.to_string(), d.clone()))).collect();
+            let inner = pane_w - 2. - 32. - 32. - 2.;
+            let cols = if inner >= 448. { deck_list.len().max(1) } else { 1 };
+            let deck_w = (inner - 8. * (cols as f32 - 1.)) / cols as f32;
+            for (name, d) in &deck_list {
+                let title = d["title"].as_str().or(d["loading"].as_str()).unwrap_or("Loading…").to_string();
+                let sub = [d["artist"].as_str().map(str::to_string), d["bpm"].as_f64().map(|b| format!("{} BPM", b.round())), d["key"].as_str().map(str::to_string)].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+                let thumb: AnyElement = match d["thumbnail"].as_str().filter(|t| !t.is_empty()) {
+                    Some(src) => div().size(px(44.)).flex_none().rounded(px(8.)).overflow_hidden().child(gpui::img(self.client.absolute(&super::links::proxied(src))).size_full().object_fit(gpui::ObjectFit::Cover)).into_any_element(),
+                    None => div().size(px(44.)).flex_none().rounded(px(8.)).bg(rgb(0x252040)).flex().items_center().justify_center().child(ui::icon("music-2", 16., muted)).into_any_element(),
+                };
+                let text_w = deck_w - 22. - 22. - 10. - 44. - 10. - if d["playing"].as_bool().unwrap_or(false) { 18. } else { 0. };
+                decks = decks.child(
+                    div()
+                        .w(px(deck_w))
+                        .p(px(10.))
+                        .rounded(px(12.))
+                        .border_1()
+                        .border_color(if master.as_deref() == Some(name.as_str()) { lavender } else { line })
+                        .flex()
+                        .items_center()
+                        .gap(px(10.))
+                        .child(div().flex_none().size(px(22.)).rounded(px(6.)).bg(ink.opacity(0.1)).flex().items_center().justify_center().font_family(MONO_FONT).text_size(px(12.)).font_weight(FontWeight::BOLD).text_color(ink).child(name.clone()))
+                        .child(thumb)
+                        .child(div().flex_1().min_w_0().flex().flex_col().child(div().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(ink).child(ui::fit(window, &title, FontWeight::SEMIBOLD, 14., px(text_w)))).child(div().text_size(px(12.)).line_height(px(18.)).text_color(muted).child(ui::fit(window, &sub, FontWeight::NORMAL, 12., px(text_w)))))
+                        .when(d["playing"].as_bool().unwrap_or(false), |el| {
+                            el.child(div().flex_none().size(px(8.)).rounded_full().bg(Theme::mint()).shadow(vec![gpui::BoxShadow { color: Hsla::from(Theme::mint()).opacity(0.22), offset: gpui::point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(4.) }]))
+                        }),
+                );
+            }
+            c = c.child(decks);
+            if let Some(mix) = dj.get("mix").filter(|m| m.is_object()) {
+                let progress = mix["progress"].as_f64().unwrap_or(0.).clamp(0., 1.) as f32;
+                c = c.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(6.))
+                        .text_size(px(12.))
+                        .text_color(muted)
+                        .child(format!("Mixing · {}", mix["label"].as_str().unwrap_or_default()))
+                        .child(div().h(px(6.)).rounded_full().overflow_hidden().bg(ink.opacity(0.14)).child(div().h_full().w(gpui::relative(progress)).rounded_full().bg(gpui::linear_gradient(90., gpui::linear_color_stop(rgb(0x7c5cbf), 0.), gpui::linear_color_stop(rgb(0xc4b5fd), 1.))))),
+                );
+            }
+            // Next transition (a select) and Mix into the next song.
+            let style = p.dj_style;
+            let style_label = MIX_STYLES.iter().find(|m| m.0 == style).map(|m| m.1).unwrap_or("DJ's choice");
+            let mut select = div()
+                .relative()
+                .child(
+                    div()
+                        .id("mp-dj-style")
+                        .h(px(33.))
+                        .pl(px(10.))
+                        .pr(px(8.))
+                        .rounded(px(10.))
+                        .border_1()
+                        .border_color(line)
+                        .bg(Theme::panel())
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .text_size(px(13.))
+                        .text_color(ink)
+                        .cursor_pointer()
+                        .child(style_label)
+                        .child(ui::icon("chevron-down", 14., ink))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if let Some(p) = this.music_player.as_mut() {
+                                p.dj_style_open = !p.dj_style_open;
+                                cx.notify();
+                            }
+                        })),
+                );
+            if p.dj_style_open {
+                let mut menu = div().absolute().top(px(37.)).left_0().w(px(170.)).p(px(4.)).rounded(px(10.)).border_1().border_color(line).bg(Theme::panel()).shadow(ui::card_shadow()).flex().flex_col();
+                for (id, name) in MIX_STYLES {
+                    menu = menu.child(div().id(SharedString::from(format!("mp-dj-style-{id}"))).px(px(10.)).py(px(6.)).rounded(px(6.)).text_size(px(13.)).text_color(ink).when(id == style, |d| d.bg(lavender.opacity(0.18))).hover(|s| s.bg(gpui::white().opacity(0.08))).cursor_pointer().child(name).on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(p) = this.music_player.as_mut() {
+                            p.dj_style = id;
+                            p.dj_style_open = false;
+                            cx.notify();
+                        }
+                    })));
+                }
+                select = select.child(gpui::deferred(menu).with_priority(3));
+            }
+            c = c.child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap(px(10.))
+                    .child(div().flex().items_center().gap(px(8.)).text_size(px(13.)).text_color(muted).child("Next transition").child(select))
+                    .child(button("mp-dj-skip", "skip-forward", "Mix into the next song", false, !locked).when(!locked, |d| d.on_click(cx.listener(move |this, _, _, cx| this.booth(json!({ "op": "skip", "style": style }), cx))))),
+            );
+            let mut moves = div().flex().flex_wrap().items_center().gap(px(6.)).child(label("Moves", true));
+            for (id, name) in MOVES {
+                moves = moves.child(chip(SharedString::from(format!("mp-dj-move-{id}")), name.into(), false, !locked).when(!locked, |d| d.on_click(cx.listener(move |this, _, _, cx| this.booth(json!({ "op": "club_move", "move": id }), cx)))));
+            }
+            c = c.child(moves);
+            let mut picks = div().flex().flex_wrap().items_center().gap(px(6.)).child(label("Picks", true));
+            for (id, name, _) in DJ_MODES {
+                picks = picks.child(chip(SharedString::from(format!("mp-dj-pick-{id}")), name.into(), auto_on && auto_mode == id, !locked).when(!locked, |d| d.on_click(cx.listener(move |this, _, _, cx| this.booth(json!({ "op": "auto", "mode": id, "on": true }), cx)))));
+            }
+            picks = picks.child(label("Vibe", false));
+            for (id, name) in VIBES {
+                picks = picks.child(chip(SharedString::from(format!("mp-dj-v-{id}")), name.into(), auto_vibe == id, !locked).when(!locked, |d| d.on_click(cx.listener(move |this, _, _, cx| this.booth(json!({ "op": "auto", "vibe": id }), cx)))));
+            }
+            c = c.child(picks);
+            let crate_list: Vec<(String, String)> = dj["crate"].as_array().map(|a| a.iter().take(6).map(|t| (t["title"].as_str().unwrap_or_default().to_string(), t["artist"].as_str().unwrap_or_default().to_string())).collect()).unwrap_or_default();
+            if !crate_list.is_empty() {
+                c = c.child(div().mt(px(4.)).text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(muted).child("IN THE CRATE"));
+                let mut list = div().flex().flex_col().gap(px(2.));
+                for (n, (title, artist)) in crate_list.iter().enumerate() {
+                    list = list.child(
+                        div()
+                            .px(px(10.))
+                            .py(px(8.))
+                            .flex()
+                            .items_center()
+                            .gap(px(12.))
+                            .child(div().w(px(22.)).flex_none().flex().justify_end().font_family(MONO_FONT).text_size(px(12.)).text_color(muted).child((n + 1).to_string()))
+                            .child(div().flex_1().min_w_0().flex().flex_col().child(div().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(ink).child(ui::fit(window, title, FontWeight::SEMIBOLD, 14., px(inner - 64.)))).child(div().text_size(px(12.)).line_height(px(18.)).text_color(muted).child(artist.clone()))),
+                    );
+                }
+                c = c.child(list);
+            }
+            c = c.child(div().flex().child(div().id("mp-dj-booth2").h(px(29.)).px(px(12.)).rounded_full().border_1().border_color(line).flex().items_center().gap(px(6.)).text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).text_color(ink).cursor_pointer().child(ui::icon("external-link", 14., ink)).child("Full DJ booth").on_click(cx.listener(|this, _, _, cx| this.open_booth(cx)))));
+            wrap = wrap.child(c);
+        }
+
+        // Between songs: AutoMix, Smart Autoplay, mood radio.
+        let settings = p.settings.clone();
+        let switch = |id: &'static str, name: &'static str, hint: &'static str, on: bool, enabled: bool| {
+            div()
+                .id(id)
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap(px(12.))
+                .px(px(4.))
+                .py(px(10.))
+                .border_b_1()
+                .border_color(line)
+                .when(!enabled, |d| d.opacity(0.5))
+                .when(enabled, |d| d.cursor_pointer())
+                .child(div().flex().flex_col().gap(px(2.)).child(div().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::BOLD).text_color(ink).child(name)).child(div().text_size(px(12.)).line_height(px(18.)).text_color(muted).child(hint)))
+                .child(div().flex_none().relative().w(px(38.)).h(px(22.)).rounded_full().bg(if on { lavender } else { ink.opacity(0.18) }).child(div().absolute().top(px(3.)).left(px(if on { 19. } else { 3. })).size(px(16.)).rounded_full().bg(gpui::white())))
+        };
+        let automix = settings.as_ref().and_then(|s| s["automix"].as_bool()).unwrap_or(false);
+        let autoplay = settings.as_ref().and_then(|s| s["autoplay"].as_bool()).unwrap_or(false);
+        let ok = in_room && settings.is_some();
+        let mut between = card()
+            .child(head_text("Between songs".into(), "How the room's player goes from one song to the next while no DJ set is on.".into()))
+            .child(switch("mp-automix", "AutoMix", "Songs flow into each other, matched in tempo and key", automix, ok).when(ok, |d| d.on_click(cx.listener(move |this, _, _, cx| this.change_room_setting(format!("/automix {}", if automix { "off" } else { "on" }), cx)))))
+            .child(switch("mp-autoplay", "Smart Autoplay", "Keeps playing related songs when the queue runs out", autoplay, ok).when(ok, |d| d.on_click(cx.listener(move |this, _, _, cx| this.change_room_setting(format!("/autoplay {}", if autoplay { "off" } else { "on" }), cx)))));
+        if let Some(stations) = settings.as_ref().and_then(|s| s["radio_stations"].as_array()).filter(|a| !a.is_empty()) {
+            let current = settings.as_ref().and_then(|s| s["radio"].as_str()).map(str::to_string);
+            let mut radios = div().flex().flex_wrap().items_center().gap(px(6.)).child(label("Mood radio", true));
+            for st in stations {
+                let id = st["id"].as_str().unwrap_or_default().to_string();
+                let on = current.as_deref() == Some(id.as_str());
+                let text = format!("{} {}", st["emoji"].as_str().unwrap_or_default(), st["label"].as_str().unwrap_or_default());
+                let target = if on { "off".to_string() } else { id.clone() };
+                radios = radios.child(chip(SharedString::from(format!("mp-radio-{id}")), text, on, in_room).tooltip(ui::tooltip(format!("{} songs", st["songs"].as_i64().unwrap_or(0)))).when(in_room, |d| d.on_click(cx.listener(move |this, _, _, cx| this.change_room_setting(format!("/radio {target}"), cx)))));
+            }
+            between = between.child(radios);
+        }
+        wrap.child(between).into_any_element()
     }
 
     /// QueuePane: Up next with its count and length, each song (click plays it now, × removes it).
