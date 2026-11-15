@@ -316,6 +316,7 @@ pub struct Shell {
     invite: Option<invite::InviteDialog>,
     /// The hub said ready at least once (HOFFLE_DEV_JOIN waits for it and the servers).
     dev_hub_ready: bool,
+    dev_sheet_done: bool,
     music_player: Option<music_player::MusicPlayer>,
     music_tick: std::cell::Cell<bool>,
     music_bar_spot: profile_card::Spot,
@@ -527,6 +528,7 @@ impl Shell {
             forward: None,
             invite: None,
             dev_hub_ready: false,
+            dev_sheet_done: false,
             music_player: None,
             music_tick: std::cell::Cell::new(false),
             music_bar_spot: profile_card::spot(),

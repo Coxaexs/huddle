@@ -455,6 +455,11 @@ impl gpui::Render for Shell {
                 }
             }
         }
+        // Development: HOFFLE_DEV_PLAYER_SHEET=1 opens "Add to playlist" for the playing song (to look at).
+        if self.music_player.as_ref().is_some_and(|p| p.dev_sheet()) && !self.dev_sheet_done {
+            self.dev_sheet_done = true;
+            self.dev_open_sheet(window, cx);
+        }
         // Development: HOFFLE_DEV_RENAME=1 opens the Rename Server prompt once (only to look at).
         if std::env::var("HOFFLE_DEV_RENAME").is_ok() && self.confirm.is_none() && !self.dev_invite_done
             && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
@@ -735,7 +740,12 @@ impl gpui::Render for Shell {
                 } else if this.music_player.as_ref().is_some_and(|p| event.keystroke.key == "escape" || (event.keystroke.key == "space" && !p.typing(window, cx))) {
                     // The player takes Esc (close) and Space (play / pause) while it is open.
                     if event.keystroke.key == "escape" {
-                        this.close_music_player(cx);
+                        if let Some(p) = this.music_player.as_mut().filter(|p| p.sheet.is_some()) {
+                            p.sheet = None;
+                            cx.notify();
+                        } else {
+                            this.close_music_player(cx);
+                        }
                     } else {
                         this.player_toggle(cx);
                     }

@@ -21,6 +21,7 @@ pub(super) struct Song {
     duration: Option<f64>,
     requested_by: String,
     playlist: Option<String>,
+    page_url: Option<String>,
 }
 
 impl Song {
@@ -34,6 +35,7 @@ impl Song {
             duration: o.get("duration").and_then(Value::as_f64),
             requested_by: s("requestedBy"),
             playlist: o.get("playlist").and_then(|p| p.get("name")).and_then(Value::as_str).map(str::to_string),
+            page_url: o.get("pageUrl").and_then(Value::as_str).filter(|t| !t.is_empty()).map(str::to_string),
         })
     }
 }
@@ -79,6 +81,7 @@ pub(super) struct MusicPlayer {
     playlists_error: Option<String>,
     playlists_loading: bool,
     open_list: Option<String>,
+    pub(super) sheet: Option<Sheet>,
 }
 
 /// RoomPlaylist.
@@ -105,6 +108,36 @@ struct Found {
     words: bool,
 }
 
+/// isSongLink: a YouTube or Spotify page.
+fn is_song_link(value: &str) -> bool {
+    url::Url::parse(value).is_ok_and(|u| {
+        matches!(u.scheme(), "http" | "https")
+            && u.host_str().is_some_and(|h| {
+                let h = h.trim_start_matches("www.").trim_start_matches("m.").trim_start_matches("music.");
+                h == "youtube.com" || h == "youtu.be" || u.host_str() == Some("open.spotify.com")
+            })
+    })
+}
+
+/// songQuery(): what the bot finds a track by, its page or its name.
+fn song_query(t: &Song) -> String {
+    match t.page_url.as_deref().filter(|u| is_song_link(u)) {
+        Some(u) => u.to_string(),
+        None => format!("{} {}", t.artist, t.title).trim().to_string(),
+    }
+}
+
+/// PlaylistSheet: "Add to playlist" (a song) or "New playlist" (none), over the whole player.
+pub(super) struct Sheet {
+    /// (title, query)
+    song: Option<(String, String)>,
+    name: gpui::Entity<crate::input::TextInput>,
+    /// The playlist being added to, or "" while making a new one.
+    saving: Option<String>,
+    problem: Option<String>,
+    _sub: gpui::Subscription,
+}
+
 /// clock(): m:ss, or h:mm:ss; "–:––" when unknown.
 fn clock(seconds: Option<f64>) -> String {
     let Some(s) = seconds.filter(|s| s.is_finite()) else { return "–:––".into() };
@@ -118,7 +151,11 @@ const TABS: [(&str, &str, &str); 5] = [("lyrics", "Lyrics", "mic-vocal"), ("queu
 impl MusicPlayer {
     /// Typing in the search bar: Space is a space there, not play / pause.
     pub(super) fn typing(&self, window: &Window, cx: &gpui::App) -> bool {
-        gpui::Focusable::focus_handle(&self.search, cx).is_focused(window)
+        gpui::Focusable::focus_handle(&self.search, cx).is_focused(window) || self.sheet.as_ref().is_some_and(|s| gpui::Focusable::focus_handle(&s.name, cx).is_focused(window))
+    }
+
+    pub(super) fn dev_sheet(&self) -> bool {
+        std::env::var_os("HOFFLE_DEV_PLAYER_SHEET").is_some() && self.sheet.is_none() && self.playlists.is_some()
     }
 
     pub(super) fn dev_search(&mut self, q: &str, cx: &mut gpui::App) {
@@ -204,6 +241,7 @@ impl Shell {
             playlists_error: None,
             playlists_loading: false,
             open_list: None,
+            sheet: None,
         });
         // Fetched as soon as the player opens, as the web does (the bot can take a few seconds).
         self.load_playlists(cx);
@@ -348,6 +386,274 @@ impl Shell {
             .ok();
         })
         .detach();
+    }
+
+    pub(super) fn dev_open_sheet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let room = self.music_player.as_ref().and_then(|p| p.room.clone()).unwrap_or_default();
+        let song = self.room_player(&room).and_then(|r| r.track).map(|t| (t.title.clone(), song_query(&t)));
+        self.open_sheet(song, window, cx);
+    }
+
+    /// openSheet(): Add to playlist for `song` (title, query), or New playlist.
+    fn open_sheet(&mut self, song: Option<(String, String)>, window: &mut Window, cx: &mut Context<Self>) {
+        let has_lists = self.music_player.as_ref().and_then(|p| p.playlists.as_ref()).is_some_and(|l| l.iter().any(|l| l.can_edit));
+        let placeholder = if has_lists && song.is_some() { "Or a new playlist" } else { "Playlist name" };
+        let name = cx.new(|cx| crate::input::TextInput::new(placeholder, cx).look(crate::input::Look { size: 15., line_height: 20., height: 20., color: Theme::ink().into(), placeholder: Theme::muted().into() }));
+        let sub = cx.subscribe(&name, |this, _, event, cx| match event {
+            crate::input::InputEvent::Submit => this.sheet_create(cx),
+            crate::input::InputEvent::Escape => {
+                if let Some(p) = this.music_player.as_mut() {
+                    p.sheet = None;
+                }
+                cx.notify();
+            }
+            _ => {
+                let over = this.music_player.as_ref().and_then(|p| p.sheet.as_ref()).map(|s| s.name.clone());
+                if let Some(input) = over {
+                    let text = input.read(cx).text();
+                    if text.chars().count() > 50 {
+                        let cut: String = text.chars().take(50).collect();
+                        input.update(cx, |i, cx| i.set_text(cut, cx));
+                    }
+                }
+                cx.notify();
+            }
+        });
+        // The web focuses the sheet, not its field.
+        let _ = window;
+        if let Some(p) = self.music_player.as_mut() {
+            p.sheet = Some(Sheet { song, name, saving: None, problem: None, _sub: sub });
+        }
+        cx.notify();
+    }
+
+    /// send(): POST /api/music/playlists with a change; the answer's playlists replace ours.
+    fn sheet_send(&mut self, label: String, steps: Vec<Value>, cx: &mut Context<Self>) {
+        let Some(p) = self.music_player.as_mut() else { return };
+        let Some(room) = p.room.clone() else { return };
+        let Some(sheet) = p.sheet.as_mut() else { return };
+        if sheet.saving.is_some() {
+            return;
+        }
+        sheet.saving = Some(label);
+        sheet.problem = None;
+        let song = sheet.song.is_some();
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let mut last = Value::Null;
+                    let mut created: Option<String> = None;
+                    for mut step in steps {
+                        step["voiceChannelId"] = json!(room);
+                        // Adding after making it: to the name the server answered with.
+                        if step["action"] == "add_song" && let Some(name) = &created {
+                            step["name"] = json!(name);
+                        }
+                        let made = step["action"] == "create";
+                        let wanted = step["name"].as_str().unwrap_or_default().to_string();
+                        last = client.music_playlist_play(step)?;
+                        if made {
+                            created = Some(last.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or(wanted));
+                        }
+                    }
+                    anyhow::Ok((last, created))
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                let Some(p) = this.music_player.as_mut() else { return };
+                match result {
+                    Ok((last, created)) => {
+                        if let Some(lists) = last.get("playlists").filter(|v| v.is_array()) {
+                            let _ = lists;
+                            this.load_playlists(cx);
+                        }
+                        let Some(p) = this.music_player.as_mut() else { return };
+                        let added_to = p.sheet.as_ref().and_then(|s| s.saving.clone()).filter(|l| !l.is_empty());
+                        p.sheet = None;
+                        let message = last.get("message").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| match (&added_to, &created) {
+                            (Some(list), _) => format!("Added to {list}."),
+                            (None, Some(c)) if song => format!("Added to {c}."),
+                            (None, Some(c)) => format!("Created {c}."),
+                            _ => "Done.".into(),
+                        });
+                        if let (Some(c), false) = (&created, song) {
+                            p.open_list = Some(c.clone());
+                            p.tab = "playlists";
+                        }
+                        this.music_note(message, cx);
+                    }
+                    Err(e) => {
+                        if let Some(sheet) = p.sheet.as_mut() {
+                            sheet.saving = None;
+                            sheet.problem = Some(if e.to_string().is_empty() { "That did not work.".into() } else { e.to_string() });
+                        }
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn sheet_create(&mut self, cx: &mut Context<Self>) {
+        let Some(sheet) = self.music_player.as_ref().and_then(|p| p.sheet.as_ref()) else { return };
+        let wanted = sheet.name.read(cx).text().trim().to_string();
+        if wanted.is_empty() {
+            return;
+        }
+        let mut steps = vec![json!({ "action": "create", "name": wanted })];
+        if let Some((_, query)) = &sheet.song {
+            steps.push(json!({ "action": "add_song", "name": wanted, "query": query }));
+        }
+        self.sheet_send(String::new(), steps, cx);
+    }
+
+    /// The sheet over the player: your playlists to add to, and a name to make a new one.
+    fn render_sheet(&self, p: &MusicPlayer, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let sheet = p.sheet.as_ref()?;
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        let lavender: Hsla = Theme::lavender().into();
+        let on_accent: Hsla = rgb(0x15121f).into();
+        let paper: Hsla = Theme::paper().into();
+        let mine: Vec<Playlist> = p.playlists.as_ref().map(|l| l.iter().filter(|l| l.can_edit).cloned().collect()).unwrap_or_default();
+        let w = 420f32.min(f32::from(window.viewport_size().width) - 32.);
+        let mut card = div()
+            .id("mp-sheet")
+            .w(px(w))
+            .max_h(px(560f32.min(f32::from(window.viewport_size().height) - 32.)))
+            .p(px(16.))
+            .rounded(px(16.))
+            .border_1()
+            .border_color(Theme::line())
+            .bg(Theme::panel())
+            .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.42), offset: gpui::point(px(0.), px(6.)), blur_radius: px(20.), spread_radius: px(0.) }])
+            .flex()
+            .flex_col()
+            .gap(px(12.))
+            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .child(div().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(ink).child(if sheet.song.is_some() { "Add to playlist" } else { "New playlist" }))
+                            .children(sheet.song.as_ref().map(|(title, _)| div().text_size(px(12.)).line_height(px(18.)).text_color(muted).child(ui::fit(window, title, FontWeight::NORMAL, 12., px(w - 32. - 40.))))),
+                    )
+                    .child(div().id("mp-sheet-close").flex_none().size(px(32.)).rounded_full().flex().items_center().justify_center().cursor_pointer().hover(move |s| s.bg(ink.opacity(0.1))).child(ui::icon("x", 16., ink)).on_click(cx.listener(|this, _, _, cx| {
+                        if let Some(p) = this.music_player.as_mut() {
+                            p.sheet = None;
+                        }
+                        cx.notify();
+                    }))),
+            );
+        if sheet.song.is_some() {
+            if let Some(err) = &p.playlists_error {
+                card = card.child(div().px(px(8.)).text_size(px(13.)).text_color(Theme::coral()).child(err.clone()));
+            } else if p.playlists.is_none() {
+                card = card.child(div().text_size(px(13.)).text_color(muted).child("Loading playlists…"));
+            } else if mine.is_empty() {
+                card = card.child(div().text_size(px(13.)).text_color(muted).child("You can add songs to playlists you made. Make one here."));
+            } else {
+                let mut list = div().id("mp-sheet-list").flex_1().min_h_0().overflow_y_scroll().flex().flex_col().gap(px(2.));
+                for (n, l) in mine.iter().enumerate() {
+                    let name = l.name.clone();
+                    let busy = sheet.saving.is_some();
+                    let spinning = sheet.saving.as_deref() == Some(l.name.as_str());
+                    let thumb: AnyElement = match &l.cover {
+                        Some(src) => div().size(px(44.)).flex_none().rounded(px(8.)).overflow_hidden().child(gpui::img(self.client.absolute(&super::links::proxied(src))).size_full().object_fit(gpui::ObjectFit::Cover)).into_any_element(),
+                        None => div().size(px(44.)).flex_none().rounded(px(8.)).bg(rgb(0x252040)).flex().items_center().justify_center().child(ui::icon("music-2", 16., muted)).into_any_element(),
+                    };
+                    list = list.child(
+                        div()
+                            .id(SharedString::from(format!("mp-sheet-{n}")))
+                            .flex_none()
+                            .h(px(60.))
+                            .px(px(10.))
+                            .rounded(px(12.))
+                            .flex()
+                            .items_center()
+                            .gap(px(12.))
+                            .hover(move |s| s.bg(ink.opacity(0.06)))
+                            .child(thumb)
+                            .child(div().flex_1().min_w_0().flex().flex_col().child(div().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(ink).child(ui::fit(window, &l.name, FontWeight::SEMIBOLD, 14., px(w - 32. - 20. - 56. - 28.)))).child(div().text_size(px(12.)).line_height(px(18.)).text_color(muted).child(format!("{} {}", l.count, if l.count == 1 { "song" } else { "songs" }))))
+                            .when(spinning, |d| d.child(ui::icon("loader-2", 16., muted)))
+                            .when(!busy, |d| {
+                                d.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| {
+                                    let query = this.music_player.as_ref().and_then(|p| p.sheet.as_ref()).and_then(|s| s.song.as_ref()).map(|s| s.1.clone()).unwrap_or_default();
+                                    this.sheet_send(name.clone(), vec![json!({ "action": "add_song", "name": name, "query": query })], cx);
+                                }))
+                            }),
+                    );
+                }
+                card = card.child(list);
+            }
+        }
+        let can = !sheet.name.read(cx).text().trim().is_empty() && sheet.saving.is_none();
+        card = card.child(
+            div()
+                .flex_none()
+                .mb(px(12.))
+                .h(px(46.))
+                .pl(px(16.))
+                .pr(px(6.))
+                .rounded_full()
+                .border_1()
+                .border_color(Theme::line())
+                .bg(paper.opacity(0.72))
+                .flex()
+                .items_center()
+                .gap(px(10.))
+                .child(div().flex_1().min_w_0().child(sheet.name.clone()))
+                .child(
+                    div()
+                        .id("mp-sheet-create")
+                        .h(px(34.))
+                        .px(px(16.))
+                        .rounded_full()
+                        .bg(lavender)
+                        .flex()
+                        .items_center()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(on_accent)
+                        .when(!can, |d| d.opacity(0.42))
+                        .when(can, |d| d.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.sheet_create(cx))))
+                        .child(if sheet.saving.as_deref() == Some("") { ui::icon("loader-2", 16., on_accent).into_any_element() } else { "Create".into_any_element() }),
+                ),
+        );
+        if let Some(problem) = &sheet.problem {
+            card = card.child(div().px(px(8.)).text_size(px(13.)).text_color(Theme::coral()).child(problem.clone()));
+        }
+        Some(
+            div()
+                .id("mp-sheet-scrim")
+                .absolute()
+                .inset_0()
+                .p(px(16.))
+                .bg(paper.opacity(0.55))
+                .flex()
+                .items_center()
+                .justify_center()
+                .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
+                    if let Some(p) = this.music_player.as_mut() {
+                        p.sheet = None;
+                    }
+                    cx.notify();
+                }))
+                .child(card)
+                .into_any_element(),
+        )
     }
 
     /// playPlaylist(): play or queue it in the room, from a song if given.
@@ -724,7 +1030,10 @@ impl Shell {
                         .cursor_pointer()
                         .child(ui::icon("circle-plus", 14., ink))
                         .child("Add to playlist")
-                        .on_click(cx.listener(|this, _, _, cx| this.music_note("Adding to playlists is not in this app yet; use the web player.".into(), cx))),
+                        .on_click({
+                            let song = track.as_ref().map(|t| (t.title.clone(), song_query(t)));
+                            cx.listener(move |this, _, window, cx| this.open_sheet(song.clone(), window, cx))
+                        }),
                 ),
             );
         }
@@ -915,6 +1224,9 @@ impl Shell {
             .child(div().absolute().top_0().left_0().w(px(vw)).h(px(vh * 0.55)).bg(gpui::linear_gradient(180., gpui::linear_color_stop(paper.opacity(0.45), 0.), gpui::linear_color_stop(paper.opacity(0.7), 1.))))
             .child(div().absolute().left_0().top(px(vh * 0.55)).w(px(vw)).h(px(vh * 0.45)).bg(gpui::linear_gradient(180., gpui::linear_color_stop(paper.opacity(0.7), 0.), gpui::linear_color_stop(paper, 1.))))
             .child(div().absolute().inset_0().flex().flex_col().child(top).child(body));
+        if let Some(sheet) = self.render_sheet(p, window, cx) {
+            root = root.child(sheet);
+        }
         if let Some((note, _)) = &p.note {
             root = root.child(
                 div().absolute().left_0().right_0().bottom(px(24.)).flex().justify_center().child(
@@ -1089,7 +1401,10 @@ impl Shell {
                             .hover(move |s| s.bg(ink.opacity(0.1)))
                             .tooltip(ui::tooltip("Add to playlist".to_string()))
                             .child(ui::icon("circle-plus", 16., ink))
-                            .on_click(cx.listener(|this, _, _, cx| this.music_note("Adding to playlists is not in this app yet; use the web player.".into(), cx))),
+                            .on_click({
+                                let song = (r.title.clone(), r.url.clone());
+                                cx.listener(move |this, _, window, cx| this.open_sheet(Some(song.clone()), window, cx))
+                            }),
                     );
                     list = list.child(row);
                 }
@@ -1116,7 +1431,7 @@ impl Shell {
             return empty_state("loader-2", "Loading playlists…".into(), None, None, None::<Click>, cx);
         };
         if lists.is_empty() {
-            return empty_state("library", "No playlists yet".into(), Some("Make the first one, then add songs to it.".into()), Some(("mp-pl-new", "New playlist", Box::new(|_, _, _| {}))), Some(cx.listener(|this, _, _, cx| this.music_note("Making playlists is not in this app yet; use the web player.".into(), cx))), cx);
+            return empty_state("library", "No playlists yet".into(), Some("Make the first one, then add songs to it.".into()), Some(("mp-pl-new", "New playlist", Box::new(|_, _, _| {}))), Some(cx.listener(|this, _, window, cx| this.open_sheet(None, window, cx))), cx);
         }
         let inner = pane_w - 2. - 32.;
         let thumb = |src: &Option<String>, size: f32, radius: f32| -> AnyElement {
@@ -1322,7 +1637,7 @@ impl Shell {
                             .cursor_pointer()
                             .child(ui::icon("plus", 14., on_accent))
                             .child("New playlist")
-                            .on_click(cx.listener(|this, _, _, cx| this.music_note("Making playlists is not in this app yet; use the web player.".into(), cx))),
+                            .on_click(cx.listener(|this, _, window, cx| this.open_sheet(None, window, cx))),
                     ),
             )
             .child(grid)
