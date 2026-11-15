@@ -315,6 +315,12 @@ impl Client {
 
     /// The same with another form field name (profile pictures and banners send `image`).
     pub fn upload_field(&self, field: &str, name: &str, mime: &str, bytes: &[u8]) -> Result<String> {
+        let reply = self.upload_reply(field, name, mime, bytes)?;
+        reply.get("key").and_then(Value::as_str).map(str::to_string).ok_or_else(|| anyhow::anyhow!("The upload gave no key back."))
+    }
+
+    /// POST /api/uploads, answering with what it gave back (`key` and `url`).
+    pub fn upload_reply(&self, field: &str, name: &str, mime: &str, bytes: &[u8]) -> Result<Value> {
         let boundary = format!("hoffle{:016x}", rand_u64());
         let safe = name.replace(['"', '\r', '\n'], "_");
         let mut body = Vec::with_capacity(bytes.len() + 256);
@@ -329,8 +335,7 @@ impl Client {
         if let Some(cookie) = self.cookie_header() {
             request = request.header("Cookie", &cookie);
         }
-        let reply: Value = read(request.send(&body[..])?, "upload")?;
-        reply.get("key").and_then(Value::as_str).map(str::to_string).ok_or_else(|| anyhow::anyhow!("The upload gave no key back."))
+        read(request.send(&body[..])?, "upload")
     }
 
     pub fn members(&self, server_id: &str) -> Result<Vec<crate::model::Member>> {

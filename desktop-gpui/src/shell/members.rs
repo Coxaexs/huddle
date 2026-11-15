@@ -475,6 +475,18 @@ impl gpui::Render for Shell {
                 }
             }
         }
+        // Development: HOFFLE_DEV_SERVER_SETTINGS=<tab> opens server settings on that tab.
+        if let Ok(tab) = std::env::var("HOFFLE_DEV_SERVER_SETTINGS")
+            && self.server_settings.is_none()
+            && !self.dev_ss_done
+            && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
+        {
+            self.dev_ss_done = true;
+            self.open_server_settings(window, cx);
+            if let Some(s) = self.server_settings.as_mut() {
+                s.tab = Box::leak(tab.into_boxed_str());
+            }
+        }
         // Development: HOFFLE_DEV_RENAME=1 opens the Rename Server prompt once (only to look at).
         if std::env::var("HOFFLE_DEV_RENAME").is_ok() && self.confirm.is_none() && !self.dev_invite_done
             && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
@@ -680,6 +692,7 @@ impl gpui::Render for Shell {
             .children(self.render_confirm(cx))
             .children(self.render_forward(window, cx))
             .children(self.render_invite(window, cx))
+            .children(self.render_server_settings(window, cx))
             .children(self.render_music_player(window, cx))
             .on_modifiers_changed(cx.listener(|this, e: &gpui::ModifiersChangedEvent, _, cx| {
                 if this.shift_held != e.modifiers.shift {
@@ -764,6 +777,9 @@ impl gpui::Render for Shell {
                     } else {
                         this.player_toggle(cx);
                     }
+                    cx.stop_propagation();
+                } else if event.keystroke.key == "escape" && this.confirm.is_none() && this.server_settings.is_some() {
+                    this.close_server_settings(cx);
                     cx.stop_propagation();
                 } else if event.keystroke.key == "escape" && this.invite.is_some() {
                     if let Some(d) = this.invite.as_mut().filter(|d| d.editing_open()) {

@@ -189,7 +189,7 @@ impl Shell {
                 }
             }));
         if can_settings {
-            menu = menu.child(item("sm-settings", "settings", 16., t("sidebar.menu.serverSettings"), false));
+            menu = menu.child(item("sm-settings", "settings", 16., t("sidebar.menu.serverSettings"), false).on_click(cx.listener(|this, _, window, cx| this.open_server_settings(window, cx))));
         }
         if invites || manage_server {
             menu = menu.child(item("sm-invite", "user-plus", 16., t("sidebar.menu.createInvite"), false).on_click(cx.listener(|this, _, window, cx| this.open_invite(None, window, cx))));

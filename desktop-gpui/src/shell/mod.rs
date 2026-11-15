@@ -8,6 +8,7 @@ mod emoji_picker;
 mod files;
 mod forward;
 mod invite;
+mod server_settings;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -315,6 +316,7 @@ pub struct Shell {
     reaction_viewer: Option<reaction_viewer::ReactionViewer>,
     forward: Option<forward::Forward>,
     invite: Option<invite::InviteDialog>,
+    server_settings: Option<server_settings::ServerSettings>,
     /// The five-kind channel picker, open under the "+" of the channel list (None) or of a category.
     kind_menu: Option<Option<String>>,
     /// A channel just made, opened once the servers come back with it.
@@ -323,6 +325,7 @@ pub struct Shell {
     dev_hub_ready: bool,
     dev_sheet_done: bool,
     dev_kind_done: bool,
+    dev_ss_done: bool,
     music_player: Option<music_player::MusicPlayer>,
     music_tick: std::cell::Cell<bool>,
     music_bar_spot: profile_card::Spot,
@@ -533,11 +536,13 @@ impl Shell {
             reaction_viewer: None,
             forward: None,
             invite: None,
+            server_settings: None,
             kind_menu: None,
             pending_open_channel: None,
             dev_hub_ready: false,
             dev_sheet_done: false,
             dev_kind_done: false,
+            dev_ss_done: false,
             music_player: None,
             music_tick: std::cell::Cell::new(false),
             music_bar_spot: profile_card::spot(),

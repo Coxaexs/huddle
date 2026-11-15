@@ -287,7 +287,7 @@ impl Shell {
         let mut menu = div()
             .id("kind-menu")
             .absolute()
-            .top(px(26.))
+            .top(px(24.))
             .right_0()
             .w(px(200.))
             .p(px(6.))
@@ -317,7 +317,8 @@ impl Shell {
                     .items_center()
                     .gap(px(8.))
                     .text_size(px(13.5))
-                    .line_height(px(16.2))
+                    // A 14px icon inside the 1.2 line box: rows come out 33.8px.
+                    .line_height(px(17.8))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(Theme::ink())
                     .cursor_pointer()
