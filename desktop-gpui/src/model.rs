@@ -77,6 +77,10 @@ pub struct Server {
     pub music_bot: Option<bool>,
     /// The server's own invite code, when it has one.
     pub vanity_code: Option<String>,
+    /// Shown in the public directory.
+    pub description: Option<String>,
+    /// Open channels readable at hoffle.online/s/….
+    pub web_public: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

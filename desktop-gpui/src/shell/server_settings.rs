@@ -75,7 +75,27 @@ pub(super) struct ServerSettings {
     uploading: bool,
     /// The picture picked for a new emoji, waiting for its name.
     pub(super) pending_emoji: Option<std::path::PathBuf>,
+    description: Entity<TextInput>,
+    saving_access: bool,
     _subs: Vec<Subscription>,
+}
+
+/// lib/features.ts FEATURE_MODULES (resources/data/feature-modules.json): key, label, description.
+static FEATURE_MODULES: std::sync::LazyLock<Vec<(String, String, String)>> = std::sync::LazyLock::new(|| {
+    crate::assets::ASSETS.iter().find(|(p, _)| *p == "data/feature-modules.json").and_then(|(_, b)| serde_json::from_slice(b).ok()).unwrap_or_default()
+});
+
+/// Chrome's own small checkbox (13px, the dark scheme's light-blue tick) and the bigger lavender
+/// `.appearance-switch` one (19px).
+fn checkbox(on: bool, big: bool) -> gpui::Div {
+    let size = if big { 19. } else { 13. };
+    let fill: Hsla = if big { Theme::lavender().into() } else { rgb(0x99c8ff).into() };
+    div()
+        .flex_none()
+        .size(px(size))
+        .rounded(px(if big { 4. } else { 2. }))
+        .when(on, |d| d.bg(fill).flex().items_center().justify_center().child(ui::icon("check", size - 4., rgb(0x15121f))))
+        .when(!on, |d| d.bg(rgb(0x3b3b3b)).border_1().border_color(rgb(0x858585)))
 }
 
 /// AUDIT_LABELS (server-settings/constants.ts → resources/data/audit-labels.json).
@@ -191,6 +211,25 @@ impl Shell {
             }));
         }
         let active_role = server.roles.first().map(|r| r.id.clone());
+        let description = cx.new(|cx| {
+            let mut i = TextInput::new("What is this server about? (e.g. Cozy gaming nights, D&D campaigns, and music)", cx).look(Look { size: 16., line_height: 24., height: 24., color: Theme::ink().into(), placeholder: Theme::muted().into() });
+            i.set_text(server.description.clone().unwrap_or_default(), cx);
+            i
+        });
+        subs.push(cx.subscribe_in(&description, window, |this, input, event, _, cx| {
+            match event {
+                InputEvent::Escape => this.server_settings = None,
+                InputEvent::Changed => {
+                    let text = input.read(cx).text();
+                    if text.chars().count() > 240 {
+                        let cut: String = text.chars().take(240).collect();
+                        input.update(cx, |i, cx| i.set_text(cut, cx));
+                    }
+                }
+                _ => {}
+            }
+            cx.notify();
+        }));
         let look = || Look { size: 14., line_height: 21., height: 21., color: Theme::ink().into(), placeholder: Theme::muted().into() };
         let vanity = cx.new(|cx| {
             let mut i = TextInput::new(t("vanity.placeholder"), cx).look(look());
@@ -247,6 +286,8 @@ impl Shell {
             expr_subs: Vec::new(),
             uploading: false,
             pending_emoji: None,
+            description,
+            saving_access: false,
             _subs: subs,
         });
         cx.notify();
@@ -521,6 +562,7 @@ impl Shell {
             "emoji" => self.render_server_emoji(s, can, cx),
             "stickers" => self.render_server_stickers(s, can, window, cx),
             "soundboard" => self.render_server_sounds(s, can, cx),
+            "access" | "community" => self.render_server_access(s, server, can, cx),
             other => self.render_server_tab(other, s, server, can, window, cx),
         };
         let main = div()
@@ -2318,6 +2360,166 @@ impl Shell {
             }
         }
         page.into_any_element()
+    }
+
+    /// saveAccessSettings(): directory, description and the modules switched off, in one PATCH.
+    fn save_access(&mut self, is_public: bool, disabled: Vec<String>, cx: &mut Context<Self>) {
+        let Some(s) = self.server_settings.as_mut() else { return };
+        s.saving_access = true;
+        let description = s.description.read(cx).text();
+        let path = format!("/api/servers/{}", url::form_urlencoded::byte_serialize(s.server_id.as_bytes()).collect::<String>());
+        // Shown at once; the reloaded servers confirm it.
+        let sid = s.server_id.clone();
+        if let Some(server) = self.servers.iter_mut().find(|x| x.id == sid) {
+            server.is_public = is_public;
+            server.disabled_modules = disabled.clone();
+        }
+        let body = json!({ "isPublic": is_public, "description": description, "disabledModules": disabled });
+        self.ss_call(move |c| c.settings_patch(&path, body), |this, cx| {
+            if let Some(s) = this.server_settings.as_mut() {
+                s.saving_access = false;
+            }
+            this.load_servers(cx);
+            this.server_notice("Server access and feature modules updated.".into(), cx);
+        }, cx);
+        cx.notify();
+    }
+
+    /// ServerAccessTab: the public directory, readable on the web, the description, and which
+    /// feature modules this server keeps.
+    fn render_server_access(&self, s: &ServerSettings, server: &crate::model::Server, can: Can, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        let lavender: Hsla = Theme::lavender().into();
+        let on_accent: Hsla = rgb(0x15121f).into();
+        let manage = can.manage_server && !s.saving_access;
+        let is_public = server.is_public;
+        let web_public = server.web_public;
+        let disabled = server.disabled_modules.clone();
+        let box_ = || div().p(px(16.)).rounded(px(12.)).bg(Theme::panel()).border_1().border_color(Theme::line()).flex().flex_col();
+        let h3 = |icon: &'static str, color: Hsla, icon_op: f32, text: String| div().flex().items_center().gap(px(8.)).text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight::SEMIBOLD).text_color(ink).child(div().opacity(icon_op).child(ui::icon(icon, 16., color))).child(text);
+        let small = |text: String| div().mt(px(4.)).opacity(0.75).text_size(px(12.)).line_height(px(16.)).text_color(ink).child(text);
+        let slug = server.vanity_code.clone().unwrap_or_else(|| server.id.clone()).to_lowercase();
+        let (d0, d1) = (disabled.clone(), disabled.clone());
+        let top = box_()
+            .gap(px(16.))
+            .child(
+                div()
+                    .id("ss-public")
+                    .flex()
+                    .items_start()
+                    .justify_between()
+                    .gap(px(16.))
+                    .child(div().flex_1().min_w_0().child(h3(if is_public { "globe" } else { "lock" }, if is_public { rgb(0x34d399).into() } else { rgb(0xfbbf24).into() }, 1., "Public Server Directory".into())).child(small(format!("When enabled, {} appears in the Public Servers directory so new users without an invite code can discover and join it after the tutorial.", server.name))))
+                    .child(checkbox(is_public, false))
+                    .when(manage, |d| d.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| this.save_access(!is_public, d0.clone(), cx)))),
+            )
+            .child(
+                div()
+                    .id("ss-webpublic")
+                    .flex()
+                    .items_start()
+                    .justify_between()
+                    .gap(px(16.))
+                    .child({
+                        // One paragraph, the address underlined inside it.
+                        let before = "Anyone can read this server's open channels at ";
+                        let link = format!("hoffle.online/s/{slug}");
+                        let text = format!("{before}{link}, and search engines can list them. Private channels, 18+ channels and any channel with its own permissions stay hidden. Tell your members before you turn this on.");
+                        let range = before.len()..before.len() + link.len();
+                        let styled = gpui::StyledText::new(text).with_highlights(vec![(range, gpui::HighlightStyle { underline: Some(gpui::UnderlineStyle { thickness: px(1.), color: Some(ink), wavy: false }), ..Default::default() })]);
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(h3("globe", if web_public { rgb(0x38bdf8).into() } else { ink }, if web_public { 1. } else { 0.6 }, "Readable on the web".into()))
+                            .child(div().mt(px(4.)).opacity(0.75).text_size(px(12.)).line_height(px(16.)).text_color(ink).child(styled))
+                    })
+                    .child(checkbox(web_public, false))
+                    .when(manage, |d| {
+                        let path = format!("/api/servers/{}", url::form_urlencoded::byte_serialize(server.id.as_bytes()).collect::<String>());
+                        d.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| {
+                            let next = !web_public;
+                            let path = path.clone();
+                            this.ss_call(move |c| c.settings_patch(&path, json!({ "webPublic": next })), move |this, cx| {
+                                this.load_servers(cx);
+                                this.server_notice(if next { "Open channels are now readable on the web." } else { "This server is no longer readable on the web." }.into(), cx);
+                            }, cx);
+                        }))
+                    }),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.))
+                    .child(div().opacity(0.75).text_size(px(11.)).line_height(px(14.67)).font_weight(FontWeight::EXTRA_BOLD).text_color(rgb(0xc9cad2)).child("COMMUNITY DESCRIPTION (SHOWN IN PUBLIC SERVER DIRECTORY)"))
+                    .child(
+                        div()
+                            .flex()
+                            .gap(px(8.))
+                            .child(div().flex_1().h(px(38.25)).flex().items_center().child(s.description.clone()))
+                            .child(
+                                div()
+                                    .id("ss-access-save")
+                                    .h(px(38.25))
+                                    .px(px(18.))
+                                    .rounded(px(8.))
+                                    .bg(lavender)
+                                    .flex()
+                                    .items_center()
+                                    .text_size(px(13.5))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(on_accent)
+                                    .when(!manage, |d| d.opacity(0.5))
+                                    .when(manage, |d| d.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| this.save_access(is_public, d1.clone(), cx))))
+                                    .child(if s.saving_access { "Saving…" } else { "Save" }),
+                            ),
+                    ),
+            );
+        let mut modules = div().pt(px(8.)).flex().flex_col().gap(px(8.));
+        for (key, label, desc) in FEATURE_MODULES.iter() {
+            let enabled = !disabled.contains(key);
+            let (key, disabled) = (key.clone(), disabled.clone());
+            modules = modules.child(
+                div()
+                    .id(SharedString::from(format!("ss-mod-{key}")))
+                    .px(px(12.))
+                    .py(px(11.))
+                    .rounded(px(12.))
+                    .bg(Theme::panel())
+                    .border_1()
+                    .border_color(Theme::line())
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(div().flex_1().min_w_0().flex().flex_col().gap(px(2.)).child(div().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight::BOLD).text_color(ink).child(label.clone())).child(div().opacity(0.7).text_size(px(12.)).line_height(px(16.)).text_color(muted).child(desc.clone())))
+                    .child(checkbox(enabled, true))
+                    .when(manage, |d| {
+                        d.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| {
+                            let mut next = disabled.clone();
+                            if enabled {
+                                next.push(key.clone());
+                            } else {
+                                next.retain(|k| k != &key);
+                            }
+                            this.save_access(is_public, next, cx);
+                        }))
+                    }),
+            );
+        }
+        let bottom = box_()
+            .gap(px(12.))
+            .child(div().child(h3("layers", rgb(0x818cf8).into(), 1., "Server Feature Modules (\u{201c}Simple by default, deep when you want it\u{201d})".into())).child(small(format!("Switch off optional modules your community doesn't use to keep slash commands and toolbars clean for everyone in {}.", server.name))))
+            .child(modules);
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(div().font_family(DISPLAY_FONT).text_size(px(26.)).line_height(px(39.)).font_weight(FontWeight::MEDIUM).text_color(ink).child("Access, Community & Feature Modules"))
+            .child(div().mt(px(4.)).mb(px(12.)).text_size(px(13.5)).line_height(px(18.9)).text_color(muted).child(format!("Control whether anyone on this Hoffle can discover and join {}, and choose which feature modules are active here.", server.name)))
+            .child(top.mt(px(24.)))
+            .child(bottom.mt(px(24.)))
+            .into_any_element()
     }
 
     /// The tabs still to come in this app: what they are, and the way to them on the web.
