@@ -186,6 +186,35 @@ pub fn set_theme(def: &ThemeDef, save: bool) {
     if let Some(r) = custom.corners {
         palette.radius = r;
     }
+    // Settings → Custom CSS: what this app can take from it, the colour variables in `:root`.
+    let client = load_client_css();
+    if client.enabled {
+        for (name, value) in root_vars(&client.css) {
+            if name == "ui-corners" {
+                if let Some(r) = value.trim_end_matches("px").trim().parse::<f32>().ok() {
+                    palette.radius = r;
+                }
+                continue;
+            }
+            let Some(color) = css_color(&value) else { continue };
+            let color: Rgba = color.into();
+            match name.as_str() {
+                "ink" => palette.ink = color,
+                "muted" => palette.muted = color,
+                "quiet" => palette.quiet = color,
+                "line" => palette.line = color,
+                "paper" => palette.paper = color,
+                "panel" => palette.panel = color,
+                "chat-bg" => palette.chat_bg = color,
+                "card" => palette.card = color,
+                "lavender" => palette.lavender = color,
+                "lavender-soft" => palette.lavender_soft = color,
+                "coral" => palette.coral = color,
+                "mint" => palette.mint = color,
+                _ => {}
+            }
+        }
+    }
     *PALETTE.write().unwrap() = palette;
     *THEME_ID.write().unwrap() = def.id.clone();
     if save
@@ -306,4 +335,62 @@ pub fn mix(a: impl Into<Hsla>, p: f32, b: impl Into<Hsla>) -> Hsla {
     }
     let ch = |x: f32, y: f32| (x * a.a * p + y * b.a * q) / alpha;
     gpui::Rgba { r: ch(a.r, b.r), g: ch(a.g, b.g), b: ch(a.b, b.b), a: alpha }.into()
+}
+
+/// Settings → Custom CSS (setClientUiCss): the CSS and whether it is on, kept on this computer.
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct ClientCss {
+    pub css: String,
+    pub enabled: bool,
+}
+
+fn client_css_path() -> Option<std::path::PathBuf> {
+    Some(dirs::config_dir()?.join("Hoffle Lite").join("client-ui-css.json"))
+}
+
+pub fn load_client_css() -> ClientCss {
+    client_css_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+/// Saves it and applies it at once, as the web does on every change.
+pub fn set_client_css(css: &str, enabled: bool) {
+    if let Some(path) = client_css_path() {
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+        let _ = std::fs::write(path, serde_json::to_vec(&ClientCss { css: css.to_string(), enabled }).unwrap_or_default());
+    }
+    let id = active_theme();
+    if let Some(def) = all_themes().into_iter().find(|t| t.id == id) {
+        set_theme(&def, false);
+    }
+}
+
+/// `--name: value` pairs inside `:root { … }` blocks, comments and `!important` dropped.
+pub fn root_vars(css: &str) -> Vec<(String, String)> {
+    let mut clean = String::new();
+    let mut rest = css;
+    while let Some(start) = rest.find("/*") {
+        clean.push_str(&rest[..start]);
+        rest = rest[start + 2..].split_once("*/").map(|(_, r)| r).unwrap_or("");
+    }
+    clean.push_str(rest);
+    let mut out = Vec::new();
+    let mut text = clean.as_str();
+    while let Some(open) = text.find('{') {
+        let selector = text[..open].trim();
+        let Some(close) = text[open..].find('}') else { break };
+        let body = &text[open + 1..open + close];
+        if selector.split(',').any(|s| s.trim() == ":root") {
+            for decl in body.split(';') {
+                if let Some((name, value)) = decl.split_once(':') {
+                    let name = name.trim();
+                    if let Some(var) = name.strip_prefix("--") {
+                        out.push((var.to_string(), value.replace("!important", "").trim().to_string()));
+                    }
+                }
+            }
+        }
+        text = &text[open + close + 1..];
+    }
+    out
 }

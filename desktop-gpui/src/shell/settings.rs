@@ -139,6 +139,8 @@ fn streamer_path() -> Option<std::path::PathBuf> {
 
 pub(super) struct Settings {
     pub tab: Tab,
+    /// Custom CSS: the code editor.
+    pub css_editor: Entity<crate::textarea::TextArea>,
     /// The dialog itself holds focus when no field does (the web opens with nothing focused).
     focus: gpui::FocusHandle,
     search: Entity<TextInput>,
@@ -293,9 +295,33 @@ impl Shell {
             InputEvent::Escape => this.close_settings(window, cx),
             _ => cx.notify(),
         }));
+        // Custom CSS: what you type applies as you type (setClientUiCss on every change).
+        let css_editor = cx.new(|cx| {
+            let mut area = crate::textarea::TextArea::new(
+                "/* Write custom CSS to style the Hoffle interface (personal to this client) */\n:root {\n  --lavender: #a78bfa !important;\n}\n.sidebar {\n  backdrop-filter: blur(14px) !important;\n}",
+                cx,
+            )
+            .text(12., 16.)
+            .min_height(194.)
+            .max_lines(12)
+            .enter_newline()
+            .color(rgb(0xe5e7eb))
+            .placeholder_color(rgb(0x6b7280));
+            area.set_value(crate::theme::load_client_css().css, cx);
+            area
+        });
+        subs.push(cx.subscribe_in(&css_editor, window, |_, editor, event, window, cx| {
+            if matches!(event, crate::textarea::AreaEvent::Changed) {
+                let css = editor.read(cx).value();
+                crate::theme::set_client_css(&css, crate::theme::load_client_css().enabled);
+                window.refresh();
+                cx.notify();
+            }
+        }));
         let focus = cx.focus_handle();
         window.focus(&focus);
         self.settings = Some(Settings {
+            css_editor,
             tab: if self.simple() { Tab::Home } else { Tab::Password },
             focus,
             search,
@@ -1150,6 +1176,7 @@ impl Shell {
             Tab::Appearance => self.render_appearance_page(s, window, cx),
             Tab::Tts => self.render_tts_page(s, window, cx),
             Tab::Dice => self.render_dice_page(window, cx),
+            Tab::CustomCss => self.render_css_page(s, cx),
             Tab::Tutorial => vec![
                 div()
                     .flex_none()
