@@ -78,7 +78,97 @@ pub(super) struct ServerSettings {
     description: Entity<TextInput>,
     saving_access: bool,
     welcome: Option<Welcome>,
+    automod: Option<Vec<Value>>,
+    automod_draft: Option<AutomodDraft>,
+    automod_saving: bool,
+    automod_notice: Option<String>,
     _subs: Vec<Subscription>,
+}
+
+/// RuleDraft: the rule being made or changed ("new" or its id), every kind's inputs at once.
+struct AutomodDraft {
+    editing: String,
+    kind: &'static str,
+    action: &'static str,
+    regex: bool,
+    kind_open: bool,
+    action_open: bool,
+    words: Entity<crate::textarea::TextArea>,
+    allow: Entity<crate::textarea::TextArea>,
+    /// max mentions, percent, min letters, max repeats, timeout minutes
+    numbers: [Entity<TextInput>; 5],
+    _subs: Vec<Subscription>,
+}
+
+const AUTOMOD_KINDS: [(&str, &str, &str); 5] = [
+    ("keyword", "Blocked words", "Refuses messages containing any of the listed words, matched on whole words and ignoring case."),
+    ("mention_limit", "Mention limit", "Refuses messages that mention more people than the limit allows."),
+    ("link", "Link filter", "Refuses messages containing links outside the allow-list. An entry also covers its subdomains, so example.com allows cdn.example.com."),
+    ("caps", "Excessive caps", "Refuses messages that are mostly capital letters."),
+    ("repeat", "Repeated messages", "Refuses the same message posted over and over in one channel."),
+];
+const AUTOMOD_ACTIONS: [(&str, &str); 2] = [("block", "Refuse the message"), ("timeout", "Refuse the message and time the author out")];
+
+/// formatMinutes(): "1 day 2 hours".
+fn format_minutes(minutes: i64) -> String {
+    if minutes <= 0 {
+        return "0 minutes".into();
+    }
+    let (d, h, m) = (minutes / 1440, (minutes % 1440) / 60, minutes % 60);
+    let mut parts = Vec::new();
+    for (n, one, many) in [(d, "day", "days"), (h, "hour", "hours"), (m, "minute", "minutes")] {
+        if n > 0 {
+            parts.push(format!("{n} {}", if n == 1 { one } else { many }));
+        }
+    }
+    parts.join(" ")
+}
+
+/// summarizeRule() + describeAction().
+fn summarize_rule(rule: &Value) -> String {
+    let c = &rule["config"];
+    let plural = |n: i64, one: &str, many: &str| if n == 1 { one.to_string() } else { many.to_string() };
+    let summary = match c["kind"].as_str().unwrap_or_default() {
+        "keyword" => {
+            let n = c["words"].as_array().map(|a| a.len() as i64).unwrap_or(0);
+            format!("{n} blocked {}{}", plural(n, "word", "words"), if c["regex"].as_bool().unwrap_or(false) { " (regular expressions)" } else { "" })
+        }
+        "mention_limit" => {
+            let n = c["max"].as_i64().unwrap_or(0);
+            format!("max {n} {}", plural(n, "mention", "mentions"))
+        }
+        "link" => {
+            let allow: Vec<String> = c["allow"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
+            if allow.is_empty() { "allow no links".into() } else { format!("allow only {}", allow.join(", ")) }
+        }
+        "caps" => format!("mostly caps over {} letters, at {}%", c["minLetters"].as_i64().unwrap_or(0), c["percent"].as_i64().unwrap_or(0)),
+        _ => {
+            let n = c["maxRepeats"].as_i64().unwrap_or(0);
+            format!("max {n} {}", plural(n, "repeat", "repeats"))
+        }
+    };
+    let action = if rule["action"] == "timeout" { format!("message refused, {} timeout", format_minutes(rule["timeoutMinutes"].as_i64().unwrap_or(0))) } else { "message refused".into() };
+    format!("{summary} · {action}")
+}
+
+/// entriesOf(): lines or commas, trimmed, each once.
+fn entries_of(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for raw in text.split(['\n', ',']) {
+        let e = raw.trim().to_string();
+        if !e.is_empty() && !out.contains(&e) {
+            out.push(e);
+        }
+    }
+    out
+}
+
+/// clampInt(): a whole number from 1 to `max`, else the default.
+fn clamp_int(text: &str, fallback: i64, max: i64) -> i64 {
+    match text.trim().parse::<f64>().map(|v| v.floor() as i64) {
+        Ok(v) if v >= 1 => v.min(max),
+        _ => fallback,
+    }
 }
 
 /// WelcomeConfig as edited here.
@@ -309,6 +399,10 @@ impl Shell {
             description,
             saving_access: false,
             welcome: None,
+            automod: None,
+            automod_draft: None,
+            automod_saving: false,
+            automod_notice: None,
             _subs: subs,
         });
         cx.notify();
@@ -585,6 +679,7 @@ impl Shell {
             "soundboard" => self.render_server_sounds(s, can, cx),
             "access" | "community" => self.render_server_access(s, server, can, cx),
             "welcome" => self.render_server_welcome(s, cx),
+            "automod" => self.render_server_automod(s, server, can, cx),
             other => self.render_server_tab(other, s, server, can, window, cx),
         };
         let main = div()
@@ -1447,6 +1542,7 @@ impl Shell {
             "emojis" => (format!("/api/emojis?serverId={sid}"), "emojis"),
             "stickers" => (format!("/api/stickers/packs?serverId={sid}"), "stickers"),
             "sounds" => (format!("/api/sounds?serverId={sid}"), "sounds"),
+            "automod" => (format!("/api/automod?serverId={sid}"), "rules"),
             _ => (format!("/api/audit?serverId={sid}"), "entries"),
         };
         let client = self.client.clone();
@@ -1460,6 +1556,7 @@ impl Shell {
                     "invites" => s.invites = Some(list),
                     "bans" => s.bans = Some(list),
                     "emojis" => s.emojis = Some(list),
+                    "automod" => s.automod = Some(list.into_iter().map(|mut r| { if r.get("enabled").is_none() { r["enabled"] = json!(true); } r }).collect()),
                     "stickers" | "sounds" => {
                         if kind == "stickers" {
                             s.stickers = Some(list.clone());
@@ -1483,6 +1580,7 @@ impl Shell {
                 "invites" => s.invites = None,
                 "bans" => s.bans = None,
                 "emojis" => s.emojis = None,
+                "automod" => s.automod = None,
                 "stickers" => s.stickers = None,
                 "sounds" => s.sounds = None,
                 _ => s.audit = None,
@@ -1748,7 +1846,7 @@ impl Shell {
                 if shown.is_empty() {
                     page = page.child(div().text_size(px(13.5)).text_color(muted).child("Nobody matched that search."));
                 } else {
-                    let mut ul = div().flex().flex_col().gap(px(8.));
+                    let mut ul = div().mt(px(14.)).flex().flex_col().gap(px(8.));
                     for b in shown {
                         let (uid, name) = (b["userId"].as_str().unwrap_or_default().to_string(), b["displayName"].as_str().unwrap_or_default().to_string());
                         let mut sub = format!("@{}", b["username"].as_str().unwrap_or_default());
@@ -1765,7 +1863,9 @@ impl Shell {
                                 .px(px(12.))
                                 .py(px(10.))
                                 .rounded(px(10.))
-                                .bg(Theme::panel())
+                                .bg(Theme::paper())
+                                .border_1()
+                                .border_color(Theme::line())
                                 .flex()
                                 .items_center()
                                 .gap(px(12.))
@@ -2822,6 +2922,369 @@ impl Shell {
                 ),
             )
             .into_any_element()
+    }
+
+    /// startCreate() / startEdit(): the draft, filled from the rule when editing.
+    fn start_automod_draft(&mut self, rule: Option<Value>, cx: &mut Context<Self>) {
+        let c = rule.as_ref().map(|r| r["config"].clone()).unwrap_or(Value::Null);
+        let join = |k: &str| c[k].as_array().map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join("\n")).unwrap_or_default();
+        let area = |placeholder: &str, value: String, rows: f32, cx: &mut Context<Self>| {
+            cx.new(|cx| {
+                let mut a = crate::textarea::TextArea::new(placeholder.to_string(), cx).text(14., 21.).min_height(21. * rows).enter_newline().placeholder_color(Hsla::from(Theme::muted()).opacity(0.75));
+                a.set_value(value, cx);
+                a
+            })
+        };
+        let words = area("one per line, or separated by commas", join("words"), 4., cx);
+        let allow = area("youtube.com\ntenor.com   (leave empty to block every link)", join("allow"), 3., cx);
+        let num = |v: i64, cx: &mut Context<Self>| {
+            cx.new(|cx| {
+                let mut i = TextInput::new("", cx).look(Look { size: 14., line_height: 21., height: 21., color: Theme::ink().into(), placeholder: Theme::muted().into() });
+                i.set_text(v.to_string(), cx);
+                i
+            })
+        };
+        let numbers = [
+            num(c["max"].as_i64().unwrap_or(5), cx),
+            num(c["percent"].as_i64().unwrap_or(70), cx),
+            num(c["minLetters"].as_i64().unwrap_or(12), cx),
+            num(c["maxRepeats"].as_i64().unwrap_or(3), cx),
+            num(rule.as_ref().and_then(|r| r["timeoutMinutes"].as_i64()).filter(|v| *v > 0).unwrap_or(10), cx),
+        ];
+        let mut subs = vec![cx.subscribe(&words, |_, _, _, cx| cx.notify()), cx.subscribe(&allow, |_, _, _, cx| cx.notify())];
+        for n in &numbers {
+            subs.push(cx.subscribe(n, |_, _, _, cx| cx.notify()));
+        }
+        let kind = AUTOMOD_KINDS.iter().find(|k| rule.as_ref().is_some_and(|r| r["kind"] == k.0)).map(|k| k.0).unwrap_or("keyword");
+        let action = if rule.as_ref().is_some_and(|r| r["action"] == "timeout") { "timeout" } else { "block" };
+        let editing = rule.as_ref().and_then(|r| r["id"].as_str()).unwrap_or("new").to_string();
+        if let Some(s) = self.server_settings.as_mut() {
+            s.automod_notice = None;
+            s.automod_draft = Some(AutomodDraft { editing, kind, action, regex: c["regex"].as_bool().unwrap_or(false), kind_open: false, action_open: false, words, allow, numbers, _subs: subs });
+        }
+        cx.notify();
+    }
+
+    /// saveRule(): POST a new rule or PATCH the one being edited.
+    fn save_automod(&mut self, cx: &mut Context<Self>) {
+        let Some(s) = self.server_settings.as_mut() else { return };
+        let Some(d) = s.automod_draft.as_ref() else { return };
+        let n = |i: usize| d.numbers[i].read(cx).text();
+        let config = match d.kind {
+            "keyword" => json!({ "kind": "keyword", "words": entries_of(&d.words.read(cx).value()), "regex": d.regex }),
+            "mention_limit" => json!({ "kind": "mention_limit", "max": clamp_int(&n(0), 5, 100) }),
+            "link" => json!({ "kind": "link", "allow": entries_of(&d.allow.read(cx).value()) }),
+            "caps" => json!({ "kind": "caps", "minLetters": clamp_int(&n(2), 12, 1000), "percent": clamp_int(&n(1), 70, 100) }),
+            _ => json!({ "kind": "repeat", "maxRepeats": clamp_int(&n(3), 3, 50) }),
+        };
+        if d.kind == "keyword" && config["words"].as_array().is_some_and(|a| a.is_empty()) {
+            s.automod_notice = Some("A keyword rule needs at least one word to look for.".into());
+            return cx.notify();
+        }
+        let body = json!({ "kind": d.kind, "action": d.action, "timeoutMinutes": if d.action == "timeout" { clamp_int(&n(4), 10, 10080) } else { 0 }, "config": config });
+        let editing = d.editing.clone();
+        let sid = s.server_id.clone();
+        s.automod_saving = true;
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let new = editing == "new";
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    if new {
+                        let mut b = body;
+                        b["serverId"] = json!(sid);
+                        client.settings_post("/api/automod", b)
+                    } else {
+                        client.settings_patch(&format!("/api/automod/{}", url::form_urlencoded::byte_serialize(editing.as_bytes()).collect::<String>()), body)
+                    }
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                let Some(s) = this.server_settings.as_mut() else { return };
+                s.automod_saving = false;
+                match result {
+                    Ok(_) => {
+                        s.automod_draft = None;
+                        s.automod_notice = Some(if new { "Rule created. It applies to the next message posted.".into() } else { "Rule updated.".into() });
+                        this.ss_refresh("automod", cx);
+                    }
+                    Err(e) => s.automod_notice = Some(if e.to_string().is_empty() { "Could not save that rule.".into() } else { e.to_string() }),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// toggleRule(): paused rules stay in the list (the server would not list them again).
+    fn toggle_automod(&mut self, id: String, next: bool, cx: &mut Context<Self>) {
+        let path = format!("/api/automod/{}", url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>());
+        self.ss_call(move |c| c.settings_patch(&path, json!({ "enabled": next })), move |this, cx| {
+            if let Some(s) = this.server_settings.as_mut() {
+                if let Some(r) = s.automod.as_mut().and_then(|l| l.iter_mut().find(|r| r["id"] == id.as_str())) {
+                    r["enabled"] = json!(next);
+                }
+                s.automod_notice = Some(if next { "Rule is active again.".into() } else { "Rule paused. Posts that it would have refused now go through.".into() });
+            }
+            cx.notify();
+        }, cx);
+    }
+
+    pub(super) fn delete_automod(&mut self, id: String, cx: &mut Context<Self>) {
+        let path = format!("/api/automod/{}", url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>());
+        self.ss_call(move |c| c.settings_delete(&path, json!({})), move |this, cx| {
+            if let Some(s) = this.server_settings.as_mut() {
+                if let Some(l) = s.automod.as_mut() {
+                    l.retain(|r| r["id"] != id.as_str());
+                }
+                if s.automod_draft.as_ref().is_some_and(|d| d.editing == id) {
+                    s.automod_draft = None;
+                }
+                s.automod_notice = Some("Rule deleted.".into());
+            }
+            cx.notify();
+        }, cx);
+    }
+
+    /// AutomodPanel.
+    fn render_server_automod(&self, s: &ServerSettings, server: &crate::model::Server, can: Can, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        let lavender: Hsla = Theme::lavender().into();
+        let on_accent: Hsla = rgb(0x15121f).into();
+        if s.automod.is_none() {
+            self.ss_load("automod", cx);
+        }
+        let manage = can.manage_server || can.owner;
+        let secondary = |id: SharedString| div().id(id).h(px(38.25)).px(px(18.)).rounded(px(8.)).bg(Theme::card()).border_1().border_color(Theme::line()).flex().items_center().gap(px(4.)).text_size(px(13.5)).font_weight(FontWeight::SEMIBOLD).text_color(ink).cursor_pointer();
+        let primary = |id: SharedString| div().id(id).h(px(38.25)).px(px(18.)).rounded(px(8.)).bg(lavender).flex().items_center().text_size(px(13.5)).font_weight(FontWeight::SEMIBOLD).text_color(on_accent).cursor_pointer();
+        let mut page = div().flex().flex_col().gap(px(24.)).child(
+            div()
+                .mt(px(10.))
+                .flex()
+                .items_center()
+                .gap(px(16.))
+                .child(div().flex_1().min_w_0().flex().flex_col().child(div().font_family(DISPLAY_FONT).text_size(px(26.)).line_height(px(39.)).font_weight(FontWeight::MEDIUM).text_color(ink).child("AutoMod")).child(div().mt(px(4.)).mb(px(12.)).text_size(px(13.5)).line_height(px(18.9)).text_color(muted).child(format!("Every message posted in {} is checked against these rules before it appears.", server.name))))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(12.))
+                        .child(secondary("am-refresh".into()).child("Refresh").on_click(cx.listener(|this, _, _, cx| this.ss_refresh("automod", cx))))
+                        .when(manage && s.automod_draft.is_none(), |d| d.child(primary("am-create".into()).child(ui::icon("plus", 16., on_accent)).child(div().ml(px(6.)).child("Create Rule")).on_click(cx.listener(|this, _, _, cx| this.start_automod_draft(None, cx))))),
+                ),
+        );
+        if let Some(n) = &s.automod_notice {
+            page = page.child(div().text_size(px(13.5)).line_height(px(18.9)).text_color(rgb(0xf0b232)).child(n.clone()));
+        }
+        if !manage {
+            page = page.child(div().text_size(px(13.5)).text_color(muted).child("You can read these rules, but only members with Manage Server can change them."));
+        }
+        if let (true, Some(d)) = (manage, s.automod_draft.as_ref()) {
+            let label = |text: String| div().text_size(px(12.)).line_height(px(18.)).font_weight(FontWeight::EXTRA_BOLD).text_color(muted).child(text.to_uppercase());
+            let field = || div().flex().flex_col().gap(px(8.));
+            let input_box = |child: AnyElement| div().min_h(px(43.)).px(px(14.)).py(px(10.)).rounded(px(6.)).bg(Theme::paper()).border_1().border_color(Theme::line()).child(child);
+            let select = |id: &'static str, text: &str, open: bool, enabled: bool, options: Vec<(&'static str, &'static str)>, which: &'static str, cx: &mut Context<Self>| {
+                let mut el = div().relative().child(
+                    div()
+                        .id(id)
+                        .h(px(43.))
+                        .px(px(14.))
+                        .rounded(px(6.))
+                        .bg(Theme::paper())
+                        .border_1()
+                        .border_color(Theme::line())
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .text_size(px(14.))
+                        .text_color(ink)
+                        .when(!enabled, |d| d.opacity(0.6))
+                        .when(enabled, |d| d.cursor_pointer())
+                        .child(text.to_string())
+                        .child(ui::icon("chevron-down", 14., ink))
+                        .when(enabled, |d| {
+                            d.on_click(cx.listener(move |this, _, _, cx| {
+                                if let Some(d) = this.server_settings.as_mut().and_then(|s| s.automod_draft.as_mut()) {
+                                    if which == "kind" {
+                                        d.kind_open = !d.kind_open;
+                                    } else {
+                                        d.action_open = !d.action_open;
+                                    }
+                                }
+                                cx.notify();
+                            }))
+                        }),
+                );
+                if open {
+                    let mut menu = div().absolute().top(px(46.)).left_0().right_0().p(px(4.)).rounded(px(8.)).bg(Theme::panel()).border_1().border_color(Theme::line()).shadow(ui::card_shadow()).flex().flex_col();
+                    for (k, l) in options {
+                        menu = menu.child(div().id(SharedString::from(format!("am-{which}-{k}"))).px(px(10.)).py(px(6.)).rounded(px(6.)).text_size(px(13.)).text_color(ink).hover(|s| s.bg(gpui::white().opacity(0.08))).cursor_pointer().child(l).on_click(cx.listener(move |this, _, _, cx| {
+                            if let Some(d) = this.server_settings.as_mut().and_then(|s| s.automod_draft.as_mut()) {
+                                if which == "kind" {
+                                    d.kind = k;
+                                    d.kind_open = false;
+                                } else {
+                                    d.action = k;
+                                    d.action_open = false;
+                                }
+                            }
+                            cx.notify();
+                        })));
+                    }
+                    el = el.child(gpui::deferred(menu).with_priority(3));
+                }
+                el
+            };
+            let kind_info = AUTOMOD_KINDS.iter().find(|k| k.0 == d.kind).copied().unwrap_or(AUTOMOD_KINDS[0]);
+            let number = |i: usize, text: String| field().child(label(text)).child(input_box(d.numbers[i].clone().into_any_element()));
+            let mut form = div()
+                .mt(px(8.))
+                .mb(px(20.))
+                .p(px(18.))
+                .rounded(px(10.))
+                .bg(Theme::chat_bg())
+                .border_1()
+                .border_color(Theme::divider())
+                .flex()
+                .flex_col()
+                .gap(px(16.))
+                .child(field().child(label("Rule type".into())).child(select("am-kind", kind_info.1, d.kind_open, d.editing == "new", AUTOMOD_KINDS.iter().map(|k| (k.0, k.1)).collect(), "kind", cx)).child(div().text_size(px(13.)).line_height(px(19.5)).text_color(muted).child(kind_info.2)));
+            match d.kind {
+                "keyword" => {
+                    let regex = d.regex;
+                    form = form.child(
+                        field()
+                            .child(label("Words or phrases".into()))
+                            .child(input_box(d.words.clone().into_any_element()))
+                            .child(
+                                div()
+                                    .id("am-regex")
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.))
+                                    .cursor_pointer()
+                                    .text_size(px(13.))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(muted)
+                                    .child(checkbox(regex, false))
+                                    .child("Treat entries as regular expressions")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        if let Some(d) = this.server_settings.as_mut().and_then(|s| s.automod_draft.as_mut()) {
+                                            d.regex = !regex;
+                                        }
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                }
+                "mention_limit" => form = form.child(number(0, "Most mentions allowed in one message".into())),
+                "link" => form = form.child(field().child(label("Allowed sites".into())).child(input_box(d.allow.clone().into_any_element()))),
+                "caps" => form = form.child(number(1, "Refuse when more than this % of letters are capitals".into())).child(number(2, "Only check messages with at least this many letters".into())),
+                _ => form = form.child(number(3, "Identical messages allowed within 10 minutes".into())),
+            }
+            let action_label = AUTOMOD_ACTIONS.iter().find(|a| a.0 == d.action).map(|a| a.1).unwrap_or("Refuse the message");
+            form = form.child(field().child(label("When it matches".into())).child(select("am-action", action_label, d.action_open, true, AUTOMOD_ACTIONS.to_vec(), "action", cx)));
+            if d.action == "timeout" {
+                let minutes = d.numbers[4].read(cx).text().trim().parse::<i64>().unwrap_or(0);
+                form = form.child(number(4, format!("Timeout length in minutes ({})", format_minutes(minutes))));
+            }
+            let saving = s.automod_saving;
+            let new = d.editing == "new";
+            form = form.child(
+                div()
+                    .flex()
+                    .justify_end()
+                    .gap(px(12.))
+                    .child(secondary("am-cancel".into()).child("Cancel").on_click(cx.listener(|this, _, _, cx| {
+                        if let Some(s) = this.server_settings.as_mut() {
+                            s.automod_draft = None;
+                        }
+                        cx.notify();
+                    })))
+                    .child(primary("am-save".into()).when(saving, |d| d.opacity(0.5)).child(if saving { "Saving…" } else if new { "Create Rule" } else { "Save Rule" }).when(!saving, |d| d.on_click(cx.listener(|this, _, _, cx| this.save_automod(cx))))),
+            );
+            page = page.child(form);
+        }
+        match &s.automod {
+            None => page = page.child(div().text_size(px(13.5)).text_color(muted).child("Loading automod rules…")),
+            Some(rules) if rules.is_empty() => {
+                page = page.child(
+                    div()
+                        .mt(px(20.))
+                        .px(px(20.))
+                        .py(px(60.))
+                        .rounded(px(16.))
+                        .bg(Theme::panel())
+                        .border_1()
+                        .border_color(Theme::line())
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .child(div().size(px(120.)).rounded_full().bg(ink.opacity(0.06)).flex().items_center().justify_center().child(ui::icon("shield", 42., ink)))
+                        .child(div().mt(px(12.)).text_size(px(18.)).line_height(px(27.)).font_weight(FontWeight::EXTRA_BOLD).text_color(ink).child("NO AUTOMOD RULES"))
+                        .child(div().mt(px(12.)).text_size(px(14.)).line_height(px(21.)).text_color(muted).child("AutoMod reads each message as it is posted and either refuses it, or refuses it and times the author out."))
+                        .child(div().mt(px(12.)).text_size(px(14.)).line_height(px(21.)).text_color(muted).child("Moderators are never subject to these rules, and direct messages between two people are never filtered.")),
+                )
+            }
+            Some(rules) => {
+                let mut ul = div().mt(px(14.)).flex().flex_col().gap(px(8.));
+                for r in rules {
+                    let id = r["id"].as_str().unwrap_or_default().to_string();
+                    let enabled = r["enabled"].as_bool().unwrap_or(true);
+                    let kind = AUTOMOD_KINDS.iter().find(|k| r["kind"] == k.0).map(|k| k.1).unwrap_or("Rule");
+                    let summary = summarize_rule(r);
+                    let (id1, id2, rule) = (id.clone(), id.clone(), r.clone());
+                    let (dkind, dsummary) = (kind.to_lowercase(), summary.split(" · ").next().unwrap_or_default().to_string());
+                    ul = ul.child(
+                        div()
+                            .px(px(12.))
+                            .py(px(10.))
+                            .rounded(px(10.))
+                            .bg(Theme::paper())
+                            .border_1()
+                            .border_color(Theme::line())
+                            .opacity(if enabled { 1. } else { 0.55 })
+                            .flex()
+                            .items_center()
+                            .gap(px(12.))
+                            .child(div().flex_1().min_w_0().flex().flex_col().child(div().text_size(px(14.)).font_weight(FontWeight::BOLD).text_color(ink).child(kind)).child(div().text_size(px(12.)).text_color(muted).child(summary)))
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("am-on-{id}")))
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(6.))
+                                    .text_size(px(13.))
+                                    .text_color(rgb(0xb5bac1))
+                                    .when(manage, |d| d.cursor_pointer().child(checkbox(enabled, false)).on_click(cx.listener(move |this, _, _, cx| this.toggle_automod(id1.clone(), !enabled, cx))))
+                                    .child(if enabled { "Enabled" } else { "Disabled" }),
+                            )
+                            .when(manage, |d| {
+                                d.child(secondary(SharedString::from(format!("am-edit-{id}"))).child(ui::icon("pencil", 14., ink)).child("Edit").on_click(cx.listener(move |this, _, _, cx| this.start_automod_draft(Some(rule.clone()), cx))))
+                                    .child(Self::ss_button(SharedString::from(format!("am-del-{id}")), "", "danger").child(ui::icon("trash-2", 14., Theme::coral())).on_click(cx.listener(move |this, _, _, cx| {
+                                        this.confirm = Some(Confirm {
+                                            title: format!("Delete the {dkind} rule?"),
+                                            text: format!("{dsummary}. Messages it would have refused will go through again."),
+                                            ok: "Delete Rule".into(),
+                                            cancel: t("common.cancel"),
+                                            action: ConfirmAction::DeleteAutomod(id2.clone()),
+                                        });
+                                        cx.notify();
+                                    })))
+                            }),
+                    );
+                }
+                page = page.child(ul);
+                if rules.iter().any(|r| r["enabled"] == false) {
+                    page = page.child(div().text_size(px(13.)).text_color(muted).child("Paused rules stay listed here so you can turn them back on."));
+                }
+            }
+        }
+        page.into_any_element()
     }
 
     /// The tabs still to come in this app: what they are, and the way to them on the web.
