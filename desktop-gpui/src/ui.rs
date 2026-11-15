@@ -429,3 +429,11 @@ pub fn css_static(css: String) -> &'static str {
     set.insert(leaked);
     leaked
 }
+
+/// A disabled button at the web's `opacity: .5`. CSS fades the button as one layer; GPUI fades each
+/// paint, so the label would be drawn half-faded over the half-faded fill and come out too light.
+/// Both colours are pre-mixed with what lies under the button instead.
+pub fn faded<E: Styled>(el: E, fill: impl Into<Hsla>, label: impl Into<Hsla>, under: impl Into<Hsla>) -> E {
+    let under = under.into();
+    el.bg(crate::theme::mix(fill, 0.5, under)).text_color(crate::theme::mix(label, 0.5, under))
+}

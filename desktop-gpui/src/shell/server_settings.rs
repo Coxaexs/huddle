@@ -88,8 +88,20 @@ pub(super) struct ServerSettings {
     purge_open: Option<&'static str>,
     purge_user: Entity<TextInput>,
     purging: bool,
+    tpl_link: Entity<TextInput>,
+    tpl_guild: Entity<TextInput>,
+    tpl_token: Entity<TextInput>,
+    tpl_json: Entity<crate::textarea::TextArea>,
+    importing: bool,
     _subs: Vec<Subscription>,
 }
+
+const STARTER_TEMPLATES: [(&str, &str, &str); 4] = [
+    ("gaming", "Gaming Hangout", "Announcements, clips, squad voice rooms & roles"),
+    ("dnd", "D&D Campaign Hub", "Lore forum, session recaps, dice chat & GM rooms"),
+    ("study", "Study & Co-working", "Daily goals, resource forum & quiet focus voice"),
+    ("community", "Public Community", "Welcome & rules, say-hi, looking-for-group, questions & a bug forum"),
+];
 
 /// Chrome's radio button in the dark scheme (13px).
 fn radio(on: bool) -> gpui::Div {
@@ -345,6 +357,22 @@ impl Shell {
             cx.notify();
         }));
         let purge_channel = server.channels.iter().find(|c| !c.is_voice()).map(|c| c.id.clone());
+        let small_look = || Look { size: 12., line_height: 16., height: 16., color: Theme::ink().into(), placeholder: Theme::muted().into() };
+        let tpl_link = cx.new(|cx| TextInput::new(t("discordMove.templatePlaceholder"), cx).look(small_look()));
+        let tpl_guild = cx.new(|cx| TextInput::new("e.g. 123456789012345678", cx).look(small_look()));
+        let tpl_token = cx.new(|cx| TextInput::new("Bot token with View Channels permission", cx).look(small_look()).masked());
+        let tpl_json = cx.new(|cx| {
+            crate::textarea::TextArea::new("{\n  \"categories\": [{ \"name\": \"Text Channels\", \"channels\": [{ \"name\": \"welcome\", \"kind\": \"text\" }] }],\n  \"roles\": [{ \"name\": \"Moderator\", \"color\": \"#5865f2\" }]\n}", cx).text(12., 16.).min_height(96.).enter_newline().placeholder_color(Hsla::from(Theme::muted()).opacity(0.75))
+        });
+        for input in [&tpl_link, &tpl_guild, &tpl_token] {
+            subs.push(cx.subscribe_in(input, window, |this, _, event, _, cx| {
+                if matches!(event, InputEvent::Escape) {
+                    this.server_settings = None;
+                }
+                cx.notify();
+            }));
+        }
+        subs.push(cx.subscribe(&tpl_json, |_, _, _, cx| cx.notify()));
         let description = cx.new(|cx| {
             let mut i = TextInput::new("What is this server about? (e.g. Cozy gaming nights, D&D campaigns, and music)", cx).look(Look { size: 16., line_height: 24., height: 24., color: Theme::ink().into(), placeholder: Theme::muted().into() });
             i.set_text(server.description.clone().unwrap_or_default(), cx);
@@ -433,6 +461,11 @@ impl Shell {
             purge_open: None,
             purge_user,
             purging: false,
+            tpl_link,
+            tpl_guild,
+            tpl_token,
+            tpl_json,
+            importing: false,
             _subs: subs,
         });
         cx.notify();
@@ -711,6 +744,7 @@ impl Shell {
             "welcome" => self.render_server_welcome(s, cx),
             "automod" => self.render_server_automod(s, server, can, cx),
             "safety" => self.render_server_safety(s, server, can, cx),
+            "template" => self.render_server_template(s, server, cx),
             other => self.render_server_tab(other, s, server, can, window, cx),
         };
         let main = div()
@@ -3576,6 +3610,139 @@ impl Shell {
             .child(verify_card)
             .child(purge_card)
             .child(reports)
+            .into_any_element()
+    }
+
+    /// runImport(): POST /api/servers/<id>/import, then the servers reload.
+    fn run_import(&mut self, body: Value, cx: &mut Context<Self>) {
+        let Some(s) = self.server_settings.as_mut() else { return };
+        s.importing = true;
+        let path = format!("/api/servers/{}/import", url::form_urlencoded::byte_serialize(s.server_id.as_bytes()).collect::<String>());
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.settings_post(&path, body) }).await;
+            this.update(cx, |this, cx| {
+                if let Some(s) = this.server_settings.as_mut() {
+                    s.importing = false;
+                }
+                match result {
+                    Ok(v) => {
+                        let i = &v["imported"];
+                        let private: Vec<String> = i["privateChannels"].as_array().map(|a| a.iter().filter_map(|c| c.as_str().map(|n| format!("#{n}"))).collect()).unwrap_or_default();
+                        let note = if private.is_empty() { String::new() } else { format!(" {}", tv("discordMove.private", &[("channels", &private.join(", "))])) };
+                        this.load_servers(cx);
+                        this.server_notice(format!("Imported {} categories, {} channels, and {} roles!{note}", i["categories"].as_i64().unwrap_or(0), i["channels"].as_i64().unwrap_or(0), i["roles"].as_i64().unwrap_or(0)), cx);
+                    }
+                    Err(e) => this.server_notice(if e.to_string().is_empty() { "Import failed.".into() } else { e.to_string() }, cx),
+                }
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// exportJson(): the layout as JSON, copied and shown in the box.
+    fn export_layout(&mut self, server: &crate::model::Server, cx: &mut Context<Self>) {
+        let channel = |c: &crate::model::Channel| json!({ "name": c.name, "kind": c.kind, "topic": c.topic });
+        let payload = json!({
+            "categories": server.categories.iter().map(|cat| json!({ "name": cat.name, "channels": server.channels.iter().filter(|c| c.category_id.as_deref() == Some(cat.id.as_str())).map(channel).collect::<Vec<_>>() })).collect::<Vec<_>>(),
+            "channels": server.channels.iter().filter(|c| c.category_id.is_none()).map(channel).collect::<Vec<_>>(),
+            "roles": server.roles.iter().map(|r| json!({ "name": r.name, "color": r.color })).collect::<Vec<_>>(),
+        });
+        let text = serde_json::to_string_pretty(&payload).unwrap_or_default();
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.clone()));
+        if let Some(s) = self.server_settings.as_ref() {
+            s.tpl_json.update(cx, |a, cx| a.set_value(text, cx));
+        }
+        self.server_notice("Copied server structure JSON to clipboard!".into(), cx);
+    }
+
+    /// ServerTemplateTab.
+    fn render_server_template(&self, s: &ServerSettings, server: &crate::model::Server, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        let lavender: Hsla = Theme::lavender().into();
+        let on_accent: Hsla = rgb(0x15121f).into();
+        let card = || div().mt(px(24.)).p(px(16.)).rounded(px(12.)).bg(Theme::panel()).border_1().border_color(Theme::line()).flex().flex_col().gap(px(12.));
+        let h3 = |icon: &'static str, color: u32, text: String| div().flex().items_center().gap(px(8.)).text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight::SEMIBOLD).text_color(ink).child(ui::icon(icon, 16., rgb(color))).child(text);
+        let small = |text: String| div().opacity(0.75).text_size(px(12.)).line_height(px(16.)).text_color(ink).child(text);
+        let button = |id: &'static str, label: String, enabled: bool| div().id(id).h(px(36.)).px(px(18.)).rounded(px(8.)).bg(lavender).flex().items_center().text_size(px(13.5)).font_weight(FontWeight::SEMIBOLD).text_color(on_accent).when(!enabled, |d| ui::faded(d, lavender, on_accent, Theme::panel())).when(enabled, |d| d.cursor_pointer()).child(label);
+        let busy = s.importing;
+        let main_w = 820f32.max(0.);
+        let col_w = (main_w - 34. - 24.) / 3.;
+        let mut grid = div().pt(px(4.)).flex().flex_wrap().gap(px(12.));
+        for (id, title, desc) in STARTER_TEMPLATES {
+            grid = grid.child(
+                div()
+                    .id(SharedString::from(format!("tpl-{id}")))
+                    .w(px(col_w))
+                    .p(px(12.))
+                    .rounded(px(8.))
+                    .bg(Theme::paper())
+                    .border_1()
+                    .border_color(Theme::line())
+                    .hover(|s| s.bg(gpui::white().opacity(0.1)))
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .child(div().text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::SEMIBOLD).text_color(lavender).child(title))
+                    .child(div().opacity(0.75).text_size(px(11.)).line_height(px(16.5)).text_color(ink).child(desc))
+                    .when(!busy, |d| d.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| this.run_import(json!({ "mode": "template", "templateId": id }), cx)))),
+            );
+        }
+        let link_ok = !busy && !s.tpl_link.read(cx).text().trim().is_empty();
+        let discord_ok = !busy && !s.tpl_guild.read(cx).text().trim().is_empty() && !s.tpl_token.read(cx).text().trim().is_empty();
+        let json_ok = !busy && !s.tpl_json.read(cx).value().trim().is_empty();
+        let label = |text: &str| div().opacity(0.7).text_size(px(12.)).line_height(px(16.)).text_color(ink).child(text.to_string());
+        let half = (main_w - 34. - 12.) / 2.;
+        let server_c = server.clone();
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(div().flex().flex_col().child(div().font_family(DISPLAY_FONT).text_size(px(26.)).line_height(px(39.)).font_weight(FontWeight::MEDIUM).text_color(ink).child("Server Templates & Data Import")).child(div().mt(px(4.)).mb(px(12.)).text_size(px(13.5)).line_height(px(18.9)).text_color(muted).child("Import channels, categories, and roles from a Discord server, apply a starter template, or export/import a portable JSON structure.")))
+            .child(card().child(h3("sparkles", 0x818cf8, "Quick Starter Templates".into())).child(small(format!("Add a pre-built set of categories, channels, and roles to {} in one click.", server.name))).child(grid))
+            .child(
+                card()
+                    .child(h3("download", 0x34d399, t("discordMove.fromTemplate")))
+                    .child(small(t("discordMove.fromTemplateHint")))
+                    .child(div().mt(px(6.)).h(px(16.)).child(s.tpl_link.clone()))
+                    .child(div().flex().child(button("tpl-link-go", if busy { t("discordMove.importing") } else { t("discordMove.import") }, link_ok).when(link_ok, |d| d.on_click(cx.listener(|this, _, _, cx| {
+                        let link = this.server_settings.as_ref().map(|s| s.tpl_link.read(cx).text().trim().to_string()).unwrap_or_default();
+                        this.run_import(json!({ "mode": "discord-template", "link": link }), cx);
+                    }))))),
+            )
+            .child(
+                card()
+                    .child(h3("download", 0x34d399, "Import from Discord Server".into()))
+                    .child(small(format!("Mirrors a Discord server's categories, text/voice/forum/stage channels, topics, and roles directly into {}.", server.name)))
+                    .child(div().pb(px(2.)).flex().gap(px(12.)).child(div().w(px(half)).child(label("Discord Server (Guild) ID")).child(div().mt(px(10.)).h(px(16.)).child(s.tpl_guild.clone()))).child(div().w(px(half)).child(label("Discord Bot Token")).child(div().mt(px(10.)).h(px(16.)).child(s.tpl_token.clone()))))
+                    .child(div().flex().child(button("tpl-discord-go", if busy { "Importing…".into() } else { "Import Discord Structure".into() }, discord_ok).when(discord_ok, |d| d.on_click(cx.listener(|this, _, _, cx| {
+                        let Some(s) = this.server_settings.as_ref() else { return };
+                        let body = json!({ "mode": "discord", "guildId": s.tpl_guild.read(cx).text().trim(), "botToken": s.tpl_token.read(cx).text().trim() });
+                        this.run_import(body, cx);
+                    }))))),
+            )
+            .child(
+                card()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .child(div().child(h3("upload", 0x38bdf8, "Portable JSON Template".into())).child(small("Export this server's layout to JSON or paste a template JSON to import.".into())))
+                            .child(div().id("tpl-export").h(px(36.)).px(px(18.)).rounded(px(8.)).flex().items_center().gap(px(6.)).text_size(px(13.5)).font_weight(FontWeight::SEMIBOLD).text_color(ink).cursor_pointer().hover(|s| s.bg(gpui::white().opacity(0.06))).child(ui::icon("copy", 13., ink)).child("Export Current Layout").on_click(cx.listener(move |this, _, _, cx| this.export_layout(&server_c, cx)))),
+                    )
+                    .child(div().pb(px(6.)).font_family(crate::theme::MONO_FONT).child(s.tpl_json.clone()))
+                    .child(div().flex().child(button("tpl-json-go", if busy { "Importing…".into() } else { "Import JSON Template".into() }, json_ok).when(json_ok, |d| d.on_click(cx.listener(|this, _, _, cx| {
+                        let text = this.server_settings.as_ref().map(|s| s.tpl_json.read(cx).value()).unwrap_or_default();
+                        match serde_json::from_str::<Value>(&text) {
+                            Ok(parsed) => this.run_import(json!({ "mode": "json", "structure": parsed }), cx),
+                            Err(_) => this.server_notice("Invalid JSON template format.".into(), cx),
+                        }
+                    }))))),
+            )
             .into_any_element()
     }
 
