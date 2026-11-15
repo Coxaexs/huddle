@@ -73,6 +73,7 @@ impl Shell {
                 .bg(Theme::panel())
                 .child(header)
                 .child(self.render_simple_rooms(server, window, cx))
+                .children(self.render_mini_music_bar(window, cx))
                 .children(self.render_mini_voice_bar(window, cx))
                 .into_any_element();
         }
@@ -185,7 +186,8 @@ impl Shell {
             .bg(Theme::panel())
             .child(header)
             .child(nav)
-            .children(self.render_mini_voice_bar(window, cx))
+            .children(self.render_mini_music_bar(window, cx))
+                .children(self.render_mini_voice_bar(window, cx))
             .into_any_element()
     }
 

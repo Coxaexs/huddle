@@ -8,6 +8,7 @@ mod emoji_picker;
 mod files;
 mod forward;
 mod invite;
+mod music_player;
 mod thread;
 mod gif_picker;
 mod links;
@@ -313,6 +314,11 @@ pub struct Shell {
     reaction_viewer: Option<reaction_viewer::ReactionViewer>,
     forward: Option<forward::Forward>,
     invite: Option<invite::InviteDialog>,
+    music_player: Option<music_player::MusicPlayer>,
+    music_tick: std::cell::Cell<bool>,
+    music_bar_spot: profile_card::Spot,
+    music_progress_spot: profile_card::Spot,
+    music_window_width: std::cell::Cell<gpui::Pixels>,
     /// The open prompt's field events (Enter saves, Escape cancels).
     prompt_sub: Option<gpui::Subscription>,
     dev_invite_done: bool,
@@ -518,6 +524,11 @@ impl Shell {
             reaction_viewer: None,
             forward: None,
             invite: None,
+            music_player: None,
+            music_tick: std::cell::Cell::new(false),
+            music_bar_spot: profile_card::spot(),
+            music_progress_spot: profile_card::spot(),
+            music_window_width: std::cell::Cell::new(px(1180.)),
             prompt_sub: None,
             dev_invite_done: false,
             thread: None,

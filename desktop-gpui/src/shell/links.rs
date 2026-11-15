@@ -54,7 +54,7 @@ pub fn is_gif_page(raw: &str) -> bool {
 }
 
 /// proxiedImage: outside pictures load through Hoffle, so a link cannot collect readers' addresses.
-fn proxied(url: &str) -> String {
+pub(super) fn proxied(url: &str) -> String {
     if url.starts_with("http://") || url.starts_with("https://") {
         format!("/hangout/api/unfurl/image?url={}", url::form_urlencoded::byte_serialize(url.as_bytes()).collect::<String>())
     } else {

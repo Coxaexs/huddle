@@ -431,6 +431,22 @@ impl gpui::Render for Shell {
                 d.dev_state(&state, window.scale_factor());
             }
         }
+        // Development: HOFFLE_DEV_PLAYER=mini|lyrics|queue|… puts a paused made-up song in the room
+        // you are in (only here, nothing is sent) and opens the player on that view.
+        if let Ok(view) = std::env::var("HOFFLE_DEV_PLAYER")
+            && let Some(room) = self.call.as_ref().filter(|c| matches!(c.state, super::CallState::Connected)).map(|c| c.channel_id.clone())
+            && !self.players.get(&room).is_some_and(|p| p["track"]["id"] == "qa1")
+        {
+            let now = self.hub_now();
+            let t = |id: &str, title: &str, artist: &str, dur: f64| serde_json::json!({ "id": id, "title": title, "artist": artist, "thumbnail": null, "duration": dur, "audioUrl": "", "pageUrl": null, "requestedBy": "claude-listener" });
+            self.players.insert(room.clone(), serde_json::json!({ "channelId": room, "track": t("qa1", "Midnight City", "M83", 243.), "queue": [t("qa2", "Strobe", "deadmau5", 637.), t("qa3", "Intro", "The xx", 128.)], "history": [], "paused": true, "positionMs": 61000, "updatedAt": now, "volume": 100, "loop": "off" }));
+            if view != "mini" {
+                self.open_music_player(Some(room), cx);
+                if let Some(p) = self.music_player.as_mut() {
+                    p.dev_tab(&view);
+                }
+            }
+        }
         // Development: HOFFLE_DEV_RENAME=1 opens the Rename Server prompt once (only to look at).
         if std::env::var("HOFFLE_DEV_RENAME").is_ok() && self.confirm.is_none() && !self.dev_invite_done
             && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
@@ -636,6 +652,7 @@ impl gpui::Render for Shell {
             .children(self.render_confirm(cx))
             .children(self.render_forward(window, cx))
             .children(self.render_invite(window, cx))
+            .children(self.render_music_player(window, cx))
             .on_modifiers_changed(cx.listener(|this, e: &gpui::ModifiersChangedEvent, _, cx| {
                 if this.shift_held != e.modifiers.shift {
                     this.shift_held = e.modifiers.shift;
@@ -706,6 +723,14 @@ impl gpui::Render for Shell {
                 } else if event.keystroke.key == "escape" && this.notify_menu.is_some() {
                     this.notify_menu = None;
                     cx.notify();
+                    cx.stop_propagation();
+                } else if this.music_player.is_some() && (event.keystroke.key == "escape" || event.keystroke.key == "space") {
+                    // The player takes Esc (close) and Space (play / pause) while it is open.
+                    if event.keystroke.key == "escape" {
+                        this.close_music_player(cx);
+                    } else {
+                        this.player_toggle(cx);
+                    }
                     cx.stop_propagation();
                 } else if event.keystroke.key == "escape" && this.invite.is_some() {
                     if let Some(d) = this.invite.as_mut().filter(|d| d.editing_open()) {

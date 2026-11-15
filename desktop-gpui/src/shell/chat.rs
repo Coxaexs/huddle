@@ -451,6 +451,10 @@ impl Shell {
                         };
                         d.child(div().ml(px(4.)).size(px(16.)).flex().items_center().justify_center().child(glyph))
                     })
+                    // `.owner-crown`: the server owner gets a small amber crown (not in DMs).
+                    .when(!self.home && message.user_id.is_some() && self.server().and_then(|s| s.owner_id.as_deref()) == message.user_id.as_deref(), |d| {
+                        d.child(div().flex().items_center().child(ui::icon("crown", 13., gpui::rgb(0xf59e0b))))
+                    })
                     // PrideBadges mini, 1px low in the meta line.
                     .children(author.and_then(|a| super::profile_editor::pride_mini(&a.pride_badges, window.scale_factor())).map(|b| div().mt(px(2.)).child(b)))
                     .when_some(tag, |d, (label, bg, fg)| {
