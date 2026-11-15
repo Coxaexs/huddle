@@ -302,6 +302,20 @@ impl gpui::Render for Shell {
                 stage.focused = Some(key);
             }
         }
+        // Development: HOFFLE_DEV_FIND=<query> opens Find people with that typed (empty: just open).
+        if let Ok(q) = std::env::var("HOFFLE_DEV_FIND")
+            && !self.dev_find_done
+            && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
+        {
+            self.dev_find_done = true;
+            self.open_user_search(window, cx);
+            if !q.is_empty() {
+                if let Some(s) = self.user_search.as_ref() {
+                    s.query_input().update(cx, |i, cx| i.set_text(q, cx));
+                }
+                self.dev_find_changed(cx);
+            }
+        }
         // Development: HOFFLE_DEV_BOTMENU=x,y opens the music bot's menu there once.
         if let Ok(spec) = std::env::var("HOFFLE_DEV_BOTMENU")
             && !self.dev_botmenu_done
@@ -544,6 +558,7 @@ impl gpui::Render for Shell {
             .children(self.render_panel(window, cx))
             .children(self.render_user_menu(window, cx))
             .children(self.render_bot_menu(window, cx))
+            .children(self.render_user_search(window, cx))
             .children(self.render_server_menu(cx))
             .children(self.render_notify_menu(window, cx))
             .children(self.render_reaction_viewer(window, cx))

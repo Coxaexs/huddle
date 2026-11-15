@@ -34,6 +34,7 @@ mod settings;
 mod bot_menu;
 mod commands;
 mod sidebar;
+mod user_search;
 mod simple;
 mod simple_settings;
 
@@ -194,6 +195,7 @@ pub struct Shell {
     dev_settings_done: bool,
     dev_draft_done: bool,
     dev_botmenu_done: bool,
+    dev_find_done: bool,
     dev_rv_done: bool,
     dev_extras_done: bool,
     /// Who is typing where: (user id, name, when it was last heard).
@@ -282,6 +284,8 @@ pub struct Shell {
     voice_keys: (String, String),
     /// The menu for a person (right-click), their voice settings, and where its slider was drawn.
     user_menu: Option<user_menu::UserMenu>,
+    /// Find people (the header's person-plus).
+    user_search: Option<user_search::UserSearch>,
     /// A bot's right-click menu, and each server's bot-registered menus by bot.
     bot_menu: Option<bot_menu::BotMenu>,
     bot_menus: HashMap<String, HashMap<String, bot_menu::AppMenu>>,
@@ -442,6 +446,7 @@ impl Shell {
             dev_settings_done: false,
             dev_draft_done: false,
             dev_botmenu_done: false,
+            dev_find_done: false,
             dev_rv_done: false,
             dev_extras_done: false,
             typing: HashMap::new(),
@@ -502,6 +507,7 @@ impl Shell {
             server_menu_closed: None,
             channel_prefs: HashMap::new(),
             user_menu: None,
+            user_search: None,
             bot_menu: None,
             bot_menus: HashMap::new(),
             voice_prefs: HashMap::new(),
@@ -743,7 +749,7 @@ impl Shell {
         self.composer.update(cx, |input, cx| input.set_placeholder(text, cx));
     }
 
-    fn open_dm_with(&mut self, user_id: String, cx: &mut Context<Self>) {
+    pub(super) fn open_dm_with(&mut self, user_id: String, cx: &mut Context<Self>) {
         let client = self.client.clone();
         cx.spawn(async move |this, cx| {
             let fetch = client.clone();
@@ -924,7 +930,7 @@ impl Shell {
         cx.notify();
     }
 
-    fn open_server(&mut self, id: String, cx: &mut Context<Self>) {
+    pub(super) fn open_server(&mut self, id: String, cx: &mut Context<Self>) {
         self.home = false;
         if !self.emojis.contains_key(&id) {
             self.load_emojis(id.clone(), cx);

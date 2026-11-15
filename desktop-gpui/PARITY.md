@@ -20,7 +20,7 @@ Status: ✅ matches the reference · 🟡 native but not yet 1:1 · ⬜ not star
 | Channel list: label, events chip, rows by kind, selected, unread pill, mention count, categories fold; right-click menu (notification level, timed mutes; channel tools listed for managers) | panels.tsx, chat-shell-renderers.tsx, menus.tsx | ✅ (banner header, kind picker, drag, the channel tools' dialogs ⬜) |
 | Voice rooms in the list: LIVE, seats with timers, bot bars, mute/deafen, speaking ring | chat-shell-renderers.tsx | ✅ (stream hover card, drag to move ⬜) |
 | User card: avatar, presence, name, custom status or presence, mic/headphones/settings | user-footer.tsx | 🟡 (device menus, status picker, settings ⬜) |
-| Header: kind icon, Fraunces name, topic, 7 tools | chat-header.tsx | 🟡 (tools open nothing yet) |
+| Header: kind icon, Fraunces name, topic, 7 tools (search, mentions, pins, saved and the member list open their panels; Find people opens its dialog: your servers, anyone on this Hoffle by name after a 200ms pause, Message / Add / Sent / Accept / Friend / Block / Unblock, no-results, in its own Nunito) | chat-header.tsx, global-user-search-dialog.tsx | 🟡 (Achievements ⬜) |
 | Messages: grouping rules, day dividers, command lines, bot tags, `text-wrap: pretty`, 1px rhythm | message-row.tsx, message-list.tsx | ✅ |
 | Markdown, mentions, spoilers, links, inline code, italics | message-body.tsx | ✅ |
 | Links: picture links shown as the picture (proxied, 320 max), Tenor/Giphy pages as their GIF, YouTube card (thumbnail, play opens YouTube), preview cards from /api/unfurl (3 at most) | message-body.tsx, link-preview.tsx, lib/unfurl.ts | 🟡 (in-app players for YouTube/Spotify/SoundCloud…, message-link cards, invite cards ⬜) |
