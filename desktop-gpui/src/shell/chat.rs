@@ -562,6 +562,9 @@ impl Shell {
         if let Some(card) = self.render_poll(message, f32::from(self.text_column_width(window)), window, cx) {
             body = body.child(card);
         }
+        if let Some(card) = self.render_game(message, f32::from(self.text_column_width(window)), window, cx) {
+            body = body.child(card);
+        }
         if let Some(card) = self.render_music_card(message, f32::from(self.text_column_width(window)), window, cx) {
             body = body.child(card);
         }
@@ -1190,6 +1193,7 @@ impl Shell {
             // The composer's padding is clamp(18px, 3vw, 36px) each side.
             .children(self.render_gif_picker(f32::from(self.chat_panel_width(window)) - 2. - 2. * side, window, cx))
             .children(self.render_format_menu(cx))
+            .children(self.render_games_picker(cx))
             .children(self.render_staged(cx))
             .children(self.render_slash(cx))
             .children(reply_bar)

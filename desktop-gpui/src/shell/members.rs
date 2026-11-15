@@ -515,9 +515,21 @@ impl gpui::Render for Shell {
                 self.open_poll_dialog(window, cx);
             } else if view == "format" {
                 self.format_open = true;
+            } else if view == "games" {
+                self.games_open = true;
             } else {
                 self.composer_menu = true;
             }
+        }
+        // Development: HOFFLE_DEV_JUMP=<message id> jumps to that message in the open channel.
+        static DEV_JUMP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(id) = std::env::var("HOFFLE_DEV_JUMP")
+            && let Some(channel) = self.channel_id.clone()
+            && self.messages.contains_key(&channel)
+            && !DEV_JUMP.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            let server = self.server_id.clone();
+            self.jump_to_message(server, channel, id, window, cx);
         }
         // Development: HOFFLE_DEV_RENAME=1 opens the Rename Server prompt once (only to look at).
         if std::env::var("HOFFLE_DEV_RENAME").is_ok() && self.confirm.is_none() && !self.dev_invite_done

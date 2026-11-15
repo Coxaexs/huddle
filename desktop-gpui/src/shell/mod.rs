@@ -13,6 +13,8 @@ mod integrations;
 mod events;
 mod forum;
 mod composer_tools;
+mod games;
+mod rota;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -331,6 +333,14 @@ pub struct Shell {
     format_open: bool,
     games_open: bool,
     poll_dialog: Option<composer_tools::PollDialog>,
+    /// Game cards waiting on a move, and the last error each showed.
+    game_busy: HashSet<String>,
+    game_errors: HashMap<String, String>,
+    /// Each Rota card's typed guess.
+    rota_inputs: std::cell::RefCell<HashMap<String, Entity<crate::input::TextInput>>>,
+    rota_subs: std::cell::RefCell<Vec<gpui::Subscription>>,
+    /// Rota's names in Turkish (its own TR / EN switch; Turkish by default for a Turkish app).
+    rota_tr: bool,
     server_settings: Option<server_settings::ServerSettings>,
     /// Create Role answered: open the newest role when the servers come back.
     pending_new_role: bool,
@@ -561,6 +571,11 @@ impl Shell {
             format_open: false,
             games_open: false,
             poll_dialog: None,
+            game_busy: HashSet::new(),
+            game_errors: HashMap::new(),
+            rota_inputs: Default::default(),
+            rota_subs: Default::default(),
+            rota_tr: crate::i18n::locale().starts_with("tr"),
             server_settings: None,
             pending_new_role: false,
             kind_menu: None,
@@ -1394,6 +1409,19 @@ impl Shell {
                         list[ix].text = content.to_string();
                     }
                     list[ix].edited_at = value.get("editedAt").and_then(Value::as_str).map(str::to_string);
+                    // Edits may carry only the parts of the payload they changed (a game's move, a
+                    // post's tags): merged into what the message had; null clears it.
+                    match value.get("payload") {
+                        Some(Value::Null) => list[ix].payload = None,
+                        Some(Value::Object(changes)) => {
+                            let mut merged = list[ix].payload.clone().filter(Value::is_object).unwrap_or_else(|| Value::Object(Default::default()));
+                            for (k, v) in changes {
+                                merged[k] = v.clone();
+                            }
+                            list[ix].payload = Some(merged);
+                        }
+                        _ => {}
+                    }
                     if self.channel_id.as_deref() == Some(&channel) {
                         self.list.splice(ix..ix + 1, 1);
                     }
