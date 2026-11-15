@@ -451,6 +451,8 @@ impl Shell {
                         };
                         d.child(div().ml(px(4.)).size(px(16.)).flex().items_center().justify_center().child(glyph))
                     })
+                    // PrideBadges mini, 1px low in the meta line.
+                    .children(author.and_then(|a| super::profile_editor::pride_mini(&a.pride_badges, window.scale_factor())).map(|b| div().mt(px(2.)).child(b)))
                     .when_some(tag, |d, (label, bg, fg)| {
                         d.child(
                             div()

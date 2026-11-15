@@ -158,14 +158,24 @@ impl Shell {
                     .min_w_0()
                     .flex()
                     .flex_col()
+                    // `.member-name-line`: the name, then its pride flags 5px on.
                     .child(
                         div()
-                            .truncate()
-                            .text_size(px(11.))
-                            .line_height(px(16.5))
-                            .font_weight(if online { FontWeight::BOLD } else { FontWeight::MEDIUM })
-                            .text_color(if online { Theme::ink() } else { Theme::muted() })
-                            .child(name),
+                            .flex()
+                            .items_center()
+                            .gap(px(5.))
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_size(px(11.))
+                                    .line_height(px(16.5))
+                                    .font_weight(if online { FontWeight::BOLD } else { FontWeight::MEDIUM })
+                                    .text_color(if online { Theme::ink() } else { Theme::muted() })
+                                    .child(name),
+                            )
+                            .children(super::profile_editor::pride_mini(&member.pride_badges, window.scale_factor())),
                     )
                     .when(online, |d| {
                         d.child(div().truncate().text_size(px(8.)).line_height(px(12.)).text_color(Theme::muted()).child(line))

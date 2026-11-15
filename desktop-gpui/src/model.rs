@@ -293,6 +293,7 @@ pub struct Member {
     pub is_admin: bool,
     pub global_name: Option<String>,
     pub profile_frame: Option<String>,
+    pub pride_badges: Vec<String>,
 }
 
 impl Member {

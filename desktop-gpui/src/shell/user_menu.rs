@@ -128,7 +128,14 @@ impl Shell {
                     .flex_col()
                     .gap(px(6.))
                     .child(div().text_size(px(16.)).line_height(px(24.)).font_weight(FontWeight::BOLD).text_color(rgb(0xf5f3ee)).child(name))
-                    .child(div().text_size(px(12.)).line_height(px(15.)).text_color(muted).child(format!("@{username}")))
+                    // PrideBadges mini sits inline before the @username, no gap.
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .children(member.as_ref().and_then(|m| super::profile_editor::pride_mini(&m.pride_badges, window.scale_factor())))
+                            .child(div().text_size(px(12.)).line_height(px(15.)).text_color(muted).child(format!("@{username}"))),
+                    )
                     .when_some(in_voice, |d, time| d.child(div().text_size(px(12.)).line_height(px(15.)).text_color(muted).child(time))),
             );
         let id = menu.user_id.clone();

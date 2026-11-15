@@ -61,15 +61,43 @@ fn custom_status_text(v: &Option<Value>) -> String {
 
 /// `.pride-flag-swatch`: 18x12, the stripes blended top to bottom, a faint dark edge.
 pub(crate) fn pride_swatch(colors: &[&str], scale: f32) -> AnyElement {
+    flag(colors, 18., 12., 4., scale)
+}
+
+fn flag(colors: &[&str], w: f32, h: f32, r: f32, scale: f32) -> AnyElement {
     let css = format!("linear-gradient(180deg, {})", colors.join(", "));
     div()
         .relative()
         .flex_none()
-        .w(px(18.))
-        .h(px(12.))
-        .children(crate::cssbg::picture(&css, 18., 12., 4., scale).map(|b| gpui::img(gpui::ImageSource::Render(b)).absolute().top_0().left_0().w(px(18.)).h(px(12.))))
-        .child(div().absolute().inset_0().rounded(px(4.)).border_1().border_color(gpui::hsla(0., 0., 0., 0.12)))
+        .w(px(w))
+        .h(px(h))
+        .children(crate::cssbg::picture(&css, w, h, r, scale).map(|b| gpui::img(gpui::ImageSource::Render(b)).absolute().top_0().left_0().w(px(w)).h(px(h))))
+        .child(div().absolute().inset_0().rounded(px(r)).border_1().border_color(gpui::hsla(0., 0., 0., 0.12)))
         .into_any_element()
+}
+
+/// `.pride-badges.mini`: up to three 13x9 flags 2px apart, then "+N" for the rest.
+pub(crate) fn pride_mini(badges: &[String], scale: f32) -> Option<AnyElement> {
+    let flags: Vec<AnyElement> = badges
+        .iter()
+        .filter_map(|id| crate::model::PRIDE_BADGES.iter().find(|b| b.0 == id))
+        .take(3)
+        .map(|b| flag(b.3, 13., 9., 3., scale))
+        .collect();
+    if flags.is_empty() {
+        return None;
+    }
+    let more = badges.len().saturating_sub(3);
+    Some(
+        div()
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(2.))
+            .children(flags)
+            .when(more > 0, |d| d.child(div().text_size(px(8.)).line_height(px(8.)).font_weight(FontWeight::EXTRA_BOLD).text_color(Theme::muted()).child(format!("+{more}"))))
+            .into_any_element(),
+    )
 }
 
 /// `.pride-badges.compact .pride-badge`: a 22px pill with the flag and its short label.

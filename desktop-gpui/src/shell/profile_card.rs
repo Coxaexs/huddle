@@ -345,6 +345,28 @@ impl Shell {
                 .font_weight(FontWeight::MEDIUM)
                 .text_color(rgb(0xf2f3f5))
                 .child(div().truncate().child(text))
+                // `.profile-status-bubble-tail`: a 7x10 triangle pointing at the avatar.
+                .child(
+                    gpui::canvas(
+                        |_, _, _| {},
+                        |bounds, _, window, _| {
+                            let o = bounds.origin;
+                            let mut b = gpui::PathBuilder::fill();
+                            b.move_to(gpui::point(o.x + px(7.), o.y));
+                            b.line_to(gpui::point(o.x, o.y + px(5.)));
+                            b.line_to(gpui::point(o.x + px(7.), o.y + px(10.)));
+                            b.close();
+                            if let Ok(path) = b.build() {
+                                window.paint_path(path, Theme::panel());
+                            }
+                        },
+                    )
+                    .absolute()
+                    .left(px(-6.))
+                    .bottom(px(12.))
+                    .w(px(7.))
+                    .h(px(10.)),
+                )
         });
         let avatar_row = div().flex_none().mt(px(-30.)).px(px(14.)).flex().items_end().gap(px(12.)).child(avatar).children(bubble);
 
@@ -391,6 +413,10 @@ impl Shell {
         sub = sub.child(div().text_color(muted).child(format!("@{}", m.username)));
         if let Some(p) = m.pronouns.as_deref().filter(|p| !p.is_empty()) {
             sub = sub.child(div().text_color(rgb(0x949ba4)).child(format!("• {p}")));
+        }
+        // `.profile-inline-pride`: the first badge beside the username, 4px low.
+        if let Some(first) = m.pride_badges.first().and_then(|id| super::profile_editor::pride_badge(id, ink, window.scale_factor())) {
+            sub = sub.items_center().child(div().pt(px(4.)).pb(px(1.)).child(first));
         }
         let mut header = div().flex_none().flex().flex_col().child(div().flex().flex_wrap().items_center().gap(px(8.)).child(name).children(tag)).child(sub);
         if !m.tagline.is_empty() {
@@ -543,7 +569,11 @@ impl Shell {
                 .line_height(px(17.25))
                 .text_color(muted)
                 .child(ui::icon("calendar", 13., muted))
-                .child(tv("profile.memberSince", &[("date", &since)])),
+                .child(div().min_w_0().child(tv("profile.memberSince", &[("date", &since)])))
+                // lastSeenLabel, for someone else who is offline.
+                .when_some((m.id != self.me.id && self.presence_of(&m.id) == "offline").then(|| last_seen_label(&m.last_seen_at)).flatten(), |d, seen| {
+                    d.child(div().min_w_0().child(format!("· {seen}")))
+                }),
         );
 
         // The buttons.
@@ -649,7 +679,21 @@ impl Shell {
             );
         }
 
-        let body = div().flex_none().pt(px(8.)).px(px(14.)).pb(px(14.)).flex().flex_col().gap(px(8.)).child(header).child(panel).child(actions);
+        // `.profile-badges-shelf`: the owner mark and every pride badge, when there are any.
+        let pride: Vec<AnyElement> = m.pride_badges.iter().filter_map(|id| super::profile_editor::pride_badge(id, ink, window.scale_factor())).collect();
+        let shelf = (m.is_admin || !pride.is_empty()).then(|| {
+            div()
+                .flex_none()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap(px(4.))
+                .when(m.is_admin, |d| {
+                    d.child(div().px(px(7.)).py(px(3.)).rounded(px(6.)).border_1().border_color(rgba(0xffffff1a)).bg(rgba(0xffffff14)).text_size(px(11.)).line_height(px(16.5)).font_weight(FontWeight::BOLD).text_color(gpui::white()).child("🛡️ Owner"))
+                })
+                .when(!pride.is_empty(), |d| d.child(div().pt(px(4.)).flex().flex_wrap().gap(px(6.)).children(pride)))
+        });
+        let body = div().flex_none().pt(px(8.)).px(px(14.)).pb(px(14.)).flex().flex_col().gap(px(8.)).child(header).children(shelf).child(panel).child(actions);
         let measured = open.height.clone();
         let card = div()
             .id("profile-card")
@@ -676,7 +720,23 @@ impl Shell {
             .child(banner)
             .child(avatar_row)
             .child(body)
-            .child(gpui::canvas(move |bounds, _, _| measured.set(f32::from(bounds.size.height)), |_, _, _, _| {}).absolute().top_0().left_0().size_full())
+            // Measured each frame; a change places the card again on the next one.
+            .child(
+                gpui::canvas(
+                    move |bounds, window, _| {
+                        let h = f32::from(bounds.size.height);
+                        if (measured.get() - h).abs() > 0.5 {
+                            measured.set(h);
+                            window.refresh();
+                        }
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full(),
+            )
             .on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_profile(cx)));
         Some(
             card.with_animation(
@@ -730,4 +790,21 @@ fn model_short_date(value: &str) -> String {
         _ => (chrono::Locale::en_US, "%b %-d, %Y"),
     };
     local.format_localized(pattern, loc).to_string()
+}
+
+/// lib/users.ts lastSeenLabel: just now, minutes, hours, days, then the date.
+fn last_seen_label(iso: &str) -> Option<String> {
+    let then = crate::model::parse_time(iso)?;
+    let minutes = (chrono::Utc::now() - then.with_timezone(&chrono::Utc)).num_minutes().max(0);
+    Some(if minutes < 1 {
+        t("lastSeen.justNow")
+    } else if minutes < 60 {
+        tv("lastSeen.minutesAgo", &[("minutes", &minutes.to_string())])
+    } else if minutes < 60 * 24 {
+        tv("lastSeen.hoursAgo", &[("hours", &(minutes / 60).to_string())])
+    } else if minutes < 60 * 24 * 30 {
+        tv("lastSeen.daysAgo", &[("days", &(minutes / 60 / 24).to_string())])
+    } else {
+        tv("lastSeen.date", &[("date", &model_short_date(iso))])
+    })
 }
