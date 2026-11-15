@@ -113,6 +113,7 @@ impl Shell {
             };
             right = right.child(header_button(name, title, active).on_click(cx.listener(move |this, _, window, cx| match name {
                 "user-plus" => this.open_user_search(window, cx),
+                "award" => this.open_achievements(cx),
                 "search" => this.toggle_search(window, cx),
                 "at-sign" => this.toggle_panel(super::side_panels::Panel::Mentions, cx),
                 "pin" => this.toggle_panel(super::side_panels::Panel::Pins, cx),

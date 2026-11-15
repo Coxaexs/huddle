@@ -31,6 +31,7 @@ mod rail;
 mod reaction_viewer;
 mod server_menu;
 mod settings;
+mod achievements;
 mod bot_menu;
 mod commands;
 mod sidebar;
@@ -196,6 +197,7 @@ pub struct Shell {
     dev_draft_done: bool,
     dev_botmenu_done: bool,
     dev_find_done: bool,
+    dev_ach_done: bool,
     dev_rv_done: bool,
     dev_extras_done: bool,
     /// Who is typing where: (user id, name, when it was last heard).
@@ -286,6 +288,8 @@ pub struct Shell {
     user_menu: Option<user_menu::UserMenu>,
     /// Find people (the header's person-plus).
     user_search: Option<user_search::UserSearch>,
+    /// The achievement board (the header's award).
+    achievements: Option<achievements::Board>,
     /// A bot's right-click menu, and each server's bot-registered menus by bot.
     bot_menu: Option<bot_menu::BotMenu>,
     bot_menus: HashMap<String, HashMap<String, bot_menu::AppMenu>>,
@@ -447,6 +451,7 @@ impl Shell {
             dev_draft_done: false,
             dev_botmenu_done: false,
             dev_find_done: false,
+            dev_ach_done: false,
             dev_rv_done: false,
             dev_extras_done: false,
             typing: HashMap::new(),
@@ -508,6 +513,7 @@ impl Shell {
             channel_prefs: HashMap::new(),
             user_menu: None,
             user_search: None,
+            achievements: None,
             bot_menu: None,
             bot_menus: HashMap::new(),
             voice_prefs: HashMap::new(),

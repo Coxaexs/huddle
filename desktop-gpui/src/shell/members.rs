@@ -302,6 +302,14 @@ impl gpui::Render for Shell {
                 stage.focused = Some(key);
             }
         }
+        // Development: HOFFLE_DEV_ACH=1 opens the achievement board once.
+        if std::env::var_os("HOFFLE_DEV_ACH").is_some()
+            && !self.dev_ach_done
+            && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
+        {
+            self.dev_ach_done = true;
+            self.open_achievements(cx);
+        }
         // Development: HOFFLE_DEV_FIND=<query> opens Find people with that typed (empty: just open).
         if let Ok(q) = std::env::var("HOFFLE_DEV_FIND")
             && !self.dev_find_done
@@ -559,6 +567,7 @@ impl gpui::Render for Shell {
             .children(self.render_user_menu(window, cx))
             .children(self.render_bot_menu(window, cx))
             .children(self.render_user_search(window, cx))
+            .children(self.render_achievements(window, cx))
             .children(self.render_server_menu(cx))
             .children(self.render_notify_menu(window, cx))
             .children(self.render_reaction_viewer(window, cx))
@@ -639,6 +648,9 @@ impl gpui::Render for Shell {
                 } else if event.keystroke.key == "escape" && this.notify_menu.is_some() {
                     this.notify_menu = None;
                     cx.notify();
+                    cx.stop_propagation();
+                } else if event.keystroke.key == "escape" && this.achievements.is_some() {
+                    this.close_achievements(cx);
                     cx.stop_propagation();
                 } else if event.keystroke.key == "escape" && this.bot_menu.is_some() {
                     this.bot_menu = None;
