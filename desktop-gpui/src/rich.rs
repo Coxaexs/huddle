@@ -199,6 +199,12 @@ fn flatten(parsed: &Inline, revealed: bool) -> Vec<TextRun> {
     // Every span edge splits the text; each piece gets the styles of all spans covering it
     // (spans nest: **bold *and italic***), and the gaps get the plain message style.
     let mut edges: Vec<usize> = parsed.spans.iter().flat_map(|(r, _)| [r.start, r.end]).collect();
+    // Gradients and rainbows colour each letter on its own (background-clip: text, one frame of it).
+    for (range, span) in &parsed.spans {
+        if matches!(span, Span::Gradient(..)) || *span == Span::Effect(RAINBOW) {
+            edges.extend(parsed.text[range.clone()].char_indices().map(|(i, _)| range.start + i));
+        }
+    }
     edges.push(0);
     edges.push(parsed.text.len());
     edges.sort_unstable();
@@ -213,11 +219,48 @@ fn flatten(parsed: &Inline, revealed: bool) -> Vec<TextRun> {
         for (range, span) in &parsed.spans {
             if range.start <= start && end <= range.end {
                 look.apply(*span, revealed);
+                // Where this letter sits along the gradient.
+                let t = || {
+                    let letters = parsed.text[range.clone()].chars().count().max(2) - 1;
+                    parsed.text[range.start..start].chars().count() as f32 / letters as f32
+                };
+                match span {
+                    Span::Gradient(from, to) => look.color = Some(lerp(*from, *to, t())),
+                    Span::Effect(RAINBOW) => look.color = Some(rainbow(t())),
+                    _ => {}
+                }
             }
         }
         runs.push(look.run(end - start));
     }
     runs
+}
+
+/// TEXT_EFFECTS' index of "rainbow".
+const RAINBOW: u8 = 0;
+
+/// A colour along `from` → `to` (the formatting menu's gradient previews too).
+pub fn lerp_color(from: u32, to: u32, t: f32) -> Hsla {
+    lerp(from, to, t)
+}
+
+/// A colour along `.fx-rainbow`.
+pub fn rainbow_color(t: f32) -> Hsla {
+    rainbow(t)
+}
+
+fn lerp(from: u32, to: u32, t: f32) -> Hsla {
+    let ch = |c: u32, shift: u32| ((c >> shift) & 0xff) as f32;
+    let mix = |shift: u32| (ch(from, shift) + (ch(to, shift) - ch(from, shift)) * t.clamp(0., 1.)).round() as u32;
+    gpui::rgb(mix(16) << 16 | mix(8) << 8 | mix(0)).into()
+}
+
+/// `.fx-rainbow`'s stops (the first half of its 200%-wide gradient shows).
+fn rainbow(t: f32) -> Hsla {
+    const STOPS: [u32; 8] = [0xff4d4d, 0xff9f1a, 0xffe14d, 0x3ddc84, 0x3ea6ff, 0x8e5cff, 0xff4dd8, 0xff4d4d];
+    let pos = (t.clamp(0., 1.) * 0.5 * 7.).min(6.999);
+    let i = pos.floor() as usize;
+    lerp(STOPS[i], STOPS[i + 1], pos - i as f32)
 }
 
 /// The web's inline styles (app/globals.css): `.mention` 22% lavender (40% when it is you), weight
@@ -227,6 +270,7 @@ pub static UNDERLINE_LINKS: std::sync::atomic::AtomicBool = std::sync::atomic::A
 
 #[derive(Default)]
 struct Look {
+    family: Option<&'static str>,
     weight: Option<FontWeight>,
     italic: bool,
     mono: bool,
@@ -262,6 +306,15 @@ impl Look {
                 self.color = Some(lavender);
                 self.weight = Some(FontWeight::SEMIBOLD);
             }
+            Span::Color(c) => self.color = Some(gpui::rgb(c).into()),
+            // `.fx-highlight`: the soft highlighter colour with dark text on it.
+            Span::Highlight(c) => {
+                self.background = Some(gpui::rgb(c).into());
+                self.color = Some(gpui::rgb(0x1b1b1f).into());
+            }
+            Span::Font(n) => self.family = markdown::TEXT_FONTS.get(n as usize).map(|f| f.2),
+            // Per-letter colours are set in flatten(); sizes and moving effects stay plain text.
+            Span::Gradient(..) | Span::Size(_) | Span::Effect(_) => {}
             Span::Spoiler => {
                 if revealed {
                     self.background = Some(ink.opacity(0.10));
@@ -274,7 +327,7 @@ impl Look {
     }
 
     fn run(&self, len: usize) -> TextRun {
-        let mut face = font(if self.mono { "Menlo" } else { crate::theme::UI_FONT });
+        let mut face = font(if self.mono { "Menlo" } else { self.family.unwrap_or(crate::theme::UI_FONT) });
         face.weight = self.weight.unwrap_or(FontWeight::NORMAL);
         if self.italic {
             face.style = FontStyle::Italic;

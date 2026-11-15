@@ -89,6 +89,195 @@ pub enum Span {
     /// `#name` naming one of this server's channels.
     Channel,
     Spoiler,
+    /// Messenger Plus!-style tags (lib/text-style.ts): `[c=red]`, `[c=red]…[/c=blue]`, `[a=yellow]`,
+    /// `[f=comic]`, `[size=big]` and the effects, as packed 0xRRGGBB colours and indexes.
+    Color(u32),
+    Gradient(u32, u32),
+    Highlight(u32),
+    Font(u8),
+    Size(u8),
+    Effect(u8),
+}
+
+/// TEXT_COLORS.
+const TEXT_COLORS: [(&str, u32); 15] = [
+    ("red", 0xe5484d),
+    ("orange", 0xf76b15),
+    ("yellow", 0xe2b203),
+    ("lime", 0x7bc043),
+    ("green", 0x30a46c),
+    ("teal", 0x12a594),
+    ("cyan", 0x05a2c2),
+    ("blue", 0x3e7bfa),
+    ("navy", 0x1c3f95),
+    ("purple", 0x8e4ec6),
+    ("pink", 0xe93d82),
+    ("brown", 0xa0632d),
+    ("gray", 0x8b8d98),
+    ("black", 0x111111),
+    ("white", 0xffffff),
+];
+
+/// Messenger Plus!'s numbered (mIRC) palette.
+const PLUS_PALETTE: [u32; 16] = [
+    0xffffff, 0x000000, 0x00007f, 0x009300, 0xff0000, 0x7f0000, 0x9c009c, 0xfc7f00, 0xffff00, 0x00fc00, 0x009393, 0x00ffff, 0x0000fc, 0xff00ff, 0x7f7f7f, 0xd2d2d2,
+];
+
+/// HIGHLIGHT_COLORS.
+const HIGHLIGHT_COLORS: [(&str, u32); 6] = [("yellow", 0xfff3a3), ("green", 0xc8f7c5), ("blue", 0xcfe4ff), ("pink", 0xffd1e8), ("orange", 0xffe0b8), ("purple", 0xe6d6ff)];
+
+/// TEXT_FONTS: id, name, and the macOS face for it.
+pub const TEXT_FONTS: [(&str, &str, &str); 14] = [
+    ("comic", "Comic Sans MS", "Comic Sans MS"),
+    ("times", "Times New Roman", "Times New Roman"),
+    ("georgia", "Georgia", "Georgia"),
+    ("courier", "Courier New", "Courier New"),
+    ("impact", "Impact", "Impact"),
+    ("arial", "Arial", "Arial"),
+    ("verdana", "Verdana", "Verdana"),
+    ("tahoma", "Tahoma", "Tahoma"),
+    ("trebuchet", "Trebuchet MS", "Trebuchet MS"),
+    ("script", "Script", "Brush Script MT"),
+    ("papyrus", "Papyrus", "Papyrus"),
+    ("gothic", "Old English", "Old English Text MT"),
+    ("typewriter", "Typewriter", "American Typewriter"),
+    ("lucida", "Lucida Console", "Monaco"),
+];
+
+/// TEXT_SIZES (as multiples of the text size).
+pub const TEXT_SIZES: [(&str, f32); 4] = [("tiny", 0.7), ("small", 0.85), ("big", 1.3), ("huge", 1.75)];
+
+/// TEXT_EFFECTS, in order.
+pub const TEXT_EFFECTS: [(&str, &str); 15] = [
+    ("rainbow", "Rainbow"),
+    ("glow", "Glow"),
+    ("shadow", "Shadow"),
+    ("outline", "Outline"),
+    ("wave", "Wave"),
+    ("shake", "Shake"),
+    ("bounce", "Bounce"),
+    ("blink", "Blink"),
+    ("sparkle", "Sparkle"),
+    ("flip", "Upside down"),
+    ("mirror", "Mirror"),
+    ("wide", "Wide"),
+    ("caps", "Small caps"),
+    ("sup", "Superscript"),
+    ("sub", "Subscript"),
+];
+
+fn hex(v: &str) -> Option<u32> {
+    let v = v.trim_start_matches('#');
+    match v.len() {
+        3 => {
+            let n = u32::from_str_radix(v, 16).ok()?;
+            let (r, g, b) = ((n >> 8) & 0xf, (n >> 4) & 0xf, n & 0xf);
+            Some((r * 17) << 16 | (g * 17) << 8 | b * 17)
+        }
+        6 => u32::from_str_radix(v, 16).ok(),
+        _ => None,
+    }
+}
+
+/// resolveColor(): a name, a Plus! number, or #rgb / #rrggbb.
+pub fn resolve_color(value: &str, highlight: bool) -> Option<u32> {
+    let v = value.to_lowercase();
+    if highlight && let Some((_, c)) = HIGHLIGHT_COLORS.iter().find(|(n, _)| *n == v) {
+        return Some(*c);
+    }
+    if let Some((_, c)) = TEXT_COLORS.iter().find(|(n, _)| *n == v) {
+        return Some(*c);
+    }
+    if (1..=2).contains(&v.len()) && v.bytes().all(|b| b.is_ascii_digit()) {
+        return v.parse::<usize>().ok().and_then(|n| PLUS_PALETTE.get(n).copied());
+    }
+    if v.bytes().all(|b| b.is_ascii_hexdigit() || b == b'#') && (v.starts_with('#') || matches!(v.len(), 3 | 6)) {
+        return hex(&v);
+    }
+    None
+}
+
+/// TAG_ALIASES → canonical tag.
+fn canonical_tag(name: &str) -> Option<&'static str> {
+    let n = name.to_lowercase();
+    Some(match n.as_str() {
+        "b" => "b",
+        "i" => "i",
+        "u" => "u",
+        "s" => "s",
+        "c" | "color" | "colour" => "c",
+        "a" | "bg" | "hl" | "highlight" => "a",
+        "f" | "font" => "f",
+        "size" => "size",
+        other => TEXT_EFFECTS.iter().find(|(id, _)| *id == other)?.0,
+    })
+}
+
+/// describeTag(): the span for a tag, or None when its argument is junk (the text stays as typed).
+fn describe_tag(tag: &str, arg: Option<&str>, end: Option<&str>) -> Option<Span> {
+    match tag {
+        "b" => Some(Span::Bold),
+        "i" => Some(Span::Italic),
+        "u" => Some(Span::Underline),
+        "s" => Some(Span::Strike),
+        "c" => {
+            let from = resolve_color(arg?, false)?;
+            Some(match end.and_then(|e| resolve_color(e, false)) {
+                Some(to) => Span::Gradient(from, to),
+                None => Span::Color(from),
+            })
+        }
+        "a" => Some(Span::Highlight(resolve_color(arg.unwrap_or("yellow"), true)?)),
+        "f" => {
+            let v: String = arg?.to_lowercase().chars().filter(|c| c.is_ascii_lowercase()).collect();
+            let at = TEXT_FONTS.iter().position(|(id, name, _)| *id == v || name.to_lowercase().chars().filter(|c| c.is_ascii_lowercase()).collect::<String>() == v)?;
+            Some(Span::Font(at as u8))
+        }
+        "size" => {
+            let arg = arg?;
+            Some(Span::Size(TEXT_SIZES.iter().position(|(n, _)| n.eq_ignore_ascii_case(arg))? as u8))
+        }
+        effect => Some(Span::Effect(TEXT_EFFECTS.iter().position(|(id, _)| *id == effect)? as u8)),
+    }
+}
+
+/// TAG_SOURCE at `rest`: `[tag(=arg)?]…[/tag(=end)?]` with the first matching close. Answers the
+/// opening tag's length, where the close starts (from `rest`), the close's length and the span.
+fn style_tag(rest: &str) -> Option<(usize, usize, usize, Span)> {
+    let close_bracket = rest.find(']')?;
+    let inner = &rest[1..close_bracket];
+    let (name, arg) = match inner.split_once('=') {
+        Some((n, a)) => (n, Some(a)),
+        None => (inner, None),
+    };
+    let valid_arg = |a: &str| (1..=24).contains(&a.len()) && a.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'#');
+    if name.is_empty() || arg.is_some_and(|a| !valid_arg(a)) {
+        return None;
+    }
+    let tag = canonical_tag(name)?;
+    let open_len = close_bracket + 1;
+    let body = &rest[open_len..];
+    let lower = body.to_lowercase();
+    let needle = format!("[/{}", name.to_lowercase());
+    let mut from = 0;
+    while let Some(p) = lower[from..].find(&needle) {
+        let at = from + p;
+        let after = &body[at + needle.len()..];
+        let (end, len) = if after.starts_with(']') {
+            (None, needle.len() + 1)
+        } else if let Some(stripped) = after.strip_prefix('=')
+            && let Some(q) = stripped.find(']')
+            && valid_arg(&stripped[..q])
+        {
+            (Some(&stripped[..q]), needle.len() + 2 + q)
+        } else {
+            from = at + needle.len();
+            continue;
+        };
+        let span = describe_tag(tag, arg, end)?;
+        return Some((open_len, open_len + at, len, span));
+    }
+    None
 }
 
 thread_local! {
@@ -210,11 +399,31 @@ const TOGGLES: [(&str, Span); 6] = [
 pub fn inline(src: &str, my_username: &str) -> Inline {
     let mut out = Inline::default();
     let mut open: Vec<(&'static str, Span, usize)> = Vec::new();
+    // Style tags waiting for their close: where it starts in `src`, its length, the span, where it began.
+    let mut tags: Vec<(usize, usize, Span, usize)> = Vec::new();
     let mut i = 0;
     let bytes = src.as_bytes();
     while i < src.len() {
         let rest = &src[i..];
         let prev = src[..i].chars().next_back();
+
+        // The close of an open style tag.
+        if let Some(pos) = tags.iter().rposition(|(at, _, _, _)| *at == i) {
+            let (_, len, span, start) = tags.remove(pos);
+            if start < out.text.len() {
+                out.spans.push((start..out.text.len(), span));
+            }
+            i += len;
+            continue;
+        }
+        // `[c=red]…[/c]` and the other Messenger Plus! tags.
+        if rest.starts_with('[')
+            && let Some((open_len, close_at, close_len, span)) = style_tag(rest)
+        {
+            tags.push((i + close_at, close_len, span, out.text.len()));
+            i += open_len;
+            continue;
+        }
 
         // `code`: literal inside.
         if rest.starts_with('`')
@@ -397,6 +606,12 @@ pub fn inline(src: &str, my_username: &str) -> Inline {
         out.text.push(ch);
         i += ch.len_utf8();
     }
+    // A tag whose close was swallowed (inside code, say) runs to the end.
+    for (_, _, span, start) in tags {
+        if start < out.text.len() {
+            out.spans.push((start..out.text.len(), span));
+        }
+    }
     out
 }
 
@@ -406,6 +621,19 @@ fn is_url(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn style_tags() {
+        let p = inline("say [c=red]hi[/c] and [c=pink]yo[/c=blue] [B]x[/b]", "me");
+        assert_eq!(p.text, "say hi and yo x");
+        assert!(p.spans.contains(&(4..6, Span::Color(0xe5484d))));
+        assert!(p.spans.contains(&(11..13, Span::Gradient(0xe93d82, 0x3e7bfa))));
+        assert!(p.spans.contains(&(14..15, Span::Bold)));
+        // Junk arguments and unclosed tags stay as typed.
+        assert_eq!(inline("[c=nope]a[/c] [c=red]b", "me").text, "[c=nope]a[/c] [c=red]b");
+        assert_eq!(inline("[c=4]a[/c]", "me").spans, vec![(0..1, Span::Color(0xff0000))]);
+        assert_eq!(inline("[f=comic]a[/f][wave]b[/wave]", "me").spans, vec![(0..1, Span::Font(0)), (1..2, Span::Effect(4))]);
+    }
+
     use super::*;
 
     #[test]

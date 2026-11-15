@@ -66,6 +66,10 @@ impl Shell {
             .children(self.render_search(cx))
             .map(|d| match self.render_stage_body(window, cx) {
                 Some(stage) => d.child(stage),
+                // A forum's posts are its top-level messages: the board takes the list's place.
+                None if self.is_forum() => d.child(self.render_forum_board(window, cx))
+                    .children(self.render_notice(cx))
+                    .child(self.render_composer(window, cx)),
                 None => d.child(self.render_messages(cx))
                     .children(self.render_notice(cx))
                     .children(self.render_simple_tip(f32::from(self.chat_panel_width(window)) - 2., cx))
@@ -131,6 +135,17 @@ impl Shell {
                 })),
             );
         }
+        // `.channel-heading`: the topic keeps its width (flex 0 0 auto) and the name gives way, cut
+        // with an ellipsis, in what the icon and the seven tools leave (plain channel header only).
+        let plain = !simple && staged.is_none();
+        let (name, topic_fixed) = if plain {
+            let heading = f32::from(self.chat_panel_width(window)) - 2. - 26. - 18. - 20. - 11. - 11. - (7. * 34. + 6. * 3.);
+            let topic_w = f32::from(ui::text_width(window, &topic, FontWeight::NORMAL, 13.));
+            let room = (heading - topic_w - 14.).max(0.);
+            (ui::fit_in(window, DISPLAY_FONT, &name, FontWeight::SEMIBOLD, 22., px(room)), true)
+        } else {
+            (name, false)
+        };
         div()
             .h(px(73.))
             .flex_none()
@@ -142,6 +157,7 @@ impl Shell {
             .child(icon(kind_icon, 20., Theme::quiet()))
             .child(
                 div()
+                    .flex_none()
                     .font_family(DISPLAY_FONT)
                     .text_size(px(22.))
                     .line_height(px(22.))
@@ -151,14 +167,14 @@ impl Shell {
             )
             .child(
                 div()
-                    .flex_1()
-                    .min_w_0()
+                    .when(topic_fixed, |d| d.flex_none())
+                    .when(!topic_fixed, |d| d.flex_1().min_w_0().truncate())
                     .ml(px(3.))
-                    .truncate()
                     .text_size(px(13.))
                     .text_color(Theme::quiet())
                     .child(topic),
             )
+            .when(topic_fixed, |d| d.child(div().flex_1()))
             .child(right)
             .into_any_element()
     }
@@ -1173,11 +1189,14 @@ impl Shell {
             .pb(px(25.))
             // The composer's padding is clamp(18px, 3vw, 36px) each side.
             .children(self.render_gif_picker(f32::from(self.chat_panel_width(window)) - 2. - 2. * side, window, cx))
+            .children(self.render_format_menu(cx))
             .children(self.render_staged(cx))
             .children(self.render_slash(cx))
             .children(reply_bar)
             .child(
                 div()
+                    .relative()
+                    .children(self.render_composer_menu(cx))
                     .min_h(px(52.))
                     .pl(px(7.))
                     .pr(px(6.))
@@ -1214,7 +1233,13 @@ impl Shell {
                     )
                     // The textarea: 9px 10px padding, growing to 40% of the window.
                     .child(div().flex_1().min_w_0().px(px(10.)).py(px(9.)).child(self.composer.clone()))
-                    .when(!simple, |d| d.child(small("chevron-up", t("composer.moreTools"))))
+                    .when(!simple, |d| {
+                        let open = self.composer_menu;
+                        d.child(small(if open { "chevron-down" } else { "chevron-up" }, t("composer.moreTools")).on_click(cx.listener(|this, _, _, cx| {
+                            this.composer_menu = !this.composer_menu;
+                            cx.notify();
+                        })))
+                    })
                     // `.composer-emoji-btn`: 6px corners; on hover a 10% ink square and a lavender face.
                     .child(
                         div()

@@ -11,6 +11,8 @@ mod invite;
 mod server_settings;
 mod integrations;
 mod events;
+mod forum;
+mod composer_tools;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -322,6 +324,13 @@ pub struct Shell {
     events: HashMap<String, Vec<serde_json::Value>>,
     events_loading: std::cell::RefCell<std::collections::HashSet<String>>,
     events_panel: Option<events::EventsPanel>,
+    /// The forum board's filters, next-post tags and editors.
+    forum: forum::ForumState,
+    /// The composer's More tools popover, its formatting bar and games picker, and the poll dialog.
+    composer_menu: bool,
+    format_open: bool,
+    games_open: bool,
+    poll_dialog: Option<composer_tools::PollDialog>,
     server_settings: Option<server_settings::ServerSettings>,
     /// Create Role answered: open the newest role when the servers come back.
     pending_new_role: bool,
@@ -547,6 +556,11 @@ impl Shell {
             events: HashMap::new(),
             events_loading: Default::default(),
             events_panel: None,
+            forum: Default::default(),
+            composer_menu: false,
+            format_open: false,
+            games_open: false,
+            poll_dialog: None,
             server_settings: None,
             pending_new_role: false,
             kind_menu: None,
@@ -835,6 +849,8 @@ impl Shell {
             t("simple.typeHere")
         } else if let Some(dm) = self.channel_id.as_ref().and_then(|c| self.dm(c)) {
             if dm.user.id == self.me.id { t("composer.notePlaceholder") } else { tv("composer.dmPlaceholder", &[("channel", dm.user.name())]) }
+        } else if self.is_forum() {
+            t("composer.threadPostPlaceholder")
         } else {
             let name = self.channel().map(|c| c.name.clone()).unwrap_or_default();
             tv("composer.channelPlaceholder", &[("channel", &name)])
@@ -1061,6 +1077,9 @@ impl Shell {
             return;
         }
         self.thread = None;
+        // The board's filter belongs to the forum it was set on (the web keeps it per mount).
+        self.forum.filter.clear();
+        self.forum.editing_post = None;
         if let Some(previous) = self.channel_id.clone() {
             self.reads.insert(previous.clone(), ReadState { unread: true, ..Default::default() });
             self.mark_read(&previous, cx);
@@ -1179,11 +1198,21 @@ impl Shell {
         self.last_typing_sent = None;
         let client = self.client.clone();
         let reply = self.reply_to.take().map(|(id, _)| id);
+        // A new forum post takes the tags picked on the board.
+        let payload = if self.is_forum() { forum::post_payload(&self.forum_draft_tags()) } else { None };
+        if payload.is_some() {
+            self.forum.draft = None;
+        }
         cx.spawn(async move |this, cx| {
             let body = text.clone();
             let result = cx
                 .background_executor()
-                .spawn(async move { client.send(&channel, &body, reply.as_deref()) })
+                .spawn(async move {
+                    match payload {
+                        Some(payload) => client.send_payload(&channel, &body, payload),
+                        None => client.send(&channel, &body, reply.as_deref()),
+                    }
+                })
                 .await;
             this.update(cx, |this, cx| {
                 match result {

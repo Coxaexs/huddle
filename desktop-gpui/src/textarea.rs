@@ -219,6 +219,21 @@ impl TextArea {
         cx.notify();
     }
 
+    /// wrapSelection(): the selection (or the caret) wrapped in `open` … `close`, the selection kept
+    /// inside the new tags.
+    pub fn wrap_selection(&mut self, open: &str, close: &str, cx: &mut Context<Self>) {
+        let range = self.selected_range.clone();
+        let inner = self.content[range.clone()].to_string();
+        let text = format!("{}{open}{inner}{close}{}", &self.content[..range.start], &self.content[range.end..]);
+        self.content = text.into();
+        self.selected_range = range.start + open.len()..range.start + open.len() + inner.len();
+        self.selection_reversed = false;
+        self.marked_range = None;
+        self.goal_x = None;
+        cx.emit(AreaEvent::Changed);
+        cx.notify();
+    }
+
     pub fn set_placeholder(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
         self.placeholder = text.into();
         cx.notify();

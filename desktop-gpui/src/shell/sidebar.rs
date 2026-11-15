@@ -326,7 +326,7 @@ impl Shell {
         let unread = !selected && self.reads.get(&channel.id).is_some_and(|r| r.unread);
         let mentions = self.reads.get(&channel.id).map_or(0, |r| r.mentions);
         let id = channel.id.clone();
-        let text = channel.is_text();
+        let text = channel.is_text() || channel.kind == "forum";
         let base = self.client.base().to_string();
         let server_id = channel.server_id.clone();
         let simple = self.simple();

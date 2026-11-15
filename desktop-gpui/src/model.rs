@@ -123,6 +123,8 @@ pub struct Channel {
     pub slowmode: Option<i64>,
     pub soundboard: Option<bool>,
     pub rtc_region: Option<String>,
+    /// A forum's tags (lib/forum-tags.ts): `{id, name, emoji?, moderated?}`.
+    pub forum_tags: Vec<serde_json::Value>,
 }
 
 impl Channel {

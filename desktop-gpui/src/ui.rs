@@ -286,7 +286,12 @@ impl gpui::Render for Tooltip {
 /// One line of text cut to `max_width` with "…", measured in the face it is drawn in (gpui's own
 /// truncation measures the regular weight, so bold text overshoots and loses its ellipsis).
 pub fn fit(window: &Window, text: &str, weight: gpui::FontWeight, size: f32, max_width: gpui::Pixels) -> String {
-    let mut face = gpui::font(crate::theme::UI_FONT);
+    fit_in(window, crate::theme::UI_FONT, text, weight, size, max_width)
+}
+
+/// fit() in another family (the Fraunces channel name).
+pub fn fit_in(window: &Window, family: &'static str, text: &str, weight: gpui::FontWeight, size: f32, max_width: gpui::Pixels) -> String {
+    let mut face = gpui::font(family);
     face.weight = weight;
     let width = |s: &str| {
         let run = gpui::TextRun { len: s.len(), font: face.clone(), color: gpui::black(), background_color: None, underline: None, strikethrough: None };

@@ -505,6 +505,20 @@ impl gpui::Render for Shell {
                 _ => {}
             }
         }
+        // Development: HOFFLE_DEV_COMPOSER=menu|poll opens the composer's More tools or the poll dialog.
+        static DEV_COMPOSER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(view) = std::env::var("HOFFLE_DEV_COMPOSER")
+            && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
+            && !DEV_COMPOSER.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            if view == "poll" {
+                self.open_poll_dialog(window, cx);
+            } else if view == "format" {
+                self.format_open = true;
+            } else {
+                self.composer_menu = true;
+            }
+        }
         // Development: HOFFLE_DEV_RENAME=1 opens the Rename Server prompt once (only to look at).
         if std::env::var("HOFFLE_DEV_RENAME").is_ok() && self.confirm.is_none() && !self.dev_invite_done
             && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
@@ -708,6 +722,7 @@ impl gpui::Render for Shell {
             .children(self.render_toasts(cx))
             .children(self.render_settings(window, cx))
             .children(self.render_events(window, cx))
+            .children(self.render_poll_dialog(window, cx))
             .children(self.render_confirm(cx))
             .children(self.render_forward(window, cx))
             .children(self.render_invite(window, cx))
