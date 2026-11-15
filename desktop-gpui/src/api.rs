@@ -233,6 +233,16 @@ impl Client {
         self.get(&format!("/api/music/search?q={}", encode(q)))
     }
 
+    /// A voice room's playlists.
+    pub fn music_playlists(&self, voice_channel_id: &str) -> Result<Value> {
+        self.get(&format!("/api/music/playlists?voiceChannelId={}", encode(voice_channel_id)))
+    }
+
+    /// Plays (or queues) a room playlist, from a song if given.
+    pub fn music_playlist_play(&self, body: Value) -> Result<Value> {
+        self.post("/api/music/playlists", body)
+    }
+
     /// The playing song's lyrics in a voice room: saved ones, or (`find`) searched for.
     pub fn music_lyrics(&self, voice_channel_id: &str, find: bool) -> Result<Value> {
         self.get(&format!("/api/music/lyrics?voiceChannelId={}{}", encode(voice_channel_id), if find { "&find=1" } else { "" }))

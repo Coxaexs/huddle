@@ -75,6 +75,23 @@ pub(super) struct MusicPlayer {
     /// "next" or "queue" by url, once added.
     added: std::collections::HashMap<String, &'static str>,
     _search_sub: gpui::Subscription,
+    playlists: Option<Vec<Playlist>>,
+    playlists_error: Option<String>,
+    playlists_loading: bool,
+    open_list: Option<String>,
+}
+
+/// RoomPlaylist.
+#[derive(Clone)]
+struct Playlist {
+    name: String,
+    count: i64,
+    cover: Option<String>,
+    description: Option<String>,
+    auto: bool,
+    can_edit: bool,
+    /// (title, duration text, thumbnail)
+    tracks: Vec<(String, String, Option<String>)>,
 }
 
 /// SongResult: a search hit.
@@ -183,7 +200,13 @@ impl Shell {
             search_error: None,
             added: Default::default(),
             _search_sub: search_sub,
+            playlists: None,
+            playlists_error: None,
+            playlists_loading: false,
+            open_list: None,
         });
+        // Fetched as soon as the player opens, as the web does (the bot can take a few seconds).
+        self.load_playlists(cx);
         cx.notify();
     }
 
@@ -275,6 +298,86 @@ impl Shell {
 
     pub(super) fn player_search_pub(&mut self, cx: &mut Context<Self>) {
         self.player_search(cx);
+    }
+
+    fn load_playlists(&mut self, cx: &mut Context<Self>) {
+        let Some(p) = self.music_player.as_mut() else { return };
+        let Some(room) = p.room.clone() else { return };
+        p.playlists_loading = true;
+        p.playlists_error = None;
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.music_playlists(&room) }).await;
+            this.update(cx, |this, cx| {
+                let Some(p) = this.music_player.as_mut() else { return };
+                p.playlists_loading = false;
+                match result {
+                    Ok(v) => {
+                        let s = |o: &Value, k: &str| o.get(k).and_then(Value::as_str).filter(|t| !t.is_empty()).map(str::to_string);
+                        p.playlists = Some(
+                            v.get("playlists")
+                                .and_then(Value::as_array)
+                                .map(|a| {
+                                    a.iter()
+                                        .map(|l| Playlist {
+                                            name: s(l, "name").unwrap_or_default(),
+                                            count: l.get("count").and_then(Value::as_i64).unwrap_or(0),
+                                            cover: s(l, "cover"),
+                                            description: s(l, "description"),
+                                            auto: l.get("auto").and_then(Value::as_bool).unwrap_or(false),
+                                            can_edit: l.get("canEdit").and_then(Value::as_bool).unwrap_or(false),
+                                            tracks: l
+                                                .get("tracks")
+                                                .and_then(Value::as_array)
+                                                .map(|t| t.iter().map(|t| (s(t, "title").unwrap_or_default(), s(t, "duration").unwrap_or_default(), s(t, "thumbnail"))).collect())
+                                                .unwrap_or_default(),
+                                        })
+                                        .collect()
+                                })
+                                .unwrap_or_default(),
+                        );
+                        // Development: HOFFLE_DEV_PLAYER_LIST=1 opens the first playlist.
+                        if std::env::var_os("HOFFLE_DEV_PLAYER_LIST").is_some() && p.open_list.is_none() {
+                            p.open_list = p.playlists.as_ref().and_then(|l| l.first()).map(|l| l.name.clone());
+                        }
+                    }
+                    Err(e) => p.playlists_error = Some(if e.to_string().is_empty() { "Could not load the playlists.".into() } else { e.to_string() }),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// playPlaylist(): play or queue it in the room, from a song if given.
+    fn play_playlist(&mut self, name: String, mode: &'static str, start: usize, start_title: Option<String>, cx: &mut Context<Self>) {
+        let Some(room) = self.music_player.as_ref().and_then(|p| p.room.clone()) else { return };
+        if !self.music_in_room() {
+            let rn = self.channel_by_id(&room).map(|c| c.name.clone()).unwrap_or_else(|| "the voice room".into());
+            return self.music_note(format!("Join {rn} to play music there."), cx);
+        }
+        let body = json!({ "voiceChannelId": room, "name": name, "mode": mode, "start": start, "startTitle": start_title });
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.music_playlist_play(body) }).await;
+            this.update(cx, |this, cx| {
+                match result {
+                    Ok(v) => {
+                        this.music_note(v.get("message").and_then(Value::as_str).unwrap_or("Done.").to_string(), cx);
+                        if mode == "play"
+                            && let Some(p) = this.music_player.as_mut()
+                        {
+                            p.tab = "lyrics";
+                        }
+                    }
+                    Err(e) => this.music_note(if e.to_string().is_empty() { "That playlist did not start.".into() } else { e.to_string() }, cx),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// submit(): GET /api/music/search for what was typed.
@@ -761,9 +864,9 @@ impl Shell {
             "lyrics" => self.render_player_lyrics(p, track.as_ref(), position_ms, controls, vh, cx),
             "queue" => self.render_player_queue(state.as_ref(), in_room, vw - 2. * body_x - gap - left_w, window, cx),
             "search" => self.render_player_search(p, in_room, track.is_some(), vw - 2. * body_x - gap - left_w, window, cx),
+            "playlists" => self.render_player_playlists(p, in_room, vw - 2. * body_x - gap - left_w, window, cx),
             other => {
                 let (icon, title) = match other {
-                    "playlists" => ("library", "Playlists"),
                     _ => ("disc-3", "DJ booth"),
                 };
                 let base = self.client.base().to_string();
@@ -890,7 +993,7 @@ impl Shell {
                 let mut list = div().flex_none().flex().flex_col().gap(px(2.));
                 for (n, r) in results.iter().enumerate() {
                     let thumb: AnyElement = match &r.thumbnail {
-                        Some(src) => gpui::img(self.client.absolute(&super::links::proxied(src))).size(px(44.)).flex_none().rounded(px(8.)).object_fit(gpui::ObjectFit::Cover).into_any_element(),
+                        Some(src) => div().size(px(44.)).flex_none().rounded(px(8.)).overflow_hidden().child(gpui::img(self.client.absolute(&super::links::proxied(src))).size_full().rounded(px(8.)).object_fit(gpui::ObjectFit::Cover)).into_any_element(),
                         None => div().size(px(44.)).flex_none().rounded(px(8.)).bg(rgb(0x252040)).flex().items_center().justify_center().child(ui::icon("music-2", 16., muted)).into_any_element(),
                     };
                     // gpui draws no ellipsis of its own: the text is cut to the room `.mp-row-text` has.
@@ -997,6 +1100,235 @@ impl Shell {
         wrap.into_any_element()
     }
 
+    /// PlaylistsPane: the room's playlists as cards; one opened shows its songs with Play / queue.
+    fn render_player_playlists(&self, p: &MusicPlayer, in_room: bool, pane_w: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        let lavender: Hsla = Theme::lavender().into();
+        let on_accent: Hsla = rgb(0x15121f).into();
+        if p.room.is_none() {
+            return empty_state("library", "No voice room".into(), Some("Playlists belong to a voice room.".into()), None, None::<Click>, cx);
+        }
+        if let Some(err) = &p.playlists_error {
+            return empty_state_with("library", "Could not load the playlists".into(), Some(err.clone()), Some(("mp-pl-retry", "Try again", Box::new(|_, _, _| {}))), Some(cx.listener(|this, _, _, cx| this.load_playlists(cx))), None);
+        }
+        let Some(lists) = &p.playlists else {
+            return empty_state("loader-2", "Loading playlists…".into(), None, None, None::<Click>, cx);
+        };
+        if lists.is_empty() {
+            return empty_state("library", "No playlists yet".into(), Some("Make the first one, then add songs to it.".into()), Some(("mp-pl-new", "New playlist", Box::new(|_, _, _| {}))), Some(cx.listener(|this, _, _, cx| this.music_note("Making playlists is not in this app yet; use the web player.".into(), cx))), cx);
+        }
+        let inner = pane_w - 2. - 32.;
+        let thumb = |src: &Option<String>, size: f32, radius: f32| -> AnyElement {
+            match src {
+                Some(src) => div().size(px(size)).flex_none().rounded(px(radius)).overflow_hidden().child(gpui::img(self.client.absolute(&super::links::proxied(src))).size_full().rounded(px(radius)).object_fit(gpui::ObjectFit::Cover)).into_any_element(),
+                None => div().size(px(size)).flex_none().rounded(px(radius)).bg(rgb(0x252040)).flex().items_center().justify_center().child(ui::icon("music-2", 16., muted)).into_any_element(),
+            }
+        };
+        let songs = |n: i64| format!("{n} {}", if n == 1 { "song" } else { "songs" });
+        if let Some(chosen) = p.open_list.as_ref().and_then(|name| lists.iter().find(|l| &l.name == name)) {
+            let can = in_room && chosen.count > 0;
+            let (n1, n2) = (chosen.name.clone(), chosen.name.clone());
+            let actions_w = 16. + 15. + 6. + f32::from(ui::text_width(window, "Play", FontWeight::SEMIBOLD, 13.)) + 16. + 6. + 40. + if chosen.can_edit { 46. } else { 0. } + 6.;
+            let head_text_w = inner - 8. - 40. - 12. - 64. - 12. - 12. - actions_w;
+            let mut wrap = div()
+                .id("mp-playlist")
+                .flex_1()
+                .min_h_0()
+                .overflow_y_scroll()
+                .p(px(16.))
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .flex_none()
+                        .px(px(4.))
+                        .pb(px(12.))
+                        .flex()
+                        .items_center()
+                        .gap(px(12.))
+                        .child(div().id("mp-pl-back").size(px(40.)).flex_none().rounded_full().flex().items_center().justify_center().cursor_pointer().hover(move |s| s.bg(ink.opacity(0.1))).tooltip(ui::tooltip("All playlists".to_string())).child(ui::icon("arrow-left", 18., ink)).on_click(cx.listener(|this, _, _, cx| {
+                            if let Some(p) = this.music_player.as_mut() {
+                                p.open_list = None;
+                                cx.notify();
+                            }
+                        })))
+                        .child(thumb(&chosen.cover, 64., 10.))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .flex()
+                                .flex_col()
+                                .child(div().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(ink).child(ui::fit(window, &chosen.name, FontWeight::SEMIBOLD, 14., px(head_text_w))))
+                                .child(div().whitespace_nowrap().overflow_hidden().text_size(px(12.)).line_height(px(18.)).text_color(muted).child(ui::fit(window, &format!("{}{}", songs(chosen.count), chosen.description.as_ref().map(|d| format!(" · {d}")).unwrap_or_default()), FontWeight::NORMAL, 12., px(head_text_w)))),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .pr(px(6.))
+                                .child(
+                                    div()
+                                        .id("mp-pl-play")
+                                        .h(px(32.))
+                                        .px(px(16.))
+                                        .rounded_full()
+                                        .bg(lavender)
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(6.))
+                                        .text_size(px(13.))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(on_accent)
+                                        .child(ui::icon("play", 15., on_accent))
+                                        .child("Play")
+                                        .when(!can, |d| d.opacity(0.42))
+                                        .when(can, |d| d.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| this.play_playlist(n1.clone(), "play", 0, None, cx)))),
+                                )
+                                .child(
+                                    div()
+                                        .id("mp-pl-queue")
+                                        .size(px(40.))
+                                        .rounded_full()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .tooltip(ui::tooltip("Add to the queue".to_string()))
+                                        .child(ui::icon("list-plus", 18., ink))
+                                        .when(!can, |d| d.opacity(0.42))
+                                        .when(can, |d| d.cursor_pointer().hover(move |s| s.bg(ink.opacity(0.1))).on_click(cx.listener(move |this, _, _, cx| this.play_playlist(n2.clone(), "queue", 0, None, cx)))),
+                                )
+                                .when(chosen.can_edit, |d| {
+                                    d.child(
+                                        div()
+                                            .id("mp-pl-find")
+                                            .size(px(40.))
+                                            .rounded_full()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .cursor_pointer()
+                                            .hover(move |s| s.bg(ink.opacity(0.1)))
+                                            .tooltip(ui::tooltip("Find songs to add".to_string()))
+                                            .child(ui::icon("search", 18., ink))
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                if let Some(p) = this.music_player.as_mut() {
+                                                    p.tab = "search";
+                                                    window.focus(&gpui::Focusable::focus_handle(&p.search, cx));
+                                                    cx.notify();
+                                                }
+                                            })),
+                                    )
+                                }),
+                        ),
+                );
+            if !in_room {
+                wrap = wrap.child(div().flex_none().mx(px(16.)).mt(px(14.)).px(px(12.)).py(px(8.)).rounded(px(10.)).bg(Hsla::from(Theme::coral()).opacity(0.14)).text_size(px(13.)).text_color(ink).child("Join the voice room to play a playlist."));
+            }
+            if chosen.count == 0 {
+                wrap = wrap.child(empty_state("music-2", "Nothing in here yet".into(), chosen.can_edit.then(|| "Search for a song, then press + to add it here.".to_string()), None, None::<Click>, cx));
+            }
+            let mut list = div().flex_none().flex().flex_col().gap(px(2.));
+            for (n, (title, duration, cover)) in chosen.tracks.iter().enumerate() {
+                let name = chosen.name.clone();
+                let start_title = title.clone();
+                let time_w = duration.chars().count() as f32 * 7.2;
+                let text_w = inner - 10. - 22. - 12. - 44. - 12. - 12. - time_w - 10.;
+                list = list.child(
+                    div()
+                        .id(SharedString::from(format!("mp-pl-row-{n}")))
+                        .flex_none()
+                        .h(px(60.))
+                        .px(px(10.))
+                        .rounded(px(12.))
+                        .flex()
+                        .items_center()
+                        .gap(px(12.))
+                        .hover(move |s| s.bg(ink.opacity(0.06)))
+                        .when(in_room, |d| d.cursor_pointer().tooltip(ui::tooltip("Play the playlist from this song".to_string())).on_click(cx.listener(move |this, _, _, cx| this.play_playlist(name.clone(), "play", n, Some(start_title.clone()), cx))))
+                        .child(div().w(px(22.)).flex_none().flex().justify_end().font_family(MONO_FONT).text_size(px(12.)).line_height(px(16.)).text_color(muted).child((n + 1).to_string()))
+                        .child(thumb(cover, 44., 8.))
+                        .child(div().flex_1().min_w_0().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(ink).child(ui::fit(window, title, FontWeight::SEMIBOLD, 14., px(text_w))))
+                        .child(div().flex_none().font_family(MONO_FONT).text_size(px(12.)).line_height(px(16.)).text_color(muted).child(duration.clone())),
+                );
+            }
+            return wrap.child(list).into_any_element();
+        }
+        // `.mp-grid`: auto-fill columns of at least 150px, 14px apart.
+        let cols = ((inner + 14.) / (150. + 14.)).floor().max(1.) as usize;
+        let card_w = ((inner - 14. * (cols as f32 - 1.)) / cols as f32 - 0.05).floor();
+        let mut grid = div().flex_none().flex().flex_wrap().gap(px(14.));
+        for (n, list) in lists.iter().enumerate() {
+            let name = list.name.clone();
+            grid = grid.child(
+                div()
+                    .id(SharedString::from(format!("mp-card-{n}")))
+                    .w(px(card_w))
+                    .p(px(10.))
+                    .rounded(px(14.))
+                    .bg(ink.opacity(0.05))
+                    .hover(move |s| s.bg(ink.opacity(0.1)))
+                    .cursor_pointer()
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.))
+                    .child(match &list.cover {
+                        Some(src) => div().flex_none().size(px(card_w - 20.)).rounded(px(10.)).overflow_hidden().child(gpui::img(self.client.absolute(&super::links::proxied(src))).size_full().rounded(px(10.)).object_fit(gpui::ObjectFit::Cover)).into_any_element(),
+                        None => div().size(px(card_w - 20.)).rounded(px(10.)).bg(rgb(0x252040)).flex().items_center().justify_center().child(ui::icon("music-2", 28., muted)).into_any_element(),
+                    })
+                    .child(div().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::BOLD).text_color(ink).child(ui::fit(window, &list.name, FontWeight::BOLD, 14., px(card_w - 20.))))
+                    .child(div().text_size(px(12.)).line_height(px(18.)).text_color(muted).child(format!("{}{}", songs(list.count), if list.auto { " · made for you" } else { "" })))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(p) = this.music_player.as_mut() {
+                            p.open_list = Some(name.clone());
+                            cx.notify();
+                        }
+                    })),
+            );
+        }
+        div()
+            .id("mp-playlists")
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scroll()
+            .p(px(16.))
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .flex_none()
+                    .pt(px(4.))
+                    .px(px(8.))
+                    .pb(px(10.))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(div().font_family(DISPLAY_FONT).text_size(px(18.)).line_height(px(23.)).font_weight(FontWeight::BOLD).text_color(ink).child("Playlists"))
+                    .child(
+                        div()
+                            .id("mp-pl-new-small")
+                            .h(px(27.))
+                            .px(px(12.))
+                            .rounded_full()
+                            .bg(lavender)
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .text_size(px(12.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(on_accent)
+                            .cursor_pointer()
+                            .child(ui::icon("plus", 14., on_accent))
+                            .child("New playlist")
+                            .on_click(cx.listener(|this, _, _, cx| this.music_note("Making playlists is not in this app yet; use the web player.".into(), cx))),
+                    ),
+            )
+            .child(grid)
+            .into_any_element()
+    }
+
     /// QueuePane: Up next with its count and length, each song (click plays it now, × removes it).
     fn render_player_queue(&self, state: Option<&Room>, in_room: bool, pane_w: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let ink: Hsla = Theme::ink().into();
@@ -1021,7 +1353,7 @@ impl Shell {
         let mut list = div().flex().flex_col().gap(px(2.));
         for (n, song) in queue.iter().enumerate() {
             let thumb: AnyElement = match &song.thumbnail {
-                Some(src) => gpui::img(self.client.absolute(&super::links::proxied(src))).size(px(44.)).flex_none().rounded(px(8.)).object_fit(gpui::ObjectFit::Cover).into_any_element(),
+                Some(src) => div().size(px(44.)).flex_none().rounded(px(8.)).overflow_hidden().child(gpui::img(self.client.absolute(&super::links::proxied(src))).size_full().rounded(px(8.)).object_fit(gpui::ObjectFit::Cover)).into_any_element(),
                 None => div().size(px(44.)).flex_none().rounded(px(8.)).bg(rgb(0x252040)).flex().items_center().justify_center().child(ui::icon("music-2", 16., muted)).into_any_element(),
             };
             let index = n + 1;
