@@ -36,6 +36,7 @@ mod bot_menu;
 mod commands;
 mod settings_css;
 mod settings_dice;
+mod settings_requests;
 mod sidebar;
 mod user_search;
 mod simple;

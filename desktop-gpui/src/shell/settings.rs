@@ -141,6 +141,8 @@ pub(super) struct Settings {
     pub tab: Tab,
     /// Custom CSS: the code editor.
     pub css_editor: Entity<crate::textarea::TextArea>,
+    /// Ideas & Bug Reports.
+    pub requests: super::settings_requests::Requests,
     /// The dialog itself holds focus when no field does (the web opens with nothing focused).
     focus: gpui::FocusHandle,
     search: Entity<TextInput>,
@@ -318,10 +320,12 @@ impl Shell {
                 cx.notify();
             }
         }));
+        let requests = self.new_requests(window, cx);
         let focus = cx.focus_handle();
         window.focus(&focus);
         self.settings = Some(Settings {
             css_editor,
+            requests,
             tab: if self.simple() { Tab::Home } else { Tab::Password },
             focus,
             search,
@@ -478,6 +482,9 @@ impl Shell {
             s.error = None;
             s.scroll.set_offset(gpui::point(px(0.), px(0.)));
             cx.notify();
+        }
+        if tab == Tab::Requests {
+            self.load_requests(cx);
         }
     }
 
@@ -1177,6 +1184,7 @@ impl Shell {
             Tab::Tts => self.render_tts_page(s, window, cx),
             Tab::Dice => self.render_dice_page(window, cx),
             Tab::CustomCss => self.render_css_page(s, cx),
+            Tab::Requests => self.render_requests_page(&s.requests, window, cx),
             Tab::Tutorial => vec![
                 div()
                     .flex_none()
