@@ -81,6 +81,10 @@ pub struct Server {
     pub description: Option<String>,
     /// Open channels readable at hoffle.online/s/….
     pub web_public: bool,
+    /// Raid Lockdown: invite and directory joins paused.
+    pub raid_mode: bool,
+    /// 0 none, 1 low, 2 medium, 3 high.
+    pub verification_level: i64,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

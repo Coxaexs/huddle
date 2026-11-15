@@ -82,7 +82,23 @@ pub(super) struct ServerSettings {
     automod_draft: Option<AutomodDraft>,
     automod_saving: bool,
     automod_notice: Option<String>,
+    reports: Option<Vec<Value>>,
+    purge_channel: Option<String>,
+    purge_count: i64,
+    purge_open: Option<&'static str>,
+    purge_user: Entity<TextInput>,
+    purging: bool,
     _subs: Vec<Subscription>,
+}
+
+/// Chrome's radio button in the dark scheme (13px).
+fn radio(on: bool) -> gpui::Div {
+    div()
+        .flex_none()
+        .size(px(13.))
+        .rounded_full()
+        .when(on, |d| d.bg(rgb(0x99c8ff)).flex().items_center().justify_center().child(div().size(px(5.)).rounded_full().bg(rgb(0x1e1a2e))))
+        .when(!on, |d| d.bg(rgb(0x3b3b3b)).border_1().border_color(rgb(0x858585)))
 }
 
 /// RuleDraft: the rule being made or changed ("new" or its id), every kind's inputs at once.
@@ -321,6 +337,14 @@ impl Shell {
             }));
         }
         let active_role = server.roles.first().map(|r| r.id.clone());
+        let purge_user = cx.new(|cx| TextInput::new("@username (leave blank for all)", cx).look(Look { size: 12., line_height: 16., height: 16., color: Theme::ink().into(), placeholder: Theme::muted().into() }));
+        subs.push(cx.subscribe_in(&purge_user, window, |this, _, event, _, cx| {
+            if matches!(event, InputEvent::Escape) {
+                this.server_settings = None;
+            }
+            cx.notify();
+        }));
+        let purge_channel = server.channels.iter().find(|c| !c.is_voice()).map(|c| c.id.clone());
         let description = cx.new(|cx| {
             let mut i = TextInput::new("What is this server about? (e.g. Cozy gaming nights, D&D campaigns, and music)", cx).look(Look { size: 16., line_height: 24., height: 24., color: Theme::ink().into(), placeholder: Theme::muted().into() });
             i.set_text(server.description.clone().unwrap_or_default(), cx);
@@ -403,6 +427,12 @@ impl Shell {
             automod_draft: None,
             automod_saving: false,
             automod_notice: None,
+            reports: None,
+            purge_channel,
+            purge_count: 25,
+            purge_open: None,
+            purge_user,
+            purging: false,
             _subs: subs,
         });
         cx.notify();
@@ -680,6 +710,7 @@ impl Shell {
             "access" | "community" => self.render_server_access(s, server, can, cx),
             "welcome" => self.render_server_welcome(s, cx),
             "automod" => self.render_server_automod(s, server, can, cx),
+            "safety" => self.render_server_safety(s, server, can, cx),
             other => self.render_server_tab(other, s, server, can, window, cx),
         };
         let main = div()
@@ -1543,6 +1574,7 @@ impl Shell {
             "stickers" => (format!("/api/stickers/packs?serverId={sid}"), "stickers"),
             "sounds" => (format!("/api/sounds?serverId={sid}"), "sounds"),
             "automod" => (format!("/api/automod?serverId={sid}"), "rules"),
+            "reports" => (format!("/api/reports?serverId={sid}"), "reports"),
             _ => (format!("/api/audit?serverId={sid}"), "entries"),
         };
         let client = self.client.clone();
@@ -1556,6 +1588,7 @@ impl Shell {
                     "invites" => s.invites = Some(list),
                     "bans" => s.bans = Some(list),
                     "emojis" => s.emojis = Some(list),
+                    "reports" => s.reports = Some(list),
                     "automod" => s.automod = Some(list.into_iter().map(|mut r| { if r.get("enabled").is_none() { r["enabled"] = json!(true); } r }).collect()),
                     "stickers" | "sounds" => {
                         if kind == "stickers" {
@@ -1580,6 +1613,7 @@ impl Shell {
                 "invites" => s.invites = None,
                 "bans" => s.bans = None,
                 "emojis" => s.emojis = None,
+                "reports" => s.reports = None,
                 "automod" => s.automod = None,
                 "stickers" => s.stickers = None,
                 "sounds" => s.sounds = None,
@@ -3285,6 +3319,264 @@ impl Shell {
             }
         }
         page.into_any_element()
+    }
+
+    fn patch_server(&mut self, body: Value, notice: String, cx: &mut Context<Self>) {
+        let Some(sid) = self.server_settings.as_ref().map(|s| s.server_id.clone()) else { return };
+        let path = format!("/api/servers/{}", url::form_urlencoded::byte_serialize(sid.as_bytes()).collect::<String>());
+        self.ss_call(move |c| c.settings_patch(&path, body), move |this, cx| {
+            this.load_servers(cx);
+            this.server_notice(notice, cx);
+        }, cx);
+    }
+
+    /// ServerSafetyTab: Raid Lockdown, verification level, bulk purge, the member reports.
+    fn render_server_safety(&self, s: &ServerSettings, server: &crate::model::Server, can: Can, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        if s.reports.is_none() {
+            self.ss_load("reports", cx);
+        }
+        let card = || div().p(px(16.)).rounded(px(12.)).bg(Theme::panel()).border_1().border_color(Theme::line()).flex().flex_col();
+        let h3 = |icon: &'static str, color: Hsla, text: String, tone: Hsla| div().flex().items_center().gap(px(8.)).text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight::SEMIBOLD).text_color(tone).child(ui::icon(icon, 16., color)).child(text);
+        let small = |text: String, op: f32| div().mt(px(4.)).opacity(op).text_size(px(12.)).line_height(px(16.)).text_color(ink).child(text);
+        let raid = server.raid_mode;
+        let rose: Hsla = rgb(0xfda4af).into();
+        let raid_card = div()
+            .id("ss-raid")
+            .mt(px(24.))
+            .p(px(16.))
+            .rounded(px(12.))
+            .bg(rgba(0xf43f5e1a))
+            .border_1()
+            .border_color(rgba(0xf43f5e4d))
+            .flex()
+            .items_start()
+            .justify_between()
+            .gap(px(16.))
+            .child(div().flex_1().min_w_0().child(h3("shield-alert", rose, "Raid Lockdown Mode".into(), rose)).child(small(format!("Immediately pauses all invite links and public directory joins for {}. Turn this on if your server is experiencing a raid or spam wave.", server.name), 0.8)))
+            .child(checkbox(raid, false))
+            .when(can.moderate, |d| {
+                d.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| {
+                    let next = !raid;
+                    this.patch_server(json!({ "raidMode": next }), if next { "Raid Lockdown enabled: invite joins and public directory joins are paused.".into() } else { "Raid Lockdown disabled: normal server joins resumed.".into() }, cx);
+                }))
+            });
+        let level = server.verification_level;
+        let mut levels = div().mt(px(12.)).flex().flex_col().gap(px(8.));
+        for (n, key) in ["none", "low", "medium", "high"].iter().enumerate() {
+            let n = n as i64;
+            levels = levels.child(
+                div()
+                    .id(SharedString::from(format!("ss-level-{n}")))
+                    .flex()
+                    .items_start()
+                    .gap(px(8.))
+                    .cursor_pointer()
+                    .child(div().pt(px(4.)).child(radio(level == n)))
+                    .child(div().flex().flex_col().child(div().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight::BOLD).text_color(ink).child(t(&format!("verification.{key}")))).child(div().opacity(0.7).text_size(px(12.)).line_height(px(16.)).text_color(ink).child(t(&format!("verification.{key}.desc")))))
+                    .when(can.manage_server && level != n, |d| d.on_click(cx.listener(move |this, _, _, cx| this.patch_server(json!({ "verificationLevel": n }), t("verification.saved"), cx)))),
+            );
+        }
+        let verify_card = card().mt(px(24.)).child(h3("shield-check", rgb(0x34d399).into(), t("serverSafety.verification"), ink)).child(small(t("verification.desc"), 0.75)).child(levels);
+        // Bulk Message Purge.
+        let texts: Vec<(String, String)> = server.channels.iter().filter(|c| !c.is_voice()).map(|c| (c.id.clone(), c.name.clone())).collect();
+        let channel_name = s.purge_channel.as_ref().and_then(|id| texts.iter().find(|c| &c.0 == id)).map(|c| format!("#{}", c.1)).unwrap_or_default();
+        let field_label = |text: &str| div().mb(px(4.)).opacity(0.7).text_size(px(12.)).line_height(px(16.)).text_color(ink).child(text.to_string());
+        let select = |id: &'static str, w: f32, text: String, open: bool, options: Vec<(String, String)>, which: &'static str, cx: &mut Context<Self>| {
+            let mut el = div().relative().w(px(w)).child(
+                div()
+                    .id(id)
+                    .h(px(29.))
+                    .px(px(10.))
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .text_size(px(12.))
+                    .text_color(ink)
+                    .cursor_pointer()
+                    .child(text)
+                    .child(ui::icon("chevron-down", 14., ink))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(s) = this.server_settings.as_mut() {
+                            s.purge_open = if s.purge_open == Some(which) { None } else { Some(which) };
+                        }
+                        cx.notify();
+                    })),
+            );
+            if open {
+                let mut menu = div().absolute().top(px(31.)).left_0().min_w(px(w)).max_h(px(260.)).p(px(4.)).rounded(px(8.)).bg(Theme::panel()).border_1().border_color(Theme::line()).shadow(ui::card_shadow()).flex().flex_col();
+                for (value, label) in options {
+                    menu = menu.child(div().id(SharedString::from(format!("purge-{which}-{value}"))).px(px(10.)).py(px(5.)).rounded(px(6.)).text_size(px(12.)).text_color(ink).hover(|s| s.bg(gpui::white().opacity(0.08))).cursor_pointer().child(label).on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(s) = this.server_settings.as_mut() {
+                            if which == "channel" {
+                                s.purge_channel = Some(value.clone());
+                            } else {
+                                s.purge_count = value.parse().unwrap_or(25);
+                            }
+                            s.purge_open = None;
+                        }
+                        cx.notify();
+                    })));
+                }
+                el = el.child(gpui::deferred(menu).with_priority(3));
+            }
+            el
+        };
+        let purging = s.purging;
+        let channel_options: Vec<(String, String)> = texts.iter().map(|(id, n)| (id.clone(), format!("#{n}"))).collect();
+        let purge_card = card()
+            .mt(px(24.))
+            .gap(px(12.))
+            .child(h3("trash-2", rgb(0xfbbf24).into(), "Bulk Message Purge".into(), ink))
+            .child(
+                div()
+                    .opacity(0.75)
+                    .flex()
+                    .flex_wrap()
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .text_color(ink)
+                    .child("Quickly clean up recent spam in a channel (you can also run\u{a0}")
+                    .child(div().font_family(crate::theme::MONO_FONT).child("/purge 25 @username"))
+                    .child("\u{a0}directly in any channel)."),
+            )
+            .child(
+                div()
+                    .pt(px(4.))
+                    .flex()
+                    .flex_wrap()
+                    .items_end()
+                    .gap(px(12.))
+                    .child(div().child(field_label("Channel")).child(select("purge-ch", 166., channel_name, s.purge_open == Some("channel"), channel_options, "channel", cx)))
+                    .child(div().child(field_label("Count")).child(select("purge-n", 145., format!("Last {} messages", s.purge_count), s.purge_open == Some("count"), [10, 25, 50, 100].iter().map(|n| (n.to_string(), format!("Last {n} messages"))).collect(), "count", cx)))
+                    .child(div().flex_1().min_w(px(160.)).child(field_label("Filter by Username (optional)")).child(div().h(px(28.)).px(px(10.)).flex().items_center().child(s.purge_user.clone())))
+                    .child(
+                        div()
+                            .id("ss-purge")
+                            .h(px(36.))
+                            .px(px(18.))
+                            .rounded(px(8.))
+                            .flex()
+                            .items_center()
+                            .text_size(px(13.5))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(ink)
+                            .when(purging || s.purge_channel.is_none(), |d| d.opacity(0.5))
+                            .when(!purging && s.purge_channel.is_some(), |d| {
+                                d.cursor_pointer().hover(|s| s.bg(gpui::white().opacity(0.06))).on_click(cx.listener(|this, _, _, cx| {
+                                    let Some(s) = this.server_settings.as_mut() else { return };
+                                    let Some(channel) = s.purge_channel.clone() else { return };
+                                    let user = s.purge_user.read(cx).text().trim().to_string();
+                                    let count = s.purge_count;
+                                    s.purging = true;
+                                    let mut body = json!({ "channelId": channel, "count": count });
+                                    if !user.is_empty() {
+                                        body["targetUsername"] = json!(user);
+                                    }
+                                    let client = this.client.clone();
+                                    cx.spawn(async move |this, cx| {
+                                        let result = cx.background_executor().spawn(async move { client.settings_post("/api/messages/purge", body) }).await;
+                                        this.update(cx, |this, cx| {
+                                            if let Some(s) = this.server_settings.as_mut() {
+                                                s.purging = false;
+                                                if result.is_ok() {
+                                                    s.purge_user.update(cx, |i, cx| i.set_text("", cx));
+                                                }
+                                            }
+                                            match result {
+                                                Ok(v) => {
+                                                    let n = v["purged"].as_i64().unwrap_or(0);
+                                                    this.server_notice(format!("Purged {n} message{}.", if n == 1 { "" } else { "s" }), cx);
+                                                }
+                                                Err(e) => this.server_notice(if e.to_string().is_empty() { "Bulk purge failed.".into() } else { e.to_string() }, cx),
+                                            }
+                                        })
+                                        .ok();
+                                    })
+                                    .detach();
+                                    cx.notify();
+                                }))
+                            })
+                            .child(if purging { "Purging…" } else { "Purge Messages" }),
+                    ),
+            );
+        // Member Message Reports.
+        let mut reports = card()
+            .mt(px(24.))
+            .gap(px(12.))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(div().child(h3("flag", rgb(0x818cf8).into(), "Member Message Reports".into(), ink)).child(div().opacity(0.75).text_size(px(12.)).line_height(px(16.)).text_color(ink).child("Messages flagged by members via \u{201c}Report message\u{201d} in the message menu.")))
+                    .child(div().id("ss-reports-refresh").h(px(36.)).px(px(18.)).rounded(px(8.)).flex().items_center().text_size(px(13.5)).font_weight(FontWeight::SEMIBOLD).text_color(ink).cursor_pointer().hover(|s| s.bg(gpui::white().opacity(0.06))).child("Refresh").on_click(cx.listener(|this, _, _, cx| this.ss_refresh("reports", cx)))),
+            );
+        match &s.reports {
+            None => reports = reports.child(div().opacity(0.7).text_size(px(12.)).text_color(ink).child("Loading reports…")),
+            Some(list) if list.is_empty() => reports = reports.child(div().py(px(12.)).opacity(0.7).text_size(px(12.)).text_color(ink).child(format!("No message reports in {}.", server.name))),
+            Some(list) => {
+                let mut col = div().id("ss-reports").max_h(px(320.)).overflow_y_scroll().pr(px(4.)).flex().flex_col().gap(px(8.));
+                for r in list {
+                    let id = r["id"].as_str().unwrap_or_default().to_string();
+                    let open = r["status"] == "open";
+                    let status = r["status"].as_str().unwrap_or_default().to_uppercase();
+                    let when = r["createdAt"].as_str().and_then(crate::model::parse_time).map(|t| t.with_timezone(&chrono::Local).format("%-m/%-d/%Y, %-I:%M:%S %p").to_string()).unwrap_or_default();
+                    let (id1, id2) = (id.clone(), id.clone());
+                    let resolve = move |this: &mut Self, id: String, status: &'static str, delete: bool, cx: &mut Context<Self>| {
+                        this.ss_call(move |c| c.settings_patch("/api/reports", json!({ "reportId": id, "status": status, "deleteMessage": delete })), move |this, cx| {
+                            this.ss_refresh("reports", cx);
+                            this.server_notice(if delete { "Deleted reported message and resolved report.".into() } else { format!("Report marked as {status}.") }, cx);
+                        }, cx);
+                    };
+                    col = col.child(
+                        div()
+                            .p(px(12.))
+                            .rounded(px(8.))
+                            .bg(rgba(0x00000040))
+                            .border_1()
+                            .border_color(gpui::white().opacity(0.1))
+                            .flex()
+                            .flex_col()
+                            .gap(px(8.))
+                            .text_size(px(12.))
+                            .text_color(ink)
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .justify_between()
+                                    .child(div().flex().font_weight(FontWeight::SEMIBOLD).child(format!("#{} · Author:\u{a0}", r["channelName"].as_str().unwrap_or_default())).child(div().text_color(rgb(0xa5b4fc)).child(r["messageAuthor"].as_str().unwrap_or_default().to_string())))
+                                    .child(div().px(px(8.)).py(px(2.)).rounded_full().bg(if open { rgba(0xf59e0b33) } else { rgba(0x10b98133) }).text_size(px(11.)).font_weight(FontWeight::BOLD).text_color(if open { rgb(0xfcd34d) } else { rgb(0x6ee7b7) }).child(status)),
+                            )
+                            .child(div().relative().p(px(8.)).pl(px(10.)).rounded(px(4.)).bg(gpui::white().opacity(0.05)).child(div().absolute().left_0().top_0().bottom_0().w(px(2.)).bg(rgb(0x818cf8))).child(r["messageContent"].as_str().unwrap_or_default().to_string()))
+                            .child(div().opacity(0.75).flex().justify_between().child(format!("Reported by {}: \u{201c}{}\u{201d}", r["reporterName"].as_str().unwrap_or_default(), r["reason"].as_str().unwrap_or_default())).child(when))
+                            .when(open, |d| {
+                                d.child(
+                                    div()
+                                        .pt(px(4.))
+                                        .flex()
+                                        .gap(px(8.))
+                                        .child(div().id(SharedString::from(format!("rep-del-{id}"))).h(px(26.)).px(px(10.)).rounded(px(8.)).flex().items_center().gap(px(4.)).cursor_pointer().hover(|s| s.bg(gpui::white().opacity(0.06))).child(ui::icon("circle-check-big", 13., ink)).child("Delete Message & Resolve").on_click(cx.listener(move |this, _, _, cx| resolve(this, id1.clone(), "resolved", true, cx))))
+                                        .child(div().id(SharedString::from(format!("rep-dis-{id}"))).h(px(26.)).px(px(10.)).rounded(px(8.)).flex().items_center().gap(px(4.)).cursor_pointer().hover(|s| s.bg(gpui::white().opacity(0.06))).child(ui::icon("circle-x", 13., ink)).child("Dismiss").on_click(cx.listener(move |this, _, _, cx| resolve(this, id2.clone(), "dismissed", false, cx)))),
+                                )
+                            }),
+                    );
+                }
+                reports = reports.child(col);
+            }
+        }
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(div().flex().flex_col().child(div().font_family(DISPLAY_FONT).text_size(px(26.)).line_height(px(39.)).font_weight(FontWeight::MEDIUM).text_color(ink).child("Safety Setup & Moderation Center")).child(div().mt(px(4.)).mb(px(12.)).text_size(px(13.5)).line_height(px(18.9)).text_color(muted).child(format!("Raid protection, bulk message cleanup, and member-submitted message reports for {}.", server.name))))
+            .child(raid_card)
+            .child(verify_card)
+            .child(purge_card)
+            .child(reports)
+            .into_any_element()
     }
 
     /// The tabs still to come in this app: what they are, and the way to them on the web.
