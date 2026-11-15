@@ -2,7 +2,7 @@
 //! invite, rename and create channel for those allowed; Mark as Read; the notification level;
 //! Leave Server (or Delete Server for its managers).
 
-use gpui::{AnyElement, Context, FontWeight, Hsla, div, prelude::*, px, rgba};
+use gpui::{AnyElement, Context, FontWeight, Hsla, Window, div, prelude::*, px, rgba};
 
 use super::Shell;
 use super::context_menu::{Confirm, ConfirmAction};
@@ -123,6 +123,38 @@ impl Shell {
         .detach();
     }
 
+    /// showCustomPrompt: Rename Server with the name selected, "Save Name" PATCHes it.
+    pub(super) fn open_rename_server(&mut self, id: String, name: String, window: &mut Window, cx: &mut Context<Self>) {
+        let input = cx.new(|cx| {
+            let mut i = crate::input::TextInput::new("", cx).look(crate::input::Look { size: 14., line_height: 21., height: 21., color: Theme::ink().into(), placeholder: Theme::muted().into() });
+            i.set_text(name, cx);
+            i.select_everything(cx);
+            i
+        });
+        window.focus(&gpui::Focusable::focus_handle(&input, cx));
+        self.prompt_sub = Some(cx.subscribe_in(&input, window, |this, _, event, _, cx| match event {
+            crate::input::InputEvent::Submit => {
+                if let Some(action) = this.confirm.as_ref().map(|c| c.action.clone()) {
+                    this.confirmed_public(action, cx);
+                }
+            }
+            crate::input::InputEvent::Escape => {
+                this.confirm = None;
+                this.prompt_sub = None;
+                cx.notify();
+            }
+            _ => {}
+        }));
+        self.confirm = Some(Confirm {
+            title: t("sidebar.menu.rename"),
+            text: t("sidebar.menu.renamePrompt"),
+            ok: t("sidebar.menu.saveName"),
+            cancel: t("common.cancel"),
+            action: ConfirmAction::RenameServer(id, input),
+        });
+        cx.notify();
+    }
+
     pub(super) fn render_server_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.server_menu || self.home {
             return None;
@@ -185,7 +217,12 @@ impl Shell {
             menu = menu.child(item("sm-invite", "user-plus", 16., t("sidebar.menu.createInvite"), false).on_click(cx.listener(|this, _, window, cx| this.open_invite(None, window, cx))));
         }
         if manage_server {
-            menu = menu.child(item("sm-rename", "pencil", 16., t("sidebar.menu.rename"), false));
+            let name = server.name.clone();
+            let id = server.id.clone();
+            menu = menu.child(item("sm-rename", "pencil", 16., t("sidebar.menu.rename"), false).on_click(cx.listener(move |this, _, window, cx| {
+                this.server_menu = false;
+                this.open_rename_server(id.clone(), name.clone(), window, cx);
+            })));
         }
         if manage_channels {
             menu = menu.child(item("sm-channel", "plus", 16., t("sidebar.menu.createChannel"), false));

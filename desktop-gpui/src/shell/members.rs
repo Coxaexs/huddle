@@ -431,6 +431,15 @@ impl gpui::Render for Shell {
                 d.dev_state(&state, window.scale_factor());
             }
         }
+        // Development: HOFFLE_DEV_RENAME=1 opens the Rename Server prompt once (only to look at).
+        if std::env::var("HOFFLE_DEV_RENAME").is_ok() && self.confirm.is_none() && !self.dev_invite_done
+            && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
+        {
+            self.dev_invite_done = true;
+            if let Some(server) = self.server().cloned() {
+                self.open_rename_server(server.id, server.name, window, cx);
+            }
+        }
         if std::env::var("HOFFLE_DEV_FORWARD").is_ok() && self.forward.is_none() && !self.dev_forward_done {
             if let Some(last) = self.channel_id.as_ref().and_then(|c| self.messages.get(c)).and_then(|l| l.last()).cloned() {
                 self.dev_forward_done = true;

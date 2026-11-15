@@ -44,6 +44,8 @@ pub(super) enum ConfirmAction {
     DeleteAccount,
     /// An alert: one button that only closes it.
     Alert,
+    /// showCustomPrompt for Rename Server: the name field, "Save Name".
+    RenameServer(String, gpui::Entity<crate::input::TextInput>),
 }
 
 #[derive(Clone, Copy)]
@@ -584,10 +586,17 @@ impl Shell {
         let confirm = self.confirm.as_ref()?;
         let cancel = cx.listener(|this, _, _, cx| {
             this.confirm = None;
+            this.prompt_sub = None;
             cx.notify();
         });
         let action = confirm.action.clone();
         let alert = matches!(action, ConfirmAction::Alert);
+        // A prompt's button is the plain primary one: lavender, not the danger red.
+        let primary = matches!(action, ConfirmAction::RenameServer(..));
+        let prompt_input = match &action {
+            ConfirmAction::RenameServer(_, input) => Some(input.clone()),
+            _ => None,
+        };
         Some(
             div()
                 .absolute()
@@ -615,15 +624,39 @@ impl Shell {
                                 .items_center()
                                 .justify_between()
                                 .child(div().text_size(px(18.)).line_height(px(27.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(confirm.title.clone()))
-                                .child(div().id("confirm-x").cursor_pointer().child(ui::icon("x", 18., Theme::muted())).on_click(cx.listener(|this, _, _, cx| {
+                                .child(div().id("confirm-x").mt(px(-5.)).cursor_pointer().child(ui::icon("x", 18., Theme::muted())).on_click(cx.listener(|this, _, _, cx| {
                                     this.confirm = None;
                                     cx.notify();
                                 }))),
                         )
                         .child(div().mt(px(16.)).text_size(px(14.)).line_height(px(21.)).text_color(Theme::muted()).whitespace_normal().child(confirm.text.clone()))
+                        // `.custom-dialog-input`, focused: the lavender border and its 3px ring.
+                        .when_some(prompt_input, |d, input| {
+                            let lavender: gpui::Hsla = Theme::lavender().into();
+                            d.child(
+                                div()
+                                    .mt(px(16.))
+                                    .relative()
+                                    .child(div().absolute().top(px(-3.)).left(px(-3.)).right(px(-3.)).bottom(px(-3.)).rounded(px(13.)).border(px(3.)).border_color(lavender.opacity(0.32)))
+                                    .child(
+                                        div()
+                                            .h(px(43.))
+                                            .px(px(14.))
+                                            .rounded(px(10.))
+                                            .bg(gpui::Hsla::from(Theme::panel()).opacity(0.88))
+                                            .border_1()
+                                            .border_color(lavender)
+                                            .flex()
+                                            .items_center()
+                                            .text_size(px(14.))
+                                            .line_height(px(21.))
+                                            .child(input),
+                                    ),
+                            )
+                        })
                         .child(
                             div()
-                                .mt(px(24.))
+                                .mt(px(if primary { 24. } else { 24. }))
                                 .flex()
                                 .justify_end()
                                 .gap(px(10.))
@@ -654,6 +687,7 @@ impl Shell {
                                         .font_weight(FontWeight::SEMIBOLD)
                                         .text_color(gpui::white())
                                         // An alert's button is `.custom-dialog-btn.primary`, focused: lavender, a 3px ring.
+                                        .when(primary, |d| d.bg(Theme::lavender()).text_color(gpui::rgb(0x15121f)))
                                         .when(alert, |d| {
                                             d.bg(Theme::lavender()).text_color(gpui::rgb(0x15121f)).shadow(vec![gpui::BoxShadow {
                                                 color: gpui::Hsla::from(Theme::lavender()).opacity(0.32),
@@ -673,6 +707,10 @@ impl Shell {
         )
     }
 
+    pub(super) fn confirmed_public(&mut self, action: ConfirmAction, cx: &mut Context<Self>) {
+        self.confirmed(action, cx);
+    }
+
     fn confirmed(&mut self, action: ConfirmAction, cx: &mut Context<Self>) {
         self.confirm = None;
         match action {
@@ -681,6 +719,26 @@ impl Shell {
             ConfirmAction::DeleteServer(id) => self.delete_server(id, cx),
             ConfirmAction::DeleteAccount => self.delete_account_confirmed(cx),
             ConfirmAction::Alert => cx.notify(),
+            ConfirmAction::RenameServer(id, input) => {
+                self.prompt_sub = None;
+                let name = input.read(cx).text().trim().to_string();
+                if name.is_empty() {
+                    return cx.notify();
+                }
+                let client = self.client.clone();
+                cx.spawn(async move |this, cx| {
+                    let result = cx.background_executor().spawn(async move { client.settings_patch(&format!("/api/servers/{}", url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>()), serde_json::json!({ "name": name })) }).await;
+                    this.update(cx, |this, cx| {
+                        if result.is_ok() {
+                            this.load_servers(cx);
+                        }
+                        cx.notify();
+                    })
+                    .ok();
+                })
+                .detach();
+                cx.notify();
+            }
             ConfirmAction::Report(id) => {
                 let client = self.client.clone();
                 let server = if self.home { None } else { self.server_id.clone() };

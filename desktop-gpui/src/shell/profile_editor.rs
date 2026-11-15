@@ -2,7 +2,7 @@
 //! cosmetics.css): the rail of decoration tiles, the live preview card, the details tabs and the
 //! save bar. At this window size the details sit under the preview (cosmetics.css ≤1380px).
 
-use gpui::{AnyElement, Context, Entity, Focusable, FontWeight, Hsla, SharedString, Window, div, prelude::*, px, rgb, rgba};
+use gpui::{AnyElement, Context, Entity, FontWeight, Hsla, SharedString, Window, div, prelude::*, px, rgb, rgba};
 use serde_json::{Value, json};
 
 use super::Shell;

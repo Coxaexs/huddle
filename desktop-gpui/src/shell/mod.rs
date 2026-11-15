@@ -313,6 +313,8 @@ pub struct Shell {
     reaction_viewer: Option<reaction_viewer::ReactionViewer>,
     forward: Option<forward::Forward>,
     invite: Option<invite::InviteDialog>,
+    /// The open prompt's field events (Enter saves, Escape cancels).
+    prompt_sub: Option<gpui::Subscription>,
     dev_invite_done: bool,
     thread: Option<thread::Thread>,
     /// Thread replies already counted on their root (the hub and the send both report them).
@@ -516,6 +518,7 @@ impl Shell {
             reaction_viewer: None,
             forward: None,
             invite: None,
+            prompt_sub: None,
             dev_invite_done: false,
             thread: None,
             counted_replies: HashSet::new(),

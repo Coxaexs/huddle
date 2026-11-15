@@ -109,6 +109,12 @@ impl TextInput {
         }
     }
 
+    /// Selects everything, as `input.select()` does when a prompt opens.
+    pub fn select_everything(&mut self, cx: &mut Context<Self>) {
+        self.move_to(0, cx);
+        self.select_to(self.content.len(), cx)
+    }
+
     pub fn centered(mut self) -> Self {
         self.centered = true;
         self
