@@ -55,6 +55,8 @@ pub(super) enum ConfirmAction {
     DeleteAutomod(String),
     /// Server settings → Integrations.
     Integration(super::integrations::IntegAct),
+    /// The Events panel's "Cancel Event".
+    CancelEvent(String),
 }
 
 #[derive(Clone, Copy)]
@@ -738,6 +740,7 @@ impl Shell {
             ConfirmAction::RemoveExpression(kind, id) => self.remove_expression(kind, id, cx),
             ConfirmAction::DeleteAutomod(id) => self.delete_automod(id, cx),
             ConfirmAction::Integration(act) => self.integ_confirmed(act, cx),
+            ConfirmAction::CancelEvent(id) => self.cancel_event(id, cx),
             ConfirmAction::DeleteCategory(id) => self.delete_category_confirmed(id, cx),
             ConfirmAction::Report(id) => {
                 let client = self.client.clone();

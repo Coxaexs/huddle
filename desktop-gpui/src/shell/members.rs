@@ -491,6 +491,20 @@ impl gpui::Render for Shell {
                 }
             }
         }
+        // Development: HOFFLE_DEV_EVENTS=list|form|subscribe opens the Events panel once its list is in.
+        static DEV_EVENTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(view) = std::env::var("HOFFLE_DEV_EVENTS")
+            && self.server_id.as_ref().is_some_and(|s| self.events.contains_key(s))
+            && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
+            && !DEV_EVENTS.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            self.open_events(cx);
+            match view.as_str() {
+                "form" => self.dev_events_form(window, cx),
+                "subscribe" => self.dev_events_subscribe(cx),
+                _ => {}
+            }
+        }
         // Development: HOFFLE_DEV_RENAME=1 opens the Rename Server prompt once (only to look at).
         if std::env::var("HOFFLE_DEV_RENAME").is_ok() && self.confirm.is_none() && !self.dev_invite_done
             && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
@@ -693,6 +707,7 @@ impl gpui::Render for Shell {
             .children(self.render_context_menu(window, cx))
             .children(self.render_toasts(cx))
             .children(self.render_settings(window, cx))
+            .children(self.render_events(window, cx))
             .children(self.render_confirm(cx))
             .children(self.render_forward(window, cx))
             .children(self.render_invite(window, cx))

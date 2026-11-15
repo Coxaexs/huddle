@@ -10,6 +10,7 @@ mod forward;
 mod invite;
 mod server_settings;
 mod integrations;
+mod events;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -317,6 +318,10 @@ pub struct Shell {
     reaction_viewer: Option<reaction_viewer::ReactionViewer>,
     forward: Option<forward::Forward>,
     invite: Option<invite::InviteDialog>,
+    /// Each server's upcoming events, and which are being fetched.
+    events: HashMap<String, Vec<serde_json::Value>>,
+    events_loading: std::cell::RefCell<std::collections::HashSet<String>>,
+    events_panel: Option<events::EventsPanel>,
     server_settings: Option<server_settings::ServerSettings>,
     /// Create Role answered: open the newest role when the servers come back.
     pending_new_role: bool,
@@ -539,6 +544,9 @@ impl Shell {
             reaction_viewer: None,
             forward: None,
             invite: None,
+            events: HashMap::new(),
+            events_loading: Default::default(),
+            events_panel: None,
             server_settings: None,
             pending_new_role: false,
             kind_menu: None,
@@ -1425,7 +1433,13 @@ impl Shell {
                     list.push((user, name, Instant::now()));
                 }
             }
-            "structure" => self.load_servers(cx),
+            "structure" => {
+                self.load_servers(cx);
+                // Events follow the server's changes (setEventsRefresh in the web app).
+                if let Some(server) = self.server_id.clone() {
+                    self.load_events(&server, cx);
+                }
+            }
             "voice-evicted" => {
                 if self.call.is_some() {
                     self.leave_voice(cx);

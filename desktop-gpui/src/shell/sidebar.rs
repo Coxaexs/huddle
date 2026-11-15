@@ -151,24 +151,7 @@ impl Shell {
                         )
                     }),
             )
-            .child(
-                div().flex_none().h(px(39.)).pb(px(5.)).px(px(9.)).child(
-                div()
-                    .id("events")
-                    .h(px(34.))
-                    .px(px(10.))
-                    .rounded(px(10.))
-                    .border_1()
-                    .border_color(gpui::transparent_black())
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .cursor_pointer()
-                    .text_color(Theme::ink())
-                    .hover(|s| s.bg(Theme::hover()))
-                    .child(icon("calendar-days", 15., Theme::quiet()))
-                    .child(div().text_size(px(13.)).line_height(px(15.6)).font_weight(FontWeight::BOLD).child(t("sidebar.events"))),
-            ));
+            .child(self.render_events_chip(cx));
 
         let mut categories = server.categories.clone();
         categories.sort_by_key(|c| c.position);
