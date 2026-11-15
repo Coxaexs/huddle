@@ -239,6 +239,26 @@ impl Shell {
             .child(div().flex_1().min_w_0().truncate().child(channel.name.clone()))
             .when(channel.private && !simple, |d| d.child(icon("lock", 12., Theme::quiet())))
             .when(mentions > 0 && !selected, |d| d.child(ui::rail_badge(mentions)))
+            // `.channel-invite`: hidden until the row is hovered (55%), full on its own hover.
+            .when(!simple && self.can_invite(), |d| {
+                let target = channel.id.clone();
+                d.group("channel-row").child(
+                    div()
+                        .id(SharedString::from(format!("channel-invite-{}", channel.id)))
+                        .flex_none()
+                        .px(px(2.))
+                        .when(mentions > 0 && !selected, |d| d.ml(px(-5.)))
+                        .opacity(0.)
+                        .group_hover("channel-row", |s| s.opacity(0.55))
+                        .hover(|s| s.opacity(1.))
+                        .tooltip(ui::tooltip("Create invite".to_string()))
+                        .child(icon("user-plus", 14., Theme::muted()))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.open_invite(Some(target.clone()), window, cx);
+                        })),
+                )
+            })
             .on_mouse_down(gpui::MouseButton::Right, {
                 let id = channel.id.clone();
                 cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {

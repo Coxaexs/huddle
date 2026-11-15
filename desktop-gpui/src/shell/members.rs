@@ -417,6 +417,20 @@ impl gpui::Render for Shell {
         }
         // Development: HOFFLE_DEV_FORWARD=1 opens the Forward dialog on the channel's last message;
         // HOFFLE_DEV_FORWARD_PICK=<n> also picks the n-th destination.
+        // Development: HOFFLE_DEV_INVITE=CODE,max,uses opens Invite once with that link (no request);
+        // HOFFLE_DEV_INVITE_STATE=qr|edit shows the QR code or the link settings.
+        if std::env::var("HOFFLE_DEV_INVITE").is_ok()
+            && self.invite.is_none()
+            && !self.dev_invite_done
+            && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
+        {
+            self.dev_invite_done = true;
+            self.open_invite(None, window, cx);
+            let state = std::env::var("HOFFLE_DEV_INVITE_STATE").unwrap_or_default();
+            if let Some(d) = self.invite.as_mut() {
+                d.dev_state(&state, window.scale_factor());
+            }
+        }
         if std::env::var("HOFFLE_DEV_FORWARD").is_ok() && self.forward.is_none() && !self.dev_forward_done {
             if let Some(last) = self.channel_id.as_ref().and_then(|c| self.messages.get(c)).and_then(|l| l.last()).cloned() {
                 self.dev_forward_done = true;
@@ -612,6 +626,7 @@ impl gpui::Render for Shell {
             .children(self.render_settings(window, cx))
             .children(self.render_confirm(cx))
             .children(self.render_forward(window, cx))
+            .children(self.render_invite(window, cx))
             .on_modifiers_changed(cx.listener(|this, e: &gpui::ModifiersChangedEvent, _, cx| {
                 if this.shift_held != e.modifiers.shift {
                     this.shift_held = e.modifiers.shift;
@@ -682,6 +697,14 @@ impl gpui::Render for Shell {
                 } else if event.keystroke.key == "escape" && this.notify_menu.is_some() {
                     this.notify_menu = None;
                     cx.notify();
+                    cx.stop_propagation();
+                } else if event.keystroke.key == "escape" && this.invite.is_some() {
+                    if let Some(d) = this.invite.as_mut().filter(|d| d.editing_open()) {
+                        d.stop_editing();
+                        cx.notify();
+                    } else {
+                        this.close_invite(window, cx);
+                    }
                     cx.stop_propagation();
                 } else if event.keystroke.key == "escape" && this.profile_editor.is_some() {
                     this.request_close_profile(window, cx);

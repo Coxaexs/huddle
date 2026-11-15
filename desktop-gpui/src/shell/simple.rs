@@ -89,7 +89,7 @@ impl Shell {
                     .hover(|s| s.bg(ink.opacity(0.06)))
                     .child(icon("user-plus", 15., ink))
                     .child(t("simple.invite"))
-                    .on_click(cx.listener(|this, _, _, cx| this.set_notice("Invites are not in this app yet.", cx))),
+                    .on_click(cx.listener(|this, _, window, cx| this.open_invite(None, window, cx))),
             );
         }
         right = right.child(left_part);

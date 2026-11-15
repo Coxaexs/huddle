@@ -7,6 +7,7 @@ mod context_menu;
 mod emoji_picker;
 mod files;
 mod forward;
+mod invite;
 mod thread;
 mod gif_picker;
 mod links;
@@ -311,6 +312,8 @@ pub struct Shell {
     /// Who reacted with one emoji to a message, and where its rows were drawn.
     reaction_viewer: Option<reaction_viewer::ReactionViewer>,
     forward: Option<forward::Forward>,
+    invite: Option<invite::InviteDialog>,
+    dev_invite_done: bool,
     thread: Option<thread::Thread>,
     /// Thread replies already counted on their root (the hub and the send both report them).
     counted_replies: HashSet<String>,
@@ -512,6 +515,8 @@ impl Shell {
             shift_held: std::env::var_os("HOFFLE_DEV_SHIFT").is_some(),
             reaction_viewer: None,
             forward: None,
+            invite: None,
+            dev_invite_done: false,
             thread: None,
             counted_replies: HashSet::new(),
             viewer_spot: profile_card::spot(),

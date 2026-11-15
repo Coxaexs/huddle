@@ -310,6 +310,11 @@ impl Client {
         self.get("/api/friends")
     }
 
+    /// POST /api/invites: this account's link for a server and channel (`reuse`), or a new one.
+    pub fn create_invite(&self, body: Value) -> Result<Value> {
+        self.post("/api/invites", body)
+    }
+
     /// Finds or opens the direct message with someone; returns its channel id.
     pub fn open_dm(&self, user_id: &str) -> Result<String> {
         let reply: Value = self.post("/api/dms", json!({ "userId": user_id }))?;
