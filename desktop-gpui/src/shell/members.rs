@@ -485,6 +485,10 @@ impl gpui::Render for Shell {
             self.open_server_settings(window, cx);
             if let Some(s) = self.server_settings.as_mut() {
                 s.tab = Box::leak(tab.into_boxed_str());
+                // HOFFLE_DEV_SS_SCROLL=<px> scrolls the page down that far.
+                if let Some(y) = std::env::var("HOFFLE_DEV_SS_SCROLL").ok().and_then(|v| v.parse::<f32>().ok()) {
+                    s.main_scroll.set_offset(gpui::point(px(0.), px(-y)));
+                }
             }
         }
         // Development: HOFFLE_DEV_RENAME=1 opens the Rename Server prompt once (only to look at).

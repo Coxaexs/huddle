@@ -317,6 +317,8 @@ pub struct Shell {
     forward: Option<forward::Forward>,
     invite: Option<invite::InviteDialog>,
     server_settings: Option<server_settings::ServerSettings>,
+    /// Create Role answered: open the newest role when the servers come back.
+    pending_new_role: bool,
     /// The five-kind channel picker, open under the "+" of the channel list (None) or of a category.
     kind_menu: Option<Option<String>>,
     /// A channel just made, opened once the servers come back with it.
@@ -537,6 +539,7 @@ impl Shell {
             forward: None,
             invite: None,
             server_settings: None,
+            pending_new_role: false,
             kind_menu: None,
             pending_open_channel: None,
             dev_hub_ready: false,
@@ -631,6 +634,12 @@ impl Shell {
                     Ok(servers) => {
                         crate::trace(format!("servers loaded: {}", servers.len()));
                         this.servers = servers;
+                        if std::mem::take(&mut this.pending_new_role) {
+                            let sid = this.server_settings.as_ref().map(|s| s.server_id_pub());
+                            if let Some(role) = sid.and_then(|sid| this.servers.iter().find(|s| s.id == sid)).and_then(|s| s.roles.last()).map(|r| r.id.clone()) {
+                                this.set_active_role(role);
+                            }
+                        }
                         if let Some(id) = this.pending_open_channel.take()
                             && this.servers.iter().any(|s| s.channels.iter().any(|c| c.id == id && c.is_text()))
                         {

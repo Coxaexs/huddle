@@ -51,8 +51,21 @@ pub(super) struct ServerSettings {
     notice: Option<String>,
     member_search: Entity<TextInput>,
     role_menu: Option<String>,
+    role_search: Entity<TextInput>,
+    role_emoji: Entity<TextInput>,
+    /// The role open in the editor ("@everyone" for the server's defaults).
+    active_role: Option<String>,
+    pub(super) main_scroll: gpui::ScrollHandle,
     _subs: Vec<Subscription>,
 }
+
+/// lib/permissions.ts PERMISSION_INFO (tools: esbuild + node, resources/data/permissions.json):
+/// flag, label, description, category.
+static PERMISSIONS: std::sync::LazyLock<Vec<(u64, String, String, String)>> = std::sync::LazyLock::new(|| {
+    crate::assets::ASSETS.iter().find(|(p, _)| *p == "data/permissions.json").and_then(|(_, b)| serde_json::from_slice(b).ok()).unwrap_or_default()
+});
+
+const EVERYONE: &str = "@everyone";
 
 /// What the viewer may do here (the dialog's can* props, made effective as it makes them).
 #[derive(Clone, Copy)]
@@ -69,7 +82,19 @@ struct Can {
     ban: bool,
 }
 
+impl ServerSettings {
+    pub(super) fn server_id_pub(&self) -> String {
+        self.server_id.clone()
+    }
+}
+
 impl Shell {
+    pub(super) fn set_active_role(&mut self, role: String) {
+        if let Some(s) = self.server_settings.as_mut() {
+            s.active_role = Some(role);
+        }
+    }
+
     fn server_can(&self) -> Can {
         let p = self.my_permissions();
         let has = |b: u64| p & b != 0;
@@ -118,6 +143,19 @@ impl Shell {
             }
             cx.notify();
         }));
+        let role_search = cx.new(|cx| TextInput::new("Search Roles", cx).look(Look { size: 14., line_height: 21., height: 21., color: Theme::ink().into(), placeholder: Theme::muted().into() }));
+        let role_emoji = cx.new(|cx| TextInput::new(t("roleIcon.emoji"), cx).look(Look { size: 14., line_height: 21., height: 21., color: Theme::ink().into(), placeholder: Theme::muted().into() }));
+        for input in [&role_search, &role_emoji] {
+            subs.push(cx.subscribe_in(input, window, |this, _, event, _, cx| {
+                match event {
+                    InputEvent::Escape => this.server_settings = None,
+                    InputEvent::Submit => this.save_role_emoji(cx),
+                    _ => {}
+                }
+                cx.notify();
+            }));
+        }
+        let active_role = server.roles.first().map(|r| r.id.clone());
         self.server_menu = false;
         self.server_settings = Some(ServerSettings {
             server_id: server.id.clone(),
@@ -130,8 +168,26 @@ impl Shell {
             notice: None,
             member_search,
             role_menu: None,
+            role_search,
+            role_emoji,
+            active_role,
+            main_scroll: gpui::ScrollHandle::new(),
             _subs: subs,
         });
+        cx.notify();
+    }
+
+    pub(super) fn server_settings_server(&self) -> Option<String> {
+        self.server_settings.as_ref().map(|s| s.server_id.clone())
+    }
+
+    /// After Create Role: the newest role opens in the editor once the servers are back.
+    pub(super) fn role_created(&mut self, name: String, cx: &mut Context<Self>) {
+        if let Some(s) = self.server_settings.as_mut() {
+            s.active_role = None;
+            s.notice = Some(format!("Role \"{name}\" created."));
+        }
+        self.pending_new_role = true;
         cx.notify();
     }
 
@@ -383,6 +439,7 @@ impl Shell {
         let page: AnyElement = match tab {
             "profile" => self.render_server_profile(s, server, can, window, cx),
             "members" => self.render_server_members(s, server, can, window, cx),
+            "roles" => self.render_server_roles(s, server, can, window, cx),
             other => self.render_server_tab(other, s, server, can, window, cx),
         };
         let main = div()
@@ -391,6 +448,7 @@ impl Shell {
             .h_full()
             .min_w_0()
             .overflow_y_scroll()
+            .track_scroll(&s.main_scroll)
             .bg(Theme::chat_bg())
             .px(px(60.))
             .py(px(40.))
@@ -931,6 +989,295 @@ impl Shell {
             )
             .child(list.mt(px(-8.)))
             .into_any_element()
+    }
+
+    /// A role change that answers with the servers: reload them, then the notice.
+    fn role_call(&mut self, method: &'static str, path: String, body: Value, notice: Option<String>, cx: &mut Context<Self>) {
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    match method {
+                        "POST" => client.settings_post(&path, body),
+                        "DELETE" => client.settings_delete(&path, body),
+                        _ => client.settings_patch(&path, body),
+                    }
+                })
+                .await;
+            this.update(cx, |this, cx| match result {
+                Ok(v) => {
+                    // The answer carries the servers; the newest role opens after Create Role.
+                    if method == "POST"
+                        && let Some(sid) = this.server_settings.as_ref().map(|s| s.server_id.clone())
+                        && let Some(role) = v.get("servers").and_then(Value::as_array).and_then(|a| a.iter().find(|s| s["id"] == sid.as_str())).and_then(|s| s["roles"].as_array()).and_then(|r| r.last()).and_then(|r| r["id"].as_str())
+                        && let Some(s) = this.server_settings.as_mut()
+                    {
+                        s.active_role = Some(role.to_string());
+                    }
+                    this.load_servers(cx);
+                    if let Some(n) = notice {
+                        this.server_notice(n, cx);
+                    }
+                }
+                Err(e) => this.server_notice(e.to_string(), cx),
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// toggleRolePermission(): the flag flipped, shown at once (the next toggle builds on it).
+    fn toggle_role_permission(&mut self, flag: u64, cx: &mut Context<Self>) {
+        let Some(s) = self.server_settings.as_ref() else { return };
+        let Some(role_id) = s.active_role.clone() else { return };
+        let sid = s.server_id.clone();
+        let Some(server) = self.servers.iter_mut().find(|x| x.id == sid) else { return };
+        let (path, body) = if role_id == EVERYONE {
+            server.everyone_permissions ^= flag;
+            ("/api/roles/everyone".to_string(), json!({ "serverId": sid, "permissions": server.everyone_permissions }))
+        } else {
+            let Some(role) = server.roles.iter_mut().find(|r| r.id == role_id) else { return };
+            role.permissions ^= flag;
+            (format!("/api/roles/{}", url::form_urlencoded::byte_serialize(role_id.as_bytes()).collect::<String>()), json!({ "permissions": role.permissions }))
+        };
+        cx.notify();
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.settings_patch(&path, body) }).await;
+            this.update(cx, |this, cx| {
+                if let Err(e) = result {
+                    this.server_notice(if e.to_string().is_empty() { "Could not update permissions".into() } else { e.to_string() }, cx);
+                    this.load_servers(cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn save_role_emoji(&mut self, cx: &mut Context<Self>) {
+        let Some(s) = self.server_settings.as_ref() else { return };
+        let Some(role) = s.active_role.clone().filter(|r| r != EVERYONE) else { return };
+        let emoji = s.role_emoji.read(cx).text().trim().to_string();
+        if emoji.is_empty() {
+            return;
+        }
+        let path = format!("/api/roles/{}", url::form_urlencoded::byte_serialize(role.as_bytes()).collect::<String>());
+        self.role_call("PATCH", path, json!({ "icon": emoji }), Some("Role icon saved.".into()), cx);
+    }
+
+    fn upload_role_icon(&mut self, cx: &mut Context<Self>) {
+        let Some(role) = self.server_settings.as_ref().and_then(|s| s.active_role.clone()).filter(|r| r != EVERYONE) else { return };
+        let picked = cx.prompt_for_paths(gpui::PathPromptOptions { files: true, directories: false, multiple: false, prompt: None });
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let Ok(Ok(Some(paths))) = picked.await else { return };
+            let Some(path) = paths.into_iter().next() else { return };
+            let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "image".into());
+            let mime = match path.extension().map(|e| e.to_string_lossy().to_lowercase()).as_deref() {
+                Some("png") => "image/png",
+                Some("gif") => "image/gif",
+                Some("webp") => "image/webp",
+                _ => "image/jpeg",
+            };
+            let result = cx.background_executor().spawn(async move { client.upload_field("image", &name, mime, &std::fs::read(&path)?) }).await;
+            this.update(cx, |this, cx| match result {
+                Ok(key) => {
+                    let icon = format!("/hangout/api/uploads/{}", url::form_urlencoded::byte_serialize(key.as_bytes()).collect::<String>());
+                    let path = format!("/api/roles/{}", url::form_urlencoded::byte_serialize(role.as_bytes()).collect::<String>());
+                    this.role_call("PATCH", path, json!({ "icon": icon }), Some("Role icon saved.".into()), cx);
+                }
+                Err(e) => this.server_notice(if e.to_string().is_empty() { "That image did not upload.".into() } else { e.to_string() }, cx),
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// ServerRolesTab: Default Permissions (@everyone), search and Create Role, the roles, and the
+    /// open role's icon and permissions.
+    fn render_server_roles(&self, s: &ServerSettings, server: &crate::model::Server, can: Can, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        let grey: Hsla = rgb(0x949ba4).into();
+        let lavender: Hsla = Theme::lavender().into();
+        let on_accent: Hsla = rgb(0x15121f).into();
+        let query = s.role_search.read(cx).text().to_lowercase();
+        let roles: Vec<&crate::model::Role> = server.roles.iter().filter(|r| r.name.to_lowercase().contains(&query)).collect();
+        let members = self.members.get(&server.id).map(|m| m.len()).unwrap_or(0);
+        let active = s.active_role.clone();
+        let everyone = active.as_deref() == Some(EVERYONE);
+        let _ = window;
+        let mut page = div()
+            .flex()
+            .flex_col()
+            .gap(px(24.))
+            .child(div().font_family(DISPLAY_FONT).text_size(px(26.)).line_height(px(39.)).font_weight(FontWeight::MEDIUM).text_color(ink).child("Roles"))
+            .child(div().mt(px(4.)).mb(px(12.)).text_size(px(13.5)).line_height(px(18.9)).text_color(muted).child("Use roles to group your server members and assign permissions."))
+            .child(
+                div()
+                    .id("ss-everyone")
+                    .px(px(20.))
+                    .py(px(16.))
+                    .rounded(px(8.))
+                    .bg(Theme::panel())
+                    .border_1()
+                    .border_color(if everyone { lavender } else { gpui::transparent_black() })
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .cursor_pointer()
+                    .child(div().flex().flex_col().gap(px(6.)).child(div().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::BOLD).text_color(ink).child("Default Permissions")).child(div().text_size(px(12.)).line_height(px(15.)).text_color(grey).child("@everyone · applies to all server members")))
+                    .child(div().text_size(px(20.)).line_height(px(30.)).text_color(grey).child("›"))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        if let Some(s) = this.server_settings.as_mut() {
+                            s.active_role = Some(EVERYONE.into());
+                        }
+                        cx.notify();
+                    })),
+            )
+            .child(
+                div()
+                    .mt(px(10.))
+                    .flex()
+                    .items_center()
+                    .gap(px(16.))
+                    .child(div().flex_1().relative().h(px(43.)).pl(px(36.)).pr(px(14.)).rounded(px(6.)).bg(Theme::paper()).border_1().border_color(Theme::line()).flex().items_center().child(div().absolute().left(px(12.)).top(px(14.)).opacity(0.6).child(ui::icon("search", 14., ink))).child(div().flex_1().child(s.role_search.clone())))
+                    .when(can.roles, |d| {
+                        d.child(div().id("ss-create-role").h(px(38.25)).px(px(18.)).rounded(px(8.)).bg(lavender).flex().items_center().text_size(px(13.5)).font_weight(FontWeight::SEMIBOLD).text_color(on_accent).cursor_pointer().child("Create Role").on_click(cx.listener(|this, _, window, cx| {
+                            this.open_prompt(super::channel_tools::PromptKind::CreateRole, "Create Role".into(), "Enter a name for the new role:".into(), String::new(), "e.g. Moderator", "Create Role", None, window, cx);
+                        })))
+                    }),
+            )
+            .child(div().pt(px(12.)).px(px(10.)).pb(px(4.)).flex().justify_between().text_size(px(11.)).line_height(px(16.5)).font_weight(FontWeight::EXTRA_BOLD).text_color(grey).child(format!("ROLES - {}", roles.len())).child("MEMBERS"));
+        let mut list = div().flex().flex_col().gap(px(4.));
+        for r in &roles {
+            let selected = active.as_deref() == Some(r.id.as_str());
+            let color = crate::theme::css_color(&r.color).unwrap_or(rgb(0x99aab5).into());
+            let id = r.id.clone();
+            let icon_el = r.icon.as_ref().filter(|i| !i.is_empty()).map(|i| {
+                if i.starts_with('/') || i.starts_with("http") {
+                    gpui::img(self.client.absolute(i)).size(px(16.)).into_any_element()
+                } else {
+                    div().text_size(px(14.)).child(i.clone()).into_any_element()
+                }
+            });
+            let act = |id: String, icon: &'static str, tip: &'static str| div().id(SharedString::from(id)).p(px(6.)).rounded(px(4.)).cursor_pointer().hover(|s| s.bg(gpui::white().opacity(0.08))).tooltip(ui::tooltip(tip.to_string())).child(ui::icon(icon, 14., rgb(0xb5bac1)));
+            list = list.child(
+                div()
+                    .id(SharedString::from(format!("ss-role-{}", r.id)))
+                    .h(px(50.))
+                    .px(px(16.))
+                    .rounded(px(6.))
+                    .bg(if selected { rgb(0x35373c) } else { rgb(0x1e1f22) })
+                    .flex()
+                    .items_center()
+                    .cursor_pointer()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(12.))
+                            .child(ui::icon("grip-vertical", 14., rgb(0x6d6f78)))
+                            .child(ui::icon("shield", 16., color))
+                            .child(div().text_size(px(14.)).line_height(px(21.)).font_weight(FontWeight::BOLD).text_color(gpui::white()).child(r.name.clone()))
+                            .children(icon_el),
+                    )
+                    .child(div().flex_1().flex().justify_center().child(div().flex().items_center().gap(px(4.)).text_size(px(16.)).line_height(px(24.)).text_color(ink).child(members.to_string()).child(ui::icon("users", 14., ink))))
+                    .child(div().flex().items_center().gap(px(8.)).child(act(format!("ss-role-edit-{}", r.id), "pencil", "Edit Role")).child(act(format!("ss-role-more-{}", r.id), "ellipsis", "More")))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(s) = this.server_settings.as_mut() {
+                            s.active_role = Some(id.clone());
+                        }
+                        cx.notify();
+                    })),
+            );
+        }
+        page = page.child(list);
+        let active_role: Option<(String, String, u64, Option<String>)> = match active.as_deref() {
+            Some(EVERYONE) => Some((EVERYONE.into(), "@everyone".into(), server.everyone_permissions, None)),
+            Some(id) => server.roles.iter().find(|r| r.id == id).map(|r| (r.id.clone(), r.name.clone(), r.permissions, r.icon.clone())),
+            None => None,
+        };
+        if let (Some((rid, rname, perms, ricon)), true) = (active_role, can.roles) {
+            let mut editor = div().mt(px(24.)).flex().flex_col();
+            if rid != EVERYONE {
+                let has_icon = ricon.as_ref().is_some_and(|i| !i.is_empty());
+                let emoji_ok = { let e = s.role_emoji.read(cx).text(); !e.trim().is_empty() && Some(e.trim().to_string()) != ricon };
+                let current: AnyElement = match ricon.as_ref().filter(|i| !i.is_empty()) {
+                    Some(i) if i.starts_with('/') || i.starts_with("http") => gpui::img(self.client.absolute(i)).size(px(28.)).into_any_element(),
+                    Some(i) => div().text_size(px(22.)).child(i.clone()).into_any_element(),
+                    None => div().text_size(px(22.)).line_height(px(22.)).child("—").into_any_element(),
+                };
+                let plain = |id: &'static str, text: String| div().id(id).h(px(38.25)).px(px(18.)).rounded(px(8.)).flex().items_center().text_size(px(13.5)).font_weight(FontWeight::SEMIBOLD).text_color(ink).cursor_pointer().child(text);
+                editor = editor.child(
+                    div()
+                        .mt(px(12.))
+                        .mb(px(20.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(8.))
+                        .child(div().text_size(px(16.)).line_height(px(24.)).text_color(ink).child(t("roleIcon.title")))
+                        .child(div().text_size(px(13.5)).line_height(px(18.9)).text_color(muted).child(t("roleIcon.desc")))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_wrap()
+                                .items_center()
+                                .gap(px(8.))
+                                .child(div().ml(px(4.)).size(px(28.)).flex().items_center().justify_center().child(current))
+                                .child(div().w(px(120.)).h(px(43.)).px(px(14.)).rounded(px(6.)).bg(Theme::paper()).border_1().border_color(Theme::line()).flex().items_center().child(s.role_emoji.clone()))
+                                .child(div().id("ss-role-emoji").h(px(38.25)).px(px(18.)).rounded(px(8.)).bg(lavender).flex().items_center().text_size(px(13.5)).font_weight(FontWeight::SEMIBOLD).text_color(on_accent).when(!emoji_ok, |d| d.opacity(0.5)).when(emoji_ok, |d| d.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.save_role_emoji(cx)))).child(t("roleIcon.save")))
+                                .child(plain("ss-role-upload", t("roleIcon.upload")).on_click(cx.listener(|this, _, _, cx| this.upload_role_icon(cx))))
+                                .when(has_icon, |d| {
+                                    let rid = rid.clone();
+                                    d.child(plain("ss-role-remove-icon", t("roleIcon.remove")).on_click(cx.listener(move |this, _, _, cx| {
+                                        let path = format!("/api/roles/{}", url::form_urlencoded::byte_serialize(rid.as_bytes()).collect::<String>());
+                                        this.role_call("PATCH", path, json!({ "icon": Value::Null }), Some("Role icon removed.".into()), cx);
+                                    })))
+                                }),
+                        ),
+                );
+            }
+            editor = editor.child(div().mb(px(8.)).text_size(px(16.)).line_height(px(24.)).font_weight(FontWeight::SEMIBOLD).text_color(rgb(0xf2f3f5)).child(format!("Edit Permissions for {rname}")));
+            if rid == EVERYONE {
+                editor = editor.child(div().mb(px(12.)).text_size(px(13.5)).line_height(px(18.9)).text_color(muted).child("Every member has these, whatever roles they hold."));
+            }
+            for (flag, label, desc, _) in PERMISSIONS.iter() {
+                let on = perms & flag == *flag;
+                let flag = *flag;
+                editor = editor.child(
+                    div()
+                        .id(SharedString::from(format!("ss-perm-{flag}")))
+                        .py(px(14.))
+                        .border_b_1()
+                        .border_color(Theme::divider())
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap(px(16.))
+                        .cursor_pointer()
+                        .child(div().flex_1().flex().flex_col().gap(px(4.)).child(div().text_size(px(15.)).line_height(px(22.5)).font_weight(FontWeight::SEMIBOLD).text_color(rgb(0xf2f3f5)).child(label.clone())).child(div().text_size(px(13.)).line_height(px(19.5)).text_color(grey).child(desc.clone())))
+                        // Chrome's dark checkbox in the #5865f2 accent.
+                        .child(
+                            div()
+                                .flex_none()
+                                .size(px(18.))
+                                .child(
+                                    div()
+                                        .size(px(18.))
+                                        .rounded(px(3.))
+                                        .when(on, |d| d.bg(rgb(0x5865f2)).child(div().size_full().flex().items_center().justify_center().child(ui::icon("check", 14., gpui::white()))))
+                                        .when(!on, |d| d.bg(rgb(0x3b3b3b)).border_1().border_color(rgb(0x858585))),
+                                ),
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| this.toggle_role_permission(flag, cx))),
+                );
+            }
+            page = page.child(editor);
+        }
+        page.into_any_element()
     }
 
     /// The tabs still to come in this app: what they are, and the way to them on the web.

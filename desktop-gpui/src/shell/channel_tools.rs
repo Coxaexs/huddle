@@ -23,6 +23,7 @@ pub(super) enum PromptKind {
     Slowmode(String),
     Bitrate(String),
     Region(String),
+    CreateRole,
 }
 
 /// CREATABLE_CHANNEL_KINDS with CHANNEL_KIND_COPY: kind, label, icon, title, message, placeholder.
@@ -300,6 +301,14 @@ impl Shell {
                 let Ok(kbps) = value.parse::<u64>() else { return };
                 let bitrate = clamp_bitrate(Some(kbps * 1000));
                 self.patch_channel(id, json!({ "bitrate": bitrate }), move || format!("Voice bitrate set to {} kbps", bitrate / 1000), cx);
+            }
+            PromptKind::CreateRole => {
+                if value.is_empty() {
+                    return;
+                }
+                let Some(server) = self.server_settings_server() else { return };
+                let name = value.clone();
+                self.server_call(move |c| c.settings_post("/api/roles", json!({ "serverId": server, "name": name })), move |this, cx| this.role_created(value, cx), cx);
             }
             PromptKind::Region(id) => {
                 let val = value.to_lowercase();
