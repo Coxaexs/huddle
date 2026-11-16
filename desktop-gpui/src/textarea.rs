@@ -58,6 +58,8 @@ pub fn bind_keys(cx: &mut App) {
 
 pub enum AreaEvent {
     Submit,
+    /// A picture pasted with no text beside it (a screenshot): the owner attaches it.
+    PasteImage(gpui::Image),
     Changed,
     Escape,
     /// While a menu sits on the box (`set_intercept`): Up and Down move in it, Tab or Enter picks.
@@ -392,8 +394,15 @@ impl TextArea {
         self.replace_text_in_range(None, "", window, cx)
     }
     fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+        let Some(item) = cx.read_from_clipboard() else { return };
+        if let Some(text) = item.text() {
             self.replace_text_in_range(None, &text, window, cx);
+            return;
+        }
+        for entry in item.entries() {
+            if let gpui::ClipboardEntry::Image(image) = entry {
+                cx.emit(AreaEvent::PasteImage(image.clone()));
+            }
         }
     }
     fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {

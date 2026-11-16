@@ -432,21 +432,61 @@ impl Shell {
         let picked = cx.prompt_for_paths(gpui::PathPromptOptions { files: true, directories: false, multiple: true, prompt: None });
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = picked.await else { return };
-            this.update(cx, |this, cx| {
-                for path in paths {
-                    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                    let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-                    let image = matches!(
-                        path.extension().map(|e| e.to_string_lossy().to_lowercase()).as_deref(),
-                        Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "avif" | "heic")
-                    );
-                    this.pending_files.push(Pending { path, name, size, image });
-                }
-                cx.notify();
-            })
-            .ok();
+            this.update(cx, |this, cx| this.accept_paths(paths, cx)).ok();
         })
         .detach();
+    }
+
+    /// acceptAttachment(): shared by the "+", a drop and a paste. No HTML; 40 MB each; 10 at most.
+    pub(super) fn accept_paths(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
+        const MAX: usize = 10;
+        const NORMAL_UPLOAD_MAX_BYTES: u64 = 40 * 1024 * 1024;
+        for path in paths {
+            if path.is_dir() {
+                continue;
+            }
+            let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let lower = name.to_lowercase();
+            if lower.ends_with(".html") || lower.ends_with(".htm") {
+                self.set_notice("For security, HTML files cannot be attached.", cx);
+                continue;
+            }
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            if size > NORMAL_UPLOAD_MAX_BYTES {
+                self.set_notice(format!("{name} is larger than 40 MB."), cx);
+                continue;
+            }
+            let image = matches!(
+                path.extension().map(|e| e.to_string_lossy().to_lowercase()).as_deref(),
+                Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "avif" | "heic")
+            );
+            if self.pending_files.len() < MAX {
+                self.pending_files.push(Pending { path, name, size, image });
+            }
+        }
+        cx.notify();
+    }
+
+    /// Pasting a screenshot attaches it instead of doing nothing (kept in a temporary file until sent).
+    pub(super) fn accept_pasted_image(&mut self, image: gpui::Image, cx: &mut Context<Self>) {
+        let ext = match image.format {
+            gpui::ImageFormat::Jpeg => "jpg",
+            gpui::ImageFormat::Gif => "gif",
+            gpui::ImageFormat::Webp => "webp",
+            gpui::ImageFormat::Bmp => "bmp",
+            gpui::ImageFormat::Tiff => "tiff",
+            gpui::ImageFormat::Svg => "svg",
+            _ => "png",
+        };
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join("hoffle-paste");
+        let _ = std::fs::create_dir_all(&dir);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = dir.join(format!("{}-{n}", std::process::id())).join(format!("image.{ext}"));
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(&dir));
+        if std::fs::write(&path, &image.bytes).is_ok() {
+            self.accept_paths(vec![path], cx);
+        }
     }
 
     /// `.attachment-row`: pictures as 90×70 thumbnails, other files as a tile with their badge; each

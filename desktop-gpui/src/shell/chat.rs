@@ -50,13 +50,30 @@ impl Shell {
         // `.chat-panel` sits 10px below the window top and runs to the bottom edge.
         // With no member list (or thread) beside it, the card stops 10px short of the window edge.
         let alone = !(self.members_open && (!self.home || self.channel_id.is_some()) && self.stage.is_none()) && self.thread.is_none();
+        // HOFFLE_DEV_DROP_OVERLAY=1 draws it without a drag, to look at.
+        let dropping = (self.file_drag && cx.has_active_drag()) || (self.channel_id.is_some() && std::env::var_os("HOFFLE_DEV_DROP_OVERLAY").is_some());
         div().flex_1().min_w_0().h_full().pt(px(10.)).when(alone, |d| d.pr(px(10.))).flex().flex_col().child(
         div()
+            .relative()
             .flex_1()
             .min_h_0()
             .flex()
             .flex_col()
             .rounded_t(px(16.))
+            // onChannelDragOver / onChannelDrop: files dropped on the conversation are attached.
+            .when(self.channel_id.is_some(), |d| {
+                d.on_drag_move::<gpui::ExternalPaths>(cx.listener(|this, e: &gpui::DragMoveEvent<gpui::ExternalPaths>, _, cx| {
+                    let over = e.bounds.contains(&e.event.position);
+                    if this.file_drag != over {
+                        this.file_drag = over;
+                        cx.notify();
+                    }
+                }))
+                .on_drop(cx.listener(|this, paths: &gpui::ExternalPaths, _, cx| {
+                    this.file_drag = false;
+                    this.accept_paths(paths.paths().to_vec(), cx);
+                }))
+            })
             .bg(Theme::chat_bg())
             .border_1()
             .border_color(Theme::line())
@@ -74,6 +91,35 @@ impl Shell {
                     .children(self.render_notice(cx))
                     .children(self.render_simple_tip(f32::from(self.chat_panel_width(window)) - 2., cx))
                     .child(self.render_composer(window, cx)),
+            })
+            // `.drop-overlay`: a dashed lavender frame 8px inside the card, the hint in its middle.
+            .when(dropping, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .m(px(8.))
+                        .rounded(px(16.))
+                        .border_2()
+                        .border_dashed()
+                        .border_color(Theme::lavender())
+                        .bg(gpui::Hsla::from(Theme::lavender()).opacity(0.12))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            div()
+                                .px(px(18.))
+                                .py(px(12.))
+                                .rounded(px(12.))
+                                .bg(Theme::lavender())
+                                .text_color(Theme::on_accent())
+                                .text_size(px(16.))
+                                .line_height(px(24.))
+                                .font_weight(gpui::FontWeight::BOLD)
+                                .child("Drop to attach · images and PDFs"),
+                        ),
+                )
             }))
     }
 

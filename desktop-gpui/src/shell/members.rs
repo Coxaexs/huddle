@@ -591,6 +591,14 @@ impl gpui::Render for Shell {
                 }
             }
         }
+        // HOFFLE_DEV_DROP=<path>[:<path>…]: those files as if dropped on the conversation.
+        static DEV_DROP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(spec) = std::env::var("HOFFLE_DEV_DROP")
+            && self.channel_id.is_some()
+            && !DEV_DROP.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            self.accept_paths(spec.split(':').map(std::path::PathBuf::from).collect(), cx);
+        }
         // HOFFLE_DEV_USERMENU=<user id prefix>,x,y: that person's menu, right-clicked there, once the
         // members have loaded.
         static DEV_USERMENU: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);

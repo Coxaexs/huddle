@@ -278,6 +278,8 @@ pub struct Shell {
     last_input: std::time::Instant,
     /// The open server's banned people (managers only) and who is muted on the server (hub).
     banned_ids: HashSet<String>,
+    /// Files from Finder are being dragged over the chat (the "Drop to attach" overlay).
+    file_drag: bool,
     forced_mutes: HashSet<String>,
     auto_idle: bool,
     footer_devices: Option<(Vec<(String, String)>, Vec<(String, String)>)>,
@@ -439,6 +441,11 @@ impl Shell {
         let composer = cx.new(|cx| TextArea::new("Message", cx).text(14., 20.3).placeholder_color(gpui::rgb(0x5a5275)));
         let subs = vec![cx.subscribe_in(&composer, window, |this, _, event, _window, cx| match event {
             AreaEvent::Submit => this.send_composer(cx),
+            AreaEvent::PasteImage(image) => {
+                if this.channel_id.is_some() {
+                    this.accept_pasted_image(image.clone(), cx);
+                }
+            }
             AreaEvent::Changed => {
                 this.note_typing();
                 this.on_composer_changed(cx);
@@ -577,6 +584,7 @@ impl Shell {
             device_menu: None,
             last_input: std::time::Instant::now(),
             banned_ids: HashSet::new(),
+            file_drag: false,
             forced_mutes: HashSet::new(),
             auto_idle: false,
             footer_devices: None,

@@ -282,6 +282,15 @@ impl Theme {
     pub fn lavender_muted() -> Rgba { p().lavender_muted }
     /// The voice-message / send button (124,92,191).
     pub fn send() -> Rgba { p().send }
+    /// `--on-accent`: readableOn(lavender), white or #15121f, whichever reads better on the accent.
+    pub fn on_accent() -> Rgba {
+        let c = Self::lavender();
+        let channel = |v: f32| if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) };
+        let lum = 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
+        let on_white = 1.05 / (lum + 0.05);
+        let on_dark = (lum + 0.05) / (0.0065 + 0.05);
+        if on_white >= on_dark { rgb(0xffffff) } else { rgb(0x15121f) }
+    }
     pub fn coral() -> Rgba { p().coral }
     pub fn mint() -> Rgba { p().mint }
     /// Presence: online in the footer (59,165,93), idle (250,204,21), dnd/away (250,168,26).
