@@ -19,6 +19,7 @@ mod voice_card;
 mod chperm;
 mod invite_card;
 mod status_menu;
+mod member_actions;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -275,6 +276,9 @@ pub struct Shell {
     device_menu: Option<&'static str>,
     /// Auto-idle: the last key or click, and whether idle was set by it (not by hand).
     last_input: std::time::Instant,
+    /// The open server's banned people (managers only) and who is muted on the server (hub).
+    banned_ids: HashSet<String>,
+    forced_mutes: HashSet<String>,
     auto_idle: bool,
     footer_devices: Option<(Vec<(String, String)>, Vec<(String, String)>)>,
     /// Hub clock minus ours, in ms: voice seat timers count in the hub's time.
@@ -572,6 +576,8 @@ impl Shell {
             status_clear: status_menu::load_clear_choice(),
             device_menu: None,
             last_input: std::time::Instant::now(),
+            banned_ids: HashSet::new(),
+            forced_mutes: HashSet::new(),
             auto_idle: false,
             footer_devices: None,
             clock_offset: 0.,
@@ -1370,6 +1376,7 @@ impl Shell {
                     self.join_voice(room, cx);
                 }
                 self.online = strings(value.get("online"));
+                self.forced_mutes = strings(value.get("forcedMutes"));
                 if let Some(players) = value.get("players").and_then(Value::as_object) {
                     self.players = players.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                 }
@@ -1544,7 +1551,22 @@ impl Shell {
                     self.status = Some("You were removed from the voice room.".into());
                 }
             }
+            "voice-move" => {
+                // A moderator moved us: join that room.
+                if let Some(room) = value.get("channelId").and_then(Value::as_str).map(str::to_string) {
+                    let name = self.channel_by_id(&room).map(|c| c.name.clone());
+                    self.join_voice(room, cx);
+                    self.set_notice(name.map(|n| format!("You were moved to {n}.")).unwrap_or_else(|| "You were moved to another voice channel.".into()), cx);
+                }
+            }
             "force-mute" => {
+                if let Some(id) = value.get("userId").and_then(Value::as_str) {
+                    if value.get("muted").and_then(Value::as_bool).unwrap_or(true) {
+                        self.forced_mutes.insert(id.to_string());
+                    } else {
+                        self.forced_mutes.remove(id);
+                    }
+                }
                 if value.get("userId").and_then(Value::as_str) == Some(self.me.id.as_str()) {
                     let muted = value.get("muted").and_then(Value::as_bool).unwrap_or(true);
                     if muted && !self.muted {

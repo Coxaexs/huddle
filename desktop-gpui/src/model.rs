@@ -314,6 +314,10 @@ pub struct Member {
     pub pride_badges: Vec<String>,
     /// The invite they came in with, when known (server settings → Members).
     pub joined_via: Option<JoinedVia>,
+    /// When their timeout here ends (ISO), if they have one.
+    pub timeout_until: Option<String>,
+    /// A Hoffle admin let them make invites anywhere.
+    pub can_invite: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

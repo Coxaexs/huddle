@@ -591,6 +591,21 @@ impl gpui::Render for Shell {
                 }
             }
         }
+        // HOFFLE_DEV_USERMENU=<user id prefix>,x,y: that person's menu, right-clicked there, once the
+        // members have loaded.
+        static DEV_USERMENU: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(spec) = std::env::var("HOFFLE_DEV_USERMENU")
+            && !DEV_USERMENU.load(std::sync::atomic::Ordering::Relaxed)
+        {
+            let mut parts = spec.split(',');
+            let prefix = parts.next().unwrap_or_default().to_string();
+            let n: Vec<f32> = parts.filter_map(|v| v.trim().parse().ok()).collect();
+            let id = self.members.values().flat_map(|m| m.iter()).find(|m| m.id.starts_with(&prefix)).map(|m| m.id.clone());
+            if let (Some(id), [x, y]) = (id, n.as_slice()) {
+                DEV_USERMENU.store(true, std::sync::atomic::Ordering::Relaxed);
+                self.open_user_menu(id, gpui::point(px(*x), px(*y)), cx);
+            }
+        }
         // Development: HOFFLE_DEV_NOTICE / HOFFLE_DEV_TOAST show that text; HOFFLE_DEV_TRANSLATE puts
         // it under your own last message as a finished translation.
         if !self.dev_extras_done && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c)) {
@@ -617,16 +632,6 @@ impl gpui::Render for Shell {
             // HOFFLE_DEV_STAGE=<channel id>: that voice room's stage, joined (empty rooms only).
             if let Ok(room) = std::env::var("HOFFLE_DEV_STAGE") {
                 self.open_stage(room, window, cx);
-            }
-            // HOFFLE_DEV_USERMENU=<user id prefix>,x,y: that person's menu, right-clicked there.
-            if let Ok(spec) = std::env::var("HOFFLE_DEV_USERMENU") {
-                let mut parts = spec.split(',');
-                let prefix = parts.next().unwrap_or_default().to_string();
-                let n: Vec<f32> = parts.filter_map(|v| v.trim().parse().ok()).collect();
-                let id = self.members.values().flat_map(|m| m.iter()).find(|m| m.id.starts_with(&prefix)).map(|m| m.id.clone());
-                if let (Some(id), [x, y]) = (id, n.as_slice()) {
-                    self.open_user_menu(id, gpui::point(px(*x), px(*y)), cx);
-                }
             }
             // HOFFLE_DEV_CHANMENU=<channel id>,x,y
             if let Ok(spec) = std::env::var("HOFFLE_DEV_CHANMENU") {

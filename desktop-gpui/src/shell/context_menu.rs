@@ -57,6 +57,8 @@ pub(super) enum ConfirmAction {
     Integration(super::integrations::IntegAct),
     /// The Events panel's "Cancel Event".
     CancelEvent(String),
+    /// The user menu's Kick / Ban / Unban: (server, member, action).
+    MenuModerate(String, String, &'static str),
 }
 
 #[derive(Clone, Copy)]
@@ -603,7 +605,8 @@ impl Shell {
         let action = confirm.action.clone();
         let alert = matches!(action, ConfirmAction::Alert);
         // A prompt's button is the plain primary one: lavender, not the danger red.
-        let primary = matches!(action, ConfirmAction::Prompt(..));
+        // Unbanning is not dangerous either (isDanger: action !== "unban").
+        let primary = matches!(action, ConfirmAction::Prompt(..) | ConfirmAction::MenuModerate(_, _, "unban"));
         let prompt_input = match &action {
             ConfirmAction::Prompt(_, input) => Some(input.clone()),
             _ => None,
@@ -741,6 +744,7 @@ impl Shell {
             ConfirmAction::DeleteAutomod(id) => self.delete_automod(id, cx),
             ConfirmAction::Integration(act) => self.integ_confirmed(act, cx),
             ConfirmAction::CancelEvent(id) => self.cancel_event(id, cx),
+            ConfirmAction::MenuModerate(server, user, action) => self.menu_moderate(server, user, action, cx),
             ConfirmAction::DeleteCategory(id) => self.delete_category_confirmed(id, cx),
             ConfirmAction::Report(id) => {
                 let client = self.client.clone();

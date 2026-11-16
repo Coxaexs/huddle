@@ -1,5 +1,6 @@
 //! UserMenu (components/user-menu.tsx): right-click on someone (member row, name, avatar, voice
-//! seat). Their name, @username and time in voice; Message, Block, Mute for me and their volume.
+//! seat). Their name, @username and time in voice; nickname and server picture; Message, Block,
+//! Mute for me and their volume; for moderators server mute, disconnect, move, timeout, kick / ban.
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -34,6 +35,7 @@ impl Shell {
     pub(super) fn open_user_menu(&mut self, user_id: String, at: Point<Pixels>, cx: &mut Context<Self>) {
         self.profile = None;
         self.user_menu = Some(UserMenu { user_id, at, height: Rc::new(Cell::new(275.)) });
+        self.load_banned(cx);
         cx.notify();
     }
 
@@ -101,7 +103,7 @@ impl Shell {
         let seat = self.rooms.values().flatten().find(|p| p.id == menu.user_id);
         let in_voice = seat.map(|p| super::sidebar::duration(((self.hub_now() - p.joined_at) / 1000.).max(0.) as u64));
 
-        let item = |id: &'static str, label: String, danger: bool| {
+        let item = |id: gpui::ElementId, label: String, danger: bool| {
             div()
                 .id(id)
                 .p(px(8.))
@@ -129,8 +131,10 @@ impl Shell {
                     .gap(px(6.))
                     .child(div().text_size(px(16.)).line_height(px(24.)).font_weight(FontWeight::BOLD).text_color(rgb(0xf5f3ee)).child(name))
                     // PrideBadges mini sits inline before the @username, no gap.
+                    // The row's line box is 18px (12px/18px), the @username span inside it 15px.
                     .child(
                         div()
+                            .h(px(18.))
                             .flex()
                             .items_center()
                             .children(member.as_ref().and_then(|m| super::profile_editor::pride_mini(&m.pride_badges, window.scale_factor())))
@@ -139,32 +143,80 @@ impl Shell {
                     .when_some(in_voice, |d, time| d.child(div().text_size(px(12.)).line_height(px(15.)).text_color(muted).child(time))),
             );
         let id = menu.user_id.clone();
+        // menus.tsx: what this viewer may do to this person here.
+        use super::member_actions::bits;
+        let perms = if self.home { 0 } else { self.my_permissions() };
+        let can_moderate = perms & bits::MODERATE != 0;
+        let can_manage = perms & bits::MANAGE_SERVER != 0;
+        let here = if self.home { None } else { self.member(&id).cloned() };
+        let owner = self.server().and_then(|s| s.owner_id.clone());
+        let protected = here.as_ref().is_some_and(|m| m.is_admin) || owner.as_deref() == Some(id.as_str());
+        let can_nick = perms & bits::MANAGE_NICKNAMES != 0 && !protected;
+        let voice_rooms: Vec<(String, String)> =
+            if self.home { Vec::new() } else { self.server().map(|s| s.channels.iter().filter(|c| c.is_voice()).map(|c| (c.id.clone(), c.name.clone())).collect()).unwrap_or_default() };
+        let sits_in = |room: &str| self.rooms.get(room).is_some_and(|people| people.iter().any(|p| p.id == id));
+        let target_room = voice_rooms.iter().map(|(r, _)| r.clone()).find(|r| sits_in(r));
+        let menu_room = target_room.clone().or_else(|| if me { self.rooms.keys().find(|r| sits_in(r)).cloned() } else { None });
+        let divider = || div().h(px(1.)).my(px(6.)).bg(rgb(0x41434f));
+        let note = |text: String| div().mt(px(4.)).mb(px(2.)).px(px(8.)).text_size(px(11.)).line_height(px(15.4)).text_color(muted).child(text);
+        let section_label = |text: String| div().pt(px(2.)).px(px(8.)).pb(px(4.)).text_size(px(11.)).line_height(px(16.5)).font_weight(FontWeight::BOLD).text_color(muted).child(text.to_uppercase());
+        if here.is_some() && (me || can_nick) {
+            let id2 = id.clone();
+            card = card.child(item("um-nick".into(), (if me { "Change nickname" } else { "Edit nickname" }).into(), false).on_click(cx.listener(move |this, _, window, cx| {
+                this.user_menu = None;
+                this.edit_nickname(id2.clone(), window, cx);
+            })));
+        }
+        if me && here.is_some() {
+            card = card.child(item("um-savatar".into(), t("serverAvatar.change"), false).on_click(cx.listener(|this, _, _, cx| {
+                this.user_menu = None;
+                let me = this.me.id.clone();
+                this.set_server_avatar(me, false, cx);
+            })));
+        }
+        if here.as_ref().is_some_and(|m| m.server_avatar_url.as_deref().is_some_and(|u| !u.is_empty())) && (me || can_nick) {
+            let id2 = id.clone();
+            card = card.child(item("um-savatar-off".into(), t("serverAvatar.remove"), false).on_click(cx.listener(move |this, _, _, cx| {
+                this.user_menu = None;
+                this.set_server_avatar(id2.clone(), true, cx);
+            })));
+        }
+        let disconnect = |label: &str| {
+            menu_room.clone().map(|room| {
+                let id2 = id.clone();
+                item("um-disconnect".into(), t(label), true).on_click(cx.listener(move |this, _, _, cx| {
+                    this.user_menu = None;
+                    this.disconnect_member(id2.clone(), room.clone(), cx);
+                }))
+            })
+        };
         if me {
             let id2 = id.clone();
             card = card
-                .child(item("um-notes", t("userMenu.noteToSelf"), false).on_click(cx.listener(move |this, _, _, cx| {
+                .child(item("um-notes".into(), t("userMenu.noteToSelf"), false).on_click(cx.listener(move |this, _, _, cx| {
                     this.user_menu = None;
                     this.open_dm_with(id2.clone(), cx);
                 })))
+                .children(disconnect("userMenu.disconnectSelf"))
                 .child(div().mt(px(4.)).mb(px(2.)).px(px(8.)).text_size(px(12.)).text_color(muted).child(t("userMenu.thisIsYou")));
         } else {
             if !blocked {
                 let id2 = id.clone();
-                card = card.child(item("um-message", t("userMenu.message"), false).on_click(cx.listener(move |this, _, _, cx| {
+                card = card.child(item("um-message".into(), t("userMenu.message"), false).on_click(cx.listener(move |this, _, _, cx| {
                     this.user_menu = None;
                     this.open_dm_with(id2.clone(), cx);
                 })));
             }
             let id2 = id.clone();
             card = card.child(
-                item("um-block", t(if blocked { "userMenu.unblock" } else { "userMenu.block" }), !blocked).on_click(cx.listener(move |this, _, _, cx| {
+                item("um-block".into(), t(if blocked { "userMenu.unblock" } else { "userMenu.block" }), !blocked).on_click(cx.listener(move |this, _, _, cx| {
                     this.user_menu = None;
                     this.block_toggle(id2.clone(), blocked, cx);
                 })),
             );
             let id2 = id.clone();
             card = card.child(
-                item("um-mute", t(if pref.muted { "userMenu.unmuteForMe" } else { "userMenu.muteForMe" }), false)
+                item("um-mute".into(), t(if pref.muted { "userMenu.unmuteForMe" } else { "userMenu.muteForMe" }), false)
                     .on_click(cx.listener(move |this, _, _, cx| this.save_voice_pref(id2.clone(), None, Some(!pref.muted), cx))),
             );
             // `.user-menu-volume`: "Their volume · N%" and a 0–200% slider.
@@ -200,6 +252,104 @@ impl Shell {
                             }),
                     ),
             );
+            if can_moderate || can_manage {
+                card = card.child(divider());
+            }
+            if can_moderate {
+                let forced = self.forced_mutes.contains(&id);
+                let id2 = id.clone();
+                card = card
+                    .child(item("um-server-mute".into(), t(if forced { "userMenu.unmuteOnServer" } else { "userMenu.muteOnServer" }), true).on_click(cx.listener(move |this, _, _, cx| {
+                        this.user_menu = None;
+                        this.server_mute(id2.clone(), !forced, cx);
+                        cx.notify();
+                    })))
+                    .child(note(t("userMenu.serverMuteNote")));
+                card = card.children(disconnect("userMenu.disconnectVoice"));
+                if let Some(current) = target_room.clone() {
+                    let others: Vec<(String, String)> = voice_rooms.iter().filter(|(r, _)| *r != current).cloned().collect();
+                    let mut section = div().id("um-move").mt(px(6.)).pt(px(6.)).border_t_1().border_color(rgb(0x41434f)).max_h(px(180.)).overflow_y_scroll().child(section_label(t("userMenu.moveToVoice")));
+                    if others.is_empty() {
+                        section = section.child(note(t("userMenu.noOtherVoiceChannels")));
+                    }
+                    for (room, name) in others {
+                        let id2 = id.clone();
+                        section = section.child(item(gpui::ElementId::Name(format!("um-move-{room}").into()), format!("◖)) {name}"), false).on_click(cx.listener(move |this, _, _, cx| {
+                            this.user_menu = None;
+                            this.move_member(id2.clone(), room.clone(), cx);
+                        })));
+                    }
+                    card = card.child(section);
+                }
+            }
+            if here.is_some() && !protected && (can_moderate || can_manage || perms & bits::KICK_MEMBERS != 0) {
+                let until = super::member_actions::active_until(here.as_ref().and_then(|m| m.timeout_until.as_deref()));
+                let label = match until {
+                    Some(at) => tv("userMenu.timedOutUntil", &[("when", &super::member_actions::short_when(at))]),
+                    None => t("userMenu.timeout"),
+                };
+                let mut section = div().mt(px(6.)).pt(px(6.)).border_t_1().border_color(rgb(0x41434f)).child(section_label(label));
+                if until.is_some() {
+                    let id2 = id.clone();
+                    section = section.child(item("um-untimeout".into(), t("userMenu.removeTimeout"), false).on_click(cx.listener(move |this, _, _, cx| {
+                        this.user_menu = None;
+                        this.timeout_member(id2.clone(), 0, cx);
+                    })));
+                } else {
+                    let mut chips = div().flex().flex_wrap().gap(px(4.)).px(px(6.)).pb(px(4.));
+                    for (minutes, label) in super::member_actions::TIMEOUT_CHOICES {
+                        let id2 = id.clone();
+                        chips = chips.child(
+                            div()
+                                .id(gpui::ElementId::Name(format!("um-timeout-{minutes}").into()))
+                                .px(px(8.))
+                                .py(px(4.))
+                                .rounded_full()
+                                .border_1()
+                                .border_color(rgb(0x41434f))
+                                .text_size(px(12.))
+                                .line_height(px(18.))
+                                .text_color(rgb(0xe6e7ee))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(Hsla::from(Theme::lavender()).opacity(0.24)))
+                                .child(label)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.user_menu = None;
+                                    this.timeout_member(id2.clone(), minutes, cx);
+                                })),
+                        );
+                    }
+                    section = section.child(chips);
+                }
+                card = card.child(section);
+            }
+            if can_manage {
+                let id2 = id.clone();
+                card = card.child(item("um-kick".into(), t("userMenu.kickFromServer"), true).on_click(cx.listener(move |this, _, _, cx| {
+                    this.user_menu = None;
+                    this.confirm_moderation(id2.clone(), "kick", cx);
+                })));
+                let banned = self.banned_ids.contains(&id);
+                let id2 = id.clone();
+                card = card.child(
+                    item("um-ban".into(), t(if banned { "userMenu.unbanFromServer" } else { "userMenu.banFromServer" }), !banned).on_click(cx.listener(move |this, _, _, cx| {
+                        this.user_menu = None;
+                        this.confirm_moderation(id2.clone(), if banned { "unban" } else { "ban" }, cx);
+                    })),
+                );
+            }
+            // A Hoffle admin: who may make invites anywhere.
+            let target_admin = here.as_ref().or(member.as_ref()).is_some_and(|m| m.is_admin);
+            if self.me.is_admin && !target_admin {
+                let can_invite = here.as_ref().or(member.as_ref()).is_some_and(|m| m.can_invite);
+                let id2 = id.clone();
+                card = card.child(divider()).child(
+                    item("um-invites".into(), t(if can_invite { "userMenu.revokeInvites" } else { "userMenu.allowInvites" }), false).on_click(cx.listener(move |this, _, _, cx| {
+                        this.user_menu = None;
+                        this.toggle_invite_permission(id2.clone(), !can_invite, cx);
+                    })),
+                );
+            }
         }
 
         // Kept 12px inside the window; flipped above the click when there is no room below it.
