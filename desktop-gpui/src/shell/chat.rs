@@ -734,6 +734,43 @@ impl Shell {
         {
             body = body.child(card);
         }
+        if message.kind.as_deref() == Some("dnd")
+            && let Some(card) = self.render_dnd_card(message, f32::from(self.text_column_width(window)), cx)
+        {
+            body = body.child(card);
+        }
+        // `.bot-action`: a bot's link as a small button.
+        if let Some(link) = message.link.clone().filter(|l| !l.is_empty()) {
+            let paper = gpui::Rgba::from(Theme::paper());
+            let light = 0.2126 * paper.r + 0.7152 * paper.g + 0.0722 * paper.b > 0.5;
+            let accent_hi = if light { crate::theme::mix(Theme::lavender(), 0.8, gpui::black()) } else { crate::theme::mix(Theme::lavender(), 0.6, gpui::white()) };
+            let lavender: gpui::Hsla = Theme::lavender().into();
+            body = body.child(
+                div().flex().child(
+                    div()
+                        .id(SharedString::from(format!("bot-action-{}", message.id)))
+                        .mt(px(9.))
+                        .px(px(11.))
+                        .py(px(8.))
+                        .rounded(px(9.))
+                        .bg(Theme::lavender_soft())
+                        .border_1()
+                        .border_color(lavender.opacity(0.35))
+                        .hover(move |s| s.border_color(lavender))
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .text_size(px(10.))
+                        .line_height(px(15.))
+                        .font_weight(FontWeight::EXTRA_BOLD)
+                        .text_color(accent_hi)
+                        .cursor_pointer()
+                        .child(message.action_label.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| "Open".into()))
+                        .child("↗")
+                        .on_click(move |_, _, cx| cx.open_url(&link)),
+                ),
+            );
+        }
         let column = f32::from(self.text_column_width(window));
         // message-row.tsx: the body (with its link previews), then invite cards, then attachments.
         body = body.children(self.render_link_extras(message, column, window, cx));

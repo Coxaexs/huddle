@@ -26,6 +26,7 @@ mod soundboard;
 mod dm_call;
 mod group_dm;
 mod embed_player;
+mod dnd_card;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -312,6 +313,8 @@ pub struct Shell {
     /// The web view playing the open profile card's effect, with what it is for.
     /// Link players that are playing (their web views).
     link_players: embed_player::SharedPlayers,
+    /// D&D cards opened past their fold.
+    dnd_expanded: std::collections::HashSet<String>,
     fx_overlay: std::rc::Rc<std::cell::RefCell<Option<(String, crate::webview::WebOverlay)>>>,
     /// Achievement unlock popups, and whether the periodic check has started.
     unlocks: achievement_toast::Toasts,
@@ -661,6 +664,7 @@ impl Shell {
             group_menu: None,
             fx_overlay: Default::default(),
             link_players: Default::default(),
+            dnd_expanded: Default::default(),
             unlocks: Default::default(),
             ach_checks: false,
             forced_mutes: HashSet::new(),

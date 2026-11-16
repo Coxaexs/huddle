@@ -160,6 +160,9 @@ pub struct Category {
 #[serde(rename_all = "camelCase", default)]
 pub struct Message {
     pub id: String,
+    /// A bot's link under the message ("Open on 5e.tools ↗"), and what its button says.
+    pub link: Option<String>,
+    pub action_label: Option<String>,
     pub channel_id: Option<String>,
     pub user_id: Option<String>,
     pub author: String,
