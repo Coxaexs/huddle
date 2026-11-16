@@ -283,6 +283,9 @@ export interface LiveTrack {
   key?: string | null;
   keyShift?: number;
   karaoke?: boolean;
+  /** As Track.pageUrl and Track.query: which song this is, so its lyrics and word timing can be found. */
+  pageUrl?: string | null;
+  query?: string | null;
 }
 
 export interface PlayerState {
@@ -351,7 +354,8 @@ export function heard(state: PlayerState | null | undefined, now = Date.now()): 
       thumbnail: live.thumbnail,
       duration: live.duration,
       audioUrl: "",
-      pageUrl: null,
+      pageUrl: live.pageUrl ?? null,
+      ...(live.query ? { query: live.query } : {}),
       requestedBy: "DJ booth",
       key: live.key ?? null,
       keyShift: live.keyShift ?? 0,
