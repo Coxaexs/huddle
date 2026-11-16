@@ -33,7 +33,7 @@ pub(super) struct VoiceState {
     position: HashMap<String, f32>,
     speed: HashMap<String, f32>,
     /// Decoded sound by file, and the files on their way.
-    clips: HashMap<String, Arc<Pcm>>,
+    pub(super) clips: HashMap<String, Arc<Pcm>>,
     loading: std::collections::HashSet<String>,
     transcripts: HashMap<String, String>,
     show_transcript: std::collections::HashSet<String>,

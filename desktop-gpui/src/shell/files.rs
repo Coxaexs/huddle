@@ -209,7 +209,7 @@ pub fn file_icon(name: &str) -> AnyElement {
 
 impl Shell {
     /// `.message-file-card`: icon, name and description, "Download"; opens the file.
-    pub(super) fn render_file_card(&self, message: &Message, n: usize, file: &FileRef, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn render_file_card(&self, message: &Message, n: usize, file: &FileRef, column: f32, cx: &mut Context<Self>) -> AnyElement {
         let link = self.client.absolute(&file.url);
         let pdf = file.name.to_lowercase().ends_with(".pdf");
         let muted: Hsla = Theme::muted().into();
@@ -282,7 +282,10 @@ impl Shell {
             None => ((if pdf { "PDF document · view and fill in Hoffle" } else { description(&file.name) }).to_string(), false),
         };
         let pdf = pdf && big_expiry.is_none();
-        // InlineAudioAttachment: sounds play here (big ones stay a download).
+        // InlineVideoAttachment and InlineAudioAttachment: they play here (big ones stay a download).
+        if video && big_expiry.is_none() {
+            return self.render_inline_video(message, n, file, column, cx);
+        }
         if audio && big_expiry.is_none() {
             return self.render_inline_audio(message, n, file, cx);
         }

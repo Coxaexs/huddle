@@ -21,6 +21,7 @@ mod invite_card;
 mod status_menu;
 mod member_actions;
 mod achievement_toast;
+mod video_player;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -293,6 +294,8 @@ pub struct Shell {
     shown_alt: Option<String>,
     /// Inline audio players' bars (for seeking), by player.
     audio_spots: std::cell::RefCell<HashMap<String, std::rc::Rc<std::cell::Cell<gpui::Bounds<gpui::Pixels>>>>>,
+    /// Video files playing in messages.
+    film: video_player::Videos,
     /// Achievement unlock popups, and whether the periodic check has started.
     unlocks: achievement_toast::Toasts,
     ach_checks: bool,
@@ -545,6 +548,7 @@ impl Shell {
         let quit = cx.on_app_quit(|this: &mut Self, _cx| {
             // A voice message's afplay would play on after the app.
             this.stop_voice_message();
+            this.halt_video();
             if this.call.take().is_some() {
                 this.hub.send(json!({ "t": "voice-leave" }));
                 let left = this.voice.leave_blocking(Duration::from_millis(700));
@@ -628,6 +632,7 @@ impl Shell {
             file_drag: false,
             shown_alt: None,
             audio_spots: Default::default(),
+            film: Default::default(),
             unlocks: Default::default(),
             ach_checks: false,
             forced_mutes: HashSet::new(),

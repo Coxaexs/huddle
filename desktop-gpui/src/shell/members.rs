@@ -651,6 +651,7 @@ impl gpui::Render for Shell {
             self.start_achievement_checks(cx);
         }
         self.dev_achievement(cx);
+        self.dev_video(cx);
         // HOFFLE_DEV_BOARD=<user id prefix>: that member's achievement board.
         static DEV_BOARD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if let Ok(prefix) = std::env::var("HOFFLE_DEV_BOARD")
@@ -855,6 +856,7 @@ impl gpui::Render for Shell {
             .children(self.render_poll_dialog(window, cx))
             .children(self.render_chperm(window, cx))
             .children(self.render_lightbox(window, cx))
+            .children(self.render_video_full(window, cx))
             .children(self.render_confirm(cx))
             .children(self.render_achievement_toast(window, cx))
             .children(self.render_forward(window, cx))
