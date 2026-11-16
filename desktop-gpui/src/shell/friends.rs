@@ -138,7 +138,17 @@ impl Shell {
                         .flex()
                         .gap(px(8.))
                         .child(div().id("create-dm").cursor_pointer().tooltip(ui::tooltip(t("sidebar.createDm"))).child(icon("plus", 14., rgb(0xa09ca4))))
-                        .child(div().id("note-self").cursor_pointer().tooltip(ui::tooltip(t("sidebar.noteToSelf"))).child(icon("sticky-note", 14., rgb(0xa09ca4)))),
+                        .child(
+                            div()
+                                .id("note-self")
+                                .cursor_pointer()
+                                .tooltip(ui::tooltip(t("sidebar.noteToSelf")))
+                                .child(icon("sticky-note", 14., rgb(0xa09ca4)))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    let me = this.me.id.clone();
+                                    this.open_dm_with(me, cx);
+                                })),
+                        ),
                 ),
         );
         let mut dms: Vec<_> = self.dms.iter().filter(|d| !d.hidden).collect();
@@ -155,6 +165,22 @@ impl Shell {
             let in_call = self.rooms.get(&dm.channel_id).is_some_and(|r| !r.is_empty());
             let id = dm.channel_id.clone();
             let name = if me { t("sidebar.myNotes") } else { dm.user.name().to_string() };
+            // `.dm-row:hover`: the pin and close buttons show, the indicators under them hide.
+            let group = SharedString::from(format!("dmrow-g-{}", dm.channel_id));
+            let (pin_id, close_id, menu_user, menu_channel, pinned) = (dm.channel_id.clone(), dm.channel_id.clone(), dm.user.id.clone(), dm.channel_id.clone(), dm.pinned);
+            let action = |key: String, name: &'static str, size: f32, color: gpui::Rgba, tip: String| {
+                div()
+                    .id(SharedString::from(key))
+                    .size(px(22.))
+                    .rounded(px(6.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .hover(|s| s.bg(gpui::white().opacity(0.1)))
+                    .tooltip(ui::tooltip(tip))
+                    .child(icon(name, size, color))
+            };
             nav = nav.child(
                 div()
                     .id(SharedString::from(format!("dmrow-{}", dm.channel_id)))
@@ -177,13 +203,15 @@ impl Shell {
                     .when(unread, |d| d.child(div().absolute().left(px(-11.)).top(px(15.)).w(px(4.)).h(px(8.)).rounded_r(px(4.)).bg(Theme::ink())))
                     .child(div().flex_none().mr(px(10.)).child(ui::avatar(self.picture(&dm.user.avatar_url), &dm.user.avatar, &dm.user.color, dm.user.name(), 24.)))
                     .child(div().min_w_0().truncate().child(name))
-                    .when(dm.pinned, |d| d.child(div().ml_auto().child(icon("pin", 11., Theme::lavender()))))
-                    .when(me, |d| d.child(div().ml_auto().child(icon("sticky-note", 12., gpui::rgba(0xfbbf24cc)))))
-                    .when(online, |d| d.child(div().ml(px(25.)).size(px(8.)).rounded_full().bg(Theme::mint())))
-                    .when(in_call, |d| d.child(icon("phone-call", 12., Theme::mint())))
+                    .group(group.clone())
+                    .when(dm.pinned, |d| d.child(div().ml_auto().group_hover(group.clone(), |s| s.opacity(0.)).child(icon("pin", 11., Theme::lavender()))))
+                    .when(me, |d| d.child(div().ml_auto().group_hover(group.clone(), |s| s.opacity(0.)).child(icon("sticky-note", 12., gpui::rgba(0xfbbf24cc)))))
+                    .when(online, |d| d.child(div().ml(px(25.)).size(px(8.)).rounded_full().bg(Theme::mint()).group_hover(group.clone(), |s| s.opacity(0.))))
+                    .when(in_call, |d| d.child(div().group_hover(group.clone(), |s| s.opacity(0.)).child(icon("phone-call", 12., Theme::mint()))))
                     .when(count > 0, |d| {
                         d.child(
                             div()
+                                .group_hover(group.clone(), |s| s.opacity(0.))
                                 .ml_auto()
                                 .min_w(px(18.))
                                 .h(px(18.))
@@ -199,19 +227,32 @@ impl Shell {
                                 .child(count.to_string()),
                         )
                     })
-                    // `.dm-row-actions`: pin and close, shown on the open (or hovered) row.
-                    .when(selected, |d| {
-                        d.child(
-                            div()
-                                .absolute()
-                                .right(px(10.))
-                                .top(px(12.))
-                                .flex()
-                                .gap(px(11.))
-                                .child(icon("pin", 12., Theme::muted()))
-                                .child(icon("x", 13., Theme::muted())),
-                        )
-                    })
+                    // `.dm-row-actions`: pin and close, on the hovered row.
+                    .child(
+                        div()
+                            .absolute()
+                            .right(px(5.))
+                            .top(px(7.))
+                            .flex()
+                            .items_center()
+                            .gap(px(2.))
+                            .opacity(0.)
+                            .group_hover(group.clone(), |s| s.opacity(1.))
+                            .child(
+                                action(format!("dm-pin-{pin_id}"), "pin", 12., if pinned { Theme::lavender() } else { Theme::muted() }, t(if pinned { "sidebar.unpin" } else { "sidebar.pin" }))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        this.pin_dm(pin_id.clone(), !pinned, cx);
+                                    })),
+                            )
+                            .child(action(format!("dm-close-{close_id}"), "x", 13., Theme::muted(), t("sidebar.closeHint")).on_click(cx.listener(move |this, _, _, cx| {
+                                cx.stop_propagation();
+                                this.close_dm(close_id.clone(), cx);
+                            }))),
+                    )
+                    .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                        this.open_dm_user_menu(menu_user.clone(), menu_channel.clone(), pinned, e.position, cx);
+                    }))
                     .on_click(cx.listener(move |this, _, _, cx| this.open_dm(id.clone(), cx))),
             );
         }

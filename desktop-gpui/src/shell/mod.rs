@@ -788,6 +788,16 @@ impl Shell {
                     {
                         this.open_dm(id, cx);
                     }
+                    // HOFFLE_DEV_DM_MENU=<username>,x,y: that DM row right-clicked there.
+                    if let Ok(spec) = std::env::var("HOFFLE_DEV_DM_MENU") {
+                        let parts: Vec<&str> = spec.split(',').collect();
+                        if let [who, x, y] = parts.as_slice()
+                            && let Some(dm) = this.dms.iter().find(|d| d.user.username == *who).cloned()
+                            && let (Ok(x), Ok(y)) = (x.parse::<f32>(), y.parse::<f32>())
+                        {
+                            this.open_dm_user_menu(dm.user.id.clone(), dm.channel_id.clone(), dm.pinned, gpui::point(gpui::px(x), gpui::px(y)), cx);
+                        }
+                    }
                 }
                 if let Ok(mut reads) = reads {
                     // The open channel is being read right now.

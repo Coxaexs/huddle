@@ -15,6 +15,8 @@ pub(super) struct UserMenu {
     pub user_id: String,
     pub at: Point<Pixels>,
     height: Rc<Cell<f32>>,
+    /// Opened from the DM list: that conversation and whether it is pinned.
+    pub dm: Option<(String, bool)>,
 }
 
 /// A person's voice settings on this account (`/api/voice/prefs`).
@@ -34,8 +36,60 @@ impl Default for VoicePref {
 impl Shell {
     pub(super) fn open_user_menu(&mut self, user_id: String, at: Point<Pixels>, cx: &mut Context<Self>) {
         self.profile = None;
-        self.user_menu = Some(UserMenu { user_id, at, height: Rc::new(Cell::new(275.)) });
+        self.user_menu = Some(UserMenu { user_id, at, height: Rc::new(Cell::new(275.)), dm: None });
         self.load_banned(cx);
+        cx.notify();
+    }
+
+    /// Right-click on a DM row: the person's menu, with Pin / Unpin conversation.
+    pub(super) fn open_dm_user_menu(&mut self, user_id: String, channel_id: String, pinned: bool, at: Point<Pixels>, cx: &mut Context<Self>) {
+        self.open_user_menu(user_id, at, cx);
+        if let Some(m) = self.user_menu.as_mut() {
+            m.dm = Some((channel_id, pinned));
+        }
+    }
+
+    /// togglePinDm(): shown at once, then PATCH /api/dms.
+    pub(super) fn pin_dm(&mut self, channel_id: String, pinned: bool, cx: &mut Context<Self>) {
+        for dm in self.dms.iter_mut().filter(|d| d.channel_id == channel_id) {
+            dm.pinned = pinned;
+            dm.hidden = false;
+        }
+        self.patch_dm(serde_json::json!({ "channelId": channel_id, "pinned": pinned }), "Could not pin that conversation.", cx);
+    }
+
+    /// setDmClosed(): hidden from the list (messages kept); the next one opens if it was open.
+    pub(super) fn close_dm(&mut self, channel_id: String, cx: &mut Context<Self>) {
+        for dm in self.dms.iter_mut().filter(|d| d.channel_id == channel_id) {
+            dm.hidden = true;
+        }
+        if self.home && self.channel_id.as_deref() == Some(channel_id.as_str()) {
+            let next = self.dms.iter().find(|d| !d.hidden && d.channel_id != channel_id).map(|d| d.channel_id.clone());
+            match next {
+                Some(next) => self.open_dm(next, cx),
+                None => self.channel_id = None,
+            }
+        }
+        self.patch_dm(serde_json::json!({ "channelId": channel_id, "hidden": true }), "Could not do that.", cx);
+    }
+
+    fn patch_dm(&mut self, body: serde_json::Value, fallback: &'static str, cx: &mut Context<Self>) {
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.settings_patch("/api/dms", body) }).await;
+            this.update(cx, |this, cx| {
+                match result.ok().and_then(|v| serde_json::from_value::<Vec<crate::model::DmConversation>>(v["conversations"].clone()).ok()) {
+                    Some(list) => this.dms = list,
+                    None => {
+                        this.set_notice(fallback, cx);
+                        this.load_side_data(cx);
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
         cx.notify();
     }
 
@@ -190,6 +244,14 @@ impl Shell {
                 }))
             })
         };
+        let pin_item = || {
+            menu.dm.clone().map(|(channel, pinned)| {
+                item("um-pin".into(), t(if pinned { "userMenu.unpinConversation" } else { "userMenu.pinConversation" }), false).on_click(cx.listener(move |this, _, _, cx| {
+                    this.user_menu = None;
+                    this.pin_dm(channel.clone(), !pinned, cx);
+                }))
+            })
+        };
         if me {
             let id2 = id.clone();
             card = card
@@ -198,6 +260,7 @@ impl Shell {
                     this.open_dm_with(id2.clone(), cx);
                 })))
                 .children(disconnect("userMenu.disconnectSelf"))
+                .children(pin_item())
                 .child(div().mt(px(4.)).mb(px(2.)).px(px(8.)).text_size(px(12.)).text_color(muted).child(t("userMenu.thisIsYou")));
         } else {
             if !blocked {
@@ -207,6 +270,7 @@ impl Shell {
                     this.open_dm_with(id2.clone(), cx);
                 })));
             }
+            card = card.children(pin_item());
             let id2 = id.clone();
             card = card.child(
                 item("um-block".into(), t(if blocked { "userMenu.unblock" } else { "userMenu.block" }), !blocked).on_click(cx.listener(move |this, _, _, cx| {
