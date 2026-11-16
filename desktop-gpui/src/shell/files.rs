@@ -282,6 +282,10 @@ impl Shell {
             None => ((if pdf { "PDF document · view and fill in Hoffle" } else { description(&file.name) }).to_string(), false),
         };
         let pdf = pdf && big_expiry.is_none();
+        // InlineAudioAttachment: sounds play here (big ones stay a download).
+        if audio && big_expiry.is_none() {
+            return self.render_inline_audio(message, n, file, cx);
+        }
         div()
             .id(SharedString::from(format!("file-{}-{n}", message.id)))
             .mt(px(8.))

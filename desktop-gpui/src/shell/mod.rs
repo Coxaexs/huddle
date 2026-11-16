@@ -291,6 +291,8 @@ pub struct Shell {
     file_drag: bool,
     /// The picture whose description (ALT) is shown over it.
     shown_alt: Option<String>,
+    /// Inline audio players' bars (for seeking), by player.
+    audio_spots: std::cell::RefCell<HashMap<String, std::rc::Rc<std::cell::Cell<gpui::Bounds<gpui::Pixels>>>>>,
     /// Achievement unlock popups, and whether the periodic check has started.
     unlocks: achievement_toast::Toasts,
     ach_checks: bool,
@@ -625,6 +627,7 @@ impl Shell {
             banned_ids: HashSet::new(),
             file_drag: false,
             shown_alt: None,
+            audio_spots: Default::default(),
             unlocks: Default::default(),
             ach_checks: false,
             forced_mutes: HashSet::new(),

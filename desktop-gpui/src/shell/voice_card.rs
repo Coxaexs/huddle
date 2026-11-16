@@ -195,6 +195,163 @@ impl Shell {
         cx.notify();
     }
 
+    /// Fetches and decodes a sound without playing it (preload="metadata": its length shows).
+    fn voice_preload(&mut self, url: String, cx: &mut Context<Self>) {
+        if self.voice_msgs.clips.contains_key(&url) || !self.voice_msgs.loading.insert(url.clone()) {
+            return;
+        }
+        let client = self.client.clone();
+        let key = url.clone();
+        cx.spawn(async move |this, cx| {
+            let decoded = cx.background_executor().spawn(async move { client.fetch(&key).ok().and_then(|(status, bytes)| (status < 400).then(|| crate::voice_clip::decode(&bytes)).flatten()) }).await;
+            this.update(cx, |this, cx| {
+                this.voice_msgs.loading.remove(&url);
+                if let Some(pcm) = decoded {
+                    this.voice_msgs.clips.insert(url, Arc::new(pcm));
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// InlineAudioAttachment (message-file-card.tsx): an audio file played here, with its name,
+    /// Download, play / pause, a seekable bar and the two times.
+    pub(super) fn render_inline_audio(&self, message: &Message, n: usize, file: &crate::model::FileRef, cx: &mut Context<Self>) -> AnyElement {
+        let url = file.url.clone();
+        let id = format!("file:{}:{n}", message.id);
+        if !self.voice_msgs.clips.contains_key(&url) && !self.voice_msgs.loading.contains(&url) {
+            let u = url.clone();
+            cx.spawn(async move |this, cx| this.update(cx, |this, cx| this.voice_preload(u, cx)).ok()).detach();
+        }
+        let total = self.voice_msgs.clips.get(&url).map(|p| p.seconds()).unwrap_or(0.);
+        let playing = self.voice_msgs.playing.as_ref().filter(|p| p.id == id);
+        // HOFFLE_DEV_AUDIO_AT=<s>: shown as left there, to compare with the web.
+        let dev_at = std::env::var("HOFFLE_DEV_AUDIO_AT").ok().and_then(|v| v.parse::<f32>().ok());
+        let at = playing.map(|p| p.position()).unwrap_or_else(|| self.voice_msgs.position.get(&id).copied().or(dev_at).unwrap_or(0.));
+        let share = if total > 0. { (at / total).clamp(0., 1.) } else { 0. };
+        let clean = {
+            let lower = file.name.to_lowercase();
+            if lower.starts_with("spoiler_") || lower.starts_with("spoiler-") { file.name[8..].to_string() } else { file.name.clone() }
+        };
+        let white = |a: f32| gpui::white().opacity(a);
+        let link = self.client.absolute(&file.url);
+        let spot = self.audio_spots.borrow_mut().entry(id.clone()).or_default().clone();
+        let (pid, purl, sid, surl) = (id.clone(), url.clone(), id.clone(), url.clone());
+        let time = |s: f32| {
+            let s = s.max(0.).floor() as u64;
+            format!("{}:{:02}", s / 60, s % 60)
+        };
+        div()
+            .w_full()
+            .max_w(px(380.))
+            .p(px(12.))
+            .rounded(px(12.))
+            .bg(gpui::hsla(0., 0., 0., 0.4))
+            .border_1()
+            .border_color(white(0.1))
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .text_size(px(12.))
+            .line_height(px(16.))
+            .text_color(gpui::white())
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(8.))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .min_w_0()
+                            .child(div().flex_none().size(px(28.)).rounded(px(8.)).bg(gpui::hsla(239. / 360., 0.84, 0.67, 0.2)).flex().items_center().justify_center().child(ui::icon("volume-2", 15., rgb(0x818cf8))))
+                            .child(div().truncate().font_weight(FontWeight::MEDIUM).text_color(white(0.9)).child(clean.clone())),
+                    )
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("{id}-dl")))
+                            .flex_none()
+                            .p(px(4.))
+                            .rounded(px(4.))
+                            .cursor_pointer()
+                            .tooltip(ui::tooltip("Download audio"))
+                            .child(ui::icon("download", 14., white(0.5)))
+                            .on_click(move |_, _, cx| cx.open_url(&link)),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("{id}-play")))
+                            .flex_none()
+                            .size(px(32.))
+                            .rounded_full()
+                            .bg(rgb(0x4f46e5))
+                            .hover(|s| s.bg(rgb(0x6366f1)))
+                            .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.2), offset: gpui::point(px(0.), px(4.)), blur_radius: px(6.), spread_radius: px(-1.) }])
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .child(div().when(playing.is_none(), |d| d.ml(px(2.))).child(ui::icon(if playing.is_some() { "pause-filled" } else { "play-filled" }, 14., gpui::white())))
+                            .on_click(cx.listener(move |this, _, _, cx| this.voice_toggle(pid.clone(), purl.clone(), cx))),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap(px(4.))
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("{id}-bar")))
+                                    .relative()
+                                    .h(px(6.))
+                                    .rounded(px(8.))
+                                    .bg(white(0.15))
+                                    .cursor_pointer()
+                                    .child(div().absolute().left_0().top_0().h_full().w(gpui::relative(share)).rounded(px(8.)).bg(rgb(0x818cf8)))
+                                    .when(total > 0., |d| d.child(div().absolute().top(px(-4.)).left(gpui::relative(share)).ml(px(-14. * share)).size(px(14.)).rounded_full().bg(rgb(0x818cf8))))
+                                    .child(super::profile_card::track(&spot))
+                                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
+                                        let b = spot.get();
+                                        let Some(total) = this.voice_msgs.clips.get(&surl).map(|p| p.seconds()) else { return };
+                                        let k = (f32::from(e.position.x - b.origin.x) / f32::from(b.size.width).max(1.)).clamp(0., 1.);
+                                        let to = k * total;
+                                        if this.voice_msgs.playing.as_ref().is_some_and(|p| p.id == sid) {
+                                            this.voice_play(sid.clone(), surl.clone(), to, cx);
+                                        } else {
+                                            this.voice_msgs.position.insert(sid.clone(), to);
+                                            cx.notify();
+                                        }
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .justify_between()
+                                    .font_family(crate::theme::MONO_FONT)
+                                    .text_size(px(10.))
+                                    .line_height(px(13.3))
+                                    .text_color(white(0.5))
+                                    .child(time(at))
+                                    .child(time(total)),
+                            ),
+                    ),
+            )
+            .into_any_element()
+    }
+
     /// The card, for a `voice` message with its sound.
     pub(super) fn render_voice(&self, message: &Message, width: f32, _window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         if message.kind.as_deref() != Some("voice") {
