@@ -200,7 +200,7 @@ impl Shell {
             };
             let height = f32::from(window.viewport_size().height) - 10. - 1. - 73. - if self.simple() { 77. } else { 126. } - 40.;
             let focus = self.render_focus(&key, &videos, &people, inner, height, cx);
-            let left = div().w(px(stage_width)).h_full().flex().flex_col().child(div().flex_1().min_h_0().p(px(20.)).child(focus)).children(self.render_soundboard(stage_width, window, cx)).child(bar);
+            let left = div().w(px(stage_width)).h_full().flex().flex_col().children(self.render_important_banner(&stage.channel_id, cx)).child(div().flex_1().min_h_0().p(px(20.)).child(focus)).children(self.render_soundboard(stage_width, window, cx)).child(bar);
             let mut split = div().flex_1().min_h_0().flex().child(left);
             if stage.chat_open {
                 split = split.child(self.render_voice_chat(stage, chat_width, cx));
@@ -221,7 +221,7 @@ impl Shell {
         } else {
             self.render_stage_bar(stage_width, cx).into_any_element()
         };
-        let left = div().w(px(stage_width)).h_full().flex().flex_col().child(tiles).children(self.render_soundboard(stage_width, window, cx)).child(bar);
+        let left = div().w(px(stage_width)).h_full().flex().flex_col().children(self.render_important_banner(&stage.channel_id, cx)).child(tiles).children(self.render_soundboard(stage_width, window, cx)).child(bar);
         let mut split = div().flex_1().min_h_0().flex().child(left);
         if stage.chat_open {
             split = split.child(self.render_voice_chat(stage, chat_width, cx));
@@ -607,6 +607,48 @@ impl Shell {
     }
 
     /// `.voice-ctrls-centered`: the control buttons in a floating card, wrapping onto two rows.
+    /// `.voice-important-banner`: who is speaking important (you: with Finish).
+    fn render_important_banner(&self, room: &str, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let people = self.rooms.get(room)?;
+        let speaking: Vec<&VoiceParticipant> = people.iter().filter(|p| p.important && !p.muted && !p.server_muted).collect();
+        if speaking.is_empty() {
+            return None;
+        }
+        let me_on = speaking.iter().any(|p| Some(&p.connection_id) == self.connection_id.as_ref());
+        let names = speaking.iter().map(|p| if Some(&p.connection_id) == self.connection_id.as_ref() { "You".to_string() } else { p.name().to_string() }).collect::<Vec<_>>().join(", ");
+        Some(
+            div()
+                .flex_none()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .px(px(18.))
+                .py(px(10.))
+                .bg(Theme::lavender_soft())
+                .text_color(Theme::lavender())
+                .text_size(px(12.))
+                .line_height(px(18.))
+                .child(ui::icon("megaphone", 16., Theme::lavender()))
+                .child(format!("{names} · speaking important"))
+                .when(me_on, |d| {
+                    d.child(
+                        div()
+                            .id("important-finish")
+                            .ml_auto()
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .underline()
+                            .cursor_pointer()
+                            .child("Finish")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.hub.send(serde_json::json!({ "t": "voice-state", "important": false }));
+                                cx.notify();
+                            })),
+                    )
+                })
+                .into_any_element(),
+        )
+    }
+
     fn render_stage_bar(&self, width: f32, cx: &mut Context<Self>) -> impl IntoElement {
         let button = |id: &'static str, name: &'static str| {
             div()
@@ -629,13 +671,42 @@ impl Shell {
         let divider = || div().w(px(1.)).h(px(24.)).mx(px(4.)).bg(Hsla::from(Theme::lavender()).opacity(0.15));
         let muted = self.muted;
         let deafened = self.deafened;
+        // Your own seat, as the hub echoes it back.
+        let own = self.call.as_ref().and_then(|c| self.rooms.get(&c.channel_id)).and_then(|people| people.iter().find(|p| Some(&p.connection_id) == self.connection_id.as_ref())).cloned();
         let row1 = div()
             .flex()
             .items_center()
             .gap(px(6.))
             .child(button("sb-settings", "sliders-horizontal"))
             .child(button("sb-seat", "armchair"))
-            .child(button("sb-soundboard", "megaphone"))
+            // Speak Important: listeners hear you louder and see the banner (not while muted).
+            .child({
+                let can = !muted && !deafened && !self.forced_mutes.contains(&self.me.id);
+                let on = own.as_ref().is_some_and(|p| p.important);
+                button("sb-important", "megaphone")
+                    .when(on, |d| d.bg(Theme::lavender_muted()).border_color(Hsla::from(Theme::lavender()).opacity(0.35)))
+                    .when(!can, |d| d.opacity(0.5))
+                    .tooltip(ui::tooltip(t("voiceStage.speakImportant")))
+                    .when(can, |d| {
+                        d.on_click(cx.listener(move |this, _, _, cx| {
+                            this.hub.send(serde_json::json!({ "t": "voice-state", "important": !on }));
+                            cx.notify();
+                        }))
+                    })
+            })
+            // Priority Speaker, for those allowed it: everyone else is quieter while you talk.
+            .when(own.as_ref().is_some_and(|p| p.priority_allowed), |d| {
+                let on = own.as_ref().is_some_and(|p| p.priority_speaker);
+                d.child(
+                    button("sb-priority", "crown")
+                        .when(on, |d| d.bg(Theme::lavender_muted()).border_color(Hsla::from(Theme::lavender()).opacity(0.35)))
+                        .tooltip(ui::tooltip(t(if on { "priority.on" } else { "priority.toggle" })))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.hub.send(serde_json::json!({ "t": "voice-state", "prioritySpeaker": !on }));
+                            cx.notify();
+                        })),
+                )
+            })
             .child(divider())
             .child(
                 button("sb-mic", if muted { "mic-off" } else { "mic" })

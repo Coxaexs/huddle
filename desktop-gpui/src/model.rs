@@ -231,6 +231,11 @@ pub struct VoiceParticipant {
     pub joined_at: f64,
     pub screen_stream_id: Option<String>,
     pub camera_stream_id: Option<String>,
+    /// "Speak important", muted for everyone by a moderator, and Priority Speaker (on, and allowed).
+    pub important: bool,
+    pub server_muted: bool,
+    pub priority_speaker: bool,
+    pub priority_allowed: bool,
 }
 
 impl VoiceParticipant {
