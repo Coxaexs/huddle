@@ -308,6 +308,7 @@ pub struct Member {
     pub tagline: String,
     pub nameplate: String,
     pub avatar_frame: String,
+    pub social_links: Vec<SocialLink>,
     pub profile_style: Option<serde_json::Value>,
     pub last_seen_at: String,
     /// Role ids by server id.
@@ -317,6 +318,7 @@ pub struct Member {
     pub created_at: String,
     pub is_admin: bool,
     pub global_name: Option<String>,
+    /// Art and a glow around the profile card (ProfileFrameArt).
     pub profile_frame: Option<String>,
     pub pride_badges: Vec<String>,
     /// The invite they came in with, when known (server settings → Members).
@@ -365,6 +367,14 @@ pub struct DmConversation {
     pub pinned: bool,
     /// Group DMs: `user` then stands for the group (its id is the channel's).
     pub group: Option<DmGroup>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct SocialLink {
+    pub platform: String,
+    pub url: String,
+    pub label: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

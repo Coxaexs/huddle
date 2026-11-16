@@ -258,7 +258,10 @@ impl Shell {
         let place_left = room_left >= width || (room_right < width && room_left > room_right);
         let raw_left = if place_left { a.x - CARD_GAP - width } else { a.right + CARD_GAP };
         let height = open.height.get();
-        let top = a.y.min(vh - height - 12.).max(12.);
+        // Frames draw art above and below the card, so leave room for it.
+        let frame = m.profile_frame.clone().unwrap_or_default();
+        let framed = !frame.is_empty() && frame != "none";
+        let top = a.y.min(vh - height - if framed { 40. } else { 12. }).max(if framed { 64. } else { 12. });
 
         let left = raw_left.min(vw - width - 12.).max(12.);
 
@@ -748,7 +751,51 @@ impl Shell {
                 )
                 .child(row)
         });
-        let body = div().flex_none().pt(px(8.)).px(px(14.)).pb(px(14.)).flex().flex_col().gap(px(8.)).child(header).children(shelf).children(achievements).child(panel).child(actions);
+        // `.profile-social-links`: a pill per link, opening it in the browser.
+        let socials = (!m.social_links.is_empty()).then(|| {
+            let mut row = div().my(px(8.)).flex().flex_wrap().gap(px(6.));
+            for (n, link) in m.social_links.iter().enumerate() {
+                let label = link.label.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| link.platform.clone());
+                let url = if link.url.starts_with("http") { link.url.clone() } else { format!("https://{}", link.url) };
+                let glyph = match link.platform.to_lowercase().trim() {
+                    "github" => "social-github",
+                    "twitter" | "x" => "social-twitter",
+                    "discord" => "social-discord",
+                    "youtube" => "social-youtube",
+                    "twitch" => "social-twitch",
+                    "instagram" => "social-instagram",
+                    "spotify" => "music",
+                    "steam" => "social-steam",
+                    _ => "globe",
+                };
+                row = row.child(
+                    div()
+                        .id(SharedString::from(format!("profile-social-{n}")))
+                        .relative()
+                        .flex()
+                        .items_center()
+                        .gap(px(5.))
+                        .px(px(9.))
+                        .py(px(4.))
+                        .rounded(px(14.))
+                        .bg(gpui::rgba(0xffffff14))
+                        .border_1()
+                        .border_color(gpui::rgba(0xffffff1f))
+                        .text_size(px(11.))
+                        .line_height(px(16.5))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(Theme::ink())
+                        .cursor_pointer()
+                        .hover(|s| s.bg(gpui::rgba(0xffffff26)).border_color(Theme::lavender()).top(px(-1.)))
+                        .tooltip(ui::tooltip(format!("{label}: {}", link.url)))
+                        .child(ui::icon(glyph, 14., Theme::ink()))
+                        .child(label)
+                        .on_click(move |_, _, cx| cx.open_url(&url)),
+                );
+            }
+            row
+        });
+        let body = div().flex_none().pt(px(8.)).px(px(14.)).pb(px(14.)).flex().flex_col().gap(px(8.)).child(header).children(shelf).children(achievements).children(socials).child(panel).child(actions);
         let measured = open.height.clone();
         let card = div()
             .id("profile-card")
@@ -769,12 +816,15 @@ impl Shell {
                 gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.55), offset: gpui::point(px(0.), px(20.)), blur_radius: px(50.), spread_radius: px(0.) },
                 gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.4), offset: gpui::point(px(0.), px(4.)), blur_radius: px(14.), spread_radius: px(0.) },
             ])
+            .when_some(crate::cosmetics::frame_shadow(&frame), |d, shadow| d.shadow(shadow))
             .text_color(rgb(0xf2f3f5))
             .flex()
             .flex_col()
             .child(banner)
             .child(avatar_row)
             .child(body)
+            // `.pframe-art`: the frame's pieces, over the card and around it.
+            .children(crate::cosmetics::frame_art(&frame, width, open.height.get(), window.scale_factor()))
             // Measured each frame; a change places the card again on the next one.
             .child(
                 gpui::canvas(
