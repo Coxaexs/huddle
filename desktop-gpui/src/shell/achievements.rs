@@ -208,7 +208,7 @@ fn ring_picture(share: f32, scale: f32) -> Arc<RenderImage> {
 }
 
 /// lucide-react's names as this app's icon files (Gamepad2 → gamepad-2, a few renamed).
-fn icon_file(name: &str) -> String {
+pub(super) fn icon_file(name: &str) -> String {
     match name {
         "CheckCircle2" => return "circle-check".into(),
         "CircleHelp" => return "circle-question-mark".into(),
