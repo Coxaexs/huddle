@@ -196,7 +196,7 @@ impl Shell {
                 });
                 cx.notify();
             }
-            "permissions" => self.set_notice("Channel permissions are not in this app yet; change them on the web.", cx),
+            "permissions" => self.open_channel_permissions(c.id.clone(), window, cx),
             kind => {
                 if let Some(kind) = kind.strip_prefix("kind:") {
                     let label = kind_label(kind).to_string();

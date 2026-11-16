@@ -547,6 +547,14 @@ impl gpui::Render for Shell {
         {
             self.dev_record(secs, cx);
         }
+        // Development: HOFFLE_DEV_CHPERM=<channel id> opens that channel's permissions.
+        static DEV_CHPERM: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(id) = std::env::var("HOFFLE_DEV_CHPERM")
+            && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
+            && !DEV_CHPERM.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            self.open_channel_permissions(id, window, cx);
+        }
         // Development: HOFFLE_DEV_RENAME=1 opens the Rename Server prompt once (only to look at).
         if std::env::var("HOFFLE_DEV_RENAME").is_ok() && self.confirm.is_none() && !self.dev_invite_done
             && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
@@ -751,6 +759,7 @@ impl gpui::Render for Shell {
             .children(self.render_settings(window, cx))
             .children(self.render_events(window, cx))
             .children(self.render_poll_dialog(window, cx))
+            .children(self.render_chperm(window, cx))
             .children(self.render_confirm(cx))
             .children(self.render_forward(window, cx))
             .children(self.render_invite(window, cx))

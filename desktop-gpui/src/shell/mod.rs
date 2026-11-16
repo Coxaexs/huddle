@@ -16,6 +16,7 @@ mod composer_tools;
 mod games;
 mod rota;
 mod voice_card;
+mod chperm;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -344,6 +345,8 @@ pub struct Shell {
     rota_tr: bool,
     /// Voice messages: the one playing, positions, speeds, decoded clips, transcripts.
     voice_msgs: voice_card::VoiceState,
+    /// The channel permissions editor.
+    chperm: Option<chperm::ChPerm>,
     /// Where each voice message's wave starts on screen, for seeking.
     voice_wave_x: std::rc::Rc<std::cell::RefCell<HashMap<String, f32>>>,
     server_settings: Option<server_settings::ServerSettings>,
@@ -584,6 +587,7 @@ impl Shell {
             rota_subs: Default::default(),
             rota_tr: crate::i18n::locale().starts_with("tr"),
             voice_msgs: Default::default(),
+            chperm: None,
             voice_wave_x: Default::default(),
             server_settings: None,
             pending_new_role: false,
