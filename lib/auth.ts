@@ -83,7 +83,7 @@ const USER_COLUMN_NAMES = [
   "id", "username", "display_name", "avatar", "avatar_url", "banner_url", "bio",
   "pronouns", "tagline", "custom_status", "pride_badges", "achievement_showcase", "spotify_activity", "activity", "lastfm_username",
   "social_links", "avatar_frame", "profile_effect", "nameplate", "profile_frame", "profile_style", "color", "is_admin", "can_invite", "status",
-  "custom_css", "custom_theme", "quick_reactions", "hidden_emojis", "email",
+  "custom_css", "custom_theme", "quick_reactions", "hidden_emojis", "disabled_modules", "email",
   "email_prompt_skipped", "created_at", "last_seen_at", "suspended_at", "signup_source",
   "ui_mode", "layout_prefs",
 ] as const;
