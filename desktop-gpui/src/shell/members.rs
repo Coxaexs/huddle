@@ -636,6 +636,11 @@ impl gpui::Render for Shell {
         if std::env::var("HOFFLE_DEV_FRIENDS").as_deref() == Ok("menu") && self.friend_menu.is_none() && let Some(f) = self.friends.friends.first() {
             self.friend_menu = Some(f.id.clone());
         }
+        if !self.ach_checks && !self.me.id.is_empty() {
+            self.ach_checks = true;
+            self.start_achievement_checks(cx);
+        }
+        self.dev_achievement(cx);
         // HOFFLE_DEV_USERMENU=<user id prefix>,x,y: that person's menu, right-clicked there, once the
         // members have loaded.
         static DEV_USERMENU: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -828,6 +833,7 @@ impl gpui::Render for Shell {
             .children(self.render_chperm(window, cx))
             .children(self.render_lightbox(window, cx))
             .children(self.render_confirm(cx))
+            .children(self.render_achievement_toast(window, cx))
             .children(self.render_forward(window, cx))
             .children(self.render_invite(window, cx))
             .children(self.render_server_settings(window, cx))

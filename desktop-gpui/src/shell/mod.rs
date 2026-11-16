@@ -20,6 +20,7 @@ mod chperm;
 mod invite_card;
 mod status_menu;
 mod member_actions;
+mod achievement_toast;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -290,6 +291,9 @@ pub struct Shell {
     file_drag: bool,
     /// The picture whose description (ALT) is shown over it.
     shown_alt: Option<String>,
+    /// Achievement unlock popups, and whether the periodic check has started.
+    unlocks: achievement_toast::Toasts,
+    ach_checks: bool,
     forced_mutes: HashSet<String>,
     auto_idle: bool,
     footer_devices: Option<(Vec<(String, String)>, Vec<(String, String)>)>,
@@ -621,6 +625,8 @@ impl Shell {
             banned_ids: HashSet::new(),
             file_drag: false,
             shown_alt: None,
+            unlocks: Default::default(),
+            ach_checks: false,
             forced_mutes: HashSet::new(),
             auto_idle: false,
             footer_devices: None,
@@ -1604,6 +1610,11 @@ impl Shell {
                     self.leave_voice(cx);
                     self.status = Some("You were removed from the voice room.".into());
                 }
+            }
+            // Unlocked while doing something (hub `achievement`).
+            "achievement" => {
+                let ids: Vec<String> = value.get("ids").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+                self.announce_unlocked(ids, cx);
             }
             "voice-move" => {
                 // A moderator moved us: join that room.

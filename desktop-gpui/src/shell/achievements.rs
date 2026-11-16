@@ -229,6 +229,15 @@ fn icon_file(name: &str) -> String {
     out
 }
 
+/// getAchievement(): a definition by id, and its tier's label (TIER_LABELS).
+pub(super) fn find_def(id: &str) -> Option<Def> {
+    CATALOGUE.achievements.iter().find(|d| d.id == id).cloned()
+}
+
+pub(super) fn tier_label(tier: &str) -> String {
+    CATALOGUE.tier_labels.get(tier).cloned().unwrap_or_else(|| tier.to_string())
+}
+
 /// AchievementMedal: the metal, the icon in the tier's glyph colour, and a lock badge when locked
 /// (a question mark for a locked secret).
 pub(super) fn medal(def: &Def, earned: bool, size: f32, scale: f32) -> AnyElement {
@@ -322,7 +331,7 @@ fn sound_path() -> Option<std::path::PathBuf> {
     Some(dirs::config_dir()?.join("Hoffle Lite").join("achievement-sound"))
 }
 
-fn sound_on() -> bool {
+pub(super) fn sound_on() -> bool {
     sound_path().and_then(|p| std::fs::read_to_string(p).ok()).is_none_or(|s| s.trim() != "off")
 }
 
@@ -342,6 +351,9 @@ impl Shell {
         cx.spawn(async move |this, cx| {
             let result = cx.background_executor().spawn(async move { client.settings_get("/api/achievements") }).await;
             this.update(cx, |this, cx| {
+                // Unlocks the board found are announced too.
+                let fresh: Vec<String> = result.as_ref().ok().and_then(|v| serde_json::from_value(v.get("newlyEarned").cloned().unwrap_or(Value::Null)).ok()).unwrap_or_default();
+                this.announce_unlocked(fresh, cx);
                 let Some(b) = this.achievements.as_mut() else { return };
                 b.loading = false;
                 match result {
