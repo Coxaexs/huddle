@@ -633,6 +633,16 @@ impl gpui::Render for Shell {
                 _ => super::friends::Tab::Online,
             };
         }
+        // HOFFLE_DEV_ACTIVE=1: the first friend online and playing something, for Active now.
+        if std::env::var_os("HOFFLE_DEV_ACTIVE").is_some()
+            && let Some(f) = self.friends.friends.first_mut()
+            && f.activity.is_none()
+        {
+            let now = chrono::Utc::now().timestamp_millis();
+            f.activity = Some(serde_json::json!({ "kind": "playing", "name": "Minecraft", "details": "Survival", "startedAt": now - 65 * 60_000, "updatedAt": now }));
+            let id = f.id.clone();
+            self.online.insert(id);
+        }
         if std::env::var("HOFFLE_DEV_FRIENDS").as_deref() == Ok("menu") && self.friend_menu.is_none() && let Some(f) = self.friends.friends.first() {
             self.friend_menu = Some(f.id.clone());
         }
@@ -807,7 +817,7 @@ impl gpui::Render for Shell {
                             .border_1()
                             .border_color(Theme::line())
                             .overflow_hidden()
-                            .child(self.render_friends_view(cx)),
+                            .child(self.render_friends_view(window, cx)),
                     ),
                 )
             })

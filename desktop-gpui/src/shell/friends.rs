@@ -275,8 +275,9 @@ impl Shell {
             .child(nav)
     }
 
-    pub(super) fn render_friends_view(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(super) fn render_friends_view(&self, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let tab = self.friends_tab;
+        let wide = f32::from(window.viewport_size().width) >= 1280.;
         let tab_button = |id: &'static str, label: String, which: Tab, count: Option<usize>, cx: &mut Context<Self>| {
             let active = tab == which;
             div()
@@ -382,7 +383,13 @@ impl Shell {
             );
 
         let body: AnyElement = match tab {
-            Tab::Online | Tab::All => self.render_friend_list(tab, cx).into_any_element(),
+            // Under xl (1280 px) "Active now" sits above the list, and only when someone is.
+            Tab::Online | Tab::All => div()
+                .w_full()
+                .max_w(px(768.))
+                .when(!wide, |d| d.children(self.render_active_now(true, cx)))
+                .child(self.render_friend_list(tab, cx))
+                .into_any_element(),
             _ => self.render_friends_other(tab, cx).into_any_element(),
         };
 
@@ -392,7 +399,28 @@ impl Shell {
             .flex_col()
             .font_family(NUNITO)
             .child(header)
-            .child(div().id("friends-body").flex_1().min_h_0().overflow_y_scroll().p(px(24.)).child(body))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .child(div().id("friends-body").flex_1().min_w_0().h_full().overflow_y_scroll().p(px(24.)).child(body))
+                    // xl: the column on the right.
+                    .when(wide, |d| {
+                        d.child(
+                            div()
+                                .id("friends-active-now")
+                                .w(px(340.))
+                                .flex_none()
+                                .h_full()
+                                .overflow_y_scroll()
+                                .border_l_1()
+                                .border_color(Theme::line())
+                                .p(px(20.))
+                                .children(self.render_active_now(false, cx)),
+                        )
+                    }),
+            )
     }
 
     fn render_friend_list(&self, tab: Tab, cx: &mut Context<Self>) -> impl IntoElement {
@@ -488,7 +516,12 @@ impl Shell {
         }
         for (row, friend) in shown.into_iter().enumerate() {
             let online = self.online.contains(&friend.id);
-            let line = friend.status_text().unwrap_or_else(|| format!("@{}", friend.username));
+            // customStatus, else (online) memberActivityLine, else @username.
+            let activity_line = online.then(|| self.active_now().into_iter().find(|e| e.0.id == friend.id)).flatten().and_then(|(_, _, a, s)| {
+                a.map(|a| tv(&format!("activity.{}", a["kind"].as_str().unwrap_or("playing")), &[("name", a["name"].as_str().unwrap_or_default())]))
+                    .or_else(|| s.map(|s| tv("activity.listening", &[("name", s["song"].as_str().unwrap_or_default())])))
+            });
+            let line = friend.status_text().or(activity_line).unwrap_or_else(|| format!("@{}", friend.username));
             let user_id = friend.id.clone();
             col = col.child(
                 div()
@@ -542,9 +575,10 @@ impl Shell {
                         let (menu_id, remove_id, block_id) = (friend.id.clone(), friend.id.clone(), friend.id.clone());
                         let open = self.friend_menu.as_deref() == Some(friend.id.as_str());
                         let rose: gpui::Hsla = rgb(0xf43f5e).into();
+                        // gap-1 beside the message button (the row's own gap is 14).
                         div()
                             .relative()
-                            .ml(px(4.))
+                            .ml(px(-10.))
                             .child(
                                 div()
                                     .id(SharedString::from(format!("friend-more-{}", friend.id)))
@@ -612,6 +646,218 @@ impl Shell {
             );
         }
         col
+    }
+
+    /// activeNow(): friends in a voice room of a server you are in, or sharing a game or a song
+    /// while online; rooms first, then games, then music, by name within each.
+    fn active_now(&self) -> Vec<(&Friend, Option<(String, String, String, String, Vec<crate::model::VoiceParticipant>)>, Option<serde_json::Value>, Option<serde_json::Value>)> {
+        let now = chrono::Utc::now().timestamp_millis() as f64;
+        let mut entries = Vec::new();
+        for friend in &self.friends.friends {
+            let room = self.servers.iter().find_map(|server| {
+                server.channels.iter().find_map(|channel| {
+                    let seats = self.rooms.get(&channel.id)?;
+                    seats.iter().any(|p| p.id == friend.id && !p.bot).then(|| {
+                        // Two tabs of one person are one person in the room.
+                        let mut people: Vec<crate::model::VoiceParticipant> = Vec::new();
+                        for seat in seats.iter().filter(|s| !s.bot) {
+                            if !people.iter().any(|p| p.id == seat.id) {
+                                people.push(seat.clone());
+                            }
+                        }
+                        (server.id.clone(), server.name.clone(), channel.id.clone(), channel.name.clone(), people)
+                    })
+                })
+            });
+            let here = self.online.contains(&friend.id);
+            let activity = friend.activity.clone().filter(|a| {
+                here && a.is_object() && {
+                    let limit = if a["manual"] == true { 12. * 60. * 60_000. } else { 9. * 60_000. };
+                    now - a["updatedAt"].as_f64().unwrap_or(0.) <= limit
+                }
+            });
+            let song = friend.spotify_activity.clone().filter(|s| {
+                here && s.is_object() && s["isPlaying"] != false && s["updatedAt"].as_f64().is_none_or(|at| now - at <= 9. * 60_000.)
+            });
+            if room.is_none() && activity.is_none() && song.is_none() {
+                continue;
+            }
+            entries.push((friend, room, activity, song));
+        }
+        let rank = |e: &(&Friend, Option<(String, String, String, String, Vec<crate::model::VoiceParticipant>)>, Option<serde_json::Value>, Option<serde_json::Value>)| if e.1.is_some() { 0 } else if e.2.is_some() { 1 } else { 2 };
+        entries.sort_by(|a, b| rank(a).cmp(&rank(b)).then_with(|| a.0.display_name.cmp(&b.0.display_name)));
+        entries
+    }
+
+    /// ActiveNowPanel: the column (with its quiet state), or `compact` above the list.
+    fn render_active_now(&self, compact: bool, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let entries = self.active_now();
+        if compact && entries.is_empty() {
+            return None;
+        }
+        let mut section = div().when(compact, |d| d.mb(px(24.))).child(div().mb(px(12.)).text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::BLACK).text_color(Theme::muted()).child(t("friends.activeNow").to_uppercase()));
+        if entries.is_empty() {
+            return Some(
+                section
+                    .child(
+                        div()
+                            .p(px(16.))
+                            .rounded(px(12.))
+                            .border_1()
+                            .border_color(Theme::line())
+                            .bg(gpui::Hsla::from(Theme::panel()).opacity(0.5))
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .child(div().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(t("friends.activeNow.quietTitle")))
+                            .child(div().mt(px(4.)).text_size(px(12.)).line_height(px(19.5)).text_color(Theme::muted()).text_center().child(t("friends.activeNow.quietBody"))),
+                    )
+                    .into_any_element(),
+            );
+        }
+        let my_room = self.call.as_ref().map(|c| c.channel_id.clone());
+        let now = chrono::Utc::now().timestamp_millis() as f64;
+        let mut list = div().flex().gap(px(10.)).when(compact, |d| d.flex_wrap()).when(!compact, |d| d.flex_col());
+        for (friend, room, activity, song) in entries {
+            let subtitle = match (&room, &activity, &song) {
+                (Some(r), _, _) => tv("friends.activeNow.inRoom", &[("room", &r.3)]),
+                (None, Some(a), _) => tv(&format!("activity.{}", a["kind"].as_str().unwrap_or("playing")), &[("name", a["name"].as_str().unwrap_or_default())]),
+                (None, None, Some(s)) => tv("activity.listening", &[("name", s["song"].as_str().unwrap_or_default())]),
+                _ => String::new(),
+            };
+            let id = friend.id.clone();
+            let mut card = div()
+                .p(px(12.))
+                .rounded(px(12.))
+                .border_1()
+                .border_color(Theme::line())
+                .bg(gpui::Hsla::from(Theme::panel()).opacity(0.6))
+                .when(compact, |d| d.w(px(379.)))
+                .child(
+                    div()
+                        .id(SharedString::from(format!("an-open-{id}")))
+                        .flex()
+                        .items_center()
+                        .gap(px(10.))
+                        .min_w_0()
+                        .cursor_pointer()
+                        .child(ui::avatar(self.picture(&friend.avatar_url), &friend.avatar, &friend.color, friend.name(), 32.))
+                        .child(
+                            div()
+                                .min_w_0()
+                                .child(div().truncate().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(friend.display_name.clone()))
+                                .child(div().truncate().text_size(px(12.)).line_height(px(16.)).text_color(Theme::muted()).child(subtitle)),
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| this.open_dm_with(id.clone(), cx))),
+                );
+            if let Some((server_id, server_name, channel_id, channel_name, people)) = room {
+                let here = my_room.as_deref() == Some(channel_id.as_str());
+                let mut faces = div().flex().items_center();
+                for (n, p) in people.iter().take(5).enumerate() {
+                    faces = faces.child(div().when(n > 0, |d| d.ml(px(-6.))).rounded_full().border_2().border_color(Theme::panel()).child(ui::avatar(self.picture(&p.avatar_url), &p.avatar, &p.color, p.name(), 22.)));
+                }
+                if people.len() > 5 {
+                    faces = faces.child(div().ml(px(10.)).text_size(px(11.)).font_weight(FontWeight::BOLD).text_color(Theme::muted()).child(format!("+{}", people.len() - 5)));
+                }
+                let (sid, cid) = (server_id.clone(), channel_id.clone());
+                card = card.child(
+                    div()
+                        .mt(px(10.))
+                        .p(px(10.))
+                        .rounded(px(8.))
+                        .bg(gpui::Hsla::from(Theme::chat_bg()).opacity(0.7))
+                        .child(div().flex().items_center().gap(px(6.)).min_w_0().text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(icon("volume-2", 14., Theme::lavender())).child(div().truncate().child(channel_name)))
+                        .child(div().truncate().text_size(px(11.)).line_height(px(16.5)).text_color(Theme::muted()).child(server_name))
+                        .child(
+                            div()
+                                .mt(px(8.))
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap(px(8.))
+                                .child(faces)
+                                .child(if here {
+                                    div().text_size(px(11.)).font_weight(FontWeight::BOLD).text_color(rgb(0x34d399)).child(t("friends.activeNow.here")).into_any_element()
+                                } else {
+                                    div()
+                                        .id(SharedString::from(format!("an-join-{cid}")))
+                                        .px(px(12.))
+                                        .py(px(4.))
+                                        .rounded(px(8.))
+                                        .bg(Theme::send())
+                                        .text_size(px(12.))
+                                        .line_height(px(16.))
+                                        .font_weight(FontWeight::BOLD)
+                                        .text_color(Theme::on_accent())
+                                        .cursor_pointer()
+                                        .child(t("friends.activeNow.join"))
+                                        .on_click(cx.listener(move |this, _, window, cx| {
+                                            this.open_server(sid.clone(), cx);
+                                            this.open_stage(cid.clone(), window, cx);
+                                        }))
+                                        .into_any_element()
+                                }),
+                        ),
+                );
+            }
+            if let Some(a) = activity {
+                let kind = a["kind"].as_str().unwrap_or("playing");
+                let glyph = match kind {
+                    "coding" => "code-xml",
+                    "streaming" => "radio",
+                    "app" => "app-window",
+                    _ => "gamepad-2",
+                };
+                let minutes = ((now - a["startedAt"].as_f64().unwrap_or(now)) / 60_000.).floor() as i64;
+                let elapsed = if minutes < 1 {
+                    String::new()
+                } else if minutes < 60 {
+                    tv("activity.elapsed.minutes", &[("minutes", &minutes.to_string())])
+                } else {
+                    tv("activity.elapsed.hoursMinutes", &[("hours", &(minutes / 60).to_string()), ("minutes", &(minutes % 60).to_string())])
+                };
+                let line = [a["details"].as_str().unwrap_or_default().to_string(), elapsed].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
+                card = card.child(
+                    div()
+                        .mt(px(10.))
+                        .flex()
+                        .items_center()
+                        .gap(px(10.))
+                        .min_w_0()
+                        .child(div().flex_none().size(px(36.)).rounded(px(8.)).bg(gpui::Hsla::from(Theme::chat_bg()).opacity(0.7)).flex().items_center().justify_center().child(icon(glyph, 18., Theme::lavender())))
+                        .child(
+                            div()
+                                .min_w_0()
+                                .child(div().truncate().text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(a["name"].as_str().unwrap_or_default().to_string()))
+                                .when(!line.is_empty(), |d| d.child(div().truncate().text_size(px(11.)).line_height(px(16.5)).text_color(Theme::muted()).child(line))),
+                        ),
+                );
+            }
+            if let Some(s) = song {
+                let art: AnyElement = match s["albumArt"].as_str().filter(|u| !u.is_empty()) {
+                    Some(url) => img(url.to_string()).flex_none().size(px(36.)).rounded(px(8.)).object_fit(gpui::ObjectFit::Cover).into_any_element(),
+                    None => div().flex_none().size(px(36.)).rounded(px(8.)).bg(gpui::Hsla::from(Theme::chat_bg()).opacity(0.7)).flex().items_center().justify_center().child(icon("music-2", 18., rgb(0x34d399))).into_any_element(),
+                };
+                card = card.child(
+                    div()
+                        .mt(px(10.))
+                        .flex()
+                        .items_center()
+                        .gap(px(10.))
+                        .min_w_0()
+                        .child(art)
+                        .child(
+                            div()
+                                .min_w_0()
+                                .child(div().truncate().text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(s["song"].as_str().unwrap_or_default().to_string()))
+                                .child(div().truncate().text_size(px(11.)).line_height(px(16.5)).text_color(Theme::muted()).child(s["artist"].as_str().unwrap_or_default().to_string())),
+                        ),
+                );
+            }
+            list = list.child(card);
+        }
+        section = section.child(list);
+        Some(section.into_any_element())
     }
 
     /// loadFriends().

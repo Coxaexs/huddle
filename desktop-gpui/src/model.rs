@@ -376,6 +376,9 @@ pub struct Friend {
     pub avatar_url: Option<String>,
     pub color: String,
     pub custom_status: Option<serde_json::Value>,
+    /// What they share: a game or app ({kind, name, details, startedAt, updatedAt, manual}) and a song.
+    pub activity: Option<serde_json::Value>,
+    pub spotify_activity: Option<serde_json::Value>,
 }
 
 impl Friend {
