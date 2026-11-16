@@ -273,6 +273,9 @@ pub struct Shell {
     status_clear: String,
     /// The user card's mic / headphones device list ("mic" or "speaker") and the devices found.
     device_menu: Option<&'static str>,
+    /// Auto-idle: the last key or click, and whether idle was set by it (not by hand).
+    last_input: std::time::Instant,
+    auto_idle: bool,
     footer_devices: Option<(Vec<(String, String)>, Vec<(String, String)>)>,
     /// Hub clock minus ours, in ms: voice seat timers count in the hub's time.
     clock_offset: f64,
@@ -469,6 +472,7 @@ impl Shell {
                     if before != after {
                         cx.notify();
                     }
+                    this.check_auto_idle(cx);
                 });
                 if alive.is_err() {
                     break;
@@ -567,6 +571,8 @@ impl Shell {
             my_status: None,
             status_clear: status_menu::load_clear_choice(),
             device_menu: None,
+            last_input: std::time::Instant::now(),
+            auto_idle: false,
             footer_devices: None,
             clock_offset: 0.,
             revealed: HashSet::new(),

@@ -40,7 +40,7 @@ pub(super) struct VoiceState {
     transcribing: std::collections::HashSet<String>,
     errors: HashMap<String, String>,
     /// A voice message being recorded, and whether it is on its way.
-    recording: Option<crate::recorder::Recorder>,
+    pub(super) recording: Option<crate::recorder::Recorder>,
     sending: bool,
 }
 
@@ -439,7 +439,7 @@ impl Shell {
         cx.notify();
     }
 
-    fn cancel_recording(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn cancel_recording(&mut self, cx: &mut Context<Self>) {
         if let Some(rec) = self.voice_msgs.recording.take() {
             rec.cancel();
         }

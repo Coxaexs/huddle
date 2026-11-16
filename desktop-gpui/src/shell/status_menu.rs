@@ -18,6 +18,11 @@ pub(super) fn presence_color(status: &str) -> Rgba {
     rgb(PRESENCE.iter().find(|(k, _)| *k == status).map_or(0x3ba55d, |(_, c)| *c))
 }
 
+/// Ten minutes (HOFFLE_DEV_IDLE_SECS shortens it for tests).
+fn idle_after() -> std::time::Duration {
+    std::time::Duration::from_secs(std::env::var("HOFFLE_DEV_IDLE_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(10 * 60))
+}
+
 /// lib/status-clear.ts STATUS_CLEAR_CHOICES.
 const CLEAR_CHOICES: [&str; 5] = ["30m", "1h", "4h", "today", "never"];
 
@@ -163,6 +168,8 @@ impl Shell {
                     .child(t(&format!("presence.{key}")))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.status_open = false;
+                        // Picked by hand: auto-idle leaves it alone.
+                        this.auto_idle = false;
                         this.save_presence(json!({ "status": key }), cx);
                     })),
             );
@@ -231,6 +238,23 @@ impl Shell {
             })));
         }
         Some(gpui::deferred(menu).with_priority(2).into_any_element())
+    }
+
+    /// Auto-idle (use-shell-voice.ts): idle after 10 minutes without a key or click, back online
+    /// on the next one, never overriding a status picked by hand.
+    pub(super) fn check_auto_idle(&mut self, cx: &mut Context<Self>) {
+        if !self.me.id.is_empty() && self.last_input.elapsed() >= idle_after() && self.my_status() == "online" {
+            self.auto_idle = true;
+            self.save_presence(json!({ "status": "idle" }), cx);
+        }
+    }
+
+    pub(super) fn note_input(&mut self, cx: &mut Context<Self>) {
+        self.last_input = std::time::Instant::now();
+        if self.auto_idle && self.my_status() == "idle" {
+            self.auto_idle = false;
+            self.save_presence(json!({ "status": "online" }), cx);
+        }
     }
 
     /// The mic or headphones chevron: the device list, read when it opens.

@@ -799,8 +799,16 @@ impl gpui::Render for Shell {
                 }
             }))
             // Escape closes the message menu before anything else hears it.
+            .capture_any_mouse_down(cx.listener(|this, _, _, cx| this.note_input(cx)))
             .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                this.note_input(cx);
                 let k = &event.keystroke;
+                // Esc throws a voice message being recorded away (voice-message.tsx).
+                if k.key == "escape" && this.voice_msgs.recording.is_some() {
+                    this.cancel_recording(cx);
+                    cx.stop_propagation();
+                    return;
+                }
                 let combo = k.unparse();
                 let has_modifier = k.modifiers.control || k.modifiers.alt || k.modifiers.platform;
                 // The push-to-talk key in Settings: any key at all (not a modifier on its own).
