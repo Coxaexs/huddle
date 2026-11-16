@@ -442,3 +442,26 @@ pub fn faded<E: Styled>(el: E, fill: impl Into<Hsla>, label: impl Into<Hsla>, un
     let under = under.into();
     el.bg(crate::theme::mix(fill, 0.5, under)).text_color(crate::theme::mix(label, 0.5, under))
 }
+
+/// Text set with CSS `letter-spacing` (gpui has none): wrapped at word breaks within `max_width` as
+/// the spaced text would be.
+pub fn tracked(window: &Window, text: &str, size: f32, weight: gpui::FontWeight, spacing: f32, line_height: f32, max_width: f32) -> gpui::Div {
+    let width = |s: &str| f32::from(text_width(window, s, weight, size)) + spacing * s.chars().count() as f32;
+    let mut lines: Vec<String> = Vec::new();
+    for word in text.split(' ') {
+        match lines.last_mut() {
+            Some(line) if width(&format!("{line} {word}")) <= max_width => {
+                line.push(' ');
+                line.push_str(word);
+            }
+            _ => lines.push(word.to_string()),
+        }
+    }
+    // Each line drawn as one run: laying letters out one by one rounds every glyph box up and spreads
+    // them far wider than the 0.06em; the spacing only decides where lines break.
+    let mut column = div().flex().flex_col();
+    for line in lines {
+        column = column.child(div().h(gpui::px(line_height)).whitespace_nowrap().child(line));
+    }
+    column.text_size(gpui::px(size)).line_height(gpui::px(line_height)).font_weight(weight)
+}

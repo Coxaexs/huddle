@@ -1,7 +1,7 @@
 //! The channel sidebar (app/components/chat/shell/panels.tsx, full mode) and the user card
 //! (`.discord-user-footer`) that sits over the bottom of the rail and the sidebar.
 
-use gpui::{AnyElement, Context, FontWeight, IntoElement, SharedString, div, prelude::*, px, rgb};
+use gpui::{AnyElement, AppContext as _, Context, FontWeight, IntoElement, SharedString, div, prelude::*, px, rgb};
 
 use super::Shell;
 use crate::model::{Channel, VoiceParticipant};
@@ -207,7 +207,7 @@ impl Shell {
                     .id(SharedString::from(format!("cat-{}", category.id)))
                     .flex_none()
                     .pt(px(7.))
-                    .h(px(30.))
+                    .min_h(px(30.))
                     .pl(px(4.))
                     .flex()
                     .items_center()
@@ -223,24 +223,27 @@ impl Shell {
                     .hover(|s| s.text_color(Theme::ink()))
                     .child(
                         div()
+                            .flex_none()
                             .size(px(14.))
                             .when(collapsed, |d| d.child(icon("chevron-right", 14., Theme::muted())))
                             .when(!collapsed, |d| d.child(icon("chevron-down", 14., Theme::muted()))),
                     )
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .line_height(px(16.5))
-                            .font_weight(FontWeight::BOLD)
-                            .child(category.name.to_uppercase()),
-                    )
+                    // `.category-toggle span`: wraps inside what the actions leave (177px less 4px
+                    // padding each side, the caret and its 6px gap).
+                    .child(div().ml(px(6.)).flex_none().child(ui::tracked(window, &category.name.to_uppercase(), 11., FontWeight::BOLD, 0.66, 16.5, if manage { 149. } else { 185. })))
                     .children(actions)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if !this.collapsed.remove(&id) {
                             this.collapsed.insert(id.clone());
                         }
                         cx.notify();
-                    })),
+                    }))
+                    // categoryDropProps(): dropped on the category, a channel goes last in it.
+                    .when(manage, |d| {
+                        let cat = category.id.clone();
+                        d.drag_over::<DraggedChannel>(|s, _, _, _| s.text_color(Theme::ink()).bg(Theme::hover()))
+                            .on_drop(cx.listener(move |this, dragged: &DraggedChannel, _, cx| this.drop_channel(dragged.id.clone(), Some(cat.clone()), None, cx)))
+                    }),
             );
             if !collapsed {
                 for channel in members {
@@ -348,8 +351,8 @@ impl Shell {
             .text_size(px(if simple { 14.5 } else { 13. }))
             .line_height(px(if simple { 21.75 } else { 19.5 }))
             .when(selected, |d| d.bg(Theme::lavender_soft()).text_color(Theme::lavender()).font_weight(FontWeight::BOLD))
-            // Simple: the selected room has a 2px accent edge on its left.
-            .when(selected && simple, |d| d.child(div().absolute().inset_0().rounded(px(12.)).border_l_2().border_color(Theme::lavender())))
+            // `.channel.selected` (redesign.css): a 2px accent edge on its left, in every mode.
+            .when(selected, |d| d.child(div().absolute().inset_0().rounded(px(12.)).border_l_2().border_color(Theme::lavender())))
             .when(!selected, |d| {
                 // Simple marks unread rooms (`has-unread`) with the pill alone.
                 d.text_color(if unread && !simple { Theme::ink() } else { Theme::quiet() })
@@ -402,6 +405,7 @@ impl Shell {
                     cx.open_url(&format!("{base}?server={server_id}"));
                 }
             }))
+            .map(|row| self.arrangeable(row, channel, cx))
             .into_any_element()
     }
 
@@ -475,6 +479,7 @@ impl Shell {
                 })
             })
             .on_click(cx.listener(move |this, _, window, cx| this.open_stage(id.clone(), window, cx)));
+        let row = self.arrangeable(row, channel, cx);
 
         if connected {
             // `.voice-room-wrapper.voice-active-contour`: the joined room as a card, its name in the
@@ -854,4 +859,95 @@ impl Shell {
 pub(super) fn duration(secs: u64) -> String {
     let (h, m, s) = (secs / 3600, secs / 60 % 60, secs % 60);
     if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m}:{s:02}") }
+}
+
+
+/// A channel being dragged to a new place (channelDragProps): its preview is the row, faded as the
+/// browser draws a dragged element.
+#[derive(Clone)]
+pub(super) struct DraggedChannel {
+    id: String,
+    name: String,
+    icon: &'static str,
+}
+
+impl gpui::Render for DraggedChannel {
+    fn render(&mut self, _: &mut gpui::Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .h(px(38.))
+            .w(px(222.))
+            .px(px(10.))
+            .rounded(px(12.))
+            .bg(Theme::hover())
+            .opacity(0.7)
+            .flex()
+            .items_center()
+            .gap(px(9.))
+            .text_size(px(13.))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(Theme::ink())
+            .child(icon(self.icon, 16., Theme::quiet()))
+            .child(self.name.clone())
+    }
+}
+
+impl Shell {
+    fn can_arrange_channels(&self) -> bool {
+        self.my_permissions() & (1 << 1) != 0
+    }
+
+    /// Makes a row draggable and a drop target: dropped on, the channel goes before it.
+    fn arrangeable(&self, row: gpui::Stateful<gpui::Div>, channel: &Channel, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
+        if !self.can_arrange_channels() {
+            return row;
+        }
+        let dragged = DraggedChannel { id: channel.id.clone(), name: channel.name.clone(), icon: channel.icon() };
+        let (target, category) = (channel.id.clone(), channel.category_id.clone());
+        let me = channel.id.clone();
+        row.on_drag(dragged, |d, _, _, cx| cx.new(|_| d.clone()))
+            .drag_over::<DraggedChannel>(move |s, d, _, _| if d.id == me { s } else { s.border_t_2().border_color(Theme::lavender()) })
+            .on_drop(cx.listener(move |this, d: &DraggedChannel, _, cx| this.drop_channel(d.id.clone(), category.clone(), Some(target.clone()), cx)))
+    }
+
+    /// dropChannel(): the channel into `category` (before `before`, or last), every position renumbered.
+    fn drop_channel(&mut self, dragged: String, category: Option<String>, before: Option<String>, cx: &mut Context<Self>) {
+        if before.as_deref() == Some(dragged.as_str()) {
+            return;
+        }
+        let Some(server) = self.server().cloned() else { return };
+        let Some(moved) = server.channels.iter().find(|c| c.id == dragged).cloned() else { return };
+        let mut lists: std::collections::BTreeMap<Option<String>, Vec<Channel>> = Default::default();
+        for c in server.channels.iter().filter(|c| c.id != dragged) {
+            lists.entry(c.category_id.clone()).or_default().push(c.clone());
+        }
+        for list in lists.values_mut() {
+            list.sort_by_key(|c| c.position);
+        }
+        let target = lists.entry(category.clone()).or_default();
+        let at = before.as_ref().and_then(|b| target.iter().position(|c| &c.id == b));
+        let mut moved = moved;
+        moved.category_id = category.clone();
+        match at {
+            Some(i) => target.insert(i, moved),
+            None => target.push(moved),
+        }
+        let payload: Vec<serde_json::Value> = lists
+            .iter()
+            .flat_map(|(cat, list)| list.iter().enumerate().map(move |(n, c)| serde_json::json!({ "id": c.id, "categoryId": cat, "position": n })))
+            .collect();
+        let body = serde_json::json!({ "serverId": server.id, "channels": payload });
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.settings_post("/api/channels/reorder", body) }).await;
+            this.update(cx, |this, cx| {
+                match result {
+                    Ok(_) => this.load_servers(cx),
+                    Err(e) => this.set_notice(if e.to_string().is_empty() { "Could not reorder.".to_string() } else { e.to_string() }, cx),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
 }
