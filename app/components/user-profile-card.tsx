@@ -43,7 +43,7 @@ import { MemberTag } from "./member-tag";
 import { apiFetch } from "../lib/client";
 import { scopeProfileCss } from "@/lib/themes";
 import { StyledText } from "./message-body";
-import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "./cosmetics";
+import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "./cosmetics-lite";
 import { stripTextStyle } from "@/lib/text-style";
 import { cardLook, useCardPointer } from "../lib/profile-look";
 import { CardBackdrop, CardChrome, StyledName } from "./profile-style-parts";

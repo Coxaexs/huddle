@@ -44,6 +44,7 @@ import { proxiedImage } from "@/app/lib/image-proxy";
 import { heard, isSongLink, playbackPosition, type PlayerState, type Track } from "@/lib/protocol";
 import { openWebView } from "./widgets/web-view";
 import { lyricsSource } from "@/app/lib/lyrics-source";
+import { closeMusicPlayer, openMusicPlayer, useMusicPlayerView, type MusicPlayerSeed, type MusicPlayerTab, type MusicPlayerView } from "./music-player-store";
 import type { TimedWord, WordsDonor, WordsFrom } from "@/lib/musicbot";
 
 /**
@@ -55,59 +56,14 @@ import type { TimedWord, WordsDonor, WordsFrom } from "@/lib/musicbot";
  * actions as the chat cards, so the DJ booth and permissions work the same.
  */
 
-export type MusicPlayerTab = "lyrics" | "queue" | "search" | "playlists" | "dj";
-
-/** Lyrics a /lyricsnow card already has, so opening it needs no new lookup. */
-export interface MusicPlayerSeed {
-  trackId: string;
-  lines: Array<{ at: number; line: string }>;
-  source?: string | null;
-  sourceUrl?: string | null;
-  versionLength?: number | null;
-  loose?: boolean;
-}
-
-interface MusicPlayerView {
-  /** The voice room to show; the one you are in when not given. */
-  channelId: string | null;
-  tab: MusicPlayerTab;
-  seed: MusicPlayerSeed | null;
-  /** Open the lyrics tab straight on "Wrong lyrics?" (the card's button). */
-  fix?: boolean;
-}
-
-let current: MusicPlayerView | null = null;
-const listeners = new Set<() => void>();
-
-function emit() {
-  for (const listener of listeners) listener();
-}
-
-export function openMusicPlayer(view: Partial<MusicPlayerView> = {}) {
-  current = {
-    channelId: view.channelId ?? null,
-    tab: view.tab ?? "lyrics",
-    seed: view.seed ?? null,
-    fix: view.fix ?? false,
-  };
-  emit();
-}
-
-export function closeMusicPlayer() {
-  current = null;
-  emit();
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-export function useMusicPlayerView(): MusicPlayerView | null {
-  return useSyncExternalStore(subscribe, () => current, () => null);
-}
+export {
+  closeMusicPlayer,
+  openMusicPlayer,
+  useMusicPlayerView,
+  type MusicPlayerSeed,
+  type MusicPlayerTab,
+  type MusicPlayerView,
+} from "./music-player-store";
 
 function clock(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds)) return "–:––";
@@ -199,7 +155,7 @@ function isTyping(target: EventTarget | null): boolean {
   );
 }
 
-function MusicPlayer({
+export function MusicPlayer({
   view,
   players,
   voiceChannelId,

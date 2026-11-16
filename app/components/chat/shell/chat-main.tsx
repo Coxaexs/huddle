@@ -5,7 +5,7 @@ import { channelKindInfo } from "@/lib/channel-kinds";
 import { hasPermission, Permission } from "@/lib/permissions";
 import { ChevronDown } from "lucide-react";
 import { SessionNotesBanner } from "../../session-notes-banner";
-import { DiceOverlay } from "../../dice-overlay";
+import { DiceOverlay } from "../../dice-overlay-lazy";
 import { StyledText } from "../../message-body";
 import { ForumBoard } from "../../forum-board";
 import { VoiceChatPanel } from "../../voice-chat-panel";

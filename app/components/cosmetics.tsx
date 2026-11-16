@@ -1,6 +1,9 @@
 "use client";
 
-import { moduleOn, useModuleOn } from "@/app/lib/modules";
+import { useModuleOn } from "@/app/lib/modules";
+import { RING_DECORATIONS, customEffectUrl } from "./cosmetics-lite";
+
+export { RING_DECORATIONS, customEffectUrl, nameplateClass } from "./cosmetics-lite";
 import { useId, type CSSProperties, type ReactNode } from "react";
 import { CANVAS_SCENES, CanvasScene, useParticlesSetting } from "./particle-scenes";
 import { EXTRA_DECORATIONS, EXTRA_EFFECTS, EXTRA_FRAME_ART, EXTRA_NAMEPLATE_ART, EXTRA_SCENES, NAMEPLATE_FIT_WHOLE } from "./cosmetics-extra";
@@ -392,8 +395,6 @@ const DECORATIONS: Record<string, (u: string) => ReactNode> = {
 // The second wave (cosmetics-extra.tsx) joins the same registries.
 Object.assign(DECORATIONS, EXTRA_DECORATIONS, MZ_DECORATIONS);
 
-/** Ring-style decorations drawn by CSS box-shadow on the avatar itself. */
-export const RING_DECORATIONS = new Set(["neon", "rainbow", "cyber", "gold", "sakura", "diamond"]);
 
 /**
  * The art for an avatar decoration, laid over the avatar. Parent must be
@@ -1798,12 +1799,6 @@ Object.assign(SCENE_EXTRA, MZ_SCENE_EXTRA);
 /** CSS-only effects that predate the particle system. */
 const LEGACY_EFFECTS = new Set(["matrix", "aurora", "lightning"]);
 
-/** The upload URL behind a custom "gif:<key>" effect, or null. */
-export function customEffectUrl(id?: string | null) {
-  const match = id ? /^gifx?:(.+)$/.exec(id) : null;
-  return match ? `/hangout/api/uploads/${encodeURIComponent(match[1])}` : null;
-}
-
 /** Animated effect over a whole profile card. Parent must be position: relative. */
 export function ProfileEffect({ id, density = 1 }: { id?: string | null; density?: number }) {
   const particlesOn = useParticlesSetting();
@@ -2464,7 +2459,3 @@ export function NameplateArt({ id }: { id?: string | null }) {
   );
 }
 
-/** Class names for a row that wears a nameplate. */
-export function nameplateClass(id?: string | null) {
-  return id && id !== "none" && moduleOn("cosmetics") ? ` has-nameplate nameplate-${id}` : "";
-}

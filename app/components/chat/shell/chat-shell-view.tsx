@@ -13,7 +13,7 @@ import { renderChatOverlays } from "./chat-overlays";
 import { WidgetHostProvider, type WidgetHostValue } from "../../widgets/widget-host";
 import { CustomizeBar } from "../../widgets/customize-bar";
 import { WebViewSheet } from "../../widgets/web-view";
-import { MusicPlayerLayer } from "../../music-player";
+import { MusicPlayerLayer } from "../../music-player-layer";
 
 export type ChatShellViewState = Omit<ReturnType<typeof useShellComposer>, "user"> & { user: PublicUser };
 

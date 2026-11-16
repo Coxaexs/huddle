@@ -9,7 +9,7 @@ import { heard, playbackPosition } from "@/lib/protocol";
 import type { WidgetArea, WidgetSize } from "@/lib/layout-prefs";
 import { useWidgetHost } from "./widget-host";
 import { openWebView } from "./web-view";
-import { openMusicPlayer } from "../music-player";
+import { openMusicPlayer } from "../music-player-store";
 
 function clock(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));

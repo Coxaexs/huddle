@@ -9,7 +9,7 @@ import { isOnTheWeb } from "@/lib/web-public-client";
 import { Avatar } from "../../avatar";
 import { type BotMenuAction } from "../../bot-menu";
 import type { PublicBotMenu } from "@/lib/bot-menus";
-import { openMusicPlayer } from "../../music-player";
+import { openMusicPlayer } from "../../music-player-store";
 import { type MentionChannel } from "../../message-body";
 import { type ServerFolder } from "@/lib/server-folders";
 import { formatClientDateTime } from "../../../lib/chat/format";

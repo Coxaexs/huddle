@@ -11,14 +11,14 @@ import { PRESENCE, memberActivityLine, type Member, type PresenceStatus, type Pu
 import { activeUntil } from "@/lib/timeouts";
 import { Search, Bell, BellOff, CheckCheck, Pin, Settings, Users, Pencil, Plus, Trash2, LogOut, StickyNote, MessageSquare, PhoneCall, ChevronDown, X, UserPlus, Send, Timer, CalendarDays, Compass, MessageCircle, Mic } from "lucide-react";
 import { Avatar } from "../../avatar";
-import { AvatarDecoration, NameplateArt, nameplateClass } from "../../cosmetics";
+import { AvatarDecoration, NameplateArt, nameplateClass } from "../../cosmetics-lite";
 import { StyledName } from "../../profile-style-parts";
 import { MessageBody, StyledText, type MentionChannel } from "../../message-body";
 import { eventIsOpen, eventWhen } from "../../events-panel";
 import { ServerInviteCard, type ResolvedInvite } from "../../server-invite-card";
 import { railEntries, type ServerFolder } from "@/lib/server-folders";
 import { MiniMusicBar } from "../../mini-music-bar";
-import { openMusicPlayer } from "../../music-player";
+import { openMusicPlayer } from "../../music-player-store";
 import { type Message, type DmSummary } from "../../../lib/chat/types";
 import { DM_HOME } from "../../../lib/chat/constants";
 import { formatClientTime, formatClientDateTime } from "../../../lib/chat/format";

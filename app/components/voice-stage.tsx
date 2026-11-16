@@ -13,7 +13,7 @@ import { videoAllowedFrom } from "../hooks/use-voice";
 import { apiFetch } from "../lib/client";
 import { TableAudioMenu } from "./table-audio-menu";
 import { isOnStage, splitStageRoster } from "@/lib/stage";
-import { DiceOverlay } from "./dice-overlay";
+import { DiceOverlay } from "./dice-overlay-lazy";
 import { VoiceDuration } from "./voice-duration";
 import { LiveCaptionsOverlay } from "./live-captions";
 import { QaBanner, QaPanel } from "./qa-panel";

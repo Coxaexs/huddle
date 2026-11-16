@@ -14,7 +14,7 @@ import { FUN_COMMANDS, funCommandReply } from "@/lib/fun-commands";
 import { type TtsLanguage } from "../../lib/tts/client";
 import { aiFetch } from "../../lib/ai-fetch";
 import { apiFetch } from "../../lib/client";
-import { openMusicPlayer, type MusicPlayerTab } from "../../components/music-player";
+import { openMusicPlayer, type MusicPlayerTab } from "../../components/music-player-store";
 import { COMMAND_ALIASES, DISCORD_ONLY_COMMANDS, DND_LINK_COMMANDS, LOOKUP_COMMANDS, MUSIC_COMMANDS } from "../../lib/commands";
 import type { useShellActions } from "./use-shell-actions";
 

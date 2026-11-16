@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { StreamerModeBadge } from "./streamer-mode-badge";
 import { Mic, MicOff, Headphones, VolumeX, Settings, ChevronDown, Check, User } from "lucide-react";
 import { Avatar } from "./avatar";
-import { AvatarDecoration, NameplateArt, nameplateClass } from "./cosmetics";
+import { AvatarDecoration, NameplateArt, nameplateClass } from "./cosmetics-lite";
 import { PRESENCE, type PresenceStatus } from "@/lib/users";
 import type { PublicUser } from "@/lib/users";
 import { StyledText } from "./message-body";

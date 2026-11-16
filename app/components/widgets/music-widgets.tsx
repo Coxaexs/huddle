@@ -27,7 +27,7 @@ import { useI18n } from "@/app/lib/i18n-context";
 import { proxiedImage } from "@/app/lib/image-proxy";
 import type { WidgetSize } from "@/lib/layout-prefs";
 import { heard, playbackPosition } from "@/lib/protocol";
-import { openMusicPlayer } from "../music-player";
+import { openMusicPlayer } from "../music-player-store";
 import { useWidgetHost } from "./widget-host";
 import { clock, Progress, Row, Shell, ThinBar, Thumb, Tile, useTicking } from "./widget-parts";
 

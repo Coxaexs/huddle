@@ -3,7 +3,7 @@
 import { proxiedImage } from "@/app/lib/image-proxy";
 import { Calendar, MessageCircle, MoreHorizontal, Music, UserPlus } from "lucide-react";
 import { Avatar } from "../avatar";
-import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "../cosmetics";
+import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "../cosmetics-lite";
 import { PrideBadges } from "../pride-badges";
 import { SocialPlatformIcon } from "../user-profile-card";
 import { scopeProfileCss } from "@/lib/themes";
