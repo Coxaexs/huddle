@@ -299,6 +299,8 @@ pub struct Shell {
     film: video_player::Videos,
     /// The stage's ⋯ menu and soundboard.
     soundboard: soundboard::Board,
+    /// The stage's full-screen button put the window in full screen.
+    full_screen: bool,
     /// Achievement unlock popups, and whether the periodic check has started.
     unlocks: achievement_toast::Toasts,
     ach_checks: bool,
@@ -640,6 +642,7 @@ impl Shell {
             audio_spots: Default::default(),
             film: Default::default(),
             soundboard: board,
+            full_screen: false,
             unlocks: Default::default(),
             ach_checks: false,
             forced_mutes: HashSet::new(),

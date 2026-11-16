@@ -737,7 +737,20 @@ impl Shell {
             )
             .child(button("sb-screen", "monitor"))
             .child(divider())
-            .child(button("sb-grid", "layout-grid"));
+            // Focus the first stream, or back to the grid.
+            .child({
+                let focused = self.stage.as_ref().and_then(|s| s.focused.clone()).filter(|k| self.videos.contains_key(k));
+                button("sb-grid", "layout-grid")
+                    .when(focused.is_none(), |d| d.bg(Theme::lavender_muted()).border_color(Hsla::from(Theme::lavender()).opacity(0.35)))
+                    .tooltip(ui::tooltip(t(if focused.is_some() { "voiceStage.showGrid" } else { "voiceStage.focusStream" })))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        let first = this.videos.keys().next().cloned();
+                        if let Some(stage) = this.stage.as_mut() {
+                            stage.focused = if focused.is_some() { None } else { first };
+                        }
+                        cx.notify();
+                    }))
+            });
         let row2 = div()
             .flex()
             .items_center()
@@ -772,7 +785,16 @@ impl Shell {
             )
             .child(divider())
             .child(button("sb-popout", "external-link"))
-            .child(button("sb-fullscreen", "maximize-2"));
+            .child({
+                let full = self.full_screen;
+                button("sb-fullscreen", if full { "minimize-2" } else { "maximize-2" })
+                    .tooltip(ui::tooltip(t(if full { "voiceStage.exitFullScreen" } else { "voiceStage.fullScreen" })))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        window.toggle_fullscreen();
+                        this.full_screen = !this.full_screen;
+                        cx.notify();
+                    }))
+            });
         div().flex_none().w(px(width)).px(px(12.)).pb(px(14.)).child(
             div()
                 .w_full()
