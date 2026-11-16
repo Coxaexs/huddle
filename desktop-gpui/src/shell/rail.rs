@@ -160,8 +160,10 @@ impl Shell {
             let in_call = self.rooms.get(&dm.channel_id).is_some_and(|r| !r.is_empty());
             let open = dm.channel_id.clone();
             let title = if count > 0 { format!("{} · {count} new", dm.user.name()) } else { dm.user.name().to_string() };
+            let active = self.home && self.channel_id.as_deref() == Some(dm.channel_id.as_str());
+            let group = dm.group.is_some();
             rail = rail.child(rail_item(
-                false,
+                active,
                 false,
                 div()
                     .id(SharedString::from(format!("dm-{}", dm.channel_id)))
@@ -170,7 +172,8 @@ impl Shell {
                     .cursor_pointer()
                     .tooltip(ui::tooltip(title))
                     .child(ui::avatar(self.picture(&dm.user.avatar_url), &dm.user.avatar, &dm.user.color, dm.user.name(), 44.))
-                    .child(div().absolute().right_0().bottom_0().child(ui::rail_presence_dot(&status, 10., rgb(0x0f0d18))))
+                    // A group has no presence of its own.
+                    .when(!group, |d| d.child(div().absolute().right_0().bottom_0().child(ui::rail_presence_dot(&status, 10., rgb(0x0f0d18)))))
                     .when(in_call, |d| d.child(div().absolute().top_0().right_0().size(px(10.)).rounded_full().bg(Theme::mint())))
                     .when(count > 0, |d| d.child(div().absolute().right(px(-2.)).bottom(px(-2.)).child(rail_badge(count))))
                     .on_click(cx.listener(move |this, _, _, cx| this.open_dm(open.clone(), cx)))

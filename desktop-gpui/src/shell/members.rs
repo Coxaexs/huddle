@@ -27,7 +27,12 @@ impl Shell {
             };
             // Their cosmetics (nameplate, frame, name style) come with their server membership.
             let person = |u: &crate::model::User| self.member_anywhere(&u.id).cloned().unwrap_or_else(|| as_member(u));
-            dm_people = if dm.user.id == me.id { vec![person(me)] } else { vec![person(me), person(&dm.user)] };
+            dm_people = match &dm.group {
+                // dmMemberList(): a group lists its members (you as yourself).
+                Some(group) => group.members.iter().map(|m| if m.id == me.id { person(me) } else { person(m) }).collect(),
+                None if dm.user.id == me.id => vec![person(me)],
+                None => vec![person(me), person(&dm.user)],
+            };
             &dm_people
         } else {
             let Some(server_id) = self.server_id.as_ref() else { return div().into_any_element() };
@@ -652,6 +657,11 @@ impl gpui::Render for Shell {
         }
         self.dev_achievement(cx);
         self.dev_video(cx);
+        // HOFFLE_DEV_GROUP_DIALOG=1: the create-a-group dialog, once friends are in.
+        static DEV_GROUP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if std::env::var_os("HOFFLE_DEV_GROUP_DIALOG").is_some() && !self.friends.friends.is_empty() && !DEV_GROUP.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            self.open_group_dialog(None, window, cx);
+        }
         // HOFFLE_DEV_DMCALL=place|incoming (test copies): a call placed from the DM opened with
         // HOFFLE_DEV_DM, or one coming in from that person (simulated, nothing is sent).
         static DEV_DMCALL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -870,6 +880,7 @@ impl gpui::Render for Shell {
             .when(members_open && (!self.home || self.channel_id.is_some()) && self.stage.is_none(), |d| d.child(self.render_members(window, cx)))
             .children(self.render_panel(window, cx))
             .children(self.render_user_menu(window, cx))
+            .children(self.render_group_menu(window, cx))
             .children(self.render_bot_menu(window, cx))
             .children(self.render_user_search(window, cx))
             .children(self.render_achievements(window, cx))
@@ -891,6 +902,7 @@ impl gpui::Render for Shell {
             .children(self.render_achievement_toast(window, cx))
             .children(self.render_incoming_call(cx))
             .children(self.render_forward(window, cx))
+            .children(self.render_group_dialog(window, cx))
             .children(self.render_invite(window, cx))
             .children(self.render_server_settings(window, cx))
             .children(self.render_music_player(window, cx))

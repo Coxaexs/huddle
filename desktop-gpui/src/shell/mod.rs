@@ -24,6 +24,7 @@ mod achievement_toast;
 mod video_player;
 mod soundboard;
 mod dm_call;
+mod group_dm;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -304,6 +305,9 @@ pub struct Shell {
     full_screen: bool,
     /// DM calls: ringing you, or the one you are in.
     calls: dm_call::Calls,
+    /// Starting a group DM or adding to one, and a group's right-click menu.
+    group_dialog: Option<group_dm::GroupDialog>,
+    group_menu: Option<group_dm::GroupMenu>,
     /// Achievement unlock popups, and whether the periodic check has started.
     unlocks: achievement_toast::Toasts,
     ach_checks: bool,
@@ -648,6 +652,8 @@ impl Shell {
             soundboard: board,
             full_screen: false,
             calls: Default::default(),
+            group_dialog: None,
+            group_menu: None,
             unlocks: Default::default(),
             ach_checks: false,
             forced_mutes: HashSet::new(),
@@ -854,10 +860,14 @@ impl Shell {
                     if let Ok(spec) = std::env::var("HOFFLE_DEV_DM_MENU") {
                         let parts: Vec<&str> = spec.split(',').collect();
                         if let [who, x, y] = parts.as_slice()
-                            && let Some(dm) = this.dms.iter().find(|d| d.user.username == *who).cloned()
+                            && let Some(dm) = this.dms.iter().find(|d| d.user.username == *who || d.user.display_name == *who).cloned()
                             && let (Ok(x), Ok(y)) = (x.parse::<f32>(), y.parse::<f32>())
                         {
-                            this.open_dm_user_menu(dm.user.id.clone(), dm.channel_id.clone(), dm.pinned, gpui::point(gpui::px(x), gpui::px(y)), cx);
+                            if dm.group.is_some() {
+                                this.group_menu = Some(group_dm::GroupMenu { channel: dm.channel_id.clone(), at: gpui::point(gpui::px(x), gpui::px(y)) });
+                            } else {
+                                this.open_dm_user_menu(dm.user.id.clone(), dm.channel_id.clone(), dm.pinned, gpui::point(gpui::px(x), gpui::px(y)), cx);
+                            }
                         }
                     }
                 }

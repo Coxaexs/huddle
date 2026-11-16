@@ -363,6 +363,16 @@ pub struct DmConversation {
     pub last_at: String,
     pub hidden: bool,
     pub pinned: bool,
+    /// Group DMs: `user` then stands for the group (its id is the channel's).
+    pub group: Option<DmGroup>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DmGroup {
+    pub name: String,
+    pub owner_id: Option<String>,
+    pub members: Vec<User>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize)]

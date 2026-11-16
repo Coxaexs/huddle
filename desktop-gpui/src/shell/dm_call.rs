@@ -74,7 +74,7 @@ impl Shell {
     }
 
     fn dm_person(&self, channel: &str) -> Option<Person> {
-        let dm = self.dms.iter().find(|d| d.channel_id == channel)?;
+        let dm = self.dms.iter().find(|d| d.channel_id == channel && d.group.is_none())?;
         Some(Person { id: dm.user.id.clone(), name: dm.user.name().to_string(), avatar: dm.user.avatar.clone(), avatar_url: dm.user.avatar_url.clone(), color: dm.user.color.clone() })
     }
 
@@ -309,7 +309,7 @@ impl Shell {
     /// `.dm-call-stage`: above an open DM while there is a call in it (or one being placed).
     pub(super) fn render_dm_call_panel(&self, channel: &str, cx: &mut Context<Self>) -> Option<AnyElement> {
         let dm = self.dms.iter().find(|d| d.channel_id == channel)?;
-        if dm.user.id == self.me.id {
+        if dm.user.id == self.me.id || dm.group.is_some() {
             return None;
         }
         let mut people = self.rooms.get(channel).cloned().unwrap_or_default();

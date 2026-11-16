@@ -230,12 +230,22 @@ impl Shell {
     /// two call buttons, then the narrower tool buttons.
     fn render_dm_header(&self, dm: crate::model::DmConversation, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mine = dm.user.id == self.me.id;
-        let subtitle = if mine { t("header.dmNotes") } else { tv("header.dmJustYouAnd", &[("name", dm.user.name())]) };
+        let group = dm.group.clone();
+        let subtitle = if mine {
+            t("header.dmNotes")
+        } else if let Some(g) = &group {
+            crate::i18n::tc("header.dmGroupMembers", g.members.len() as i64, &[])
+        } else {
+            tv("header.dmJustYouAnd", &[("name", dm.user.name())])
+        };
         // In the call: Call View. A call going on without you: Join Call. Otherwise the two starts.
         let in_call = self.dm_call_here(&dm.channel_id);
         let ongoing = !in_call && self.rooms.get(&dm.channel_id).is_some_and(|p| !p.is_empty()) && self.call.as_ref().is_none_or(|c| c.channel_id != dm.channel_id);
         let labels: Vec<String> = if mine {
             Vec::new()
+        } else if group.is_some() {
+            // A group: Keep on top, Add, and the icon-only Rename and Leave.
+            vec![t(if dm.pinned { "header.pinned" } else { "header.pin" }), t("header.add"), String::new(), String::new()]
         } else if in_call {
             vec![t(if dm.pinned { "header.pinned" } else { "header.pin" }), t("header.callView")]
         } else if ongoing {
@@ -259,6 +269,12 @@ impl Shell {
         let mut natural = Vec::new();
         let mut least = Vec::new();
         for label in &labels {
+            if label.is_empty() {
+                // An icon alone: padding, border and the icon, no gap.
+                natural.push(px(2. + 26. + 15.));
+                least.push(px(2. + 26. + 15.));
+                continue;
+            }
             natural.push(measure(label, FontWeight::BOLD) + px(chrome));
             let longest = label.split_whitespace().map(|w| measure(w, FontWeight::BOLD)).fold(px(0.), |a, b| a.max(b));
             least.push(longest + px(chrome));
@@ -295,8 +311,22 @@ impl Shell {
                 .line_height(px(19.5))
                 .font_weight(FontWeight::BOLD)
                 .text_color(Theme::ink())
-                .child(icon(glyph, 15., Theme::ink()))
-                .child(div().min_w_0().child(label))
+                .child({
+                    // Inside a narrowed button Chrome shrinks the icon and the words together, in
+                    // proportion to their widths (the icon too: an svg may shrink), then wraps.
+                    let room = f32::from(width) - 28. - 6.;
+                    let text = if label.is_empty() { 0. } else { f32::from(measure(&label, FontWeight::BOLD)) };
+                    let over = (15. + text - room).max(0.);
+                    let glyph_w = if label.is_empty() || over <= 0. { 15. } else { (15. - over * 15. / (15. + text)).max(0.) };
+                    let text_w = if over <= 0. { text } else { room - glyph_w };
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .child(icon(glyph, glyph_w, Theme::ink()))
+                        // A hair of slack: GPUI's line breaking must keep what fits in Chrome on one line.
+                        .when(!label.is_empty(), |d| d.child(div().flex_none().w(px(text_w + 1.5)).text_center().when(over <= 0., |d| d.whitespace_nowrap()).child(label)))
+                })
         };
         let mut right = div().flex().items_center().gap(px(3.));
         for (name, title) in [("at-sign", "header.mentions"), ("pin", "header.pinnedMessages"), ("bookmark", "header.savedMessages"), ("award", "header.achievements")] {
@@ -335,13 +365,24 @@ impl Shell {
             .child(div().flex_1().ml(px(-11.)))
             .when(!mine, |row| row.child({
                 let (pinned, pin_channel) = (dm.pinned, dm.channel_id.clone());
+                let is_group = group.is_some();
                 let d = div().flex_none().flex().items_center().gap(px(8.)).child(
                     call_button("dm-pin", "arrow-up-to-line", labels[0].clone(), widths[1])
-                        .tooltip(ui::tooltip(t(if pinned { "header.unpinConversation" } else { "header.pinConversation" })))
+                        .tooltip(ui::tooltip(t(match (is_group, pinned) {
+                            (true, true) => "header.unpinGroup",
+                            (true, false) => "header.pinGroup",
+                            (false, true) => "header.unpinConversation",
+                            (false, false) => "header.pinConversation",
+                        })))
                         .on_click(cx.listener(move |this, _, _, cx| this.pin_dm(pin_channel.clone(), !pinned, cx))),
                 );
                 let room = dm.channel_id.clone();
-                if in_call {
+                if is_group {
+                    let (add, rename, leave) = (room.clone(), room.clone(), room);
+                    d.child(call_button("dm-group-add", "user-plus", labels[1].clone(), widths[2]).tooltip(ui::tooltip(t("header.addFriendsToGroup"))).on_click(cx.listener(move |this, _, window, cx| this.open_group_dialog(Some(add.clone()), window, cx))))
+                        .child(call_button("dm-group-rename", "pencil", String::new(), widths[3]).tooltip(ui::tooltip(t("header.renameGroup"))).on_click(cx.listener(move |this, _, window, cx| this.rename_group(rename.clone(), window, cx))))
+                        .child(call_button("dm-group-leave", "log-out", String::new(), widths[4]).tooltip(ui::tooltip(t("header.leaveGroup"))).on_click(cx.listener(move |this, _, _, cx| this.confirm_leave_group(leave.clone(), cx))))
+                } else if in_call {
                     d.child(call_button("dm-callview", "maximize-2", labels[1].clone(), widths[2]).tooltip(ui::tooltip(t("header.openFullCallView"))).on_click(cx.listener(move |this, _, window, cx| this.open_stage(room.clone(), window, cx))))
                 } else if ongoing {
                     // `.dm-join-call-btn`: green.
@@ -1114,6 +1155,7 @@ impl Shell {
     fn render_intro(&self, channel_id: &str, row_left: f32) -> impl IntoElement {
         let (glyph, text) = match self.dm(channel_id) {
             Some(dm) if dm.user.id == self.me.id => ("sticky-note", "This is your personal space for notes, drafts, and reminders.".to_string()),
+            Some(dm) if dm.group.is_some() => ("at-sign", format!("Welcome to the beginning of {}", dm.user.name())),
             Some(dm) => ("at-sign", format!("This is the beginning of your conversation with {}", dm.user.name())),
             None => {
                 let channel = self.channel();

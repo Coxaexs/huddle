@@ -387,6 +387,14 @@ impl Shell {
                 }
                 card = card.child(section);
             }
+            // The owner of the open group DM: Remove from group.
+            if let Some(channel) = self.can_remove_from_group(&id) {
+                let id2 = id.clone();
+                card = card.child(item("um-group-remove".into(), t("userMenu.removeFromGroup"), true).on_click(cx.listener(move |this, _, _, cx| {
+                    this.user_menu = None;
+                    this.confirm_remove_from_group(channel.clone(), id2.clone(), cx);
+                })));
+            }
             if can_manage {
                 let id2 = id.clone();
                 card = card.child(item("um-kick".into(), t("userMenu.kickFromServer"), true).on_click(cx.listener(move |this, _, _, cx| {

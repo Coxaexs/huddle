@@ -30,6 +30,8 @@ pub(super) enum PromptKind {
     Homebrew,
     /// The status menu: Set a status / Edit status.
     CustomStatus,
+    /// A group DM's name.
+    RenameGroup(String),
     /// The user menu: (server, member) nickname.
     Nickname(String, String),
     /// A staged picture's description (ALT), by its place in the row.
@@ -315,6 +317,7 @@ impl Shell {
             PromptKind::EmojiName => self.upload_emoji(value, cx),
             PromptKind::Homebrew => self.import_homebrew(value, cx),
             PromptKind::CustomStatus => self.save_custom_status(value, cx),
+            PromptKind::RenameGroup(channel) => self.save_group_name(channel, value, cx),
             PromptKind::Nickname(server, user) => self.save_nickname(server, user, value, cx),
             PromptKind::ImageAlt(ix) => {
                 if let Some(f) = self.pending_files.get_mut(ix) {

@@ -143,7 +143,14 @@ impl Shell {
                     div()
                         .flex()
                         .gap(px(8.))
-                        .child(div().id("create-dm").cursor_pointer().tooltip(ui::tooltip(t("sidebar.createDm"))).child(icon("plus", 14., rgb(0xa09ca4))))
+                        .child(
+                            div()
+                                .id("create-dm")
+                                .cursor_pointer()
+                                .tooltip(ui::tooltip(t("sidebar.createDm")))
+                                .child(icon("plus", 14., rgb(0xa09ca4)))
+                                .on_click(cx.listener(|this, _, window, cx| this.open_group_dialog(None, window, cx))),
+                        )
                         .child(
                             div()
                                 .id("note-self")
@@ -167,7 +174,8 @@ impl Shell {
             let unread = !selected && self.reads.get(&dm.channel_id).is_some_and(|r| r.unread);
             let count = self.reads.get(&dm.channel_id).map_or(0, |r| r.count);
             let me = dm.user.id == self.me.id;
-            let online = !me && self.online.contains(&dm.user.id);
+            let group_size = dm.group.as_ref().map(|g| g.members.len());
+            let online = !me && group_size.is_none() && self.online.contains(&dm.user.id);
             let in_call = self.rooms.get(&dm.channel_id).is_some_and(|r| !r.is_empty());
             let id = dm.channel_id.clone();
             let name = if me { t("sidebar.myNotes") } else { dm.user.name().to_string() };
@@ -208,7 +216,18 @@ impl Shell {
                     .when(!selected, |d| d.text_color(Theme::quiet()).hover(|s| s.bg(Theme::hover()).text_color(Theme::ink())))
                     .when(unread, |d| d.child(div().absolute().left(px(-11.)).top(px(15.)).w(px(4.)).h(px(8.)).rounded_r(px(4.)).bg(Theme::ink())))
                     .child(div().flex_none().mr(px(10.)).child(ui::avatar(self.picture(&dm.user.avatar_url), &dm.user.avatar, &dm.user.color, dm.user.name(), 24.)))
-                    .child(div().min_w_0().truncate().child(name))
+                    .when(group_size.is_none(), |d| d.child(div().min_w_0().truncate().child(name.clone())))
+                    // `.dm-group-label`: the group's name over its member count.
+                    .when_some(group_size, |d, n| {
+                        d.child(
+                            div()
+                                .min_w_0()
+                                .flex()
+                                .flex_col()
+                                .child(div().truncate().line_height(px(15.6)).child(name.clone()))
+                                .child(div().text_size(px(11.)).line_height(px(13.2)).font_weight(FontWeight::MEDIUM).text_color(Theme::muted()).child(crate::i18n::tc("sidebar.groupMembers", n as i64, &[]))),
+                        )
+                    })
                     .group(group.clone())
                     .when(dm.pinned, |d| d.child(div().ml_auto().group_hover(group.clone(), |s| s.opacity(0.)).child(icon("pin", 11., Theme::lavender()))))
                     .when(me, |d| d.child(div().ml_auto().group_hover(group.clone(), |s| s.opacity(0.)).child(icon("sticky-note", 12., gpui::rgba(0xfbbf24cc)))))
@@ -257,7 +276,13 @@ impl Shell {
                             }))),
                     )
                     .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |this, e: &gpui::MouseDownEvent, _, cx| {
-                        this.open_dm_user_menu(menu_user.clone(), menu_channel.clone(), pinned, e.position, cx);
+                        if group_size.is_some() {
+                            this.user_menu = None;
+                            this.group_menu = Some(super::group_dm::GroupMenu { channel: menu_channel.clone(), at: e.position });
+                            cx.notify();
+                        } else {
+                            this.open_dm_user_menu(menu_user.clone(), menu_channel.clone(), pinned, e.position, cx);
+                        }
                     }))
                     .on_click(cx.listener(move |this, _, _, cx| this.open_dm(id.clone(), cx))),
             );

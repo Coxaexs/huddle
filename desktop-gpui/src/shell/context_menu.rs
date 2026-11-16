@@ -37,6 +37,8 @@ pub(super) struct Confirm {
 
 #[derive(Clone)]
 pub(super) enum ConfirmAction {
+    LeaveGroup(String),
+    RemoveFromGroup(String, String),
     Delete(String),
     Report(String),
     LeaveServer(String),
@@ -745,6 +747,8 @@ impl Shell {
             ConfirmAction::Integration(act) => self.integ_confirmed(act, cx),
             ConfirmAction::CancelEvent(id) => self.cancel_event(id, cx),
             ConfirmAction::MenuModerate(server, user, action) => self.menu_moderate(server, user, action, cx),
+            ConfirmAction::LeaveGroup(channel) => self.leave_group(channel, cx),
+            ConfirmAction::RemoveFromGroup(channel, user) => self.remove_from_group(channel, user, cx),
             ConfirmAction::DeleteCategory(id) => self.delete_category_confirmed(id, cx),
             ConfirmAction::Report(id) => {
                 let client = self.client.clone();
