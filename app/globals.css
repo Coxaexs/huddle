@@ -4879,9 +4879,9 @@ body:not([data-theme=light]):not([data-theme=legacy]):not([data-theme=dark]) *:h
   background: #ffffff1f !important;
 }
 
-.auth-challenge {
+/* The robot check only takes room when Cloudflare shows it. */
+.auth-challenge > * {
   margin-top: 12px;
-  min-height: 65px;
 }
 
 .auth-switch {

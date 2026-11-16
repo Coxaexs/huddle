@@ -38,6 +38,7 @@ interface TurnstileApi {
     options: {
       sitekey: string;
       theme?: "light" | "dark" | "auto";
+      appearance?: "always" | "execute" | "interaction-only";
       callback: (token: string) => void;
       "expired-callback"?: () => void;
       "error-callback"?: () => void;
@@ -186,6 +187,9 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
       const id = api.render(challengeBox.current, {
         sitekey: turnstileSiteKey,
         theme: challengeTheme(challengeBox.current),
+        // Most people pass without a click, so the box stays out of the form
+        // unless Cloudflare needs one.
+        appearance: "interaction-only",
         callback: (token) => setChallengeToken(token),
         "expired-callback": () => setChallengeToken(""),
         "error-callback": () => setChallengeToken(""),
@@ -245,6 +249,14 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
       setBusy(false);
     }
   }
+
+  // One box covers the age and the terms; the server still gets both.
+  function agreeToAll(checked: boolean) {
+    setAgreed(checked);
+    setOldEnough(checked);
+  }
+  // Everything is filled in and only the silent robot check is still running.
+  const waitingForCheck = needsChallenge && !challengeToken && !challengeFailed && agreed && oldEnough;
 
   function switchMode(next: typeof mode) {
     setMode(next);
@@ -511,7 +523,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
             </>
           )}
           <label className="auth-agree">
-            <input type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} />
+            <input type="checkbox" checked={agreed && oldEnough} onChange={(event) => agreeToAll(event.target.checked)} />
             <span>
               {tRich(t, "gate.agree", {
                 terms: (
@@ -527,13 +539,9 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               })}
             </span>
           </label>
-          <label className="auth-agree">
-            <input type="checkbox" checked={oldEnough} onChange={(event) => setOldEnough(event.target.checked)} />
-            <span>{t("gate.age")}</span>
-          </label>
           {error && <p className="auth-error">{error}</p>}
           <button type="submit" disabled={busy || !displayName.trim() || !agreed || !oldEnough || (needsChallenge && !challengeToken)}>
-            {busy ? t("gate.busy") : t("guest.join", { server: serverInviteName })}
+            {busy ? t("gate.busy") : waitingForCheck && displayName.trim() ? t("gate.button.checking") : t("guest.join", { server: serverInviteName })}
           </button>
           <button type="button" className="auth-switch guest-switch" onClick={() => { setQuick(false); setError(""); }}>
             {t("guest.fullAccount")}
@@ -630,14 +638,6 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
 
         {mode === "signup" && (
           <>
-            <label htmlFor="huddle-display">{t("gate.label.displayName")}</label>
-            <input
-              id="huddle-display"
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              maxLength={40}
-              placeholder={t("gate.placeholder.displayName")}
-            />
             <label htmlFor="huddle-email">{t("gate.label.email")}</label>
             <input
               id="huddle-email"
@@ -696,14 +696,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
 
         {mode === "signup" && (
           <label className="auth-agree">
-            <input type="checkbox" checked={oldEnough} onChange={(event) => setOldEnough(event.target.checked)} />
-            <span>{t("gate.age")}</span>
-          </label>
-        )}
-
-        {mode === "signup" && (
-          <label className="auth-agree">
-            <input type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} />
+            <input type="checkbox" checked={agreed && oldEnough} onChange={(event) => agreeToAll(event.target.checked)} />
             <span>
               {tRich(t, "gate.agree", {
                 terms: (
@@ -744,7 +737,9 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
               : mode === "reset"
                 ? t("gate.button.saveSignIn")
                 : mode === "signup"
-                  ? t("gate.button.create")
+                  ? waitingForCheck && username && password
+                    ? t("gate.button.checking")
+                    : t("gate.button.create")
                   : t("gate.button.signIn")}
         </button>
 
