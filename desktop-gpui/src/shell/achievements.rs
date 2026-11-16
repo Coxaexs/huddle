@@ -71,6 +71,8 @@ pub(super) struct Row {
 }
 
 pub(super) struct Board {
+    /// Someone else's board (their id and name): only what they earned, nothing to pin.
+    target: Option<(String, String)>,
     rows: HashMap<String, Row>,
     rarity: HashMap<String, f64>,
     showcase: Vec<String>,
@@ -337,7 +339,41 @@ pub(super) fn sound_on() -> bool {
 
 impl Shell {
     pub(super) fn open_achievements(&mut self, cx: &mut Context<Self>) {
+        self.open_achievements_for(None, cx);
+    }
+
+    /// openAchievements(target): your board, or someone's (from their profile card).
+    pub(super) fn open_achievements_for(&mut self, target: Option<(String, String)>, cx: &mut Context<Self>) {
+        if let Some((id, _)) = target.clone() {
+            self.achievements = Some(Board { target: target.clone(), rows: HashMap::new(), rarity: HashMap::new(), showcase: Vec::new(), loading: true, error: None, category: "all".into(), filter: "all", saving: false });
+            let client = self.client.clone();
+            let path = format!("/api/achievements?user={}", url::form_urlencoded::byte_serialize(id.as_bytes()).collect::<String>());
+            cx.spawn(async move |this, cx| {
+                let result = cx.background_executor().spawn(async move { client.settings_get(&path) }).await;
+                this.update(cx, |this, cx| {
+                    let Some(b) = this.achievements.as_mut() else { return };
+                    b.loading = false;
+                    match result {
+                        Ok(v) => {
+                            for e in v["earned"].as_array().cloned().unwrap_or_default() {
+                                if let Some(id) = e["id"].as_str() {
+                                    b.rows.insert(id.to_string(), Row { earned: true, earned_at: e["earnedAt"].as_str().map(String::from), current: 0., threshold: 0., progress: 1. });
+                                }
+                            }
+                            b.rarity = serde_json::from_value(v.get("rarity").cloned().unwrap_or(Value::Null)).unwrap_or_default();
+                        }
+                        Err(e) => b.error = Some(if e.to_string().is_empty() { "Could not load achievements.".into() } else { e.to_string() }),
+                    }
+                    cx.notify();
+                })
+                .ok();
+            })
+            .detach();
+            cx.notify();
+            return;
+        }
         self.achievements = Some(Board {
+            target: None,
             rows: HashMap::new(),
             rarity: HashMap::new(),
             showcase: Vec::new(),
@@ -490,7 +526,10 @@ impl Shell {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .child(div().font_family(DISPLAY_FONT).text_size(px(20.)).line_height(px(30.)).font_weight(FontWeight::BOLD).text_color(ink).child("Achievements"))
+                    .child(div().font_family(DISPLAY_FONT).text_size(px(20.)).line_height(px(30.)).font_weight(FontWeight::BOLD).text_color(ink).child(match &b.target {
+                        Some((_, name)) => format!("{name}'s achievements"),
+                        None => "Achievements".into(),
+                    }))
                     .child(
                         div()
                             .mt(px(2.))
@@ -501,7 +540,7 @@ impl Shell {
                             .child(div().font_weight(FontWeight::BOLD).text_color(ink).child(format!("{} pts", thousands(points))))
                             .child(div().mx(px(6.)).opacity(0.6).child("·"))
                             .child(format!("{}% complete", (share * 100.).round()))
-                            .child(format!(" · {} possible", thousands(max_points))),
+                            .when(b.target.is_none(), |d| d.child(format!(" · {} possible", thousands(max_points)))),
                     ),
             )
             .child(
@@ -527,9 +566,13 @@ impl Shell {
                     .tooltip(ui::tooltip("Play this theme's unlock animation"))
                     .child(ui::icon("play-filled", 14., ink))
                     .child("Play animation")
-                    .on_click(cx.listener(|this, _, _, cx| this.set_notice("The unlock animation is not in this app yet.", cx))),
+                    .on_click({
+                        // The newest earned one, or a sample when nothing is earned yet.
+                        let newest = b.rows.iter().filter(|(_, r)| r.earned).max_by(|a, c| a.1.earned_at.cmp(&c.1.earned_at)).map(|(id, _)| id.clone()).unwrap_or_else(|| "first-steps".into());
+                        cx.listener(move |this, _, _, cx| this.preview_unlock(&newest, cx))
+                    }),
             )
-            .child(
+            .when(b.target.is_none(), |d| d.child(
                 icon_button("ach-sound", if sound { "volume-2" } else { "volume-x" }, 16.)
                     .relative()
                     .tooltip(ui::tooltip(if sound { "Unlock sounds on" } else { "Unlock sounds off" }))
@@ -539,7 +582,7 @@ impl Shell {
                         }
                         cx.notify();
                     })),
-            )
+            ))
             .child(icon_button("ach-close", "x", 18.).relative().on_click(cx.listener(|this, _, _, cx| this.close_achievements(cx))));
 
         let mut slots = div().flex().gap(px(8.));
@@ -682,6 +725,9 @@ impl Shell {
             if ea && ec {
                 return rc.and_then(|r| r.earned_at.clone()).unwrap_or_default().cmp(&ra.and_then(|r| r.earned_at.clone()).unwrap_or_default());
             }
+            if b.target.is_some() {
+                return std::cmp::Ordering::Equal;
+            }
             if a.secret != c.secret {
                 return a.secret.cmp(&c.secret);
             }
@@ -738,7 +784,7 @@ impl Shell {
                         .text_color(ink)
                         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                         .child(head)
-                        .child(showcase)
+                        .when(b.target.is_none(), |d| d.child(showcase))
                         .child(tabs)
                         .child(filters)
                         .child(grid),
@@ -819,7 +865,8 @@ impl Shell {
                     .when(hidden, |d| d.italic())
                     .child(if hidden { def.hint.clone().unwrap_or_else(|| "Keep exploring…".into()) } else { def.description.clone() }),
             );
-        if let Some(r) = row.filter(|_| !earned && !hidden) {
+        let other = b.target.is_some();
+        if let Some(r) = row.filter(|_| !earned && !hidden && !other) {
             body = body.child(
                 div()
                     .mt(px(8.))
@@ -866,7 +913,8 @@ impl Shell {
                         .id(SharedString::from(format!("ach-play-{}", def.id)))
                         .absolute()
                         .top(px(8.))
-                        .right(px(36.))
+                        // `.is-alone` on someone else's board: no pin beside it.
+                        .right(px(if other { 8. } else { 36. }))
                         .size(px(26.))
                         .rounded(px(8.))
                         .flex()
@@ -877,9 +925,12 @@ impl Shell {
                         .hover(|s| s.bg(Theme::lavender()))
                         .cursor_pointer()
                         .child(ui::icon("play-filled", 13., muted))
-                        .on_click(cx.listener(|this, _, _, cx| this.set_notice("The unlock animation is not in this app yet.", cx))),
+                        .on_click({
+                            let id = def.id.clone();
+                            cx.listener(move |this, _, _, cx| this.preview_unlock(&id, cx))
+                        }),
                 )
-                .child(
+                .when(!other, |d| d.child(
                     div()
                         .id(SharedString::from(format!("ach-pin-{}", def.id)))
                         .absolute()
@@ -896,7 +947,7 @@ impl Shell {
                         .tooltip(ui::tooltip(if pinned { "Remove from your profile".to_string() } else if can_pin { "Show on your profile".to_string() } else { format!("Profile showcase is full ({})", cat.showcase_limit) }))
                         .child(ui::icon(if pinned { "pin-off" } else { "pin" }, 14., if pinned { lavender } else { muted }))
                         .on_click(cx.listener(move |this, _, _, cx| this.toggle_showcase(id.clone(), cx))),
-                )
+                ))
             })
             .into_any_element()
     }

@@ -318,6 +318,8 @@ pub struct Member {
     pub joined_via: Option<JoinedVia>,
     /// When their timeout here ends (ISO), if they have one.
     pub timeout_until: Option<String>,
+    /// Up to five achievements they pinned to their profile.
+    pub achievement_showcase: Vec<String>,
     /// A Hoffle admin let them make invites anywhere.
     pub can_invite: bool,
 }

@@ -96,7 +96,9 @@ impl Shell {
             note_state: NoteState::Idle,
             bio_open: false,
             copied: false,
-            height: Rc::new(Cell::new(380.)),
+            // Assumed tall until measured: the first frame then has the room to measure it whole
+            // (an absolute box is cut to the room below its top).
+            height: Rc::new(Cell::new(10_000.)),
             key: self.profile_seq,
             _subs: subs,
         });
@@ -257,6 +259,7 @@ impl Shell {
         let raw_left = if place_left { a.x - CARD_GAP - width } else { a.right + CARD_GAP };
         let height = open.height.get();
         let top = a.y.min(vh - height - 12.).max(12.);
+
         let left = raw_left.min(vw - width - 12.).max(12.);
 
         let accent: Hsla = css_color(&m.color).unwrap_or_else(|| rgb(0x5865f2).into());
@@ -693,7 +696,59 @@ impl Shell {
                 })
                 .when(!pride.is_empty(), |d| d.child(div().pt(px(4.)).flex().flex_wrap().gap(px(6.)).children(pride)))
         });
-        let body = div().flex_none().pt(px(8.)).px(px(14.)).pb(px(14.)).flex().flex_col().gap(px(8.)).child(header).children(shelf).child(panel).child(actions);
+        // `.profile-achievements-shelf`: their pinned achievements, each opening their board.
+        let defs: Vec<super::achievements::Def> = m.achievement_showcase.iter().filter_map(|id| super::achievements::find_def(id)).collect();
+        let achievements = (!defs.is_empty()).then(|| {
+            let target = (m.id.clone(), m.display_name_or_name());
+            let open_board = |target: (String, String)| cx.listener(move |this, _, _, cx| {
+                this.profile = None;
+                this.open_achievements_for(Some(target.clone()), cx);
+            });
+            // `flex: 1 1 0; max-width: 64px` worked out here (gpui measures clamped text badly in
+            // a flex-sized box): the body's width shared out, 64 at most.
+            let n = defs.len() as f32;
+            let item_w = ((width - 28. - 2. - 4. * (n - 1.)) / n).min(64.);
+            let mut row = div().flex().gap(px(4.));
+            for def in &defs {
+                row = row.child(
+                    div()
+                        .id(SharedString::from(format!("profile-ach-{}", def.id)))
+                        .flex_none()
+                        .w(px(item_w))
+                        .px(px(2.))
+                        .py(px(4.))
+                        .rounded(px(10.))
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap(px(3.))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(ink.opacity(0.06)))
+                        .tooltip(ui::tooltip(format!("{}: {}", def.label, def.description)))
+                        .child(super::achievements::medal(def, true, 34., window.scale_factor()))
+                        .child(div().w(px(item_w - 4.)).h(px(21.8)).overflow_hidden().text_center().text_size(px(9.5)).line_height(px(10.9)).text_color(ink).child(def.label.clone()))
+                        .on_click(open_board(target.clone())),
+                );
+            }
+            // `.profile-achievements-shelf { margin: 8px 0 4px }` beside the body's 8px gap.
+            div()
+                .flex_none()
+                .child(
+                    div()
+                        .mb(px(6.))
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .text_size(px(11.))
+                        .line_height(px(16.5))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(muted)
+                        .child("ACHIEVEMENTS")
+                        .child(div().id("profile-ach-all").text_size(px(10.5)).font_weight(FontWeight::NORMAL).text_color(Theme::lavender()).cursor_pointer().hover(|s| s.underline()).child("See all").on_click(open_board(target.clone()))),
+                )
+                .child(row)
+        });
+        let body = div().flex_none().pt(px(8.)).px(px(14.)).pb(px(14.)).flex().flex_col().gap(px(8.)).child(header).children(shelf).children(achievements).child(panel).child(actions);
         let measured = open.height.clone();
         let card = div()
             .id("profile-card")
@@ -724,10 +779,16 @@ impl Shell {
             .child(
                 gpui::canvas(
                     move |bounds, window, _| {
-                        let h = f32::from(bounds.size.height);
+                        let mut h = f32::from(bounds.size.height);
+                        // An absolute box is cut to the room below its top: one that fills it may be
+                        // taller, so it goes to the top edge first and is measured again there.
+                        if top + h >= vh - 0.5 && top > 12.5 {
+                            h = vh;
+                        }
                         if (measured.get() - h).abs() > 0.5 {
                             measured.set(h);
-                            window.refresh();
+                            // A refresh asked for while painting is lost with this frame: ask on the next.
+                            window.on_next_frame(|window, _| window.refresh());
                         }
                     },
                     |_, _, _, _| {},

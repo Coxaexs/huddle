@@ -651,6 +651,30 @@ impl gpui::Render for Shell {
             self.start_achievement_checks(cx);
         }
         self.dev_achievement(cx);
+        // HOFFLE_DEV_BOARD=<user id prefix>: that member's achievement board.
+        static DEV_BOARD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(prefix) = std::env::var("HOFFLE_DEV_BOARD")
+            && let Some(m) = self.members.values().flat_map(|l| l.iter()).find(|m| m.id.starts_with(&prefix)).cloned()
+            && !DEV_BOARD.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            self.open_achievements_for(Some((m.id.clone(), m.display_name_or_name())), cx);
+        }
+        // HOFFLE_DEV_PROFILE=<user id prefix>,x,y,w,h: their card, as if clicked there, once the
+        // members have loaded.
+        static DEV_PROFILE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(spec) = std::env::var("HOFFLE_DEV_PROFILE")
+            && !DEV_PROFILE.load(std::sync::atomic::Ordering::Relaxed)
+        {
+            let mut parts = spec.split(',');
+            let prefix = parts.next().unwrap_or_default().to_string();
+            let n: Vec<f32> = parts.filter_map(|v| v.trim().parse().ok()).collect();
+            let id = self.members.values().flat_map(|m| m.iter()).find(|m| m.id.starts_with(&prefix)).map(|m| m.id.clone());
+            if let (Some(id), [x, y, w, h]) = (id, n.as_slice()) {
+                DEV_PROFILE.store(true, std::sync::atomic::Ordering::Relaxed);
+                let bounds = gpui::Bounds::new(gpui::point(px(*x), px(*y)), gpui::size(px(*w), px(*h)));
+                self.open_profile(&id, bounds, window, cx);
+            }
+        }
         // HOFFLE_DEV_USERMENU=<user id prefix>,x,y: that person's menu, right-clicked there, once the
         // members have loaded.
         static DEV_USERMENU: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -670,17 +694,6 @@ impl gpui::Render for Shell {
         // it under your own last message as a finished translation.
         if !self.dev_extras_done && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c)) {
             self.dev_extras_done = true;
-            // HOFFLE_DEV_PROFILE=<user id prefix>,x,y,w,h: their card, as if clicked there.
-            if let Ok(spec) = std::env::var("HOFFLE_DEV_PROFILE") {
-                let mut parts = spec.split(',');
-                let prefix = parts.next().unwrap_or_default().to_string();
-                let n: Vec<f32> = parts.filter_map(|v| v.trim().parse().ok()).collect();
-                let id = self.members.values().flat_map(|m| m.iter()).find(|m| m.id.starts_with(&prefix)).map(|m| m.id.clone());
-                if let (Some(id), [x, y, w, h]) = (id, n.as_slice()) {
-                    let bounds = gpui::Bounds::new(gpui::point(px(*x), px(*y)), gpui::size(px(*w), px(*h)));
-                    self.open_profile(&id, bounds, window, cx);
-                }
-            }
             // HOFFLE_DEV_CHANNEL=<channel id>: open that text channel (in the current server), and
             // HOFFLE_DEV_UNREAD=<n> pretends it had n unread messages.
             if let Ok(channel) = std::env::var("HOFFLE_DEV_CHANNEL") {

@@ -291,6 +291,16 @@ impl Shell {
         cx.notify();
     }
 
+    /// previewAchievement(): jumps the queue and plays even an unlock already seen.
+    pub(super) fn preview_unlock(&mut self, id: &str, cx: &mut Context<Self>) {
+        if let Some(def) = find_def(id) {
+            self.unlocks.queue = vec![def];
+            self.unlocks.overflow = 0;
+            self.unlocks.shown = None;
+            cx.notify();
+        }
+    }
+
     /// The periodic full check: 6 s after start, then every ten minutes.
     pub(super) fn start_achievement_checks(&mut self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
