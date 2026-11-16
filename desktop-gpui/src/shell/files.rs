@@ -170,23 +170,261 @@ impl Shell {
                 cx.notify();
             });
         }
-        let open = link.clone();
+        let all = vec![link.clone()];
         div()
-            .id(SharedString::from(format!("img-{}-{n}", message.id)))
             .mt(px(8.))
             .w(px(width))
             .h(px(height))
-            .cursor_pointer()
-            .child(
-                gpui::img(ui::cover(resource, width / height.max(1.)))
-                    .w(px(width))
-                    .h(px(height))
-                    .rounded(px(10.))
-                    .object_fit(ObjectFit::Cover)
-                    .with_loading(|| div().into_any_element()),
-            )
-            .on_click(move |_, _, cx| cx.open_url(&open))
+            .rounded(px(10.))
+            .overflow_hidden()
+            .child(self.gallery_tile(&message.id, n, &link, all, 0, width, height, cx))
             .into_any_element()
+    }
+
+    /// isSpoilerUrl(): `spoiler_` / `spoiler-` in the name, `?spoiler`, or `#spoiler`.
+    fn is_spoiler_url(src: &str) -> bool {
+        let s = src.to_lowercase();
+        s.contains("spoiler_") || s.contains("spoiler-") || s.contains("?spoiler") || s.contains("&spoiler") || s.contains("#spoiler")
+    }
+
+    /// One picture of a message: opens the lightbox; a spoiler stays covered until clicked.
+    #[allow(clippy::too_many_arguments)]
+    fn gallery_tile(&self, message: &str, n: usize, link: &str, all: Vec<String>, index: usize, w: f32, h: f32, cx: &mut Context<Self>) -> AnyElement {
+        let resource = gpui::Resource::Uri(link.to_string().into());
+        let key = format!("img:{message}:{link}");
+        let spoiler = Self::is_spoiler_url(link);
+        let shielded = spoiler && !self.revealed.contains(&key);
+        let k = key.clone();
+        // In a gallery each picture keeps `.message-image`'s 10px corners and its 1px edge.
+        let framed = all.len() > 1;
+        let mut tile = div()
+            .id(SharedString::from(format!("img-{message}-{n}")))
+            .relative()
+            .w(px(w))
+            .h(px(h))
+            .overflow_hidden()
+            .when(framed, |d| d.rounded(px(10.)).border_1().border_color(rgb(0xe0d9d2)))
+            .cursor_pointer()
+            .group(SharedString::from(format!("tile-{message}-{n}")))
+            .child(gpui::img(ui::cover(resource, w / h.max(1.))).w(px(w)).h(px(h)).object_fit(ObjectFit::Cover).with_loading(|| div().into_any_element()))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                if shielded {
+                    this.revealed.insert(k.clone());
+                } else {
+                    this.lightbox = Some((all.clone(), index));
+                }
+                cx.notify();
+            }));
+        if shielded {
+            // A blur would hide it on the web; gpui draws no blurred pictures, so it is covered.
+            tile = tile.child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .bg(gpui::black().opacity(0.88))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .px(px(12.))
+                            .py(px(6.))
+                            .rounded_full()
+                            .bg(gpui::black().opacity(0.8))
+                            .border_1()
+                            .border_color(gpui::white().opacity(0.25))
+                            .text_size(px(12.))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(gpui::white())
+                            .child(ui::icon("eye-off", 13., gpui::white().opacity(0.8)))
+                            .child("SPOILER"),
+                    ),
+            );
+        } else if spoiler {
+            let k = key.clone();
+            let group = SharedString::from(format!("tile-{message}-{n}"));
+            tile = tile.child(
+                div()
+                    .id(SharedString::from(format!("img-hide-{message}-{n}")))
+                    .absolute()
+                    .top(px(8.))
+                    .right(px(8.))
+                    .p(px(6.))
+                    .rounded(px(6.))
+                    .bg(gpui::black().opacity(0.7))
+                    .opacity(0.)
+                    .group_hover(group, |s| s.opacity(1.))
+                    .child(ui::icon("eye-off", 13., gpui::white()))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.revealed.remove(&k);
+                        cx.notify();
+                    })),
+            );
+        }
+        tile.into_any_element()
+    }
+
+    /// ImageGallery for two or more pictures: two side by side, one large beside two stacked, or a
+    /// 2×2 grid with "+N" on the fourth; rows as tall as their tallest picture, within the caps.
+    pub(super) fn render_gallery(&self, message: &Message, urls: &[String], column: f32, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let links: Vec<String> = urls.iter().map(|u| self.client.absolute(u)).collect();
+        let width = column.min(520.);
+        let natural = |link: &str, w: f32, window: &mut Window, cx: &mut Context<Self>| -> Option<f32> {
+            ui::image_size(&gpui::Resource::Uri(link.to_string().into()), window, cx).filter(|(nw, _)| *nw > 0.).map(|(nw, nh)| w * nh / nw)
+        };
+        let mut loaded = true;
+        let mut tallest = |list: &[(usize, f32)], window: &mut Window, cx: &mut Context<Self>| -> f32 {
+            let mut best: f32 = 0.;
+            for (i, w) in list {
+                match natural(&links[*i], *w, window, cx) {
+                    Some(h) => best = best.max(h),
+                    None => loaded = false,
+                }
+            }
+            if best == 0. { list.first().map(|l| l.1 * 0.75).unwrap_or(150.) } else { best }
+        };
+        let id = message.id.clone();
+        let mut grid = div().mt(px(6.)).w(px(width)).rounded(px(10.)).overflow_hidden().flex().gap(px(4.));
+        let inner = width;
+        match links.len() {
+            2 => {
+                let w = (inner - 4.) / 2.;
+                let h = tallest(&[(0, w), (1, w)], window, cx).min(260.);
+                for i in 0..2 {
+                    grid = grid.child(self.gallery_tile(&id, i, &links[i], links.clone(), i, w, h, cx));
+                }
+            }
+            3 => {
+                let w1 = (inner - 4.) * 1.4 / 2.4;
+                let w2 = inner - 4. - w1;
+                let big = tallest(&[(0, w1)], window, cx);
+                let small = tallest(&[(1, w2)], window, cx) + tallest(&[(2, w2)], window, cx) + 4.;
+                let h = big.max(small).min(280.);
+                let half = (h - 4.) / 2.;
+                grid = grid
+                    .child(self.gallery_tile(&id, 0, &links[0], links.clone(), 0, w1, h, cx))
+                    .child(div().flex().flex_col().gap(px(4.)).child(self.gallery_tile(&id, 1, &links[1], links.clone(), 1, w2, half, cx)).child(self.gallery_tile(&id, 2, &links[2], links.clone(), 2, w2, half, cx)));
+            }
+            _ => {
+                let w = (inner - 4.) / 2.;
+                let row = tallest(&[(0, w), (1, w), (2, w), (3, w)], window, cx).min((340. - 4.) / 2.);
+                let more = links.len() - 4;
+                let mut column_box = div().flex().flex_col().gap(px(4.));
+                for r in 0..2 {
+                    let mut line = div().flex().gap(px(4.));
+                    for c in 0..2 {
+                        let i = r * 2 + c;
+                        let mut tile = div().relative().child(self.gallery_tile(&id, i, &links[i], links.clone(), i, w, row, cx));
+                        if i == 3 && more > 0 {
+                            tile = tile.child(div().absolute().inset_0().bg(gpui::black().opacity(0.65)).flex().items_center().justify_center().text_size(px(24.)).font_weight(gpui::FontWeight::BOLD).text_color(gpui::white()).child(format!("+{}", more + 1)));
+                        }
+                        line = line.child(tile);
+                    }
+                    column_box = column_box.child(line);
+                }
+                grid = grid.child(column_box);
+            }
+        }
+        if loaded && self.sized.borrow_mut().insert(format!("{}-gallery", message.id)) {
+            let id = message.id.clone();
+            cx.defer_in(window, move |this, _, cx| {
+                this.refresh_message(&id);
+                cx.notify();
+            });
+        }
+        grid.into_any_element()
+    }
+
+    /// The lightbox: the picture as big as fits, ‹ › and "n / N" for several, Open original.
+    pub(super) fn render_lightbox(&self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let (images, index) = self.lightbox.as_ref()?;
+        let link = images.get(*index)?.clone();
+        let count = images.len();
+        let vw = f32::from(window.viewport_size().width);
+        let vh = f32::from(window.viewport_size().height);
+        // `max-width: 90vw; max-height: 85vh; object-fit: contain` at the picture's own size.
+        let (nw, nh) = ui::image_size(&gpui::Resource::Uri(link.clone().into()), window, cx).unwrap_or((0., 0.));
+        let scale = if nw > 0. && nh > 0. { (vw * 0.9 / nw).min(vh * 0.85 / nh).min(1.) } else { 0. };
+        let (fw, fh) = (nw * scale, nh * scale);
+        let round = |id: &'static str, size: f32, text: &'static str, font: f32| {
+            div()
+                .id(id)
+                .size(px(size))
+                .rounded_full()
+                .bg(gpui::white().opacity(0.14))
+                .hover(|s| s.bg(gpui::white().opacity(0.25)))
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_size(px(font))
+                .text_color(gpui::white())
+                .cursor_pointer()
+                .child(text)
+        };
+        let open = link.clone();
+        let mut layer = div()
+            .id("lightbox")
+            .absolute()
+            .inset_0()
+            .bg(gpui::black().opacity(0.88))
+            .p(px(50.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|this, _, _, cx| {
+                this.lightbox = None;
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .max_w(px(vw * 0.9))
+                    .max_h(px(vh * 0.85))
+                    .rounded(px(8.))
+                    .overflow_hidden()
+                    .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.6), offset: gpui::point(px(0.), px(10.)), blur_radius: px(40.), spread_radius: px(0.) }])
+                    .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(gpui::img(link.clone()).w(px(fw)).h(px(fh)).object_fit(ObjectFit::Contain)),
+            )
+            .child(div().absolute().top(px(18.)).right(px(24.)).child(round("lb-close", 44., "×", 26.).on_click(cx.listener(|this, _, _, cx| {
+                this.lightbox = None;
+                cx.notify();
+            }))));
+        if count > 1 {
+            let step = |this: &mut Shell, by: isize, cx: &mut Context<Shell>| {
+                if let Some((list, i)) = this.lightbox.as_mut() {
+                    *i = ((*i as isize + by).rem_euclid(list.len() as isize)) as usize;
+                }
+                cx.notify();
+            };
+            layer = layer
+                .child(div().absolute().left(px(24.)).top_0().bottom_0().flex().items_center().child(round("lb-prev", 52., "‹", 28.).on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(cx.listener(move |this, _, _, cx| step(this, -1, cx)))))
+                .child(div().absolute().right(px(24.)).top_0().bottom_0().flex().items_center().child(round("lb-next", 52., "›", 28.).on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(cx.listener(move |this, _, _, cx| step(this, 1, cx)))))
+                .child(div().absolute().bottom(px(24.)).left(px(32.)).px(px(12.)).py(px(4.)).rounded_full().bg(gpui::black().opacity(0.4)).border_1().border_color(gpui::white().opacity(0.15)).text_size(px(13.)).font_weight(gpui::FontWeight::SEMIBOLD).text_color(gpui::white().opacity(0.85)).child(format!("{} / {}", index + 1, count)));
+        }
+        layer = layer.child(
+            div()
+                .id("lb-open")
+                .absolute()
+                .bottom(px(22.))
+                .right(px(32.))
+                .px(px(18.))
+                .py(px(8.))
+                .rounded_full()
+                .bg(gpui::white().opacity(0.16))
+                .hover(|s| s.bg(gpui::white().opacity(0.28)))
+                .text_size(px(13.))
+                .font_weight(gpui::FontWeight::MEDIUM)
+                .text_color(gpui::white())
+                .cursor_pointer()
+                .child("Open original ↗")
+                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(move |_, _, cx| cx.open_url(&open)),
+        );
+        Some(layer.into_any_element())
     }
 
     /// The "+" button: pick files to send.

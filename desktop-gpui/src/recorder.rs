@@ -1,6 +1,7 @@
 //! Recording a voice message (useVoiceRecorder): AVAudioRecorder writes AAC to an .m4a (the web takes
 //! Safari's .m4a the same way) and meters the level, sampled ten times a second for the live meter
 //! and the waveform that goes with the message.
+#![allow(unexpected_cfgs)]
 
 use std::path::PathBuf;
 

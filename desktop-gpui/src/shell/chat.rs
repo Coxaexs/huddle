@@ -1116,8 +1116,13 @@ impl Shell {
 
     pub(super) fn render_attachments(&self, message: &Message, column: f32, window: &mut gpui::Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let mut out = Vec::new();
-        for (n, url) in message.image.iter().chain(message.images.iter()).enumerate() {
-            out.push(self.render_image(message, n, url, column, window, cx));
+        let pictures: Vec<String> = message.image.iter().chain(message.images.iter()).cloned().collect();
+        if pictures.len() > 1 {
+            out.push(self.render_gallery(message, &pictures, column, window, cx));
+        } else {
+            for (n, url) in pictures.iter().enumerate() {
+                out.push(self.render_image(message, n, url, column, window, cx));
+            }
         }
         for (n, file) in message.files.iter().enumerate() {
             out.push(self.render_file_card(message, n, file));

@@ -555,6 +555,17 @@ impl gpui::Render for Shell {
         {
             self.open_channel_permissions(id, window, cx);
         }
+        // Development: HOFFLE_DEV_LIGHTBOX=<message id>,<index> opens that message's pictures.
+        static DEV_LIGHTBOX: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(spec) = std::env::var("HOFFLE_DEV_LIGHTBOX")
+            && let Some(channel) = self.channel_id.clone()
+            && let (id, index) = spec.split_once(',').unwrap_or((spec.as_str(), "0"))
+            && let Some(m) = self.messages.get(&channel).and_then(|list| list.iter().find(|m| m.id == id)).cloned()
+            && !DEV_LIGHTBOX.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            let links: Vec<String> = m.image.iter().chain(m.images.iter()).map(|u| self.client.absolute(u)).collect();
+            self.lightbox = Some((links, index.parse().unwrap_or(0)));
+        }
         // Development: HOFFLE_DEV_RENAME=1 opens the Rename Server prompt once (only to look at).
         if std::env::var("HOFFLE_DEV_RENAME").is_ok() && self.confirm.is_none() && !self.dev_invite_done
             && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
@@ -760,6 +771,7 @@ impl gpui::Render for Shell {
             .children(self.render_events(window, cx))
             .children(self.render_poll_dialog(window, cx))
             .children(self.render_chperm(window, cx))
+            .children(self.render_lightbox(window, cx))
             .children(self.render_confirm(cx))
             .children(self.render_forward(window, cx))
             .children(self.render_invite(window, cx))
