@@ -782,6 +782,14 @@ impl gpui::Render for Shell {
             // HOFFLE_DEV_STAGE=<channel id>: that voice room's stage, joined (empty rooms only).
             if let Ok(room) = std::env::var("HOFFLE_DEV_STAGE") {
                 self.open_stage(room, window, cx);
+                // HOFFLE_DEV_STAGE_VIEW=table|map: that view.
+                if let (Ok(view), Some(stage)) = (std::env::var("HOFFLE_DEV_STAGE_VIEW"), self.stage.as_mut()) {
+                    stage.view = match view.as_str() {
+                        "table" => "table",
+                        "map" => "map",
+                        _ => "grid",
+                    };
+                }
             }
             // HOFFLE_DEV_CHANMENU=<channel id>,x,y
             if let Ok(spec) = std::env::var("HOFFLE_DEV_CHANMENU") {

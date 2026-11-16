@@ -207,13 +207,18 @@ impl Shell {
             }
             return Some(split.into_any_element());
         }
-        let tiles = div()
-            .id("stage-body")
-            .flex_1()
-            .min_h_0()
-            .overflow_y_scroll()
-            .p(px(20.))
-            .child(div().pt(px(((body_height - 40. - grid_h) / 2.).max(0.))).child(grid));
+        let tiles = if stage.view == "table" {
+            self.render_table_view(&people, stage_width, window)
+        } else {
+            div()
+                .id("stage-body")
+                .flex_1()
+                .min_h_0()
+                .overflow_y_scroll()
+                .p(px(20.))
+                .child(div().pt(px(((body_height - 40. - grid_h) / 2.).max(0.))).child(grid))
+                .into_any_element()
+        };
 
         // Simple: the five big labelled buttons, 520px wide in the middle at the bottom.
         let bar = if self.simple() {
@@ -544,6 +549,121 @@ impl Shell {
             );
         }
         div().w(px(width)).flex().flex_col().child(main).child(strip).into_any_element()
+    }
+
+    /// `.voice-table-scene`: everyone seated evenly round a table (stage-body.tsx, viewMode "table").
+    fn render_table_view(&self, people: &[VoiceParticipant], stage_width: f32, window: &Window) -> AnyElement {
+        let vh = f32::from(window.viewport_size().height);
+        let vw = f32::from(window.viewport_size().width);
+        let size = 460f32.min(vw * 0.8).min(vh * 0.58);
+        let _ = stage_width;
+        let lavender: Hsla = Theme::lavender().into();
+        let muted: Hsla = Theme::muted().into();
+        let mut wrapper = div()
+            .relative()
+            .flex_none()
+            .size(px(size))
+            .child(
+                // `.voice-table-ring`: 20px in, dashed; the surface 44% of it in the middle.
+                div()
+                    .absolute()
+                    .top(px(20.))
+                    .left(px(20.))
+                    .size(px(size - 40.))
+                    .rounded_full()
+                    .border_2()
+                    .border_dashed()
+                    .border_color(lavender.opacity(0.16))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        div()
+                            .relative()
+                            .size(px((size - 44.) * 0.44))
+                            .rounded_full()
+                            // radial-gradient(circle, var(--surface-2) 0%, var(--panel) 85%)
+                            .child({
+                                let css = |c: gpui::Rgba| format!("rgba({}, {}, {}, {})", (c.r * 255.).round(), (c.g * 255.).round(), (c.b * 255.).round(), c.a);
+                                ui::css_background(ui::css_static(format!("radial-gradient(circle, {} 0%, {} 85%)", css(Theme::card()), css(Theme::panel()))), (size - 44.) * 0.22)
+                            })
+                            .border_2()
+                            .border_color(lavender.opacity(0.22))
+                            .shadow(vec![gpui::BoxShadow { color: lavender.opacity(0.1), offset: gpui::point(px(0.), px(0.)), blur_radius: px(30.), spread_radius: px(0.) }]),
+                    ),
+            );
+        let count = people.len().max(1) as f32;
+        for (i, p) in people.iter().enumerate() {
+            let identity = format!("{}|{}", p.id, p.connection_id);
+            let speaking = self.call.as_ref().is_some_and(|c| c.speaking.contains(&identity));
+            let me = self.connection_id.as_deref() == Some(p.connection_id.as_str());
+            let angle = (i as f32 / count) * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
+            let (cx_, cy_) = (size * (0.5 + angle.cos() * 0.42), size * (0.5 + angle.sin() * 0.42));
+            let elapsed = ((self.hub_now() - p.joined_at) / 1000.).max(0.) as u64;
+            let avatar_size = if speaking { 58. * 1.06 } else { 58. };
+            let seat = div()
+                .flex()
+                .flex_col()
+                .items_center()
+                .gap(px(6.))
+                .child(
+                    div()
+                        .size(px(avatar_size))
+                        .rounded_full()
+                        .border(px(2.5))
+                        .border_color(if speaking { gpui::rgb(0x4ade80).into() } else { Hsla::transparent_black() })
+                        .shadow(if speaking {
+                            vec![gpui::BoxShadow { color: gpui::hsla(142. / 360., 0.69, 0.58, 0.5), offset: gpui::point(px(0.), px(0.)), blur_radius: px(16.), spread_radius: px(0.) }]
+                        } else {
+                            vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.4), offset: gpui::point(px(0.), px(4.)), blur_radius: px(14.), spread_radius: px(0.) }]
+                        })
+                        .overflow_hidden()
+                        .child(ui::avatar_with(self.picture(&p.avatar_url), &p.avatar, &p.color, p.name(), avatar_size - 5., 16., FontWeight::EXTRA_BOLD, gpui::white().into())),
+                )
+                .child(
+                    div()
+                        .max_w(px(100.))
+                        .px(px(8.))
+                        .py(px(2.))
+                        .rounded_full()
+                        .bg(Hsla::from(Theme::paper()).opacity(0.85))
+                        .border_1()
+                        .border_color(Theme::line())
+                        .text_size(px(11.))
+                        .line_height(px(16.5))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(Theme::ink())
+                        .truncate()
+                        .child(if me { "You".to_string() } else { p.name().to_string() }),
+                )
+                .child(div().text_size(px(10.)).line_height(px(15.)).text_color(muted).opacity(0.8).child(super::sidebar::duration(elapsed)))
+                .when(speaking, |d| d.child(div().text_size(px(10.)).font_weight(FontWeight::BOLD).text_color(lavender).child("speaking")));
+            // translate(-50%, -50%) round the seat's spot: placed by its centre.
+            wrapper = wrapper.child(div().absolute().left(px(cx_ - 60.)).top(px(cy_ - 60.)).w(px(120.)).h(px(120.)).flex().items_center().justify_center().child(seat));
+        }
+        div()
+            .id("stage-body")
+            .flex_1()
+            .min_h_0()
+            .p(px(24.))
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(px(10.))
+            .overflow_hidden()
+            .child(ui::tracked(window, "VOICE TABLE", 11., FontWeight::EXTRA_BOLD, 11. * 0.14, 16.5, 400.).mb(px(44.)).text_color(muted))
+            .child(wrapper)
+            .child(
+                div()
+                    .mt(px(44.))
+                    .max_w(px(420.))
+                    .text_center()
+                    .text_size(px(12.))
+                    .text_color(muted)
+                    .child("Everyone at the table hears each other equally. Move away to create distance."),
+            )
+            .into_any_element()
     }
 
     fn render_tile(&self, person: &VoiceParticipant, w: f32, h: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
