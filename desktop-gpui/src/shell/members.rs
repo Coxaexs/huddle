@@ -599,6 +599,15 @@ impl gpui::Render for Shell {
         {
             self.accept_paths(spec.split(':').map(std::path::PathBuf::from).collect(), cx);
         }
+        // HOFFLE_DEV_SEND_FILES=<text>: send what is staged once something is (test copies only).
+        static DEV_SEND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(text) = std::env::var("HOFFLE_DEV_SEND_FILES")
+            && !self.pending_files.is_empty()
+            && let Some(channel) = self.channel_id.clone()
+            && !DEV_SEND.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            self.send_with_files(channel, text, None, cx);
+        }
         // HOFFLE_DEV_SHOW_ALT=1: the newest described picture's description shown.
         if std::env::var_os("HOFFLE_DEV_SHOW_ALT").is_some()
             && self.shown_alt.is_none()

@@ -12,6 +12,7 @@ use crate::theme::Theme;
 use crate::ui;
 
 /// A file waiting in the composer.
+#[derive(Clone)]
 pub(super) struct Pending {
     pub path: PathBuf,
     /// The name it goes up under (SPOILER_ in front when marked as a spoiler).
@@ -21,6 +22,96 @@ pub(super) struct Pending {
     /// Its description (ALT), and "HD": sent as it is instead of made smaller.
     pub alt: Option<String>,
     pub original: bool,
+}
+
+/// lib/big-upload-key.ts NORMAL_UPLOAD_MAX_BYTES: bigger files go up in parts, for those allowed.
+const NORMAL_UPLOAD_MAX_BYTES: u64 = 40 * 1024 * 1024;
+
+/// Where a big upload's bytes come from: the file itself, or a picture made in memory.
+enum BigSource {
+    Path(PathBuf),
+    Bytes(std::sync::Arc<Vec<u8>>),
+}
+
+impl BigSource {
+    fn read(&self, from: u64, len: usize) -> anyhow::Result<Vec<u8>> {
+        match self {
+            BigSource::Path(path) => {
+                use std::io::{Read, Seek, SeekFrom};
+                let mut f = std::fs::File::open(path)?;
+                f.seek(SeekFrom::Start(from))?;
+                let mut buf = vec![0; len];
+                f.read_exact(&mut buf)?;
+                Ok(buf)
+            }
+            BigSource::Bytes(bytes) => Ok(bytes[from as usize..from as usize + len].to_vec()),
+        }
+    }
+}
+
+/// uploadBigFile(): start, each part PUT (retried a few times unless Hoffle itself refused it),
+/// complete; an abort frees the budget when it fails. Progress shows in the notice line.
+async fn upload_big(this: &gpui::WeakEntity<Shell>, cx: &mut gpui::AsyncApp, client: &crate::api::Client, source: BigSource, name: String, size: u64) -> anyhow::Result<String> {
+    let c = client.clone();
+    let n = name.clone();
+    let start = cx.background_executor().spawn(async move { c.settings_post("/api/uploads/big", serde_json::json!({ "action": "start", "name": n, "size": size })) }).await?;
+    let key = start["key"].as_str().unwrap_or_default().to_string();
+    let part_bytes = start["partBytes"].as_u64().unwrap_or(size.max(1));
+    let parts = start["parts"].as_u64().unwrap_or(1);
+    let source = std::sync::Arc::new(source);
+    let mut done = Vec::new();
+    let mut finished: u64 = 0;
+    let result: anyhow::Result<()> = async {
+        for part in 1..=parts {
+            let from = (part - 1) * part_bytes;
+            let len = (size - from).min(part_bytes) as usize;
+            let mut attempt = 1;
+            loop {
+                let (c, k, s) = (client.clone(), key.clone(), source.clone());
+                let sent = cx
+                    .background_executor()
+                    .spawn(async move {
+                        let bytes = s.read(from, len).map_err(|e| (0u16, e.to_string()))?;
+                        c.big_part(&k, part as usize, &bytes)
+                    })
+                    .await;
+                match sent {
+                    Ok(etag) => {
+                        done.push(serde_json::json!({ "partNumber": part, "etag": etag }));
+                        break;
+                    }
+                    Err((code, message)) => {
+                        // 4xx from Hoffle itself (expired, not allowed, bad part) won't get better.
+                        if attempt >= 5 || ((400..500).contains(&code) && code != 408 && code != 429) {
+                            anyhow::bail!(message);
+                        }
+                        cx.background_executor().timer(std::time::Duration::from_millis(2000 * attempt)).await;
+                        attempt += 1;
+                    }
+                }
+            }
+            finished += len as u64;
+            let pct = finished * 100 / size.max(1);
+            let line = format!("Uploading {name}… {pct}% — keep this tab open.");
+            this.update(cx, |this, cx| this.set_notice(line, cx)).ok();
+        }
+        let (c, k) = (client.clone(), key.clone());
+        let parts = done.clone();
+        cx.background_executor().spawn(async move { c.settings_post("/api/uploads/big", serde_json::json!({ "action": "complete", "key": k, "parts": parts })) }).await?;
+        Ok(())
+    }
+    .await;
+    if let Err(e) = result {
+        let (c, k) = (client.clone(), key.clone());
+        cx.background_executor().spawn(async move { c.settings_post("/api/uploads/big", serde_json::json!({ "action": "abort", "key": k })) }).detach();
+        return Err(e);
+    }
+    this.update(cx, |this, cx| {
+        this.notice = None;
+        cx.notify();
+    })
+    .ok();
+    Ok(key)
 }
 
 /// lib/big-upload-key.ts IMAGE_UPLOAD_MAX_BYTES: the most a picture may be, as it is.
@@ -523,7 +614,6 @@ impl Shell {
     /// acceptAttachment(): shared by the "+", a drop and a paste. No HTML; 40 MB each; 10 at most.
     pub(super) fn accept_paths(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
         const MAX: usize = 10;
-        const NORMAL_UPLOAD_MAX_BYTES: u64 = 40 * 1024 * 1024;
         for path in paths {
             if path.is_dir() {
                 continue;
@@ -536,7 +626,24 @@ impl Shell {
             }
             let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
             if size > NORMAL_UPLOAD_MAX_BYTES {
-                self.set_notice(format!("{name} is larger than 40 MB."), cx);
+                // Up to 2 GB for people an admin picked; deleted 12 hours after sending.
+                let client = self.client.clone();
+                cx.spawn(async move |this, cx| {
+                    let status = cx.background_executor().spawn(async move { client.get_value("/api/uploads/big") }).await;
+                    this.update(cx, |this, cx| match status {
+                        Ok(big) if big["allowed"] == true => {
+                            if size > big["maxBytes"].as_u64().unwrap_or(0) {
+                                this.set_notice(format!("{name} is larger than 2 GB."), cx);
+                            } else if this.pending_files.len() < MAX {
+                                this.pending_files.push(Pending { path, name: name.clone(), size, image: false, alt: None, original: false });
+                                this.set_notice(format!("{name} is a big file: it is deleted 12 hours after you send it."), cx);
+                            }
+                        }
+                        _ => this.set_notice(format!("{name} is larger than 40 MB."), cx),
+                    })
+                    .ok();
+                })
+                .detach();
                 continue;
             }
             let image = matches!(
@@ -706,28 +813,36 @@ impl Shell {
         let client = self.client.clone();
         self.notice = None;
         cx.spawn(async move |this, cx| {
-            let result = cx
-                .background_executor()
-                .spawn(async move {
-                    let mut keys = Vec::new();
-                    let mut alts = serde_json::Map::new();
-                    for file in &files {
-                        let (name, mime, bytes) = prepare(file)?;
-                        if bytes.len() > 40 * 1024 * 1024 {
-                            anyhow::bail!("{name} is over 40 MB; send big files from the web app for now.");
+            let result: anyhow::Result<Message> = async {
+                let mut keys = Vec::new();
+                let mut alts = serde_json::Map::new();
+                for file in files {
+                    // Small enough (once a picture is made smaller): one upload. Else in parts.
+                    let key = if file.size > NORMAL_UPLOAD_MAX_BYTES && !can_shrink(&file) {
+                        upload_big(&this, cx, &client, BigSource::Path(file.path.clone()), file.name.clone(), file.size).await?
+                    } else {
+                        let (c, f) = (client.clone(), file.clone());
+                        let prepared = cx.background_executor().spawn(async move { prepare(&f) }).await?;
+                        let (name, mime, bytes) = prepared;
+                        if bytes.len() as u64 > NORMAL_UPLOAD_MAX_BYTES {
+                            let size = bytes.len() as u64;
+                            upload_big(&this, cx, &client, BigSource::Bytes(std::sync::Arc::new(bytes)), name, size).await?
+                        } else {
+                            cx.background_executor().spawn(async move { c.upload(&name, &mime, &bytes) }).await?
                         }
-                        let key = client.upload(&name, &mime, &bytes)?;
-                        // Descriptions go by upload key; the server keeps them by picture URL.
-                        if let Some(alt) = &file.alt {
-                            alts.insert(key.clone(), alt.clone().into());
-                        }
-                        keys.push(key);
+                    };
+                    // Descriptions go by upload key; the server keeps them by picture URL.
+                    if let Some(alt) = &file.alt {
+                        alts.insert(key.clone(), alt.clone().into());
                     }
-                    let payload = (!alts.is_empty()).then(|| serde_json::json!({ "imageAlts": alts }));
-                    let message = client.send_with_files(&channel, text.trim(), reply.as_deref(), &keys, payload)?;
-                    Ok::<_, anyhow::Error>(message)
-                })
-                .await;
+                    keys.push(key);
+                }
+                let payload = (!alts.is_empty()).then(|| serde_json::json!({ "imageAlts": alts }));
+                let c = client.clone();
+                let message = cx.background_executor().spawn(async move { c.send_with_files(&channel, text.trim(), reply.as_deref(), &keys, payload) }).await?;
+                Ok(message)
+            }
+            .await;
             this.update(cx, |this, cx| match result {
                 Ok(message) => this.add_message(message, cx),
                 Err(e) => this.set_notice(e.to_string(), cx),

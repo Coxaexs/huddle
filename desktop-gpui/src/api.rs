@@ -332,6 +332,35 @@ impl Client {
         self.upload_with(field, name, mime, bytes, &[])
     }
 
+    /// PUT one part of a big upload (lib/big-upload.ts sendPart): its etag, or the status (0 when
+    /// the connection dropped) and why.
+    pub fn big_part(&self, key: &str, part: usize, bytes: &[u8]) -> std::result::Result<String, (u16, String)> {
+        let path = format!("/api/uploads/big?key={}&part={part}", encode(key));
+        // A 32 MB part outlasts the 20 s every other call gets; the web's XHR has no limit at all.
+        let mut request = self
+            .agent
+            .put(format!("{}{path}", self.base))
+            .config()
+            .timeout_global(Some(Duration::from_secs(30 * 60)))
+            .build()
+            .header("Origin", self.absolute(""))
+            .header("Content-Type", "application/octet-stream");
+        if let Some(cookie) = self.cookie_header() {
+            request = request.header("Cookie", &cookie);
+        }
+        let mut response = request.send(bytes).map_err(|e| {
+            eprintln!("big upload part {part}: {e}");
+            (0, "The connection dropped during the upload.".to_string())
+        })?;
+        let status = response.status().as_u16();
+        let text = response.body_mut().read_to_string().unwrap_or_default();
+        let data: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
+        match data.get("etag").and_then(Value::as_str) {
+            Some(etag) if (200..300).contains(&status) => Ok(etag.to_string()),
+            _ => Err((status, data.get("error").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| format!("Upload failed ({status})."))))
+        }
+    }
+
     /// A voice message's sound (`purpose=voice`, as the web sends it).
     pub fn upload_voice(&self, name: &str, mime: &str, bytes: &[u8]) -> Result<String> {
         let reply = self.upload_with("file", name, mime, bytes, &[("purpose", "voice")])?;
@@ -358,6 +387,10 @@ impl Client {
         let mut request = self
             .agent
             .post(format!("{}/api/uploads", self.base))
+            // Up to 40 MB: more than the 20 s every other call gets on a slow line.
+            .config()
+            .timeout_global(Some(Duration::from_secs(10 * 60)))
+            .build()
             .header("Origin", self.absolute(""))
             .header("Content-Type", &format!("multipart/form-data; boundary={boundary}"));
         if let Some(cookie) = self.cookie_header() {
