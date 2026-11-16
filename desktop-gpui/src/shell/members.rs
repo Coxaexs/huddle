@@ -616,6 +616,26 @@ impl gpui::Render for Shell {
         {
             self.shown_alt = Some(format!("img:{}:{}", m.id, self.client.absolute(url)));
         }
+        // HOFFLE_DEV_FRIENDS=online|all|pending|blocked|add|menu: the friends view on that tab
+        // ("menu": All with the first friend's ⋮ menu open).
+        static DEV_FRIENDS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(tab) = std::env::var("HOFFLE_DEV_FRIENDS")
+            && !self.servers.is_empty()
+            && !DEV_FRIENDS.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            self.open_home(cx);
+            self.channel_id = None;
+            self.friends_tab = match tab.as_str() {
+                "all" | "menu" => super::friends::Tab::All,
+                "pending" => super::friends::Tab::Pending,
+                "blocked" => super::friends::Tab::Blocked,
+                "add" => super::friends::Tab::Add,
+                _ => super::friends::Tab::Online,
+            };
+        }
+        if std::env::var("HOFFLE_DEV_FRIENDS").as_deref() == Ok("menu") && self.friend_menu.is_none() && let Some(f) = self.friends.friends.first() {
+            self.friend_menu = Some(f.id.clone());
+        }
         // HOFFLE_DEV_USERMENU=<user id prefix>,x,y: that person's menu, right-clicked there, once the
         // members have loaded.
         static DEV_USERMENU: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);

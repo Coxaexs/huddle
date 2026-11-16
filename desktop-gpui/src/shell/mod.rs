@@ -263,6 +263,14 @@ pub struct Shell {
     friends: model::FriendsData,
     friends_tab: friends::Tab,
     friends_search: Entity<TextInput>,
+    /// The friends view's Add Friend and Block User fields, their result lines (ok, text), whether
+    /// one is on its way, and the friend whose ⋮ menu is open.
+    friends_add: Entity<TextInput>,
+    friends_block: Entity<TextInput>,
+    friends_add_status: Option<(bool, String)>,
+    friends_block_status: Option<(bool, String)>,
+    friends_busy: bool,
+    friend_menu: Option<String>,
     /// Room players from the hub (`ready.players`, `player` events), by voice channel id.
     players: HashMap<String, Value>,
     /// The small menu over the user card.
@@ -441,6 +449,25 @@ impl Shell {
             }
         });
         let composer = cx.new(|cx| TextArea::new("Message", cx).text(14., 20.3).placeholder_color(gpui::rgb(0x5a5275)));
+        // The friends view's fields: Enter sends, like their forms.
+        // text-sm and text-xs, the placeholder at --muted 50%.
+        let faint = gpui::Hsla::from(crate::theme::Theme::muted()).opacity(0.5);
+        let friends_add = cx.new(|cx| {
+            TextInput::new(crate::i18n::t("friends.addFriendInputPlaceholder"), cx).look(crate::input::Look { size: 14., line_height: 20., height: 20., color: crate::theme::Theme::ink().into(), placeholder: faint })
+        });
+        let friends_block = cx.new(|cx| {
+            TextInput::new(crate::i18n::t("friends.blockInputPlaceholder"), cx).look(crate::input::Look { size: 12., line_height: 16., height: 16., color: crate::theme::Theme::ink().into(), placeholder: faint })
+        });
+        let friend_subs = vec![
+            cx.subscribe(&friends_add, |this, _, event: &crate::input::InputEvent, cx| match event {
+                crate::input::InputEvent::Submit => this.send_friend_request(cx),
+                _ => cx.notify(),
+            }),
+            cx.subscribe(&friends_block, |this, _, event: &crate::input::InputEvent, cx| match event {
+                crate::input::InputEvent::Submit => this.block_by_username(cx),
+                _ => cx.notify(),
+            }),
+        ];
         let subs = vec![cx.subscribe_in(&composer, window, |this, _, event, _window, cx| match event {
             AreaEvent::Submit => this.send_composer(cx),
             AreaEvent::PasteImage(image) => {
@@ -578,6 +605,12 @@ impl Shell {
             friends: Default::default(),
             friends_tab: friends::Tab::Online,
             friends_search: cx.new(|cx| TextInput::new(crate::i18n::t("friends.searchPlaceholder"), cx).bare().small()),
+            friends_add,
+            friends_block,
+            friends_add_status: None,
+            friends_block_status: None,
+            friends_busy: false,
+            friend_menu: None,
             players: HashMap::new(),
             footer_menu: false,
             status_open: false,
@@ -682,7 +715,7 @@ impl Shell {
             last_typing_sent: None,
             focus: cx.focus_handle(),
             _tasks: vec![hub_task, typing_task, voice_task],
-            _subs: { let mut subs = subs; subs.push(quit); subs },
+            _subs: { let mut subs = subs; subs.push(quit); subs.extend(friend_subs); subs },
         };
         shell.load_servers(cx);
         shell.load_side_data(cx);

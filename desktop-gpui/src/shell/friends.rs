@@ -11,6 +11,12 @@ use crate::ui::{self, icon};
 
 const NUNITO: &str = "Nunito";
 
+/// `.friend-avatar` takes the place of `.avatar`: 40px, the letter 17px at the normal weight, in
+/// the text colour.
+fn friend_avatar(picture: Option<String>, glyph: &str, color: &str, name: &str) -> AnyElement {
+    ui::avatar_with(picture, glyph, color, name, 40., 17., FontWeight::NORMAL, Theme::ink().into())
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum Tab {
     Online,
@@ -331,7 +337,23 @@ impl Shell {
                     .font_weight(FontWeight::BOLD)
                     .child(tab_button("tab-online", t("friends.tab.online"), Tab::Online, Some(online_count), cx))
                     .child(tab_button("tab-all", t("friends.tab.all"), Tab::All, Some(self.friends.friends.len()), cx))
-                    .child(tab_button("tab-pending", t("friends.tab.pending"), Tab::Pending, None, cx))
+                    .child(
+                        tab_button("tab-pending", t("friends.tab.pending"), Tab::Pending, None, cx).when(!self.friends.incoming.is_empty(), |d| {
+                            // A red count, unlike the grey ones.
+                            d.child(
+                                div()
+                                    .px(px(6.))
+                                    .py(px(2.))
+                                    .rounded_full()
+                                    .bg(rgb(0xf43f5e))
+                                    .text_size(px(10.))
+                                    .line_height(px(12.5))
+                                    .font_weight(FontWeight::BLACK)
+                                    .text_color(gpui::white())
+                                    .child(self.friends.incoming.len().to_string()),
+                            )
+                        }),
+                    )
                     .child(tab_button("tab-blocked", t("friends.tab.blocked"), Tab::Blocked, Some(self.friends.blocked.len()), cx))
                     .child(
                         div()
@@ -350,8 +372,10 @@ impl Shell {
                             .when(tab != Tab::Add, |d| d.bg(rgba(0x10b98126)).text_color(rgb(0x059669)))
                             .child(icon("user-plus", 14., if tab == Tab::Add { rgb(0xffffff) } else { rgb(0x059669) }))
                             .child(t("friends.tab.add"))
-                            .on_click(cx.listener(|this, _, _, cx| {
+                            .on_click(cx.listener(|this, _, window, cx| {
                                 this.friends_tab = Tab::Add;
+                                // autoFocus: the username field takes the keyboard.
+                                window.focus(&gpui::Focusable::focus_handle(&this.friends_add, cx));
                                 cx.notify();
                             })),
                     ),
@@ -359,7 +383,7 @@ impl Shell {
 
         let body: AnyElement = match tab {
             Tab::Online | Tab::All => self.render_friend_list(tab, cx).into_any_element(),
-            _ => self.render_friends_other(tab).into_any_element(),
+            _ => self.render_friends_other(tab, cx).into_any_element(),
         };
 
         div()
@@ -452,15 +476,17 @@ impl Shell {
                                 .cursor_pointer()
                                 .hover(|s| s.opacity(0.9))
                                 .child(t("friends.tab.add"))
-                                .on_click(cx.listener(|this, _, _, cx| {
+                                .on_click(cx.listener(|this, _, window, cx| {
                                     this.friends_tab = Tab::Add;
+                                    // autoFocus: the username field takes the keyboard.
+                                    window.focus(&gpui::Focusable::focus_handle(&this.friends_add, cx));
                                     cx.notify();
                                 })),
                         )
                     }),
             );
         }
-        for friend in shown {
+        for (row, friend) in shown.into_iter().enumerate() {
             let online = self.online.contains(&friend.id);
             let line = friend.status_text().unwrap_or_else(|| format!("@{}", friend.username));
             let user_id = friend.id.clone();
@@ -473,13 +499,13 @@ impl Shell {
                     .flex()
                     .items_center()
                     .gap(px(14.))
-                    .border_b_1()
-                    .border_color(Theme::line())
+                    // `divide-y`: a line between rows, none under the last.
+                    .when(row > 0, |d| d.border_t_1().border_color(Theme::line()))
                     .hover(|s| s.bg(gpui::rgba(0x1a162899)))
                     .child(
                         div()
                             .relative()
-                            .child(ui::avatar(self.picture(&friend.avatar_url), &friend.avatar, &friend.color, friend.name(), 40.))
+                            .child(friend_avatar(self.picture(&friend.avatar_url), &friend.avatar, &friend.color, friend.name()))
                             .child(
                                 div()
                                     .absolute()
@@ -510,55 +536,295 @@ impl Shell {
                             .tooltip(ui::tooltip(t("friends.message")))
                             .child(icon("message-square", 18., Theme::muted()))
                             .on_click(cx.listener(move |this, _, _, cx| this.open_dm_with(user_id.clone(), cx))),
-                    ),
+                    )
+                    // The ⋮ button and its menu: Remove Friend, Block.
+                    .child({
+                        let (menu_id, remove_id, block_id) = (friend.id.clone(), friend.id.clone(), friend.id.clone());
+                        let open = self.friend_menu.as_deref() == Some(friend.id.as_str());
+                        let rose: gpui::Hsla = rgb(0xf43f5e).into();
+                        div()
+                            .relative()
+                            .ml(px(4.))
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("friend-more-{}", friend.id)))
+                                    .p(px(10.))
+                                    .rounded(px(12.))
+                                    .bg(Theme::panel())
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(Theme::line()))
+                                    .tooltip(ui::tooltip(t("composer.moreOptions")))
+                                    .child(icon("ellipsis-vertical", 18., Theme::muted()))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        cx.stop_propagation();
+                                        this.friend_menu = if this.friend_menu.as_deref() == Some(menu_id.as_str()) { None } else { Some(menu_id.clone()) };
+                                        cx.notify();
+                                    })),
+                            )
+                            .when(open, |d| {
+                                let item = |id: String, name: &'static str, label: String, color: gpui::Hsla| {
+                                    div()
+                                        .id(SharedString::from(id))
+                                        .px(px(14.))
+                                        .py(px(8.))
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(8.))
+                                        .text_color(color)
+                                        .cursor_pointer()
+                                        .hover(move |s| s.bg(rose.opacity(0.1)).text_color(rose))
+                                        .child(icon(name, 14., color))
+                                        .child(label)
+                                };
+                                d.child(
+                                    gpui::deferred(
+                                        div()
+                                            .id("friend-menu")
+                                            .occlude()
+                                            .absolute()
+                                            .right_0()
+                                            .top(px(44.))
+                                            .w(px(176.))
+                                            .py(px(6.))
+                                            .rounded(px(12.))
+                                            .bg(Theme::panel())
+                                            .border_1()
+                                            .border_color(Theme::line())
+                                            .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.25), offset: gpui::point(px(0.), px(25.)), blur_radius: px(50.), spread_radius: px(-12.) }])
+                                            .text_size(px(12.))
+                                            .line_height(px(16.))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                                                this.friend_menu = None;
+                                                cx.notify();
+                                            }))
+                                            .child(item(format!("friend-remove-{remove_id}"), "x", t("friends.removeFriend"), rose).on_click(cx.listener(move |this, _, _, cx| {
+                                                this.friends_call("DELETE", remove_id.clone(), serde_json::Value::Null, cx)
+                                            })))
+                                            .child(item(format!("friend-block-{block_id}"), "shield-alert", t("userMenu.block"), Theme::muted().into()).on_click(cx.listener(move |this, _, _, cx| {
+                                                this.friends_call("POST", "/api/friends/block".into(), serde_json::json!({ "targetId": block_id }), cx)
+                                            }))),
+                                    )
+                                    .with_priority(1),
+                                )
+                            })
+                    }),
             );
         }
         col
     }
 
+    /// loadFriends().
+    pub(super) fn reload_friends(&mut self, cx: &mut Context<Self>) {
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let data = cx.background_executor().spawn(async move { client.friends() }).await;
+            this.update(cx, |this, cx| {
+                if let Ok(data) = data {
+                    this.friends = data;
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// A friends call (accept, decline, remove, block): then the lists again.
+    fn friends_call(&mut self, method: &'static str, path: String, body: serde_json::Value, cx: &mut Context<Self>) {
+        self.friend_menu = None;
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let _ = cx
+                .background_executor()
+                .spawn(async move { if method == "DELETE" { client.remove_friend(&path).map(|_| serde_json::Value::Null) } else { client.settings_post(&path, body) } })
+                .await;
+            this.update(cx, |this, cx| this.reload_friends(cx)).ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// handleSendRequest().
+    pub(super) fn send_friend_request(&mut self, cx: &mut Context<Self>) {
+        let username = self.friends_add.read(cx).text().trim().to_string();
+        if username.is_empty() || self.friends_busy {
+            return;
+        }
+        self.friends_busy = true;
+        self.friends_add_status = None;
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.settings_post("/api/friends", serde_json::json!({ "username": username })) }).await;
+            this.update(cx, |this, cx| {
+                this.friends_busy = false;
+                match result {
+                    Ok(v) => {
+                        let name = v["friend"]["username"].as_str().unwrap_or_default().to_string();
+                        let key = if v["autoAccepted"] == true { "friends.successNowFriends" } else { "friends.successRequestSent" };
+                        this.friends_add_status = Some((true, tv(key, &[("username", &name)])));
+                        this.friends_add.update(cx, |i, cx| i.set_text(String::new(), cx));
+                        this.reload_friends(cx);
+                    }
+                    Err(e) => this.friends_add_status = Some((false, if e.to_string().is_empty() { t("friends.errorSendFailed") } else { e.to_string() })),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// handleBlockByUsername().
+    pub(super) fn block_by_username(&mut self, cx: &mut Context<Self>) {
+        let username = self.friends_block.read(cx).text().trim().to_string();
+        if username.is_empty() || self.friends_busy {
+            return;
+        }
+        self.friends_busy = true;
+        self.friends_block_status = None;
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx.background_executor().spawn(async move { client.settings_post("/api/friends/block", serde_json::json!({ "username": username })) }).await;
+            this.update(cx, |this, cx| {
+                this.friends_busy = false;
+                match result {
+                    Ok(v) => {
+                        let text = match v["user"]["username"].as_str() {
+                            Some(name) => tv("friends.successBlocked", &[("username", name)]),
+                            None => t("friends.successBlockedGeneric"),
+                        };
+                        this.friends_block_status = Some((true, text));
+                        this.friends_block.update(cx, |i, cx| i.set_text(String::new(), cx));
+                        this.reload_friends(cx);
+                    }
+                    Err(e) => this.friends_block_status = Some((false, if e.to_string().is_empty() { t("friends.errorBlockFailed") } else { e.to_string() })),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// A small square action (`p-2 rounded-xl`, an 18px icon).
+    fn friend_action(id: String, name: &'static str, color: gpui::Rgba, bg: gpui::Hsla, hover_bg: gpui::Hsla, tip: String) -> gpui::Stateful<gpui::Div> {
+        div()
+            .id(SharedString::from(id))
+            .p(px(8.))
+            .rounded(px(12.))
+            .bg(bg)
+            .cursor_pointer()
+            .hover(move |s| s.bg(hover_bg))
+            .tooltip(ui::tooltip(tip))
+            .child(icon(name, 18., color))
+    }
+
     /// Pending, blocked and add: the lists and forms in friends-view.tsx.
-    fn render_friends_other(&self, tab: Tab) -> impl IntoElement {
-        let section = |title: String| div().text_size(px(12.)).font_weight(FontWeight::BLACK).text_color(Theme::muted()).mb(px(12.)).child(title);
-        let empty = |text: String| div().text_size(px(12.)).italic().text_color(Theme::muted()).child(text);
-        let person = |f: &Friend, sub: String| {
+    fn render_friends_other(&self, tab: Tab, cx: &mut Context<Self>) -> impl IntoElement {
+        let section = |title: String| div().text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::BLACK).text_color(Theme::muted()).mb(px(12.)).child(title.to_uppercase());
+        let empty = |text: String| div().text_size(px(12.)).line_height(px(16.)).italic().text_color(Theme::muted()).child(text);
+        let person = |f: &Friend, sub: AnyElement, faded: bool| {
             div()
                 .p(px(12.))
-                .mb(px(8.))
                 .rounded(px(12.))
                 .bg(Theme::panel())
                 .border_1()
                 .border_color(Theme::line())
                 .flex()
                 .items_center()
-                .gap(px(12.))
-                .child(ui::avatar(self.picture(&f.avatar_url), &f.avatar, &f.color, f.name(), 40.))
+                .justify_between()
                 .child(
                     div()
+                        .flex()
+                        .items_center()
+                        .gap(px(12.))
                         .min_w_0()
-                        .child(div().truncate().text_size(px(14.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(f.name().to_string()))
-                        .child(div().truncate().text_size(px(12.)).text_color(Theme::muted()).child(sub)),
+                        .child(div().when(faded, |d| d.opacity(0.6)).child(friend_avatar(self.picture(&f.avatar_url), &f.avatar, &f.color, f.name())))
+                        .child(
+                            div()
+                                .min_w_0()
+                                .child(div().truncate().text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(f.display_name.clone()))
+                                .child(div().text_size(px(12.)).line_height(px(16.)).text_color(Theme::muted()).child(sub)),
+                        ),
                 )
         };
-        let mut col = div().max_w(px(768.)).flex().flex_col();
+        let rose: gpui::Hsla = rgb(0xf43f5e).into();
+        let emerald: gpui::Hsla = rgb(0x10b981).into();
+        // The success / error line under a form.
+        let status = |status: &Option<(bool, String)>, big: bool| {
+            status.clone().map(|(ok, text)| {
+                let c: gpui::Hsla = if ok { emerald } else { rose };
+                div()
+                    .when(big, |d| d.p(px(14.)))
+                    .when(!big, |d| d.mt(px(12.)).px(px(12.)).py(px(8.)))
+                    .rounded(px(12.))
+                    .bg(c.opacity(if big { 0.15 } else { 0.1 }))
+                    .border_1()
+                    .border_color(c.opacity(if big { 0.3 } else { 0.2 }))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(if ok { rgb(0x6ee7b7) } else { rgb(0xfda4af) })
+                    .child(icon(if ok { "check" } else if big { "x" } else { "circle-alert" }, if big { 16. } else { 14. }, if ok { rgb(0x6ee7b7) } else { rgb(0xfda4af) }))
+                    .child(text)
+            })
+        };
+        // As wide as the body allows (up to its max-w): inside the scrolling body nothing else gives
+        // the text a width to wrap at.
+        let mut col = div().w_full().flex().flex_col();
         match tab {
             Tab::Pending => {
-                col = col.child(section(format!("{} — {}", t("friends.incomingRequest"), self.friends.incoming.len())));
+                col = col.max_w(px(768.)).child(section(format!("{} — {}", t("friends.incomingRequest"), self.friends.incoming.len())));
                 if self.friends.incoming.is_empty() {
                     col = col.child(empty(t("friends.emptyPending")));
                 }
+                let mut list = div().flex().flex_col().gap(px(8.));
                 for f in &self.friends.incoming {
-                    col = col.child(person(f, format!("@{}", f.username)));
+                    let (a, d, b) = (f.id.clone(), f.id.clone(), f.id.clone());
+                    list = list.child(
+                        person(f, div().truncate().child(format!("@{}", f.username)).into_any_element(), false).hover(|s| s.border_color(gpui::Hsla::from(Theme::lavender()).opacity(0.4))).child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(8.))
+                                .child(Self::friend_action(format!("fr-accept-{a}"), "check", rgb(0x34d399), emerald.opacity(0.15), emerald.opacity(0.25), t("friends.accept")).on_click(cx.listener(move |this, _, _, cx| {
+                                    this.friends_call("POST", "/api/friends/accept".into(), serde_json::json!({ "requesterId": a }), cx)
+                                })))
+                                .child(Self::friend_action(format!("fr-ignore-{d}"), "x", rgb(0xfb7185), rose.opacity(0.15), rose.opacity(0.25), t("friends.ignore")).on_click(cx.listener(move |this, _, _, cx| {
+                                    this.friends_call("POST", "/api/friends/decline".into(), serde_json::json!({ "otherId": d }), cx)
+                                })))
+                                .child(Self::friend_action(format!("fr-block-{b}"), "shield-alert", Theme::muted(), Theme::line().into(), rose.opacity(0.2), t("friends.blockButton")).on_click(cx.listener(move |this, _, _, cx| {
+                                    this.friends_call("POST", "/api/friends/block".into(), serde_json::json!({ "targetId": b }), cx)
+                                }))),
+                        ),
+                    );
                 }
-                col = col.child(div().h(px(32.))).child(section(format!("{} — {}", t("friends.outgoingRequest"), self.friends.outgoing.len())));
+                col = col.child(list).child(div().h(px(32.))).child(section(format!("{} — {}", t("friends.outgoingRequest"), self.friends.outgoing.len())));
                 if self.friends.outgoing.is_empty() {
                     col = col.child(empty(t("friends.emptyPending")));
                 }
+                let mut list = div().flex().flex_col().gap(px(8.));
                 for f in &self.friends.outgoing {
-                    col = col.child(person(f, format!("{} · @{}", t("friends.outgoingRequest"), f.username)));
+                    let id = f.id.clone();
+                    let sub = div().flex().items_center().gap(px(6.)).child(icon("clock", 12., Theme::muted())).child(div().truncate().child(format!("{} · @{}", t("friends.outgoingRequest"), f.username))).into_any_element();
+                    list = list.child(person(f, sub, false).child(
+                        Self::friend_action(format!("fr-cancel-{id}"), "x", Theme::muted(), gpui::transparent_black(), Theme::line().into(), t("friends.cancel")).on_click(cx.listener(move |this, _, _, cx| {
+                            this.friends_call("POST", "/api/friends/decline".into(), serde_json::json!({ "otherId": id }), cx)
+                        })),
+                    ));
                 }
+                col = col.child(list);
             }
             Tab::Blocked => {
-                col = col.child(
+                let typed = !self.friends_block.read(cx).text().trim().is_empty();
+                let ready = typed && !self.friends_busy;
+                col = col.max_w(px(768.)).child(
                     div()
                         .mb(px(24.))
                         .p(px(16.))
@@ -566,42 +832,151 @@ impl Shell {
                         .bg(Theme::panel())
                         .border_1()
                         .border_color(Theme::line())
-                        .child(div().text_size(px(12.)).font_weight(FontWeight::BLACK).text_color(Theme::ink()).child(t("friends.blockUserTitle")))
-                        .child(div().text_size(px(12.)).text_color(Theme::muted()).child(t("friends.blockUserSubtitle"))),
+                        .child(div().mb(px(4.)).text_size(px(12.)).line_height(px(16.)).font_weight(FontWeight::BLACK).text_color(Theme::ink()).child(t("friends.blockUserTitle").to_uppercase()))
+                        .child(div().mb(px(12.)).text_size(px(12.)).line_height(px(16.)).text_color(Theme::muted()).child(t("friends.blockUserSubtitle")))
+                        .child(
+                            div()
+                                .flex()
+                                .gap(px(8.))
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .flex()
+                                        .items_center()
+                                        .px(px(14.))
+                                        .py(px(8.))
+                                        .rounded(px(12.))
+                                        .bg(Theme::chat_bg())
+                                        .border_1()
+                                        .border_color(Theme::line())
+                                        .child(div().mr(px(8.)).text_size(px(14.)).font_weight(FontWeight::BOLD).text_color(Theme::muted()).child("@"))
+                                        .child(div().flex_1().child(self.friends_block.clone())),
+                                )
+                                .child(
+                                    ui::faded(
+                                        div()
+                                            .id("fr-block-submit")
+                                            .px(px(16.))
+                                            .py(px(8.))
+                                            .rounded(px(12.))
+                                            .flex()
+                                            .items_center()
+                                            .gap(px(6.))
+                                            .text_size(px(12.))
+                                            .line_height(px(16.))
+                                            .font_weight(FontWeight::BOLD)
+                                            .when(ready, |d| d.bg(rgb(0xe11d48)).text_color(gpui::white()).cursor_pointer().hover(|s| s.bg(rgb(0xf43f5e))))
+                                            .child(icon("shield-alert", 14., if ready { gpui::white() } else { gpui::white().opacity(0.4) }))
+                                            .child(t(if self.friends_busy { "friends.blocking" } else { "friends.blockButton" }))
+                                            .on_click(cx.listener(|this, _, _, cx| this.block_by_username(cx))),
+                                        rgb(0xe11d48),
+                                        gpui::white(),
+                                        Theme::panel(),
+                                    )
+                                    .when(ready, |d| d.bg(rgb(0xe11d48)).text_color(gpui::white())),
+                                ),
+                        )
+                        .children(status(&self.friends_block_status, false)),
                 );
+                col = col.child(section(tv("friends.blockedCount", &[("count", &self.friends.blocked.len().to_string())])));
                 if self.friends.blocked.is_empty() {
                     col = col.child(empty(t("friends.emptyBlocked")));
                 }
+                let mut list = div().flex().flex_col().gap(px(8.));
                 for f in &self.friends.blocked {
-                    col = col.child(person(f, format!("@{} · {}", f.username, t("friends.tab.blocked"))));
+                    let id = f.id.clone();
+                    list = list.child(person(f, div().truncate().child(format!("@{} · {}", f.username, t("friends.tab.blocked"))).into_any_element(), true).child(
+                        div()
+                            .id(SharedString::from(format!("fr-unblock-{id}")))
+                            .px(px(12.))
+                            .py(px(6.))
+                            .rounded(px(8.))
+                            .border_1()
+                            .border_color(Theme::line())
+                            .text_size(px(12.))
+                            .line_height(px(16.))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(Theme::ink())
+                            .cursor_pointer()
+                            .hover(|s| s.bg(Theme::line()))
+                            .child(t("friends.unblock"))
+                            .on_click(cx.listener(move |this, _, _, cx| this.friends_call("DELETE", id.clone(), serde_json::Value::Null, cx))),
+                    ));
                 }
+                col = col.child(list);
             }
             _ => {
+                let typed = !self.friends_add.read(cx).text().trim().is_empty();
+                let ready = typed && !self.friends_busy;
+                let accent = Theme::send();
+                // max-w-2xl as a width (no wider than the body): text inside is measured against a
+                // width, which gpui does not take from a max-width.
                 col = col
-                    .child(div().text_size(px(18.)).font_weight(FontWeight::BLACK).text_color(Theme::ink()).child(t("friends.addFriendTitle")))
-                    .child(div().mb(px(16.)).text_size(px(12.)).text_color(Theme::muted()).child(t("friends.addFriendSubtitle")))
+                    .w(px(672.))
+                    .max_w(gpui::relative(1.))
+                    .child(div().mb(px(4.)).text_size(px(18.)).line_height(px(28.)).font_weight(FontWeight::BLACK).text_color(Theme::ink()).child(t("friends.addFriendTitle").to_uppercase()))
+                    .child(div().mb(px(16.)).text_size(px(12.)).line_height(px(16.)).text_color(Theme::muted()).child(t("friends.addFriendSubtitle")))
+                    // The form's 16px below and the card's 48px above collapse into one 48px gap on
+                    // the web unless a status line sits between them.
                     .child(
                         div()
+                            .when(self.friends_add_status.is_some(), |d| d.mb(px(16.)))
                             .px(px(16.))
                             .py(px(12.))
                             .rounded(px(12.))
                             .bg(Theme::panel())
                             .border_1()
+                            .border_color(Theme::lavender())
+                            .flex()
+                            .items_center()
+                            .child(div().flex_1().min_w_0().flex().items_center().child(div().flex_1().min_w_0().child(self.friends_add.clone())))
+                            .child(
+                                ui::faded(
+                                    div()
+                                        .id("fr-add-submit")
+                                        .ml(px(12.))
+                                        .px(px(16.))
+                                        .py(px(6.))
+                                        .rounded(px(8.))
+                                        .text_size(px(12.))
+                                        .line_height(px(16.))
+                                        .font_weight(FontWeight::BOLD)
+                                        .when(ready, |d| d.cursor_pointer())
+                                        .child(t(if self.friends_busy { "friends.sending" } else { "friends.sendRequest" }))
+                                        .on_click(cx.listener(|this, _, _, cx| this.send_friend_request(cx))),
+                                    accent,
+                                    Theme::on_accent(),
+                                    Theme::panel(),
+                                )
+                                .when(ready, |d| d.bg(accent).text_color(Theme::on_accent())),
+                            ),
+                    )
+                    .children(status(&self.friends_add_status, true))
+                    .child(
+                        div()
+                            .mt(px(48.))
+                            .p(px(24.))
+                            .rounded(px(16.))
+                            .bg(Theme::panel())
+                            .border_1()
                             .border_color(Theme::line())
                             .flex()
                             .items_center()
-                            .child(div().flex_1().text_size(px(14.)).text_color(Theme::muted()).child(t("friends.addFriendInputPlaceholder")))
+                            .gap(px(16.))
+                            .child(div().flex_none().size(px(48.)).rounded(px(12.)).bg(gpui::Hsla::from(Theme::lavender()).opacity(0.15)).flex().items_center().justify_center().child(icon("sparkles", 24., Theme::lavender())))
                             .child(
                                 div()
-                                    .px(px(16.))
-                                    .py(px(6.))
-                                    .rounded(px(8.))
-                                    .bg(Theme::send())
-                                    .opacity(0.4)
-                                    .text_size(px(12.))
-                                    .font_weight(FontWeight::BOLD)
-                                    .text_color(rgb(0x15121f))
-                                    .child(t("friends.sendRequest")),
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(div().mb(px(4.)).text_size(px(14.)).line_height(px(20.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child("Private & Independent"))
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .text_size(px(12.))
+                                            .line_height(px(19.5))
+                                            .text_color(Theme::muted())
+                                            .child("Friends can send direct messages, voice call in real-time, and see each other's live game or music activity across servers."),
+                                    ),
                             ),
                     );
             }
