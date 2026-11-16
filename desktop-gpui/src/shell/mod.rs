@@ -28,6 +28,7 @@ mod group_dm;
 mod embed_player;
 mod dnd_card;
 mod dnd_rolls;
+mod tts;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -318,6 +319,8 @@ pub struct Shell {
     dnd_expanded: std::collections::HashSet<String>,
     /// V5 cards' Willpower picks and rerolls.
     willpower: dnd_rolls::Willpower,
+    /// The hidden page that reads /tts messages aloud.
+    speech: tts::Speech,
     fx_overlay: std::rc::Rc<std::cell::RefCell<Option<(String, crate::webview::WebOverlay)>>>,
     /// Achievement unlock popups, and whether the periodic check has started.
     unlocks: achievement_toast::Toasts,
@@ -669,6 +672,7 @@ impl Shell {
             link_players: Default::default(),
             dnd_expanded: Default::default(),
             willpower: Default::default(),
+            speech: Default::default(),
             unlocks: Default::default(),
             ach_checks: false,
             forced_mutes: HashSet::new(),
@@ -1534,6 +1538,8 @@ impl Shell {
                     if message.channel_id.is_none() {
                         message.channel_id = channel;
                     }
+                    // /tts messages are read aloud to whoever has the channel open.
+                    self.maybe_speak(&message, cx);
                     self.add_message(message, cx);
                 }
             }
@@ -1660,6 +1666,7 @@ impl Shell {
                 }
             }
             "dm-call" => self.on_dm_call(&value, cx),
+            "tts-stop" => self.on_tts_stop(&value, cx),
             // Someone played a soundboard sound in the room you are in.
             "soundboard" => {
                 let room = value.get("channelId").and_then(Value::as_str).unwrap_or_default();

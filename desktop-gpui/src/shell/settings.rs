@@ -4781,6 +4781,17 @@ fn tts_path() -> Option<std::path::PathBuf> {
     Some(dirs::config_dir()?.join("Hoffle Lite").join("tts.json"))
 }
 
+/// Whether /tts messages are read aloud on this computer (on unless turned off).
+pub(super) fn tts_playback_enabled() -> bool {
+    load_tts().playback
+}
+
+/// This computer's voice for /tts and /say, as the speech page takes it.
+pub(super) fn tts_voice() -> serde_json::Value {
+    let t = load_tts();
+    serde_json::json!({ "tempo": t.tempo, "pitch": t.pitch, "effect": t.effect, "speaker": t.speaker, "turkish": t.turkish })
+}
+
 fn load_tts() -> TtsPrefs {
     tts_path().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
 }
@@ -4910,7 +4921,16 @@ impl Shell {
                         this.change_tts(|t| t.lang = v, cx)
                     }), cx))
                     .child(Self::field(&s.tts_text, window, cx).flex_1())
-                    .child(Self::primary("tts-play".into(), "Play", true).on_click(cx.listener(|this, _, _, cx| this.settings_note("Speaking a voice is not in this app yet.", cx)))),
+                    .child(Self::primary("tts-play".into(), "Play", true).on_click(cx.listener(|this, _, _, cx| {
+                        // The voice as set here, saying what is in the box.
+                        let Some(s) = this.settings.as_ref() else { return };
+                        let text = s.tts_text.read(cx).text();
+                        let text = if text.trim().is_empty() { "Hey everyone, this is how I sound.".to_string() } else { text };
+                        let t = &s.tts;
+                        let voice = serde_json::json!({ "tempo": t.tempo, "pitch": t.pitch, "effect": t.effect, "speaker": t.speaker, "turkish": t.turkish });
+                        let lang = t.lang.clone();
+                        this.speak(&text, &lang, &voice, cx);
+                    }))),
             )
             .child(heading("Live captions").mt(px(26.)))
             .child(Self::hint("What turns your speech into text when you caption your voice in a call. Duyu is Turkish speech recognition run by this server; the browser's own works in Chrome, Edge and Safari.").mt(px(8.)))

@@ -354,8 +354,8 @@ impl Shell {
             }
             Item::Forward => self.open_forward(&message, window, cx),
             Item::Thread => self.open_thread(message, window, cx),
-            // Not built yet here: read-aloud.
-            Item::Speak | Item::Apps => {}
+            Item::Speak => self.speak_message(&message, cx),
+            Item::Apps => {}
         }
         cx.notify();
     }

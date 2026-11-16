@@ -96,6 +96,25 @@ mod mac {
             }
         }
 
+        /// Runs `js` and hands its result (as text) to `done`.
+        pub fn eval_with(&self, js: &str, done: impl Fn(String) + 'static) {
+            unsafe {
+                let source = NSString::alloc(nil).init_str(js);
+                let handler = block::ConcreteBlock::new(move |result: id, _error: id| {
+                    let text = if result == nil {
+                        String::new()
+                    } else {
+                        let description: id = msg_send![result, description];
+                        let bytes: *const std::os::raw::c_char = msg_send![description, UTF8String];
+                        if bytes.is_null() { String::new() } else { std::ffi::CStr::from_ptr(bytes).to_string_lossy().into_owned() }
+                    };
+                    done(text);
+                })
+                .copy();
+                let _: () = msg_send![self.view, evaluateJavaScript: source completionHandler: &*handler];
+            }
+        }
+
         pub fn eval(&self, js: &str) {
             unsafe {
                 let source = NSString::alloc(nil).init_str(js);
@@ -188,6 +207,33 @@ mod mac {
         }
     }
 
+    /// Puts the app's session cookie in WebKit's cookie store (a session cookie: it is not kept
+    /// once the app quits), so pages from `base` are signed in.
+    pub fn set_session_cookie(base: &str, name: &str, value: &str) {
+        let Ok(url) = url::Url::parse(base) else { return };
+        let Some(host) = url.host_str() else { return };
+        unsafe {
+            let dict: id = msg_send![class!(NSMutableDictionary), dictionary];
+            let put = |k: &str, v: &str| {
+                let _: () = msg_send![dict, setObject: NSString::alloc(nil).init_str(v) forKey: NSString::alloc(nil).init_str(k)];
+            };
+            put("Name", name);
+            put("Value", value);
+            put("Domain", host);
+            put("Path", "/");
+            if url.scheme() == "https" {
+                put("Secure", "TRUE");
+            }
+            let cookie: id = msg_send![class!(NSHTTPCookie), cookieWithProperties: dict];
+            if cookie == nil {
+                return;
+            }
+            let store: id = msg_send![class!(WKWebsiteDataStore), defaultDataStore];
+            let cookies: id = msg_send![store, httpCookieStore];
+            let _: () = msg_send![cookies, setCookie: cookie completionHandler: nil];
+        }
+    }
+
     /// The content view of the window GPUI draws into.
     pub fn content_view(window: &gpui::Window) -> Option<id> {
         use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -199,7 +245,7 @@ mod mac {
 }
 
 #[cfg(target_os = "macos")]
-pub use mac::{ClipHost, WebOverlay, content_view};
+pub use mac::{ClipHost, WebOverlay, content_view, set_session_cookie};
 
 #[cfg(not(target_os = "macos"))]
 pub struct WebOverlay;
@@ -218,6 +264,7 @@ impl ClipHost {
 
 #[cfg(not(target_os = "macos"))]
 impl WebOverlay {
+    pub fn eval_with(&self, _: &str, _: impl Fn(String) + 'static) {}
     pub fn set_frame(&mut self, _: f32, _: f32, _: f32, _: f32) {}
     pub fn eval(&self, _: &str) {}
     pub fn snapshot(&self, _: &str) {}
@@ -268,6 +315,25 @@ pub fn clip_host(window: &gpui::Window) -> Option<ClipHost> {
     #[cfg(not(target_os = "macos"))]
     {
         let _ = window;
+        None
+    }
+}
+
+/// The hidden page that reads /tts messages aloud (the web's lib/tts/client.ts), signed in to the
+/// server at `base` (the app's own origin, so its worker, models and /api/tts/speak are there).
+pub fn speech_view(window: &gpui::Window, base: &str, session: Option<(String, String)>) -> Option<WebOverlay> {
+    #[cfg(target_os = "macos")]
+    {
+        let html = crate::assets::ASSETS.iter().find(|(p, _)| *p == "web/tts.html").map(|(_, b)| String::from_utf8_lossy(b).into_owned())?;
+        let origin = url::Url::parse(base).ok().map(|u| u.origin().ascii_serialization() + "/")?;
+        if let Some((name, value)) = session {
+            set_session_cookie(&origin, &name, &value);
+        }
+        Some(WebOverlay::new(content_view(window)?, &html, &origin, false))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, base, session);
         None
     }
 }

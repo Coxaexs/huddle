@@ -259,6 +259,17 @@ impl gpui::Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_badge();
         self.players_tick(window);
+        self.speech_tick(window, cx);
+        self.dev_tts_log(cx);
+        // HOFFLE_DEV_SPEAK=<lang>:<text>: read that aloud once (muted under HOFFLE_DEV_MUTED).
+        static DEV_SPEAK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(spec) = std::env::var("HOFFLE_DEV_SPEAK")
+            && !DEV_SPEAK.swap(true, std::sync::atomic::Ordering::Relaxed)
+            && let Some((lang, text)) = spec.split_once(':')
+        {
+            let voice = serde_json::json!({ "turkish": "alania2-f1" });
+            self.speak(text, lang, &voice, cx);
+        }
         self.dev_play(cx);
         // Switching to Simple closes the member list (the header's faces open it), and the
         // composer's placeholder follows the interface.
