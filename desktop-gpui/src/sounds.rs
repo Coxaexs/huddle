@@ -89,3 +89,45 @@ pub fn play_clip(bytes: Vec<u8>, ext: &str) {
         }
     });
 }
+
+/// The soundboard's volume on this computer (`huddle_soundboard_volume`, 0.7 until changed).
+fn soundboard_volume_path() -> Option<std::path::PathBuf> {
+    Some(dirs::config_dir()?.join("Hoffle Lite").join("soundboard-volume"))
+}
+
+pub fn soundboard_volume() -> f32 {
+    soundboard_volume_path().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|s| s.trim().parse::<f32>().ok()).map(|v| v.clamp(0., 1.)).unwrap_or(0.7)
+}
+
+pub fn set_soundboard_volume(volume: f32) {
+    if let Some(path) = soundboard_volume_path() {
+        let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+        let _ = std::fs::write(path, format!("{:.2}", volume.clamp(0., 1.)));
+    }
+}
+
+/// playSound(): a soundboard sound at the soundboard volume: `preset:<id>` is one of the built-in
+/// ones (rendered from the web's own synthesis), anything else a clip's bytes already fetched.
+pub fn play_soundboard(preset: Option<&str>, bytes: Option<Vec<u8>>) {
+    if std::env::var_os("HOFFLE_DEV_MUTED").is_some() {
+        return;
+    }
+    let volume = soundboard_volume();
+    let data = match (preset, bytes) {
+        (Some(id), _) => crate::assets::ASSETS.iter().find(|(p, _)| *p == format!("sounds/soundboard-{id}.wav")).map(|(_, b)| b.to_vec()),
+        (None, Some(b)) => Some(b),
+        _ => None,
+    };
+    let Some(data) = data else { return };
+    std::thread::spawn(move || {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        data.len().hash(&mut h);
+        data.get(..64).hash(&mut h);
+        let file = std::env::temp_dir().join(format!("hoffle-sb-{:x}", h.finish()));
+        if !file.exists() && std::fs::write(&file, &data).is_err() {
+            return;
+        }
+        let _ = std::process::Command::new("/usr/bin/afplay").arg("-v").arg(format!("{volume:.2}")).arg(&file).status();
+    });
+}

@@ -22,6 +22,7 @@ mod status_menu;
 mod member_actions;
 mod achievement_toast;
 mod video_player;
+mod soundboard;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -296,6 +297,8 @@ pub struct Shell {
     audio_spots: std::cell::RefCell<HashMap<String, std::rc::Rc<std::cell::Cell<gpui::Bounds<gpui::Pixels>>>>>,
     /// Video files playing in messages.
     film: video_player::Videos,
+    /// The stage's ⋯ menu and soundboard.
+    soundboard: soundboard::Board,
     /// Achievement unlock popups, and whether the periodic check has started.
     unlocks: achievement_toast::Toasts,
     ach_checks: bool,
@@ -467,7 +470,10 @@ impl Shell {
         let friends_block = cx.new(|cx| {
             TextInput::new(crate::i18n::t("friends.blockInputPlaceholder"), cx).look(crate::input::Look { size: 12., line_height: 16., height: 16., color: crate::theme::Theme::ink().into(), placeholder: faint })
         });
+        let board = soundboard::Board::new(cx);
         let friend_subs = vec![
+            // Searching the soundboard filters it as you type.
+            cx.subscribe(&board.search, |_, _, _: &crate::input::InputEvent, cx| cx.notify()),
             cx.subscribe(&friends_add, |this, _, event: &crate::input::InputEvent, cx| match event {
                 crate::input::InputEvent::Submit => this.send_friend_request(cx),
                 _ => cx.notify(),
@@ -633,6 +639,7 @@ impl Shell {
             shown_alt: None,
             audio_spots: Default::default(),
             film: Default::default(),
+            soundboard: board,
             unlocks: Default::default(),
             ach_checks: false,
             forced_mutes: HashSet::new(),
@@ -1617,6 +1624,15 @@ impl Shell {
                 if self.call.is_some() {
                     self.leave_voice(cx);
                     self.status = Some("You were removed from the voice room.".into());
+                }
+            }
+            // Someone played a soundboard sound in the room you are in.
+            "soundboard" => {
+                let room = value.get("channelId").and_then(Value::as_str).unwrap_or_default();
+                if self.call.as_ref().is_some_and(|c| c.channel_id == room)
+                    && let Some(url) = value.get("url").and_then(Value::as_str).map(str::to_string)
+                {
+                    self.play_soundboard_url(url, cx);
                 }
             }
             // Unlocked while doing something (hub `achievement`).

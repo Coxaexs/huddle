@@ -1,0 +1,80 @@
+[
+ {
+  "id": "airhorn",
+  "name": "Airhorn",
+  "emoji": "📢",
+  "description": "Classic stadium triple airhorn blast"
+ },
+ {
+  "id": "rimshot",
+  "name": "Ba-Dum Tss",
+  "emoji": "🥁",
+  "description": "Drum rimshot joke punchline"
+ },
+ {
+  "id": "bruh",
+  "name": "Bruh",
+  "emoji": "🗿",
+  "description": "Deep resonant bruh sound effect"
+ },
+ {
+  "id": "quack",
+  "name": "Quack",
+  "emoji": "🦆",
+  "description": "Bouncy rubber duck squeak"
+ },
+ {
+  "id": "gg",
+  "name": "GG Fanfare",
+  "emoji": "🎉",
+  "description": "8-bit victory level-up arpeggio"
+ },
+ {
+  "id": "ding",
+  "name": "Bell Ding",
+  "emoji": "🛎️",
+  "description": "Crystal-clear elevator notification bell"
+ },
+ {
+  "id": "win_error",
+  "name": "Windows Error",
+  "emoji": "🛑",
+  "description": "Iconic Windows Critical Stop error chord"
+ },
+ {
+  "id": "win_tada",
+  "name": "Windows Ta-Da",
+  "emoji": "🎺",
+  "description": "Classic Windows 2000 victory fanfare"
+ },
+ {
+  "id": "msn_nudge",
+  "name": "Y2K Nudge",
+  "emoji": "📳",
+  "description": "Y2K Chat window shake and rattle"
+ },
+ {
+  "id": "applause",
+  "name": "Applause",
+  "emoji": "👏",
+  "description": "Enthusiastic audience clapping"
+ },
+ {
+  "id": "crickets",
+  "name": "Crickets",
+  "emoji": "🦗",
+  "description": "Awkward silence cricket chirps"
+ },
+ {
+  "id": "nat20",
+  "name": "Nat 20 Chime",
+  "emoji": "✨",
+  "description": "Celebratory critical hit victory chime"
+ },
+ {
+  "id": "nat1",
+  "name": "Nat 1 Fumble",
+  "emoji": "🎺",
+  "description": "Sad trombone critical fumble"
+ }
+]

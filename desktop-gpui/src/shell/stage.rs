@@ -28,7 +28,8 @@ pub(super) struct Stage {
 impl Shell {
     /// openVoiceChannel: show the room, and join it unless already there.
     pub(super) fn open_stage(&mut self, channel_id: String, window: &mut Window, cx: &mut Context<Self>) {
-        if self.call.as_ref().is_none_or(|c| c.channel_id != channel_id) {
+        // HOFFLE_DEV_STAGE_ONLY=1 (tests on a copy without voice): the stage without joining.
+        if self.call.as_ref().is_none_or(|c| c.channel_id != channel_id) && std::env::var_os("HOFFLE_DEV_STAGE_ONLY").is_none() {
             self.join_voice(channel_id.clone(), cx);
         }
         if self.stage.as_ref().is_some_and(|s| s.channel_id == channel_id) {
@@ -199,7 +200,7 @@ impl Shell {
             };
             let height = f32::from(window.viewport_size().height) - 10. - 1. - 73. - if self.simple() { 77. } else { 126. } - 40.;
             let focus = self.render_focus(&key, &videos, &people, inner, height, cx);
-            let left = div().w(px(stage_width)).h_full().flex().flex_col().child(div().flex_1().min_h_0().p(px(20.)).child(focus)).child(bar);
+            let left = div().w(px(stage_width)).h_full().flex().flex_col().child(div().flex_1().min_h_0().p(px(20.)).child(focus)).children(self.render_soundboard(stage_width, window, cx)).child(bar);
             let mut split = div().flex_1().min_h_0().flex().child(left);
             if stage.chat_open {
                 split = split.child(self.render_voice_chat(stage, chat_width, cx));
@@ -220,7 +221,7 @@ impl Shell {
         } else {
             self.render_stage_bar(stage_width, cx).into_any_element()
         };
-        let left = div().w(px(stage_width)).h_full().flex().flex_col().child(tiles).child(bar);
+        let left = div().w(px(stage_width)).h_full().flex().flex_col().child(tiles).children(self.render_soundboard(stage_width, window, cx)).child(bar);
         let mut split = div().flex_1().min_h_0().flex().child(left);
         if stage.chat_open {
             split = split.child(self.render_voice_chat(stage, chat_width, cx));
@@ -665,13 +666,18 @@ impl Shell {
             )
             .child(button("sb-screen", "monitor"))
             .child(divider())
-            .child(button("sb-grid", "layout-grid"))
-            .child(button("sb-games", "gamepad-2"));
+            .child(button("sb-grid", "layout-grid"));
         let row2 = div()
             .flex()
             .items_center()
             .gap(px(6.))
-            .child(button("sb-more", "more-horizontal"))
+            .child(button("sb-games", "gamepad-2"))
+            .child(
+                div()
+                    .relative()
+                    .child(button("sb-more", "more-horizontal").when(self.soundboard.more, |d| d.bg(Theme::lavender_soft())).on_click(cx.listener(|this, _, _, cx| this.toggle_stage_more(cx))))
+                    .children(self.render_stage_more(cx)),
+            )
             .child(divider())
             .child(
                 div()

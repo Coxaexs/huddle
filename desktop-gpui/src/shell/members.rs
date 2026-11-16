@@ -652,6 +652,19 @@ impl gpui::Render for Shell {
         }
         self.dev_achievement(cx);
         self.dev_video(cx);
+        // HOFFLE_DEV_SOUNDBOARD=1|more: the stage's soundboard open (or its ⋯ menu).
+        static DEV_SB: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(which) = std::env::var("HOFFLE_DEV_SOUNDBOARD")
+            && self.stage.is_some()
+            && !DEV_SB.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            if which == "more" {
+                self.soundboard.more = true;
+            } else {
+                self.soundboard.open = true;
+                self.soundboard_load(cx);
+            }
+        }
         // HOFFLE_DEV_BOARD=<user id prefix>: that member's achievement board.
         static DEV_BOARD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if let Ok(prefix) = std::env::var("HOFFLE_DEV_BOARD")
