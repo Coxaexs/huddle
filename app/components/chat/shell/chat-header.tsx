@@ -1,5 +1,6 @@
 "use client";
 
+import { useModuleOn } from "@/app/lib/modules";
 import { WidgetArea } from "../../widgets/widget-area";
 import type { VoiceApi } from "../../../hooks/use-voice";
 import type { PublicChannel } from "@/lib/servers";
@@ -120,6 +121,7 @@ export function ChatHeader({
   onlineFaces?: Member[];
   onInvite?: (() => void) | null;
 }) {
+  const dndOn = useModuleOn("dnd");
   const { t } = useI18n();
   // Simple interface in a server's chat room: name, faces, Invite and "More".
   const simpleUi = useUiMode() === "simple";
@@ -283,7 +285,7 @@ export function ChatHeader({
                   )}
 
                   <div className="voice-view-switcher">
-                    {(["grid", "table", "map"] as const).map((mode) => (
+                    {(["grid", "table", "map"] as const).filter((mode) => mode !== "map" || dndOn || battlemap).map((mode) => (
                       <button
                         key={mode}
                         type="button"

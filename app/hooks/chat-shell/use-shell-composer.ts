@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
+import { useModulesOff } from "@/app/lib/modules";
 import { unregisterNativePush } from "../../lib/native-push";
 import { channelKindInfo } from "@/lib/channel-kinds";
 import { type Member } from "@/lib/users";
@@ -32,16 +33,17 @@ export function useShellComposer(s: ReturnType<typeof useShellMessaging>) {
     wrapSelection,
   } = s;
 
+  // The person's own switches plus the open server's (app/lib/modules.ts).
+  const modulesOff = useModulesOff();
   const activeDisabledModules = useMemo(
     () => [
-      ...(activeServer?.disabledModules || []),
-      ...(user?.disabledModules || []),
+      ...modulesOff,
       // The music bot's commands only exist in servers that added it.
       ...(activeServer?.musicBot === false ? ["music-bot"] : []),
       // The Discord-side music commands are for this Hoffle's admins.
       ...(user?.isAdmin ? [] : ["discord-music"]),
     ],
-    [activeServer?.disabledModules, activeServer?.musicBot, user?.disabledModules, user?.isAdmin],
+    [modulesOff, activeServer?.musicBot, user?.isAdmin],
   );
   const slashOpen = draft.startsWith("/") && !draft.includes("\n");
   const slashMatches = useMemo(

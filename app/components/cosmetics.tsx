@@ -1,5 +1,6 @@
 "use client";
 
+import { moduleOn, useModuleOn } from "@/app/lib/modules";
 import { useId, type CSSProperties, type ReactNode } from "react";
 import { CANVAS_SCENES, CanvasScene, useParticlesSetting } from "./particle-scenes";
 import { EXTRA_DECORATIONS, EXTRA_EFFECTS, EXTRA_FRAME_ART, EXTRA_NAMEPLATE_ART, EXTRA_SCENES, NAMEPLATE_FIT_WHOLE } from "./cosmetics-extra";
@@ -401,7 +402,8 @@ export const RING_DECORATIONS = new Set(["neon", "rainbow", "cyber", "gold", "sa
  */
 export function AvatarDecoration({ id, inChat = false }: { id?: string | null; inChat?: boolean }) {
   const u = useId().replace(/:/g, "");
-  if (!id || id === "none") return null;
+  const on = useModuleOn("cosmetics");
+  if (!on || !id || id === "none") return null;
   if (RING_DECORATIONS.has(id)) {
     return inChat ? (
       <span className={`avatar-deco-ring avatar-frame-${id}`} aria-hidden="true">
@@ -1805,8 +1807,8 @@ export function customEffectUrl(id?: string | null) {
 /** Animated effect over a whole profile card. Parent must be position: relative. */
 export function ProfileEffect({ id, density = 1 }: { id?: string | null; density?: number }) {
   const particlesOn = useParticlesSetting();
-  if (!id || id === "none" || !particlesOn) return null;
-  if (typeof document !== "undefined" && document.documentElement.dataset.cosmetics === "off") return null;
+  const on = useModuleOn("cosmetics");
+  if (!on || !id || id === "none" || !particlesOn) return null;
   const gif = customEffectUrl(id);
   if (gif) {
     return (
@@ -2263,7 +2265,8 @@ Object.assign(FRAME_ART, EXTRA_FRAME_ART, MZ_FRAME_ART);
 export function ProfileFrameArt({ id }: { id?: string | null }) {
   const u = useId().replace(/:/g, "");
   const draw = id ? FRAME_ART[id] : undefined;
-  if (!draw) return null;
+  const on = useModuleOn("cosmetics");
+  if (!on || !draw) return null;
   return (
     <div className={`pframe-art pframe-art-${id}`} aria-hidden="true">
       {draw(u)}
@@ -2452,7 +2455,8 @@ Object.assign(NAMEPLATE_ART, EXTRA_NAMEPLATE_ART, MZ_NAMEPLATE_ART);
 export function NameplateArt({ id }: { id?: string | null }) {
   const u = useId().replace(/:/g, "");
   const draw = id ? NAMEPLATE_ART[id] : undefined;
-  if (!draw) return null;
+  const on = useModuleOn("cosmetics");
+  if (!on || !draw) return null;
   return (
     <svg className="np-art" viewBox="60 0 100 48" preserveAspectRatio={`xMaxYMid ${id && (NAMEPLATE_FIT_WHOLE.has(id) || MZ_NAMEPLATE_FIT_WHOLE.has(id)) ? "meet" : "slice"}`} aria-hidden="true">
       {draw(u)}
@@ -2462,5 +2466,5 @@ export function NameplateArt({ id }: { id?: string | null }) {
 
 /** Class names for a row that wears a nameplate. */
 export function nameplateClass(id?: string | null) {
-  return id && id !== "none" ? ` has-nameplate nameplate-${id}` : "";
+  return id && id !== "none" && moduleOn("cosmetics") ? ` has-nameplate nameplate-${id}` : "";
 }

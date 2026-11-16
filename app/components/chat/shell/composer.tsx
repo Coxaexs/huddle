@@ -1,5 +1,6 @@
 "use client";
 
+import { useModuleOn } from "@/app/lib/modules";
 import type { VoiceApi } from "../../../hooks/use-voice";
 import { DraftTextarea } from "../../draft-textarea";
 import { type ChangeEvent, type FormEvent, type KeyboardEvent } from "react";
@@ -182,6 +183,7 @@ export function Composer({
   messages: Message[];
   user: PublicUser;
 }) {
+  const gamesOn = useModuleOn("games");
   const { t } = useI18n();
   // Simple interface: picture, words, emoji, send. The rest stays one "/" away.
   const simpleUi = useUiMode() === "simple";
@@ -777,6 +779,7 @@ export function Composer({
                           <Vote size={18} />
                           <span>{t("composer.createPoll")}</span>
                         </button>
+                        {gamesOn && (
                         <button
                           type="button"
                           className={`mobile-composer-menu-item${tb.hidden("games") ? "" : " tb-in-bar"}`}
@@ -792,6 +795,7 @@ export function Composer({
                           <Gamepad2 size={18} />
                           <span>{t("composer.playGames")}</span>
                         </button>
+                        )}
                         <button
                           type="button"
                           className={`mobile-composer-menu-item${tb.hidden("commands") ? "" : " tb-in-bar"}`}
@@ -895,6 +899,7 @@ export function Composer({
                     </button>
 
                     {/* Games button (desktop only) */}
+                    {gamesOn && (
                     <button
                       type="button"
                       {...tb.item("games", `composer-emoji-btn composer-games-btn desktop-composer-item ${gamesOpen ? "active" : ""}${inBar("games")}`)}
@@ -911,6 +916,7 @@ export function Composer({
                     >
                       <Gamepad2 size={18} />
                     </button>
+                    )}
 
                     {/* Slash command button - housed in More tools popover */}
                     <button

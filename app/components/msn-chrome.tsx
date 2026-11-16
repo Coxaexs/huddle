@@ -1,5 +1,6 @@
 "use client";
 
+import { useModuleOn } from "@/app/lib/modules";
 import { useEffect, useRef, useState } from "react";
 import { Avatar } from "./avatar";
 import { TextStyleMenu } from "./text-style-menu";
@@ -1358,6 +1359,7 @@ export function MsnFormatToolbar({
 }: ToolbarProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState<"ink" | "bg" | "font" | "fx" | "winks" | "smile" | "games" | null>(null);
+  const gamesOn = useModuleOn("games");
   const toggle = (which: NonNullable<typeof open>) => setOpen((o) => (o === which ? null : which));
 
   // Each conversation remembers its own background.
@@ -1504,6 +1506,7 @@ export function MsnFormatToolbar({
         <span>Backgrounds</span>
       </button>
       <span className="msn-fmt-sep" />
+      {gamesOn && (
       <button
         type="button"
         className={open === "games" ? "active" : ""}
@@ -1514,6 +1517,7 @@ export function MsnFormatToolbar({
         <span className="msn-fmt-icon">🎲</span>
         <span>{t("games.title")}</span>
       </button>
+      )}
       <button type="button" onClick={onNudge} disabled={nudgeCooling} title={t("msn.nudge")}>
         <span className="msn-fmt-icon msn-fmt-nudge">〰</span>
         <span>{t("msn.nudge")}</span>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useModuleOn } from "@/app/lib/modules";
 import { useEffect, useRef } from "react";
 import type { PublicRole } from "@/lib/servers";
 import { bannerBackground, type Member } from "@/lib/users";
@@ -41,6 +42,7 @@ export function ProfileCard({
   onMessage,
   onClose,
 }: ProfileCardProps) {
+  const cosmeticsOn = useModuleOn("cosmetics");
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -65,7 +67,7 @@ export function ProfileCard({
     >
       <div ref={hostRef} className={`pframe-host ${look.host}`} style={look.style}>
       <div
-        className={`profile-card user-profile-scoped-${safeScopeId}${member.profileFrame && member.profileFrame !== "none" ? ` profile-frame-${member.profileFrame}` : ""}${look.card ? ` ${look.card}` : ""}`}
+        className={`profile-card user-profile-scoped-${safeScopeId}${cosmeticsOn && member.profileFrame && member.profileFrame !== "none" ? ` profile-frame-${member.profileFrame}` : ""}${look.card ? ` ${look.card}` : ""}`}
         data-user-profile={member.id}
         data-has-custom-css={Boolean(member.customCss && member.customCss.trim())}
         onClick={(event) => event.stopPropagation()}
@@ -94,7 +96,7 @@ export function ProfileCard({
           ×
         </button>
 
-        <div className={`profile-card-avatar-wrap avatar-frame-${member.avatarFrame || "none"}`}>
+        <div className={`profile-card-avatar-wrap avatar-frame-${(cosmeticsOn && member.avatarFrame) || "none"}`}>
           <Avatar
             className="profile-avatar"
             avatar={member.avatar}

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Sparkles, Fish, Plus, Download, Share2, Trash2, Edit3, Globe, Copy, Layers } from "lucide-react";
-import { FEATURE_MODULES, FEATURE_MODULE_KEYS, normalizeDisabledModules, type FeatureModuleKey } from "@/lib/features";
+import { FEATURE_MODULES, FEATURE_MODULE_KEYS, type FeatureModuleKey } from "@/lib/features";
+import { setUserModuleSwitches, userModulesOff } from "../../lib/modules";
 import { apiFetch } from "../../lib/client";
 import { BUILTIN_THEMES, type Theme, getStoredThemes, saveCustomTheme } from "@/lib/themes";
 import { setRetroSoundThemeEnabled, playRetroSound } from "../../lib/msn-sounds";
@@ -107,28 +108,15 @@ export function AppearanceTab({
   setRetroSounds: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
   const [ambientParticles, setAmbientParticles] = useState<boolean>(() => isParticlesEnabled());
-  const [disabledModules, setDisabledModules] = useState<FeatureModuleKey[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const raw = window.localStorage.getItem("huddle-disabled-modules");
-      return raw ? normalizeDisabledModules(JSON.parse(raw)) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [disabledModules, setDisabledModules] = useState<FeatureModuleKey[]>(() => userModulesOff());
 
   const toggleUserModule = (key: FeatureModuleKey, enabled: boolean) => {
     const next = enabled
       ? disabledModules.filter((k) => k !== key)
       : Array.from(new Set([...disabledModules, key]));
     setDisabledModules(next);
-    try {
-      window.localStorage.setItem("huddle-disabled-modules", JSON.stringify(next));
-      if (typeof document !== "undefined") {
-        document.documentElement.dataset.cosmetics = next.includes("cosmetics") ? "off" : "on";
-      }
-      window.dispatchEvent(new CustomEvent("huddle-modules-change", { detail: next }));
-    } catch {}
+    // Buttons, menus and slash commands follow at once.
+    setUserModuleSwitches(next);
     void apiFetch("/api/settings/profile", {
       method: "PATCH",
       body: JSON.stringify({ disabledModules: next }),
@@ -588,7 +576,7 @@ export function AppearanceTab({
                   <Layers size={14} /> Features
                 </span>
                 <p className="text-xs opacity-70 mb-2">
-                  Hide what you don&apos;t use to keep chat and slash commands tidy.
+                  Switch off what you don&apos;t use. Its buttons, menu entries and slash commands go away for you; other people still see theirs.
                 </p>
                 {FEATURE_MODULE_KEYS.map((modKey) => {
                   const mod = FEATURE_MODULES[modKey];

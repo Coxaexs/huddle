@@ -10,6 +10,7 @@ import { useShellActions } from "./hooks/chat-shell/use-shell-actions";
 import { useShellCommands } from "./hooks/chat-shell/use-shell-commands";
 import { useShellMessaging } from "./hooks/chat-shell/use-shell-messaging";
 import { useShellComposer } from "./hooks/chat-shell/use-shell-composer";
+import { syncModuleSwitches, useModulesOff } from "./lib/modules";
 import { renderChatShell } from "./components/chat/shell/chat-shell-view";
 import { AiAgeGate } from "./components/ai-age-gate";
 import { TermsConsent } from "./components/terms-consent";
@@ -32,6 +33,9 @@ export function ChatShell() {
   const {
     applyTheme, bootstrap, openSignup, ready, setBootstrap, setUser, turnstileSiteKey, user,
   } = shell;
+  // Before anything below renders, so buttons for switched-off modules never flash.
+  syncModuleSwitches(user?.disabledModules, shell.activeServer?.disabledModules);
+  useModulesOff();
 
   if (!ready) {
     return (

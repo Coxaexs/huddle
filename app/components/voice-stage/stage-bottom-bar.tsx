@@ -1,5 +1,6 @@
 "use client";
 
+import { useModuleOn } from "@/app/lib/modules";
 import { Mic, Megaphone, Crown, SlidersHorizontal, MicOff, Headphones, Volume2, Volume1, VolumeX, Video, VideoOff, Monitor, Map, Sparkles, Maximize2, Minimize2, PhoneOff, X, ExternalLink, LayoutGrid, Gamepad2, MoreHorizontal, Captions, Armchair, MessageCircleQuestionMark } from "lucide-react";
 import { BUILTIN_BACKGROUND_IMAGES, type CustomBackgroundItem } from "../../lib/virtual-background";
 import { ScreenShareSetup } from "../screen-share-setup";
@@ -94,6 +95,7 @@ export function StageBottomBar({
   isFullscreen: boolean;
   windowFull: boolean;
 }) {
+  const livingOn = useModuleOn("living_room");
   const { t } = useI18n();
   const simpleUi = useUiMode() === "simple";
   // Customize → Buttons: the order, and the controls moved into "More".
@@ -146,7 +148,7 @@ export function StageBottomBar({
         >
           <SlidersHorizontal size={18} />
         </button>
-        {livingRoom && joined && !stageMode && (
+        {livingRoom && joined && !stageMode && (livingOn || livingRoom.open) && (
           <button
             type="button"
             {...tb.item("living", `vctrl-btn ${livingRoom.open ? "active" : ""}`)}
@@ -608,7 +610,7 @@ export function StageBottomBar({
                   <span>{voice.cameraOn ? t("voiceStage.turnCameraOff") : t("voiceStage.turnCameraOn")}</span>
                 </button>
               )}
-              {tb.hidden("living") && livingRoom && joined && !stageMode && (
+              {tb.hidden("living") && livingRoom && joined && !stageMode && (livingOn || livingRoom.open) && (
                 <button type="button" className={moreItem} onClick={() => { livingRoom.setOpen(!livingRoom.open); setMoreMenuOpen(false); }}>
                   <Armchair size={15} className="text-[var(--lavender)]" />
                   <span>{t("tb.call.living")}</span>

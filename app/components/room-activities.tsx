@@ -54,6 +54,8 @@ import { starterBeatboxState } from "@/lib/beatbox";
 import { starterAmbientState } from "@/lib/study-hall";
 import { apiFetch } from "../lib/client";
 import { deferred } from "./chat/shell/deferred";
+import { useModulesOff } from "../lib/modules";
+import type { FeatureModuleKey } from "@/lib/features";
 
 const GestureSynth = deferred(() => import("./gesture-synth").then((m) => m.GestureSynth));
 const BeatboxActivity = deferred(() => import("./beatbox-activity").then((m) => m.BeatboxActivity));
@@ -73,6 +75,13 @@ interface RoomActivitiesProps {
   /** The hub's clock, shared by everyone in the room (Study Hall keeps time by it). */
   serverNow?: () => number;
 }
+
+/** Activities that belong to a module a person or a server can switch off. */
+const ACTIVITY_MODULE: Partial<Record<RoomActivityKind, FeatureModuleKey>> = {
+  initiative: "dnd",
+  synth: "music",
+  beatbox: "music",
+};
 
 const ACTIVITY_CHOICES: Array<{
   kind: RoomActivityKind;
@@ -1006,6 +1015,7 @@ export function RoomActivities({
   musicBot = true,
   serverNow,
 }: RoomActivitiesProps) {
+  const modulesOff = useModulesOff();
   const [busy, setBusy] = useState(false);
   const gameFrameRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
@@ -1256,7 +1266,7 @@ export function RoomActivities({
 
       {!activity ? (
         <div className="activity-picker">
-          {ACTIVITY_CHOICES.map((choice) => {
+          {ACTIVITY_CHOICES.filter((choice) => !ACTIVITY_MODULE[choice.kind] || !modulesOff.has(ACTIVITY_MODULE[choice.kind]!)).map((choice) => {
             const needsBot = isBotActivity(choice.kind) && !musicBot;
             return (
               <button

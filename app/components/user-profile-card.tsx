@@ -1,5 +1,6 @@
 "use client";
 
+import { useModuleOn } from "@/app/lib/modules";
 import { getAchievement } from "@/lib/achievement-defs";
 import { openAchievements } from "../lib/achievement-client";
 import { AchievementMedal } from "./achievement-medal";
@@ -170,6 +171,7 @@ export function UserProfileCard({
   presence,
   onToggleRole,
 }: UserProfileCardProps) {
+  const cosmeticsOn = useModuleOn("cosmetics");
   const { t } = useI18n();
   const cardRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -352,7 +354,7 @@ export function UserProfileCard({
     <div ref={hostRef} className={`pframe-host profile-popover-host ${look.host}`} style={{ ...stylePosition, ...look.style }}>
     <div
       ref={cardRef}
-      className={`user-profile-card-popover profile-card user-profile-scoped-${safeScopeId}${member.profileFrame && member.profileFrame !== "none" ? ` profile-frame-${member.profileFrame}` : ""}${look.card ? ` ${look.card}` : ""}`}
+      className={`user-profile-card-popover profile-card user-profile-scoped-${safeScopeId}${cosmeticsOn && member.profileFrame && member.profileFrame !== "none" ? ` profile-frame-${member.profileFrame}` : ""}${look.card ? ` ${look.card}` : ""}`}
       data-user-profile={member.id}
       data-has-custom-css={Boolean(member.customCss && member.customCss.trim())}
       style={{
@@ -400,7 +402,7 @@ export function UserProfileCard({
       </div>
 
       <div className="profile-card-avatar-row">
-        <div className={`profile-card-avatar-wrap avatar-frame-${member.avatarFrame || "none"}`}>
+        <div className={`profile-card-avatar-wrap avatar-frame-${(cosmeticsOn && member.avatarFrame) || "none"}`}>
           <Avatar
             className="profile-card-avatar"
             avatar={member.avatar}
