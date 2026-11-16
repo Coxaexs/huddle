@@ -261,6 +261,17 @@ impl gpui::Render for Shell {
         self.players_tick(window);
         self.speech_tick(window, cx);
         self.qa_tick(cx);
+        // HOFFLE_DEV_CAPTION=<name>:<text>: a caption line as if someone in the room shared it.
+        static DEV_CAPTION: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(spec) = std::env::var("HOFFLE_DEV_CAPTION")
+            && let Some(room) = self.stage.as_ref().map(|s| s.channel_id.clone())
+            && !DEV_CAPTION.swap(true, std::sync::atomic::Ordering::Relaxed)
+            && let Some((name, text)) = spec.split_once(':')
+        {
+            self.captions.showing = true;
+            let fake = serde_json::json!({ "channelId": room, "connectionId": "dev", "displayName": name, "text": text, "final": true });
+            self.on_caption(&fake, cx);
+        }
         // HOFFLE_DEV_QA=1: the Q&A panel, once the room's Q&A is live.
         static DEV_QA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if std::env::var_os("HOFFLE_DEV_QA").is_some() && self.qa_available() && !DEV_QA.swap(true, std::sync::atomic::Ordering::Relaxed) {

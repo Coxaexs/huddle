@@ -30,6 +30,7 @@ mod dnd_card;
 mod dnd_rolls;
 mod tts;
 mod qa;
+mod captions;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -324,6 +325,8 @@ pub struct Shell {
     speech: tts::Speech,
     /// The call's live Q&A.
     qa: qa::Qa,
+    /// Live captions shared in the call.
+    captions: captions::Captions,
     fx_overlay: std::rc::Rc<std::cell::RefCell<Option<(String, crate::webview::WebOverlay)>>>,
     /// Achievement unlock popups, and whether the periodic check has started.
     unlocks: achievement_toast::Toasts,
@@ -555,6 +558,7 @@ impl Shell {
                     }
                     this.check_auto_idle(cx);
                     this.dm_call_tick(cx);
+                    this.captions_tick(cx);
                 });
                 if alive.is_err() {
                     break;
@@ -677,6 +681,7 @@ impl Shell {
             willpower: Default::default(),
             speech: Default::default(),
             qa: Default::default(),
+            captions: Default::default(),
             unlocks: Default::default(),
             ach_checks: false,
             forced_mutes: HashSet::new(),
@@ -1672,6 +1677,7 @@ impl Shell {
             "dm-call" => self.on_dm_call(&value, cx),
             "tts-stop" => self.on_tts_stop(&value, cx),
             "qa" => self.on_qa(&value, cx),
+            "caption" => self.on_caption(&value, cx),
             // Someone played a soundboard sound in the room you are in.
             "soundboard" => {
                 let room = value.get("channelId").and_then(Value::as_str).unwrap_or_default();

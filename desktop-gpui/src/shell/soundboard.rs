@@ -258,6 +258,13 @@ impl Shell {
                     })),
             );
         }
+        // Captions: showing the lines others share (sharing your own is not in this app yet).
+        menu = menu.child(
+            item("more-captions", "captions", Theme::lavender(), crate::i18n::t(if self.captions.showing { "voiceStage.hideCaptions" } else { "voiceStage.showCaptions" })).on_click(cx.listener(|this, _, _, cx| {
+                this.soundboard.more = false;
+                this.toggle_captions(cx);
+            })),
+        );
         Some(gpui::deferred(menu).with_priority(1).into_any_element())
     }
 

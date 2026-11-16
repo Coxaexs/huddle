@@ -231,7 +231,8 @@ impl Shell {
             .child(tiles)
             .children(self.render_soundboard(stage_width, window, cx))
             .child(bar)
-            // QaBanner and QaPanel, over the stage.
+            // LiveCaptionsOverlay, QaBanner and QaPanel, over the stage.
+            .children(self.render_captions(stage_width))
             .children(self.render_qa_banner())
             .children(self.render_qa_panel(cx));
         let mut split = div().flex_1().min_h_0().flex().child(left);
