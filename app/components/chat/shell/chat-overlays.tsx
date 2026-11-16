@@ -10,7 +10,7 @@ import { InviteDialog } from "../../invite-dialog";
 import { KeyboardShortcutsDialog } from "../../keyboard-shortcuts-dialog";
 import { practiceRoll, TutorialPill, WelcomeTutorial } from "../../welcome-tutorial";
 import { ToastContainer } from "../../toast";
-import { AchievementCenter } from "../../achievement-center";
+import { AchievementLayer, BuddyLayer } from "../../optional-layers";
 import { DeviceSwitchPrompt } from "../../device-switch-prompt";
 import { RemoteVoiceAudio } from "../../remote-voice-audio";
 import { SynthJamAudio } from "../../synth-jam-audio";
@@ -38,7 +38,6 @@ const ProfileCard = deferred(() => import("../../profile-card").then((m) => m.Pr
 const PdfViewer = deferred(() => import("../../pdf-viewer").then((m) => m.PdfViewer));
 const SettingsDialog = deferred(() => import("../../settings-dialog").then((m) => m.SettingsDialog));
 const ServerSettingsDialog = deferred(() => import("../../server-settings-dialog").then((m) => m.ServerSettingsDialog));
-const BlahajBuddy = deferred(() => import("../../blahaj-buddy").then((m) => m.BlahajBuddy));
 
 /** Everything ChatShell layers over the page: voice audio, menus, dialogs, viewers, toasts and the floating stream preview. */
 /** Made less than a day ago: too soon to ask for an email. */
@@ -685,9 +684,9 @@ export function renderChatOverlays(v: ShellRenderState) {
         composerRef={composerRef}
       />
 
-      <BlahajBuddy onRollCommand={(command) => void runCommand(command)} />
+      <BuddyLayer onRollCommand={(command) => void runCommand(command)} />
       <ToastContainer />
-      <AchievementCenter userId={user?.id ?? null} />
+      <AchievementLayer userId={user?.id ?? null} />
       <DeviceSwitchPrompt
         inCall={Boolean(voice.channelId)}
         activeMicrophone={voice.activeMicrophone}

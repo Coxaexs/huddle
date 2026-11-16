@@ -122,6 +122,7 @@ export function ChatHeader({
   onInvite?: (() => void) | null;
 }) {
   const dndOn = useModuleOn("dnd");
+  const achievementsOn = useModuleOn("achievements");
   const { t } = useI18n();
   // Simple interface in a server's chat room: name, faces, Invite and "More".
   const simpleUi = useUiMode() === "simple";
@@ -130,7 +131,7 @@ export function ChatHeader({
   const simpleTools = simpleUi && !inDmHome;
   // Customize → Buttons: their order, and the ones moved into "More".
   const tb = useToolbar("header");
-  const anyHidden = ["invite", "search", "mentions", "pins", "saved", "achievements", "members"].some(tb.hidden);
+  const anyHidden = ["invite", "search", "mentions", "pins", "saved", ...(achievementsOn ? ["achievements"] : []), "members"].some(tb.hidden);
   // Phones keep only the essentials in the header; the rest sit behind "More".
   const [moreOpen, setMoreOpen] = useState(false);
   /** The Follow dialog of an announcement channel. */
@@ -479,13 +480,15 @@ export function ChatHeader({
                 <Icon label={t("header.savedMessages")} active={savedOpen} onClick={toggleSaved} tb={tb.item("saved")}>
                   <Bookmark size={18} />
                 </Icon>
-                <Icon
-                  label={t("header.achievements")}
-                  onClick={() => openAchievements()}
-                  tb={tb.item("achievements")}
-                >
-                  <Award size={18} />
-                </Icon>
+                {achievementsOn && (
+                  <Icon
+                    label={t("header.achievements")}
+                    onClick={() => openAchievements()}
+                    tb={tb.item("achievements")}
+                  >
+                    <Award size={18} />
+                  </Icon>
+                )}
               </span>
               {/* Settings already lives in the user footer; MSN shows it as "Options". */}
               {msnTheme && (
@@ -537,9 +540,11 @@ export function ChatHeader({
                     <button type="button" role="menuitem" className={tb.hidden("saved") ? "tb-moved" : "tb-in-bar"} onClick={pick(toggleSaved)}>
                       <Bookmark size={18} /> {t("header.savedMessages")}
                     </button>
-                    <button type="button" role="menuitem" className={tb.hidden("achievements") ? "tb-moved" : "tb-in-bar"} onClick={pick(() => openAchievements())}>
+                    {achievementsOn && (
+<button type="button" role="menuitem" className={tb.hidden("achievements") ? "tb-moved" : "tb-in-bar"} onClick={pick(() => openAchievements())}>
                       <Award size={18} /> {t("header.achievements")}
                     </button>
+)}
                     <button type="button" role="menuitem" className="tb-in-bar" onClick={pick(() => setSettingsOpen(true))}>
                       <Settings size={18} /> {t("common.settings")}
                     </button>

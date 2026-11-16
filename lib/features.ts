@@ -176,6 +176,14 @@ export const FEATURE_MODULES = {
     label: "Profile Cosmetics & FX",
     description: "Animated profile effects, avatar decorations, frames, and nameplates",
   },
+  achievements: {
+    label: "Achievements",
+    description: "Unlock popups, the achievements board and its button in the header",
+  },
+  y2k: {
+    label: "Nudges & Winks",
+    description: "Window shakes and full-screen wink animations other people send you (you can still play a wink from its line in chat)",
+  },
 } as const;
 
 export type FeatureModuleKey = keyof typeof FEATURE_MODULES;

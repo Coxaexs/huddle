@@ -11,6 +11,8 @@ describe("Overhaul features: modules, commands, and CSS isolation", () => {
       "music",
       "living_room",
       "cosmetics",
+      "achievements",
+      "y2k",
     ]);
     expect(normalizeDisabledModules(null)).toEqual([]);
     expect(normalizeDisabledModules("not-json")).toEqual([]);

@@ -172,6 +172,7 @@ export function UserProfileCard({
   onToggleRole,
 }: UserProfileCardProps) {
   const cosmeticsOn = useModuleOn("cosmetics");
+  const achievementsOn = useModuleOn("achievements");
   const { t } = useI18n();
   const cardRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -468,7 +469,7 @@ export function UserProfileCard({
           </div>
         )}
 
-        {member.achievementShowcase && member.achievementShowcase.length > 0 && (
+        {achievementsOn && member.achievementShowcase && member.achievementShowcase.length > 0 && (
           <div className="profile-achievements-shelf">
             <div className="profile-achievements-head">
               <span>Achievements</span>

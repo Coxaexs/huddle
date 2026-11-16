@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { moduleOn } from "@/app/lib/modules";
 import { flashTitle, playMessageChime, playNudge, playWink } from "../../components/msn-chrome";
 import { stripTextStyle } from "@/lib/text-style";
 import type { RoomActivity } from "@/lib/activities";
@@ -66,7 +67,8 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
       if (
         incoming.payload?.nudge &&
         (channelId === activeChannelRef.current || isDm) &&
-        !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId))
+        !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId)) &&
+        moduleOn("y2k")
       ) {
         playNudge();
       }
@@ -94,7 +96,8 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
       if (
         incoming.payload?.wink &&
         (channelId === activeChannelRef.current || isDm) &&
-        !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId))
+        !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId)) &&
+        moduleOn("y2k")
       ) {
         playWink(incoming.payload.wink);
       }
