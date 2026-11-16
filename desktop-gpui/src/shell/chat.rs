@@ -80,6 +80,7 @@ impl Shell {
             .shadow(card_shadow())
             .overflow_hidden()
             .child(self.render_header(window, cx))
+            .children(self.channel_id.clone().filter(|_| self.home).and_then(|c| self.render_dm_call_panel(&c, cx)))
             .children(self.render_search(cx))
             .map(|d| match self.render_stage_body(window, cx) {
                 Some(stage) => d.child(stage),
@@ -230,22 +231,50 @@ impl Shell {
     fn render_dm_header(&self, dm: crate::model::DmConversation, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mine = dm.user.id == self.me.id;
         let subtitle = if mine { t("header.dmNotes") } else { tv("header.dmJustYouAnd", &[("name", dm.user.name())]) };
-        let labels = [t(if dm.pinned { "header.pinned" } else { "header.pin" }), t("header.startCall"), t("header.videoCall")];
-        // Chrome's flexbox outcome, computed here (GPUI's layout shrinks these differently): the
-        // subtitle and the three buttons share what the icon, gaps and tools leave, each shrinking in
-        // proportion to its natural width, buttons no narrower than their longest word.
+        // In the call: Call View. A call going on without you: Join Call. Otherwise the two starts.
+        let in_call = self.dm_call_here(&dm.channel_id);
+        let ongoing = !in_call && self.rooms.get(&dm.channel_id).is_some_and(|p| !p.is_empty()) && self.call.as_ref().is_none_or(|c| c.channel_id != dm.channel_id);
+        let labels: Vec<String> = if mine {
+            Vec::new()
+        } else if in_call {
+            vec![t(if dm.pinned { "header.pinned" } else { "header.pin" }), t("header.callView")]
+        } else if ongoing {
+            vec![t(if dm.pinned { "header.pinned" } else { "header.pin" }), t("header.joinCall")]
+        } else {
+            vec![t(if dm.pinned { "header.pinned" } else { "header.pin" }), t("header.startCall"), t("header.videoCall")]
+        };
+        // Chrome's flexbox outcome, computed here (GPUI's layout shrinks these differently; numbers
+        // measured in Chrome). The heading (the name, which may shrink to nothing, 14 px, then the
+        // topic, which does not shrink: the box narrows under it and the buttons overlap its end)
+        // and the actions shrink against each other in proportion to their natural widths, the
+        // actions no narrower than their minimum (the call buttons at their longest word, the tools
+        // counted at 34). Inside, the call buttons (8 apart) and the five tools (34, down to 18, 3
+        // apart) shrink the same way; then each call button.
         let measure = |text: &str, weight: FontWeight| ui::text_width(window, text, weight, 13.);
         let chrome = 2. + 26. + 15. + 6.;
         let header_inner = self.chat_panel_width(window) - px(2.) - px(26.) - px(18.);
-        let fixed = px(20. + 25. + 8. * 4. + (28. * 5. + 3. * 4.));
-        let mut natural = vec![measure(&subtitle, FontWeight::NORMAL)];
-        let mut least = vec![px(0.)];
+        let name = if mine { String::new() } else { dm.user.name().to_string() };
+        let name_natural = if name.is_empty() { px(0.) } else { ui::text_width_in(window, DISPLAY_FONT, &name, FontWeight::SEMIBOLD, 22.) };
+        let topic_w = measure(&subtitle, FontWeight::NORMAL);
+        let mut natural = Vec::new();
+        let mut least = Vec::new();
         for label in &labels {
             natural.push(measure(label, FontWeight::BOLD) + px(chrome));
             let longest = label.split_whitespace().map(|w| measure(w, FontWeight::BOLD)).fold(px(0.), |a, b| a.max(b));
             least.push(longest + px(chrome));
         }
-        let widths = if mine { natural.clone() } else { ui::css_shrink(&natural, &least, header_inner - fixed) };
+        let gaps = px(8. * labels.len().saturating_sub(1) as f32);
+        let calls_natural = natural.iter().fold(px(0.), |a, b| a + *b) + gaps;
+        let calls_least = least.iter().fold(px(0.), |a, b| a + *b) + gaps;
+        let heading_natural = name_natural + px(if name.is_empty() { 0. } else { 14. }) + topic_w;
+        let available = header_inner - px(20. + 11. + 11.);
+        let tools = px(3. * 5. + 34. * 5.);
+        let top = ui::css_shrink(&[heading_natural, calls_natural + tools], &[px(0.), calls_least + tools], available);
+        let inside = ui::css_shrink(&[calls_natural, px(34.), px(34.), px(34.), px(34.), px(34.)], &[calls_least, px(18.), px(18.), px(18.), px(18.), px(18.)], top[1] - px(15.));
+        let tool_w = inside[1];
+        let widths: Vec<gpui::Pixels> = std::iter::once(top[0]).chain(ui::css_shrink(&natural, &least, inside[0] - gaps)).collect();
+        let name_w = (top[0] - px(14.) - topic_w).max(px(0.));
+        let name_shown = if name.is_empty() || name_w <= px(0.5) { String::new() } else { ui::fit_in(window, DISPLAY_FONT, &name, FontWeight::SEMIBOLD, 22., name_w) };
         let call_button = |id: &'static str, glyph: &'static str, label: String, width: gpui::Pixels| {
             div()
                 .id(id)
@@ -271,10 +300,10 @@ impl Shell {
         };
         let mut right = div().flex().items_center().gap(px(3.));
         for (name, title) in [("at-sign", "header.mentions"), ("pin", "header.pinnedMessages"), ("bookmark", "header.savedMessages"), ("award", "header.achievements")] {
-            right = right.child(header_button(name, title, false).w(px(28.)));
+            right = right.child(header_button(name, title, false).w(tool_w));
         }
         right = right.child(
-            header_button("users", "header.toggleMemberList", self.members_open).w(px(28.)).on_click(cx.listener(|this, _, _, cx| {
+            header_button("users", "header.toggleMemberList", self.members_open).w(tool_w).on_click(cx.listener(|this, _, _, cx| {
                 this.members_open = !this.members_open;
                 cx.notify();
             })),
@@ -286,19 +315,51 @@ impl Shell {
             .pr(px(18.))
             .flex()
             .items_center()
-            .gap(px(8.))
+            .gap(px(11.))
             .child(icon(if mine { "sticky-note" } else { "at-sign" }, 20., gpui::rgb(0xa39fa7)))
-            // The subtitle's box shrinks but its text does not wrap: like the web, the buttons may
-            // overlap its end rather than cut it.
-            .child(div().flex_none().w(widths[0]).ml(px(17.)).whitespace_nowrap().text_size(px(13.)).text_color(Theme::quiet()).child(subtitle))
-            .child(div().flex_1())
-            .when(!mine, |d| {
-                let [pin, call, video] = labels.clone();
-                d.child(call_button("dm-pin", "arrow-up-to-line", pin, widths[1]).tooltip(ui::tooltip(t("header.pinConversation"))))
-                    .child(call_button("dm-call", "phone-call", call, widths[2]).tooltip(ui::tooltip(t("header.startVoiceCall"))))
-                    .child(call_button("dm-video", "video", video, widths[3]).tooltip(ui::tooltip(t("header.startVideoCall"))))
-            })
-            .child(right.flex_none())
+            // `.channel-heading`: the name (cut to what is left), then the topic, which does not
+            // shrink: the box narrows under it and the buttons overlap its end.
+            .child(
+                div()
+                    .flex_none()
+                    .w(widths[0])
+                    .flex()
+                    .items_center()
+                    .when(!name_shown.is_empty(), |d| {
+                        d.child(div().flex_none().w(name_w).mr(px(14.)).whitespace_nowrap().font_family(DISPLAY_FONT).text_size(px(22.)).line_height(px(22.)).font_weight(FontWeight::SEMIBOLD).text_color(Theme::ink()).child(name_shown.clone()))
+                    })
+                    .when(name_shown.is_empty() && !name.is_empty(), |d| d.child(div().flex_none().w(px(14.))))
+                    .child(div().flex_none().whitespace_nowrap().text_size(px(13.)).text_color(Theme::quiet()).child(subtitle)),
+            )
+            // `margin-left: auto` on the actions when there is room to spare (no gap of its own).
+            .child(div().flex_1().ml(px(-11.)))
+            .when(!mine, |row| row.child({
+                let (pinned, pin_channel) = (dm.pinned, dm.channel_id.clone());
+                let d = div().flex_none().flex().items_center().gap(px(8.)).child(
+                    call_button("dm-pin", "arrow-up-to-line", labels[0].clone(), widths[1])
+                        .tooltip(ui::tooltip(t(if pinned { "header.unpinConversation" } else { "header.pinConversation" })))
+                        .on_click(cx.listener(move |this, _, _, cx| this.pin_dm(pin_channel.clone(), !pinned, cx))),
+                );
+                let room = dm.channel_id.clone();
+                if in_call {
+                    d.child(call_button("dm-callview", "maximize-2", labels[1].clone(), widths[2]).tooltip(ui::tooltip(t("header.openFullCallView"))).on_click(cx.listener(move |this, _, window, cx| this.open_stage(room.clone(), window, cx))))
+                } else if ongoing {
+                    // `.dm-join-call-btn`: green.
+                    d.child(
+                        call_button("dm-join", "phone-call", labels[1].clone(), widths[2])
+                            .bg(gpui::rgb(0x22c55e))
+                            .border_color(gpui::rgb(0x22c55e))
+                            .hover(|s| s.bg(gpui::rgb(0x16a34a)))
+                            .tooltip(ui::tooltip(t("header.joinOngoingCall")))
+                            .on_click(cx.listener(move |this, _, _, cx| this.join_dm_room(room.clone(), cx))),
+                    )
+                } else {
+                    let video_room = room.clone();
+                    d.child(call_button("dm-call", "phone-call", labels[1].clone(), widths[2]).tooltip(ui::tooltip(t("header.startVoiceCall"))).on_click(cx.listener(move |this, _, _, cx| this.start_dm_call(room.clone(), false, cx))))
+                        .child(call_button("dm-video", "video", labels[2].clone(), widths[3]).tooltip(ui::tooltip(t("header.startVideoCall"))).on_click(cx.listener(move |this, _, _, cx| this.start_dm_call(video_room.clone(), true, cx))))
+                }
+            }))
+            .child(right.flex_none().ml(px(if mine { 0. } else { -8. })))
     }
 
     fn render_messages(&self, cx: &mut Context<Self>) -> AnyElement {

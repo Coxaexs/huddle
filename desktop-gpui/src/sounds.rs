@@ -67,6 +67,10 @@ pub fn play(id: &str) {
 
 /// Plays a cue even while it is switched off (the settings list's "Preview sound").
 pub fn preview(id: &str) {
+    // Test runs (HOFFLE_DEV_MUTED) make no sound.
+    if std::env::var_os("HOFFLE_DEV_MUTED").is_some() {
+        return;
+    }
     let Some(bytes) = crate::assets::ASSETS.iter().find(|(p, _)| *p == format!("sounds/{id}.wav")).map(|(_, b)| *b) else { return };
     let id = id.to_string();
     std::thread::spawn(move || {

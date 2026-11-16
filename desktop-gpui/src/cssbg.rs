@@ -130,12 +130,12 @@ pub fn to_svg(value: &str, area: &Box2, prefix: &str) -> (String, String) {
             ty += p.get(1).and_then(|v| length(v, area.h - th)).unwrap_or(0.);
             tiled = true;
         }
-        let Some(open) = func.find('(') else {
-            if let Some(c) = Rgba::parse(func) {
-                draw.push_str(&format!(r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}" fill-opacity="{}"/>"#, area.x, area.y, area.w, area.h, c.hex(), c.opacity()));
-            }
+        // A plain colour layer (`#hex`, `rgb(...)`, `rgba(...)`) fills the whole area.
+        if let Some(c) = Rgba::parse(func.trim()) {
+            draw.push_str(&format!(r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}" fill-opacity="{}"/>"#, area.x, area.y, area.w, area.h, c.hex(), c.opacity()));
             continue;
-        };
+        }
+        let Some(open) = func.find('(') else { continue };
         let name = func[..open].trim();
         let args = split_top(&func[open + 1..func.len().saturating_sub(1)]);
         // Gradient defined over the tile (local coordinates when tiled).

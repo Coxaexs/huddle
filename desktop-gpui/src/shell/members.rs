@@ -652,6 +652,23 @@ impl gpui::Render for Shell {
         }
         self.dev_achievement(cx);
         self.dev_video(cx);
+        // HOFFLE_DEV_DMCALL=place|incoming (test copies): a call placed from the DM opened with
+        // HOFFLE_DEV_DM, or one coming in from that person (simulated, nothing is sent).
+        static DEV_DMCALL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(how) = std::env::var("HOFFLE_DEV_DMCALL")
+            && let Some(channel) = self.channel_id.clone().filter(|c| self.dms.iter().any(|d| &d.channel_id == c))
+            && !DEV_DMCALL.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            if how == "incoming" {
+                let dm = self.dms.iter().find(|d| d.channel_id == channel).cloned();
+                if let Some(dm) = dm {
+                    let fake = serde_json::json!({ "channelId": channel, "fromUserId": dm.user.id, "fromDisplayName": dm.user.name(), "fromAvatar": dm.user.avatar, "fromAvatarUrl": dm.user.avatar_url, "action": "call" });
+                    self.on_dm_call(&fake, cx);
+                }
+            } else {
+                self.start_dm_call(channel, false, cx);
+            }
+        }
         // HOFFLE_DEV_SOUNDBOARD=1|more: the stage's soundboard open (or its ⋯ menu).
         static DEV_SB: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if let Ok(which) = std::env::var("HOFFLE_DEV_SOUNDBOARD")
@@ -872,6 +889,7 @@ impl gpui::Render for Shell {
             .children(self.render_video_full(window, cx))
             .children(self.render_confirm(cx))
             .children(self.render_achievement_toast(window, cx))
+            .children(self.render_incoming_call(cx))
             .children(self.render_forward(window, cx))
             .children(self.render_invite(window, cx))
             .children(self.render_server_settings(window, cx))

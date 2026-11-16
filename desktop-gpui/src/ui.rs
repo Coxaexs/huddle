@@ -310,6 +310,14 @@ pub fn fit_in(window: &Window, family: &'static str, text: &str, weight: gpui::F
     if lo == 0 { "…".into() } else { format!("{}…", text[..chars[lo - 1].0 + chars[lo - 1].1.len_utf8()].trim_end()) }
 }
 
+/// Width of one line of text in another family.
+pub fn text_width_in(window: &Window, family: &'static str, text: &str, weight: gpui::FontWeight, size: f32) -> gpui::Pixels {
+    let mut face = gpui::font(family);
+    face.weight = weight;
+    let run = gpui::TextRun { len: text.len(), font: face, color: gpui::black(), background_color: None, underline: None, strikethrough: None };
+    window.text_system().shape_line(gpui::SharedString::from(text.to_string()), px(size), &[run], None).width
+}
+
 /// Width of one line of UI text.
 pub fn text_width(window: &Window, text: &str, weight: gpui::FontWeight, size: f32) -> gpui::Pixels {
     let mut face = gpui::font(crate::theme::UI_FONT);

@@ -23,6 +23,7 @@ mod member_actions;
 mod achievement_toast;
 mod video_player;
 mod soundboard;
+mod dm_call;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -301,6 +302,8 @@ pub struct Shell {
     soundboard: soundboard::Board,
     /// The stage's full-screen button put the window in full screen.
     full_screen: bool,
+    /// DM calls: ringing you, or the one you are in.
+    calls: dm_call::Calls,
     /// Achievement unlock popups, and whether the periodic check has started.
     unlocks: achievement_toast::Toasts,
     ach_checks: bool,
@@ -530,6 +533,7 @@ impl Shell {
                         cx.notify();
                     }
                     this.check_auto_idle(cx);
+                    this.dm_call_tick(cx);
                 });
                 if alive.is_err() {
                     break;
@@ -643,6 +647,7 @@ impl Shell {
             film: Default::default(),
             soundboard: board,
             full_screen: false,
+            calls: Default::default(),
             unlocks: Default::default(),
             ach_checks: false,
             forced_mutes: HashSet::new(),
@@ -1629,6 +1634,7 @@ impl Shell {
                     self.status = Some("You were removed from the voice room.".into());
                 }
             }
+            "dm-call" => self.on_dm_call(&value, cx),
             // Someone played a soundboard sound in the room you are in.
             "soundboard" => {
                 let room = value.get("channelId").and_then(Value::as_str).unwrap_or_default();
