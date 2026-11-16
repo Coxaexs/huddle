@@ -308,6 +308,8 @@ pub struct Shell {
     /// Starting a group DM or adding to one, and a group's right-click menu.
     group_dialog: Option<group_dm::GroupDialog>,
     group_menu: Option<group_dm::GroupMenu>,
+    /// The web view playing the open profile card's effect, with what it is for.
+    fx_overlay: std::rc::Rc<std::cell::RefCell<Option<(String, crate::webview::WebOverlay)>>>,
     /// Achievement unlock popups, and whether the periodic check has started.
     unlocks: achievement_toast::Toasts,
     ach_checks: bool,
@@ -654,6 +656,7 @@ impl Shell {
             calls: Default::default(),
             group_dialog: None,
             group_menu: None,
+            fx_overlay: Default::default(),
             unlocks: Default::default(),
             ach_checks: false,
             forced_mutes: HashSet::new(),

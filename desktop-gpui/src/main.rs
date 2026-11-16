@@ -24,6 +24,7 @@ mod textarea;
 mod theme;
 mod ui;
 mod voice;
+mod webview;
 
 use gpui::{
     App, Application, Bounds, Context, Entity, FocusHandle, Focusable, KeyBinding, Menu, MenuItem,

@@ -247,7 +247,10 @@ impl Shell {
     }
 
     pub(super) fn render_profile(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let open = self.profile.as_ref()?;
+        let Some(open) = self.profile.as_ref() else {
+            self.fx_overlay.borrow_mut().take();
+            return None;
+        };
         let m = &open.member;
         let size = window.viewport_size();
         let (vw, vh) = (f32::from(size.width), f32::from(size.height));
@@ -823,6 +826,8 @@ impl Shell {
             .child(banner)
             .child(avatar_row)
             .child(body)
+            // `.pfx`: the effect, played by the web's own code in a web view kept over the card.
+            .children(self.profile_effect_layer(m, open.key, window, cx))
             // `.pframe-art`: the frame's pieces, over the card and around it.
             .children(crate::cosmetics::frame_art(&frame, width, open.height.get(), window.scale_factor()))
             // Measured each frame; a change places the card again on the next one.
@@ -855,6 +860,48 @@ impl Shell {
                 gpui::Animation::new(std::time::Duration::from_millis(180)).with_easing(gpui::ease_out_quint()),
                 move |d, t| d.opacity(t).top(px(top + 4. * (1. - t))),
             )
+            .into_any_element(),
+        )
+    }
+
+    fn profile_effect_layer(&self, m: &crate::model::Member, card: u64, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let effect = m.profile_effect.clone().filter(|e| !e.is_empty() && e != "none");
+        let Some(effect) = effect else {
+            self.fx_overlay.borrow_mut().take();
+            return None;
+        };
+        let key = format!("{card}|{effect}");
+        let fresh = self.fx_overlay.borrow().as_ref().is_none_or(|(k, _)| k != &key);
+        if fresh {
+            let overlay = crate::webview::effect_overlay(window, &effect);
+            *self.fx_overlay.borrow_mut() = overlay.map(|o| (key.clone(), o));
+            // HOFFLE_DEV_FX_SHOT=<png>: the effect's own picture after 4 s (the window snapshot has
+            // only GPUI's drawing).
+            if let Ok(path) = std::env::var("HOFFLE_DEV_FX_SHOT") {
+                let shared = self.fx_overlay.clone();
+                cx.spawn(async move |_, cx| {
+                    cx.background_executor().timer(std::time::Duration::from_secs(4)).await;
+                    if let Some((_, o)) = shared.borrow().as_ref() {
+                        o.snapshot(&path);
+                    }
+                })
+                .detach();
+            }
+        }
+        let shared = self.fx_overlay.clone();
+        Some(
+            gpui::canvas(
+                |_, _, _| {},
+                move |bounds, _, _, _| {
+                    if let Some((_, o)) = shared.borrow_mut().as_mut() {
+                        o.set_frame(f32::from(bounds.origin.x), f32::from(bounds.origin.y), f32::from(bounds.size.width), f32::from(bounds.size.height));
+                    }
+                },
+            )
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
             .into_any_element(),
         )
     }

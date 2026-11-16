@@ -320,6 +320,8 @@ pub struct Member {
     pub global_name: Option<String>,
     /// Art and a glow around the profile card (ProfileFrameArt).
     pub profile_frame: Option<String>,
+    /// An effect playing over the profile card (ProfileEffect).
+    pub profile_effect: Option<String>,
     pub pride_badges: Vec<String>,
     /// The invite they came in with, when known (server settings → Members).
     pub joined_via: Option<JoinedVia>,

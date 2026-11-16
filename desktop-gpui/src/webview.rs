@@ -1,0 +1,161 @@
+//! A WKWebView laid over part of the window, for what the web draws with the browser itself and
+//! GPUI cannot: profile effects (canvas and WebGL scenes, CSS particles) run the web's own code in
+//! it (resources/web/profile-effect.html, from tools/export-effects.sh). It sits above GPUI's
+//! drawing, transparent, and lets clicks through to the window under it.
+
+#[cfg(target_os = "macos")]
+mod mac {
+    use std::sync::Once;
+
+    use cocoa::base::{BOOL, NO, YES, id, nil};
+    use cocoa::foundation::{NSPoint, NSRect, NSSize, NSString};
+    use objc::declare::ClassDecl;
+    use objc::runtime::{Class, Object, Sel};
+    use objc::{class, msg_send, sel, sel_impl};
+
+    #[link(name = "WebKit", kind = "framework")]
+    unsafe extern "C" {}
+
+    /// WKWebView that is never hit: clicks and scrolls go to the view under it.
+    fn passthrough_class() -> &'static Class {
+        static REGISTER: Once = Once::new();
+        REGISTER.call_once(|| {
+            let mut decl = ClassDecl::new("HoffleOverlayWebView", class!(WKWebView)).expect("class");
+            extern "C" fn hit_test(_: &Object, _: Sel, _: NSPoint) -> id {
+                nil
+            }
+            extern "C" fn accepts_first_responder(_: &Object, _: Sel) -> BOOL {
+                NO
+            }
+            unsafe {
+                decl.add_method(sel!(hitTest:), hit_test as extern "C" fn(&Object, Sel, NSPoint) -> id);
+                decl.add_method(sel!(acceptsFirstResponder), accepts_first_responder as extern "C" fn(&Object, Sel) -> BOOL);
+            }
+            decl.register();
+        });
+        Class::get("HoffleOverlayWebView").expect("registered")
+    }
+
+    pub struct WebOverlay {
+        view: id,
+        parent: id,
+        frame: (f32, f32, f32, f32),
+    }
+
+    impl WebOverlay {
+        /// Over `parent` (the window's content view), showing `html` as if loaded from `base`.
+        pub fn new(parent: id, html: &str, base: &str) -> Self {
+            unsafe {
+                let config: id = msg_send![class!(WKWebViewConfiguration), new];
+                // Media may start without a click (WKAudiovisualMediaTypeNone).
+                let _: () = msg_send![config, setMediaTypesRequiringUserActionForPlayback: 0u64];
+                let view: id = msg_send![passthrough_class(), alloc];
+                let rect = NSRect::new(NSPoint::new(0., 0.), NSSize::new(1., 1.));
+                let view: id = msg_send![view, initWithFrame: rect configuration: config];
+                let _: () = msg_send![config, release];
+                let no: id = msg_send![class!(NSNumber), numberWithBool: NO];
+                let _: () = msg_send![view, setValue: no forKey: NSString::alloc(nil).init_str("drawsBackground")];
+                let clear: id = msg_send![class!(NSColor), clearColor];
+                if msg_send![view, respondsToSelector: sel!(setUnderPageBackgroundColor:)] {
+                    let _: () = msg_send![view, setUnderPageBackgroundColor: clear];
+                }
+                let _: () = msg_send![view, setHidden: YES];
+                let _: () = msg_send![parent, addSubview: view];
+                let url: id = msg_send![class!(NSURL), URLWithString: NSString::alloc(nil).init_str(base)];
+                let _: id = msg_send![view, loadHTMLString: NSString::alloc(nil).init_str(html) baseURL: url];
+                Self { view, parent, frame: (0., 0., 0., 0.) }
+            }
+        }
+
+        /// Where it sits, in window points from the top left.
+        pub fn set_frame(&mut self, x: f32, y: f32, w: f32, h: f32) {
+            if self.frame == (x, y, w, h) {
+                return;
+            }
+            self.frame = (x, y, w, h);
+            unsafe {
+                let flipped: BOOL = msg_send![self.parent, isFlipped];
+                let bounds: NSRect = msg_send![self.parent, bounds];
+                let top = if flipped == YES { y as f64 } else { bounds.size.height - (y + h) as f64 };
+                let rect = NSRect::new(NSPoint::new(x as f64, top), NSSize::new(w as f64, h as f64));
+                let _: () = msg_send![self.view, setFrame: rect];
+                let _: () = msg_send![self.view, setHidden: NO];
+            }
+        }
+
+        pub fn eval(&self, js: &str) {
+            unsafe {
+                let source = NSString::alloc(nil).init_str(js);
+                let _: () = msg_send![self.view, evaluateJavaScript: source completionHandler: nil];
+            }
+        }
+
+        /// The view's own picture, for tests (the window snapshot holds only GPUI's drawing).
+        pub fn snapshot(&self, path: &str) {
+            let path = path.to_string();
+            unsafe {
+                let handler = block::ConcreteBlock::new(move |image: id, _error: id| {
+                    if image == nil {
+                        return;
+                    }
+                    let tiff: id = msg_send![image, TIFFRepresentation];
+                    let rep: id = msg_send![class!(NSBitmapImageRep), imageRepWithData: tiff];
+                    let empty: id = msg_send![class!(NSDictionary), dictionary];
+                    // NSBitmapImageFileTypePNG
+                    let png: id = msg_send![rep, representationUsingType: 4u64 properties: empty];
+                    let _: BOOL = msg_send![png, writeToFile: NSString::alloc(nil).init_str(&path) atomically: YES];
+                })
+                .copy();
+                let _: () = msg_send![self.view, takeSnapshotWithConfiguration: nil completionHandler: &*handler];
+            }
+        }
+    }
+
+    impl Drop for WebOverlay {
+        fn drop(&mut self) {
+            unsafe {
+                let _: () = msg_send![self.view, removeFromSuperview];
+                let _: () = msg_send![self.view, release];
+            }
+        }
+    }
+
+    /// The content view of the window GPUI draws into.
+    pub fn content_view(window: &gpui::Window) -> Option<id> {
+        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        match HasWindowHandle::window_handle(window).ok()?.as_raw() {
+            RawWindowHandle::AppKit(handle) => Some(handle.ns_view.as_ptr() as id),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub use mac::{WebOverlay, content_view};
+
+#[cfg(not(target_os = "macos"))]
+pub struct WebOverlay;
+
+#[cfg(not(target_os = "macos"))]
+impl WebOverlay {
+    pub fn set_frame(&mut self, _: f32, _: f32, _: f32, _: f32) {}
+    pub fn eval(&self, _: &str) {}
+    pub fn snapshot(&self, _: &str) {}
+}
+
+/// The profile effect page with `id` playing (the web's own ProfileEffect).
+pub fn effect_overlay(window: &gpui::Window, id: &str) -> Option<WebOverlay> {
+    #[cfg(target_os = "macos")]
+    {
+        let html = crate::assets::ASSETS.iter().find(|(p, _)| *p == "web/profile-effect.html").map(|(_, b)| String::from_utf8_lossy(b).into_owned())?;
+        let id_json = serde_json::to_string(id).ok()?;
+        // Started once the bundle has run (it is the page's last script).
+        let html = html.replacen("</body>", &format!("<script>window.__showEffect({id_json});</script></body>"), 1);
+        Some(WebOverlay::new(content_view(window)?, &html, "https://hoffle.online/"))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, id);
+        None
+    }
+}
