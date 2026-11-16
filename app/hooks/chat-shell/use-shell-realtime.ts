@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { moduleOn } from "@/app/lib/modules";
 import { flashTitle, playMessageChime, playNudge, playWink } from "../../components/msn-chrome";
 import { stripTextStyle } from "@/lib/text-style";
 import type { RoomActivity } from "@/lib/activities";
+import { moduleOn } from "@/app/lib/modules";
 import { announceUnlocked, SHOWCASE_CHANGED_EVENT } from "../../lib/achievement-client";
 import { type Message } from "../../lib/chat/types";
 import { notifyLevel } from "../../lib/chat/format";
