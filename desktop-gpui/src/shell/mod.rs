@@ -25,6 +25,7 @@ mod video_player;
 mod soundboard;
 mod dm_call;
 mod group_dm;
+mod embed_player;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -309,6 +310,8 @@ pub struct Shell {
     group_dialog: Option<group_dm::GroupDialog>,
     group_menu: Option<group_dm::GroupMenu>,
     /// The web view playing the open profile card's effect, with what it is for.
+    /// Link players that are playing (their web views).
+    link_players: embed_player::SharedPlayers,
     fx_overlay: std::rc::Rc<std::cell::RefCell<Option<(String, crate::webview::WebOverlay)>>>,
     /// Achievement unlock popups, and whether the periodic check has started.
     unlocks: achievement_toast::Toasts,
@@ -657,6 +660,7 @@ impl Shell {
             group_dialog: None,
             group_menu: None,
             fx_overlay: Default::default(),
+            link_players: Default::default(),
             unlocks: Default::default(),
             ach_checks: false,
             forced_mutes: HashSet::new(),

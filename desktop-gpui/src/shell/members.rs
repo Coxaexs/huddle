@@ -258,6 +258,8 @@ fn group_label(text: String) -> impl IntoElement {
 impl gpui::Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_badge();
+        self.players_tick(window);
+        self.dev_play(cx);
         // Switching to Simple closes the member list (the header's faces open it), and the
         // composer's placeholder follows the interface.
         let simple = self.simple();

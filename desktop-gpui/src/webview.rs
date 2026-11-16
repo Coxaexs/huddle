@@ -43,13 +43,22 @@ mod mac {
     }
 
     impl WebOverlay {
-        /// Over `parent` (the window's content view), showing `html` as if loaded from `base`.
-        pub fn new(parent: id, html: &str, base: &str) -> Self {
+        /// Over `parent` (the window's content view), showing `html` as if loaded from `base`;
+        /// `interactive` takes clicks and scrolls itself (a player), otherwise they pass through.
+        pub fn new(parent: id, html: &str, base: &str, interactive: bool) -> Self {
             unsafe {
                 let config: id = msg_send![class!(WKWebViewConfiguration), new];
                 // Media may start without a click (WKAudiovisualMediaTypeNone).
                 let _: () = msg_send![config, setMediaTypesRequiringUserActionForPlayback: 0u64];
-                let view: id = msg_send![passthrough_class(), alloc];
+                let prefs: id = msg_send![config, preferences];
+                let yes: id = msg_send![class!(NSNumber), numberWithBool: YES];
+                if msg_send![prefs, respondsToSelector: sel!(setElementFullscreenEnabled:)] {
+                    let _: () = msg_send![prefs, setElementFullscreenEnabled: YES];
+                } else {
+                    let _: () = msg_send![prefs, setValue: yes forKey: NSString::alloc(nil).init_str("fullScreenEnabled")];
+                }
+                let class = if interactive { class!(WKWebView) } else { passthrough_class() };
+                let view: id = msg_send![class, alloc];
                 let rect = NSRect::new(NSPoint::new(0., 0.), NSSize::new(1., 1.));
                 let view: id = msg_send![view, initWithFrame: rect configuration: config];
                 let _: () = msg_send![config, release];
@@ -60,6 +69,10 @@ mod mac {
                     let _: () = msg_send![view, setUnderPageBackgroundColor: clear];
                 }
                 let _: () = msg_send![view, setHidden: YES];
+                // Test runs (HOFFLE_DEV_MUTED) make no sound: the page is muted (audio and capture).
+                if std::env::var_os("HOFFLE_DEV_MUTED").is_some() && msg_send![view, respondsToSelector: sel!(_setPageMuted:)] {
+                    let _: () = msg_send![view, _setPageMuted: 1u64];
+                }
                 let _: () = msg_send![parent, addSubview: view];
                 let url: id = msg_send![class!(NSURL), URLWithString: NSString::alloc(nil).init_str(base)];
                 let _: id = msg_send![view, loadHTMLString: NSString::alloc(nil).init_str(html) baseURL: url];
@@ -120,6 +133,61 @@ mod mac {
         }
     }
 
+    /// A plain view that clips what is inside it to its frame (the message list's area), for
+    /// players that scroll partly out of sight.
+    pub struct ClipHost {
+        pub view: id,
+        frame: (f32, f32, f32, f32),
+    }
+
+    impl ClipHost {
+        pub fn new(parent: id) -> Self {
+            unsafe {
+                let view: id = msg_send![class!(NSView), alloc];
+                let view: id = msg_send![view, initWithFrame: NSRect::new(NSPoint::new(0., 0.), NSSize::new(1., 1.))];
+                let _: () = msg_send![view, setWantsLayer: YES];
+                let layer: id = msg_send![view, layer];
+                let _: () = msg_send![layer, setMasksToBounds: YES];
+                let _: () = msg_send![parent, addSubview: view];
+                Self { view, frame: (0., 0., 1., 1.) }
+            }
+        }
+
+        pub fn frame(&self) -> (f32, f32, f32, f32) {
+            self.frame
+        }
+
+        /// In window points from the top left, like WebOverlay::set_frame.
+        pub fn set_frame(&mut self, x: f32, y: f32, w: f32, h: f32) {
+            if self.frame == (x, y, w, h) {
+                return;
+            }
+            self.frame = (x, y, w, h);
+            unsafe {
+                let parent: id = msg_send![self.view, superview];
+                let flipped: BOOL = msg_send![parent, isFlipped];
+                let bounds: NSRect = msg_send![parent, bounds];
+                let top = if flipped == YES { y as f64 } else { bounds.size.height - (y + h) as f64 };
+                let _: () = msg_send![self.view, setFrame: NSRect::new(NSPoint::new(x as f64, top), NSSize::new(w as f64, h as f64))];
+            }
+        }
+
+        pub fn set_hidden(&self, hidden: bool) {
+            unsafe {
+                let _: () = msg_send![self.view, setHidden: if hidden { YES } else { NO }];
+            }
+        }
+    }
+
+    impl Drop for ClipHost {
+        fn drop(&mut self) {
+            unsafe {
+                let _: () = msg_send![self.view, removeFromSuperview];
+                let _: () = msg_send![self.view, release];
+            }
+        }
+    }
+
     /// The content view of the window GPUI draws into.
     pub fn content_view(window: &gpui::Window) -> Option<id> {
         use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -131,10 +199,22 @@ mod mac {
 }
 
 #[cfg(target_os = "macos")]
-pub use mac::{WebOverlay, content_view};
+pub use mac::{ClipHost, WebOverlay, content_view};
 
 #[cfg(not(target_os = "macos"))]
 pub struct WebOverlay;
+
+#[cfg(not(target_os = "macos"))]
+pub struct ClipHost;
+
+#[cfg(not(target_os = "macos"))]
+impl ClipHost {
+    pub fn frame(&self) -> (f32, f32, f32, f32) {
+        (0., 0., 0., 0.)
+    }
+    pub fn set_frame(&mut self, _: f32, _: f32, _: f32, _: f32) {}
+    pub fn set_hidden(&self, _: bool) {}
+}
 
 #[cfg(not(target_os = "macos"))]
 impl WebOverlay {
@@ -151,11 +231,43 @@ pub fn effect_overlay(window: &gpui::Window, id: &str) -> Option<WebOverlay> {
         let id_json = serde_json::to_string(id).ok()?;
         // Started once the bundle has run (it is the page's last script).
         let html = html.replacen("</body>", &format!("<script>window.__showEffect({id_json});</script></body>"), 1);
-        Some(WebOverlay::new(content_view(window)?, &html, "https://hoffle.online/"))
+        Some(WebOverlay::new(content_view(window)?, &html, "https://hoffle.online/", false))
     }
     #[cfg(not(target_os = "macos"))]
     {
         let _ = (window, id);
+        None
+    }
+}
+
+/// A site's own player (an iframe of `src`, filling the view) inside `host`.
+pub fn player_overlay(host: &ClipHost, src: &str, allow: &str) -> Option<WebOverlay> {
+    #[cfg(target_os = "macos")]
+    {
+        let esc = |v: &str| v.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;");
+        let html = format!(
+            r#"<!doctype html><html><head><meta charset="utf-8"><style>html,body{{margin:0;padding:0;width:100%;height:100%;background:transparent;overflow:hidden}}iframe{{position:absolute;inset:0;width:100%;height:100%;border:0}}</style></head><body><iframe src="{}" allow="{}" allowfullscreen></iframe></body></html>"#,
+            esc(src),
+            esc(allow)
+        );
+        Some(WebOverlay::new(host.view, &html, "https://hoffle.online/", true))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (host, src, allow);
+        None
+    }
+}
+
+/// The clip host for players, over the window GPUI draws into.
+pub fn clip_host(window: &gpui::Window) -> Option<ClipHost> {
+    #[cfg(target_os = "macos")]
+    {
+        Some(ClipHost::new(content_view(window)?))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = window;
         None
     }
 }

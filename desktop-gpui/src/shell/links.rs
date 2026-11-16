@@ -114,7 +114,9 @@ impl Shell {
             }
             let preview = self.preview(url, cx);
             if let Some(id) = youtube_id(url) {
-                out.push(self.render_youtube(message, n, url, &id, preview, column));
+                out.push(self.render_youtube(message, n, url, &id, preview, column, cx));
+            } else if let Some(player) = super::embed_player::player_for(url, "hoffle.online") {
+                out.push(self.render_player_card(message, n, url, player, preview, column, cx));
             } else if let Some(p) = preview {
                 if p.gif && p.image.is_some() {
                     out.push(self.render_gif(message, 200 + n, p.image.as_deref().unwrap_or_default(), window, cx));
@@ -176,12 +178,11 @@ impl Shell {
             .child(div().absolute().left(px(-1.)).top(px(-1.)).bottom(px(-1.)).w(px(4.)).rounded_l(px(6.)).bg(accent))
     }
 
-    fn render_youtube(&self, message: &Message, n: usize, url: &str, id: &str, preview: Option<Preview>, column: f32) -> AnyElement {
+    fn render_youtube(&self, message: &Message, n: usize, url: &str, id: &str, preview: Option<Preview>, column: f32, cx: &mut Context<Self>) -> AnyElement {
         let width = column.min(480.);
         let inner = width - 4. - 12. - 14.;
         let title = preview.as_ref().map(|p| p.title.clone()).filter(|t| !t.is_empty()).unwrap_or_else(|| "YouTube video".into());
         let thumb = preview.as_ref().and_then(|p| p.image.clone()).unwrap_or_else(|| proxied(&format!("https://i.ytimg.com/vi/{id}/hqdefault.jpg")));
-        let open = url.to_string();
         let open_title = url.to_string();
         Self::card_frame(rgb(0xff0033).into())
             .w(px(width))
@@ -205,35 +206,8 @@ impl Shell {
                     .child(title)
                     .on_click(move |_, _, cx| cx.open_url(&open_title)),
             )
-            .child(
-                // `.link-preview-player`: 16:9 under the title; playing opens YouTube.
-                div()
-                    .id(SharedString::from(format!("yt-{}-{n}", message.id)))
-                    .ml(px(4.))
-                    .mt(px(6.))
-                    .w(px(inner))
-                    .h(px(inner * 9. / 16.))
-                    .rounded(px(6.))
-                    .bg(gpui::black())
-                    .relative()
-                    .cursor_pointer()
-                    .group("yt-play")
-                    .child(gpui::img(ui::cover(gpui::Resource::Uri(self.client.absolute(&thumb).into()), 16. / 9.)).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover))
-                    .child(
-                        div().absolute().inset_0().flex().items_center().justify_center().child(
-                            div()
-                                .size(px(60.))
-                                .rounded_full()
-                                .bg(rgba(0x000000a6))
-                                .group_hover("yt-play", |s| s.bg(rgb(0xff0033)))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .child(ui::icon("play-filled", 26., gpui::white())),
-                        ),
-                    )
-                    .on_click(move |_, _, cx| cx.open_url(&open)),
-            )
+            // `.link-preview-player`: 16:9 under the title; YouTube's own player plays in it.
+            .child(self.youtube_player(message, n, url, id, thumb, inner, cx))
             .into_any_element()
     }
 

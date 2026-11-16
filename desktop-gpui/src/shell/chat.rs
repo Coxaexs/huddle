@@ -468,6 +468,8 @@ impl Shell {
                     .size_full(),
                 )
             })
+            // Where link players may show (drawn first, so they know it before the rows do).
+            .children(self.players_area())
             .child(list(self.list.current(), cx.processor(|this, ix: usize, window, cx| this.render_message(ix, window, cx))).flex_1())
             .children(self.render_unread_bar(cx))
             .into_any_element()
