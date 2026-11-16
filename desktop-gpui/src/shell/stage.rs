@@ -221,7 +221,19 @@ impl Shell {
         } else {
             self.render_stage_bar(stage_width, cx).into_any_element()
         };
-        let left = div().w(px(stage_width)).h_full().flex().flex_col().children(self.render_important_banner(&stage.channel_id, cx)).child(tiles).children(self.render_soundboard(stage_width, window, cx)).child(bar);
+        let left = div()
+            .relative()
+            .w(px(stage_width))
+            .h_full()
+            .flex()
+            .flex_col()
+            .children(self.render_important_banner(&stage.channel_id, cx))
+            .child(tiles)
+            .children(self.render_soundboard(stage_width, window, cx))
+            .child(bar)
+            // QaBanner and QaPanel, over the stage.
+            .children(self.render_qa_banner())
+            .children(self.render_qa_panel(cx));
         let mut split = div().flex_1().min_h_0().flex().child(left);
         if stage.chat_open {
             split = split.child(self.render_voice_chat(stage, chat_width, cx));

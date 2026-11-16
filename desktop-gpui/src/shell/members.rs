@@ -260,6 +260,12 @@ impl gpui::Render for Shell {
         self.sync_badge();
         self.players_tick(window);
         self.speech_tick(window, cx);
+        self.qa_tick(cx);
+        // HOFFLE_DEV_QA=1: the Q&A panel, once the room's Q&A is live.
+        static DEV_QA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if std::env::var_os("HOFFLE_DEV_QA").is_some() && self.qa_available() && !DEV_QA.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            self.toggle_qa(window, cx);
+        }
         self.dev_tts_log(cx);
         // HOFFLE_DEV_SPEAK=<lang>:<text>: read that aloud once (muted under HOFFLE_DEV_MUTED).
         static DEV_SPEAK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);

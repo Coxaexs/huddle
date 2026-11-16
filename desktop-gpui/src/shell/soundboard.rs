@@ -247,6 +247,17 @@ impl Shell {
                 })),
             );
         }
+        // Q&A, while you are in the call (stage rooms have their own button).
+        if self.qa_available() {
+            let open = self.qa_open_count();
+            menu = menu.child(
+                item("more-qa", "message-circle-question-mark", Theme::coral(), format!("{}{}", crate::i18n::t("voiceStage.qa"), if open > 0 { format!(" ({open})") } else { String::new() }))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.soundboard.more = false;
+                        this.toggle_qa(window, cx);
+                    })),
+            );
+        }
         Some(gpui::deferred(menu).with_priority(1).into_any_element())
     }
 

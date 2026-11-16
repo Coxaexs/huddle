@@ -29,6 +29,7 @@ mod embed_player;
 mod dnd_card;
 mod dnd_rolls;
 mod tts;
+mod qa;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -321,6 +322,8 @@ pub struct Shell {
     willpower: dnd_rolls::Willpower,
     /// The hidden page that reads /tts messages aloud.
     speech: tts::Speech,
+    /// The call's live Q&A.
+    qa: qa::Qa,
     fx_overlay: std::rc::Rc<std::cell::RefCell<Option<(String, crate::webview::WebOverlay)>>>,
     /// Achievement unlock popups, and whether the periodic check has started.
     unlocks: achievement_toast::Toasts,
@@ -673,6 +676,7 @@ impl Shell {
             dnd_expanded: Default::default(),
             willpower: Default::default(),
             speech: Default::default(),
+            qa: Default::default(),
             unlocks: Default::default(),
             ach_checks: false,
             forced_mutes: HashSet::new(),
@@ -1667,6 +1671,7 @@ impl Shell {
             }
             "dm-call" => self.on_dm_call(&value, cx),
             "tts-stop" => self.on_tts_stop(&value, cx),
+            "qa" => self.on_qa(&value, cx),
             // Someone played a soundboard sound in the room you are in.
             "soundboard" => {
                 let room = value.get("channelId").and_then(Value::as_str).unwrap_or_default();
