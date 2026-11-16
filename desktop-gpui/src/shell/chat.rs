@@ -585,8 +585,10 @@ impl Shell {
             body = body.child(card);
         }
         let column = f32::from(self.text_column_width(window));
-        body = body.children(self.render_attachments(message, column, window, cx));
+        // message-row.tsx: the body (with its link previews), then invite cards, then attachments.
         body = body.children(self.render_link_extras(message, column, window, cx));
+        body = body.children(self.render_invite_cards(message, column, cx));
+        body = body.children(self.render_attachments(message, column, window, cx));
         if !message.reactions.is_empty() {
             body = body.child(self.render_reactions(message, cx));
         }

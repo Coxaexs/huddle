@@ -17,6 +17,7 @@ mod games;
 mod rota;
 mod voice_card;
 mod chperm;
+mod invite_card;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -292,6 +293,8 @@ pub struct Shell {
     unfurl_pending: std::cell::RefCell<HashSet<String>>,
     /// Messages that message links point at (`None`: unavailable to us).
     linked_messages: std::cell::RefCell<HashMap<String, Option<serde_json::Value>>>,
+    invites: std::cell::RefCell<HashMap<String, serde_json::Value>>,
+    invites_loading: std::cell::RefCell<HashSet<String>>,
     /// A settings card's state since its buttons were used (the web keeps it per card).
     music_settings: HashMap<String, serde_json::Map<String, serde_json::Value>>,
     polls: std::cell::RefCell<HashMap<String, poll::PollState>>,
@@ -625,6 +628,8 @@ impl Shell {
             unfurls: Default::default(),
             unfurl_pending: Default::default(),
             linked_messages: Default::default(),
+            invites: Default::default(),
+            invites_loading: Default::default(),
             music_settings: HashMap::new(),
             polls: Default::default(),
             settings: None,

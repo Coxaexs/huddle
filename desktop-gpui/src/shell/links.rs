@@ -104,7 +104,10 @@ impl Shell {
             }
             return out;
         }
-        for (n, url) in links.iter().take(3).enumerate() {
+        // Invite links get their server card instead (message-body.tsx filters them out first).
+        let host = self.own_host();
+        let links: Vec<&String> = links.iter().filter(|url| super::invite_card::invite_codes(url, &host).is_empty()).collect();
+        for (n, url) in links.into_iter().take(3).enumerate() {
             if super::message_link::parse(url).is_some() {
                 out.extend(self.render_message_link(message, n, url, column, cx));
                 continue;
