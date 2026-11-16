@@ -730,12 +730,17 @@ impl Shell {
             body = body.child(card);
         }
         if message.kind.as_deref() == Some("dnd")
-            && let Some(card) = self.render_roll_card(message)
+            && let Some(card) = self.render_roll_card(message, cx)
         {
             body = body.child(card);
         }
         if message.kind.as_deref() == Some("dnd")
             && let Some(card) = self.render_dnd_card(message, f32::from(self.text_column_width(window)), cx)
+        {
+            body = body.child(card);
+        }
+        if message.kind.as_deref() == Some("dnd")
+            && let Some(card) = self.render_dnd_roll(message, cx)
         {
             body = body.child(card);
         }

@@ -27,6 +27,7 @@ mod dm_call;
 mod group_dm;
 mod embed_player;
 mod dnd_card;
+mod dnd_rolls;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -315,6 +316,8 @@ pub struct Shell {
     link_players: embed_player::SharedPlayers,
     /// D&D cards opened past their fold.
     dnd_expanded: std::collections::HashSet<String>,
+    /// V5 cards' Willpower picks and rerolls.
+    willpower: dnd_rolls::Willpower,
     fx_overlay: std::rc::Rc<std::cell::RefCell<Option<(String, crate::webview::WebOverlay)>>>,
     /// Achievement unlock popups, and whether the periodic check has started.
     unlocks: achievement_toast::Toasts,
@@ -665,6 +668,7 @@ impl Shell {
             fx_overlay: Default::default(),
             link_players: Default::default(),
             dnd_expanded: Default::default(),
+            willpower: Default::default(),
             unlocks: Default::default(),
             ach_checks: false,
             forced_mutes: HashSet::new(),

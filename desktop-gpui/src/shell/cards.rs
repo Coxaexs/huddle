@@ -1,7 +1,7 @@
 //! Bot cards that take the place of a message's text: LyricsNow (components/lyrics-now.tsx) and
 //! the /ask answer (components/ai-answer-card.tsx).
 
-use gpui::{AnyElement, FontWeight, Hsla, Pixels, SharedString, Window, div, prelude::*, px, rgb, rgba};
+use gpui::{AnyElement, Context, FontWeight, Hsla, Pixels, SharedString, Window, div, prelude::*, px, rgb, rgba};
 use serde_json::Value;
 
 use super::Shell;
@@ -18,12 +18,8 @@ pub fn replaces_text(message: &Message) -> bool {
         Some("game") => message.payload.as_ref().and_then(|p| p.get("game")).is_some(),
         Some("voice") => message.audio.as_ref().is_some_and(|a| !a.is_empty()),
         Some(k) if super::music_cards::KINDS.contains(&k) => message.payload.is_some(),
-        // DndCard stands in for the text, except the kinds this app does not draw yet (V5, rouse,
-        // and a face-down secret roll).
-        Some("dnd") => message.payload.as_ref().is_some_and(|p| {
-            let kind = p.get("type").and_then(Value::as_str).unwrap_or("");
-            !matches!(kind, "v5" | "rouse") && !(kind == "roll" && p.get("secret").and_then(Value::as_bool) == Some(true))
-        }),
+        // DndCard stands in for the text.
+        Some("dnd") => message.payload.is_some(),
         _ => false,
     }
 }
@@ -250,11 +246,16 @@ fn roll_accent(nat20: bool, nat1: bool) -> Hsla {
 impl Shell {
     /// DndCard's RollCard (components/dnd-card.tsx): the total in a box, what was rolled, each die,
     /// "Roll again".
-    pub(super) fn render_roll_card(&self, message: &Message) -> Option<AnyElement> {
+    pub(super) fn render_roll_card(&self, message: &Message, cx: &mut Context<Self>) -> Option<AnyElement> {
         let p = message.payload.as_ref()?;
         if p.get("type").and_then(Value::as_str) != Some("roll") || p.get("secret").and_then(Value::as_bool) == Some(true) {
             return None;
         }
+        Some(self.render_roll_value(&message.id, p, cx))
+    }
+
+    /// RollCard for a roll's payload (also the roller's own copy of a secret roll).
+    pub(super) fn render_roll_value(&self, key: &str, p: &Value, cx: &mut Context<Self>) -> AnyElement {
         let dice = p.get("dice").and_then(Value::as_array).cloned().unwrap_or_default();
         let kept_d20: Vec<i64> = dice
             .iter()
@@ -373,8 +374,7 @@ impl Shell {
         } else {
             "radial-gradient(circle at 100% 0, rgba(167, 139, 250, 0.14), transparent 45%)"
         };
-        Some(
-            div()
+        div()
                 .relative()
                 .mt(px(8.))
                 .max_w(px(760.))
@@ -410,8 +410,19 @@ impl Shell {
                 ))
                 .child(div().flex_1().min_w_0().flex().flex_col().justify_center().child(body))
                 .when(!expression.is_empty(), |d| {
+                    // rollCommandFor(): the same dice, keeping advantage, disadvantage or a crit.
+                    let mode = p.get("mode").and_then(Value::as_str).unwrap_or("");
+                    let extra = if mode.contains("advantage") { if mode.contains("dis") { " dis" } else { " adv" } } else if mode.contains("critical") { " crit" } else { "" };
+                    let label = p.get("label").and_then(Value::as_str).filter(|s| !s.is_empty()).map(|l| format!(" {l}")).unwrap_or_default();
+                    let verb = p.get("rollCommand").and_then(Value::as_str).unwrap_or("roll");
+                    let command = format!("/{verb} {expression}{extra}{label}");
                     d.child(
                         div()
+                            .id(SharedString::from(format!("roll-again-{key}")))
+                            .cursor_pointer()
+                            .hover(move |s| s.bg(accent.opacity(0.12)))
+                            .tooltip(ui::tooltip("Roll the same thing yourself"))
+                            .on_click(cx.listener(move |this, _, _, cx| this.run_command(command.clone(), cx)))
                             .flex_none()
                             .h(px(31.4))
                             .px(px(11.))
@@ -426,7 +437,6 @@ impl Shell {
                             .child("Roll again"),
                     )
                 })
-                .into_any_element(),
-        )
+                .into_any_element()
     }
 }

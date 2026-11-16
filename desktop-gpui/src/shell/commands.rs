@@ -656,6 +656,10 @@ impl Shell {
                     if let Some(error) = v.get("error").and_then(Value::as_str) {
                         return this.post_bot_message(error.to_string(), bot, cx);
                     }
+                    // A /gmroll: this computer keeps the real card, for the roller's own copy.
+                    if let (Some(seed), Some(card)) = (v.pointer("/roll/animationSeed").and_then(Value::as_str), v.get("secretCard").filter(|c| c.is_object())) {
+                        super::dnd_rolls::remember_secret_roll(seed, card);
+                    }
                     if v.get("posted").and_then(Value::as_bool).unwrap_or(false) {
                         this.pending_command = None;
                         return;
