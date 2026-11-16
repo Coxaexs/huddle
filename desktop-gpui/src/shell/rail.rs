@@ -182,10 +182,10 @@ impl Shell {
 
     /// "online", "idle", "dnd" or "offline", from the hub's presence and the member's chosen status.
     pub(super) fn presence_of(&self, user_id: &str) -> String {
-        // Your own dot follows your own choice (presenceOf in use-shell-voice.ts); "online" until
-        // the status picker is native.
+        // Your own dot follows your own choice (presenceOf in use-shell-voice.ts): invisible stays
+        // invisible to you.
         if user_id == self.me.id {
-            return if self.connected { "online".into() } else { "offline".into() };
+            return if self.connected { self.my_status() } else { "offline".into() };
         }
         if !self.online.contains(user_id) {
             return "offline".into();

@@ -189,7 +189,7 @@ pub(super) struct Settings {
     lastfm: Entity<TextInput>,
     track: Entity<TextInput>,
     /// Voice & Video: devices (None until listed), the open select, and the mic choices.
-    audio: crate::voice::AudioPrefs,
+    pub(super) audio: crate::voice::AudioPrefs,
     devices: Option<(Vec<(String, String)>, Vec<(String, String)>)>,
     open_select: Option<&'static str>,
     mic: MicPrefs,

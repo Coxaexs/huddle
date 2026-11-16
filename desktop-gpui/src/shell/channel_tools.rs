@@ -28,6 +28,8 @@ pub(super) enum PromptKind {
     EmojiName,
     /// Server settings → Integrations → Tabletop: homebrew JSON.
     Homebrew,
+    /// The status menu: Set a status / Edit status.
+    CustomStatus,
 }
 
 /// CREATABLE_CHANNEL_KINDS with CHANNEL_KIND_COPY: kind, label, icon, title, message, placeholder.
@@ -308,6 +310,7 @@ impl Shell {
             }
             PromptKind::EmojiName => self.upload_emoji(value, cx),
             PromptKind::Homebrew => self.import_homebrew(value, cx),
+            PromptKind::CustomStatus => self.save_custom_status(value, cx),
             PromptKind::CreateRole => {
                 if value.is_empty() {
                     return;

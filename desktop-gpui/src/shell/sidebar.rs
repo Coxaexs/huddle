@@ -631,13 +631,10 @@ impl Shell {
     /// `.discord-user-footer`: avatar, name, status, then mic, headphones and settings.
     pub(super) fn render_footer(&self, window: &gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
         // user-footer.tsx: your custom status, else your presence (also while in a call).
-        let status = match &self.me.custom_status {
-            Some(serde_json::Value::String(text)) if !text.is_empty() => text.clone(),
-            Some(serde_json::Value::Object(o)) if o.get("text").and_then(|v| v.as_str()).is_some_and(|t| !t.is_empty()) => {
-                o["text"].as_str().unwrap_or_default().to_string()
-            }
-            _ => t("presence.online"),
-        };
+        let presence = self.my_status();
+        let status = self.my_custom_status().unwrap_or_else(|| t(&format!("presence.{presence}")));
+        // `.user-footer-presence-dot`: your chosen presence (grey while not connected).
+        let dot_color = if self.connected { super::status_menu::presence_color(&presence) } else { Theme::muted() };
         let control = |id: &'static str, name: &'static str, off: bool| {
             div()
                 .id(id)
@@ -650,6 +647,21 @@ impl Shell {
                 .cursor_pointer()
                 .hover(|s| s.bg(Theme::hover()))
                 .child(icon(name, 18., if off { Theme::badge() } else { Theme::muted() }))
+        };
+        // `.user-footer-chevron`: its own button beside the mic / headphones one.
+        let chevron = |id: &'static str, which: &'static str, label: &'static str| {
+            div()
+                .id(id)
+                .h(px(32.))
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .child(icon("chevron-down", 12., Theme::muted()))
+                .tooltip(ui::tooltip(t(label)))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.toggle_device_menu(which, cx);
+                }))
         };
         div()
             .absolute()
@@ -667,7 +679,19 @@ impl Shell {
             .flex()
             .items_center()
             .gap(px(8.))
+            // `.user-footer-profile`: avatar and name open the status menu.
             .child(
+                div()
+                    .id("footer-profile")
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_status_menu(cx)))
+                    .child(
                 div()
                     .relative()
                     .ml(px(6.))
@@ -677,7 +701,7 @@ impl Shell {
                             .absolute()
                             .right(px(-1.))
                             .bottom(px(-1.))
-                            .child(ui::presence_dot(if self.connected { "online" } else { "offline" }, 10., rgb(0x16131f))),
+                            .child(div().size(px(10.)).rounded_full().bg(dot_color).border_2().border_color(rgb(0x16131f))),
                     ),
             )
             .child(
@@ -705,18 +729,19 @@ impl Shell {
                             .text_color(Theme::muted())
                             .child(status),
                     ),
+            ),
             )
             // Simple keeps only the settings button here (the call has its own buttons).
             .when(!self.simple(), |d| {
                 d.child(
                     control("mic", if self.muted { "mic-off" } else { "mic" }, self.muted)
-                        .child(icon("chevron-down", 12., Theme::muted()))
+                        .child(chevron("mic-chevron", "mic", "footer.inputOptions"))
                         .tooltip(ui::tooltip(t(if self.muted { "footer.unmute" } else { "footer.mute" })))
                         .on_click(cx.listener(|this, _, _, cx| this.toggle_mute(cx))),
                 )
                 .child(
                     control("deafen", if self.deafened { "headphone-off" } else { "headphones" }, self.deafened)
-                        .child(icon("chevron-down", 12., Theme::muted()))
+                        .child(chevron("deafen-chevron", "speaker", "footer.outputOptions"))
                         .tooltip(ui::tooltip(t(if self.deafened { "footer.undeafen" } else { "footer.deafen" })))
                         .on_click(cx.listener(|this, _, _, cx| this.toggle_deafen(cx))),
                 )

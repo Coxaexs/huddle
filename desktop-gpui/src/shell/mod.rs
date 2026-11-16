@@ -18,6 +18,7 @@ mod rota;
 mod voice_card;
 mod chperm;
 mod invite_card;
+mod status_menu;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -265,6 +266,14 @@ pub struct Shell {
     players: HashMap<String, Value>,
     /// The small menu over the user card.
     footer_menu: bool,
+    /// The presence menu from the user card, what you picked there (None: as stored), and the
+    /// "Clear after" choice for custom statuses.
+    status_open: bool,
+    my_status: Option<String>,
+    status_clear: String,
+    /// The user card's mic / headphones device list ("mic" or "speaker") and the devices found.
+    device_menu: Option<&'static str>,
+    footer_devices: Option<(Vec<(String, String)>, Vec<(String, String)>)>,
     /// Hub clock minus ours, in ms: voice seat timers count in the hub's time.
     clock_offset: f64,
     /// Messages whose spoilers were clicked open.
@@ -554,6 +563,11 @@ impl Shell {
             friends_search: cx.new(|cx| TextInput::new(crate::i18n::t("friends.searchPlaceholder"), cx).bare().small()),
             players: HashMap::new(),
             footer_menu: false,
+            status_open: false,
+            my_status: None,
+            status_clear: status_menu::load_clear_choice(),
+            device_menu: None,
+            footer_devices: None,
             clock_offset: 0.,
             revealed: HashSet::new(),
             composer,

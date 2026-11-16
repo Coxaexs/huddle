@@ -521,6 +521,9 @@ impl gpui::Render for Shell {
                 self.composer_menu = true;
             }
         }
+        if !self.me.id.is_empty() {
+            self.dev_status_menu(cx);
+        }
         // Development: HOFFLE_DEV_JUMP=<message id> jumps to that message in the open channel.
         static DEV_JUMP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if let Ok(id) = std::env::var("HOFFLE_DEV_JUMP")
@@ -734,7 +737,9 @@ impl gpui::Render for Shell {
                     .child(self.render_rail(cx))
                     .child(if self.home { self.render_home_sidebar(cx).into_any_element() } else { self.render_sidebar(window, cx).into_any_element() })
                     .child(self.render_footer(window, cx))
-                    .child(self.render_footer_menu(cx)),
+                    .child(self.render_footer_menu(cx))
+                    .children(self.render_status_menu(cx))
+                    .children(self.render_device_menu(cx)),
             )
             .when(self.home && self.channel_id.is_none(), |d| {
                 // The friends view sits in the same card, with a 10px gap on the right (no members panel).
