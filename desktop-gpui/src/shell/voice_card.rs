@@ -39,6 +39,9 @@ pub(super) struct VoiceState {
     show_transcript: std::collections::HashSet<String>,
     transcribing: std::collections::HashSet<String>,
     errors: HashMap<String, String>,
+    /// A voice message being recorded, and whether it is on its way.
+    recording: Option<crate::recorder::Recorder>,
+    sending: bool,
 }
 
 /// formatDuration().
@@ -342,5 +345,223 @@ impl Shell {
             None => div().text_color(ink).child(transcript.filter(|t| !t.is_empty()).unwrap_or_else(|| "No speech in this clip.".into())),
         };
         Some(div().w(px(card_w)).child(player).child(div().mt(px(6.)).px(px(12.)).py(px(6.)).border_l_2().border_color(lavender).text_size(px(13.)).line_height(px(18.85)).child(line)).into_any_element())
+    }
+}
+
+
+impl Shell {
+    pub(super) fn dev_record(&mut self, secs: u64, cx: &mut Context<Self>) {
+        // Never a system prompt from a test run: record only where the mic is already allowed.
+        let permission = crate::recorder::permission();
+        crate::trace(format!("voice message: microphone permission {permission}"));
+        if permission != 3 {
+            return;
+        }
+        self.start_recording(cx);
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_secs(secs)).await;
+            this.update(cx, |this, cx| this.send_recording(cx)).ok();
+        })
+        .detach();
+    }
+
+    pub(super) fn is_recording(&self) -> bool {
+        self.voice_msgs.recording.is_some() || self.voice_msgs.sending
+    }
+
+    /// start(): the mic on, the meter running, stopping by itself at five minutes.
+    pub(super) fn start_recording(&mut self, cx: &mut Context<Self>) {
+        if self.is_recording() || self.channel_id.is_none() {
+            return;
+        }
+        match crate::recorder::permission() {
+            3 => {}
+            // Not asked yet: macOS asks, and recording starts once it is allowed.
+            0 => {
+                let (tx, rx) = std::sync::mpsc::channel();
+                crate::recorder::ask_permission(move |granted| {
+                    let _ = tx.send(granted);
+                });
+                cx.spawn(async move |this, cx| {
+                    let granted = cx.background_executor().spawn(async move { rx.recv().unwrap_or(false) }).await;
+                    this.update(cx, |this, cx| {
+                        if granted {
+                            this.start_recording(cx);
+                        } else {
+                            this.status = Some("Microphone access was blocked.".into());
+                            cx.notify();
+                        }
+                    })
+                    .ok();
+                })
+                .detach();
+                return;
+            }
+            _ => {
+                self.status = Some("Microphone access was blocked. Allow Hoffle in System Settings → Privacy & Security → Microphone.".into());
+                cx.notify();
+                return;
+            }
+        }
+        match crate::recorder::Recorder::start() {
+            Ok(rec) => {
+                crate::trace(format!("voice message: recording to {}", rec.path.display()));
+                self.voice_msgs.recording = Some(rec);
+            }
+            Err(e) => {
+                crate::trace(format!("voice message: no recording: {e}"));
+                self.status = Some(e.into());
+                cx.notify();
+                return;
+            }
+        }
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(std::time::Duration::from_millis(100)).await;
+                let go_on = this
+                    .update(cx, |this, cx| {
+                        let Some(rec) = this.voice_msgs.recording.as_mut() else { return false };
+                        rec.sample();
+                        let full = rec.seconds() >= crate::recorder::MAX_SECONDS;
+                        if full {
+                            this.send_recording(cx);
+                        }
+                        cx.notify();
+                        !full
+                    })
+                    .unwrap_or(false);
+                if !go_on {
+                    break;
+                }
+            }
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn cancel_recording(&mut self, cx: &mut Context<Self>) {
+        if let Some(rec) = self.voice_msgs.recording.take() {
+            rec.cancel();
+        }
+        cx.notify();
+    }
+
+    /// finish(true): the file up as a voice upload, then the message with its length and waveform.
+    fn send_recording(&mut self, cx: &mut Context<Self>) {
+        let Some(rec) = self.voice_msgs.recording.take() else { return };
+        let (path, seconds, waveform) = rec.finish();
+        crate::trace(format!("voice message: {seconds:.2}s, {} bytes", std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0)));
+        let Some(channel) = self.channel_id.clone() else { return };
+        if seconds < 0.5 {
+            let _ = std::fs::remove_file(&path);
+            cx.notify();
+            return;
+        }
+        self.voice_msgs.sending = true;
+        let reply = self.reply_to.take().map(|(id, _)| id);
+        let client = self.client.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    let bytes = std::fs::read(&path)?;
+                    let _ = std::fs::remove_file(&path);
+                    let name = format!("voice-{}.m4a", chrono::Utc::now().timestamp_millis());
+                    let key = client.upload_voice(&name, "audio/mp4", &bytes)?;
+                    let encoded: String = url::form_urlencoded::byte_serialize(key.as_bytes()).collect();
+                    let mut body = json!({
+                        "channelId": channel,
+                        "content": format!("Voice message ({})", mmss(seconds)),
+                        "audio": format!("/hangout/api/uploads/{}", encoded.replace('+', "%20")),
+                        "kind": "voice",
+                        "payload": { "voice": { "durationMs": (seconds * 1000.).round() as u64, "waveform": waveform } },
+                    });
+                    if let Some(reply) = reply {
+                        body["replyTo"] = json!(reply);
+                    }
+                    client.post_message(body)
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                this.voice_msgs.sending = false;
+                match result {
+                    Ok(message) => this.add_message(message, cx),
+                    Err(e) => {
+                        crate::trace(format!("voice message: not sent: {e}"));
+                        this.status = Some(if e.to_string().is_empty() { "Couldn't send that voice message.".to_string() } else { e.to_string() }.into())
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// VoiceRecordingBar: discard, the dot, the time, Paused, the live meter, pause / resume, send.
+    pub(super) fn render_recording_bar(&self, cx: &mut Context<Self>) -> AnyElement {
+        let ink: Hsla = Theme::ink().into();
+        let muted: Hsla = Theme::muted().into();
+        let lavender: Hsla = Theme::lavender().into();
+        let red: Hsla = rgb(0xed4245).into();
+        let sending = self.voice_msgs.sending;
+        let rec = self.voice_msgs.recording.as_ref();
+        let paused = rec.is_some_and(|r| r.paused);
+        let levels: Vec<f32> = rec.map(|r| r.levels.iter().rev().take(40).rev().copied().collect()).unwrap_or_default();
+        let mut meter = div().flex_1().min_w_0().h(px(28.)).flex().items_center().justify_end().gap(px(2.)).overflow_hidden();
+        for i in 0..40 {
+            let level = if i + levels.len() >= 40 { levels[i + levels.len() - 40] } else { 0. };
+            meter = meter.child(div().flex_none().w(px(3.)).h(px(28. * (level * 100.).max(8.) / 100.)).rounded(px(2.)).bg(lavender));
+        }
+        let square = |id: &'static str, icon: &'static str, danger: bool| {
+            div()
+                .id(id)
+                .flex_none()
+                .size(px(34.))
+                .rounded(px(10.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_color(muted)
+                .when(!sending, |d| d.cursor_pointer())
+                .hover(move |s| if danger { s.bg(red.opacity(0.12)) } else { s.bg(ink.opacity(0.1)) })
+                .child(ui::icon(icon, 16., muted))
+        };
+        let seconds = rec.map(|r| r.seconds()).unwrap_or(0.);
+        div()
+            .flex_1()
+            .min_w_0()
+            .pl(px(2.))
+            .flex()
+            .items_center()
+            .gap(px(10.))
+            .child(square("rec-cancel", "trash-2", true).tooltip(ui::tooltip("Discard (Esc)".to_string())).when(!sending, |d| d.on_click(cx.listener(|this, _, _, cx| this.cancel_recording(cx)))))
+            .child(div().flex_none().size(px(10.)).rounded_full().bg(if sending { lavender } else if paused { muted } else { red }))
+            .child(div().flex_none().min_w(px(44.)).text_size(px(13.)).font_weight(FontWeight::BOLD).text_color(ink).child(if sending { "Sending…".to_string() } else { mmss(seconds) }))
+            .when(paused, |d| d.child(div().flex_none().text_size(px(12.)).text_color(muted).child("Paused")))
+            .child(meter)
+            .child(square("rec-pause", if paused { "mic" } else { "pause" }, false).tooltip(ui::tooltip(if paused { "Resume".to_string() } else { "Pause".to_string() })).when(!sending, |d| {
+                d.on_click(cx.listener(|this, _, _, cx| {
+                    if let Some(rec) = this.voice_msgs.recording.as_mut() {
+                        rec.toggle_pause();
+                    }
+                    cx.notify();
+                }))
+            }))
+            .child(
+                div()
+                    .id("rec-send")
+                    .flex_none()
+                    .size(px(32.))
+                    .rounded(px(12.))
+                    .bg(Theme::send())
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .when(!sending, |d| d.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.send_recording(cx))))
+                    .child(ui::icon("send", 15., rgb(0x15121f))),
+            )
+            .into_any_element()
     }
 }

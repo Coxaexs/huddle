@@ -2789,6 +2789,7 @@ name = "hoffle-lite"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "block",
  "chrono",
  "cocoa 0.26.0",
  "dirs 7.0.0",

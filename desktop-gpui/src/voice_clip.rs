@@ -158,8 +158,39 @@ fn ogg(data: &[u8]) -> Option<OpusStream> {
     Some(OpusStream { packets, channels, pre_skip })
 }
 
+/// Anything else (Safari's and this app's .m4a): macOS's afconvert makes a 48 kHz WAV of it.
+fn convert(data: &[u8]) -> Option<Pcm> {
+    let dir = std::env::temp_dir();
+    let stamp = format!("{}-{}", std::process::id(), data.len());
+    let (input, output) = (dir.join(format!("hoffle-clip-{stamp}.m4a")), dir.join(format!("hoffle-clip-{stamp}.wav")));
+    std::fs::write(&input, data).ok()?;
+    let ok = std::process::Command::new("/usr/bin/afconvert").arg("-f").arg("WAVE").arg("-d").arg("LEI16@48000").arg(&input).arg(&output).status().ok()?.success();
+    let wav = if ok { std::fs::read(&output).ok() } else { None };
+    let _ = std::fs::remove_file(&input);
+    let _ = std::fs::remove_file(&output);
+    let wav = wav?;
+    // The fmt chunk's channel count, then the data chunk's samples.
+    let mut i = 12;
+    let (mut channels, mut samples) = (1u16, Vec::new());
+    while i + 8 <= wav.len() {
+        let size = u32::from_le_bytes(wav[i + 4..i + 8].try_into().ok()?) as usize;
+        let body = &wav[i + 8..(i + 8 + size).min(wav.len())];
+        match &wav[i..i + 4] {
+            b"fmt " if body.len() >= 4 => channels = u16::from_le_bytes([body[2], body[3]]).max(1),
+            b"data" => samples = body.chunks_exact(2).map(|c| i16::from_le_bytes([c[0], c[1]])).collect(),
+            _ => {}
+        }
+        i += 8 + size + size % 2;
+    }
+    (!samples.is_empty()).then_some(Pcm { samples, channels })
+}
+
 /// Decodes a voice message's file.
 pub fn decode(data: &[u8]) -> Option<Pcm> {
+    let opus = data.starts_with(b"OggS") || data.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]);
+    if !opus {
+        return convert(data);
+    }
     let stream = if data.starts_with(b"OggS") { ogg(data) } else { webm(data) }?;
     let channels = stream.channels.clamp(1, 2);
     let mut error = 0;

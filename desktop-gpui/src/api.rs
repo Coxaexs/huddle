@@ -326,9 +326,29 @@ impl Client {
 
     /// POST /api/uploads, answering with what it gave back (`key` and `url`).
     pub fn upload_reply(&self, field: &str, name: &str, mime: &str, bytes: &[u8]) -> Result<Value> {
+        self.upload_with(field, name, mime, bytes, &[])
+    }
+
+    /// A voice message's sound (`purpose=voice`, as the web sends it).
+    pub fn upload_voice(&self, name: &str, mime: &str, bytes: &[u8]) -> Result<String> {
+        let reply = self.upload_with("file", name, mime, bytes, &[("purpose", "voice")])?;
+        reply.get("key").and_then(Value::as_str).map(str::to_string).ok_or_else(|| anyhow::anyhow!("The upload gave no key back."))
+    }
+
+    /// POST /api/messages with a body of its own (voice messages: kind, audio, payload).
+    pub fn post_message(&self, body: Value) -> Result<Message> {
+        let reply: Value = self.post("/api/messages", body)?;
+        let message = reply.get("message").cloned().unwrap_or(reply);
+        Ok(serde_json::from_value(message)?)
+    }
+
+    fn upload_with(&self, field: &str, name: &str, mime: &str, bytes: &[u8], extra: &[(&str, &str)]) -> Result<Value> {
         let boundary = format!("hoffle{:016x}", rand_u64());
         let safe = name.replace(['"', '\r', '\n'], "_");
         let mut body = Vec::with_capacity(bytes.len() + 256);
+        for (key, value) in extra {
+            body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n{value}\r\n").as_bytes());
+        }
         body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{field}\"; filename=\"{safe}\"\r\nContent-Type: {mime}\r\n\r\n").as_bytes());
         body.extend_from_slice(bytes);
         body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());

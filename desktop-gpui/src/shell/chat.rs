@@ -1140,6 +1140,7 @@ impl Shell {
         // Simple has no voice-message button: the paper plane shows even when empty.
         let simple = self.simple();
         let empty = self.composer.read(cx).is_empty() && self.pending_files.is_empty() && !simple;
+        let recording = self.is_recording();
         let small = |name: &'static str, title: String| {
             div()
                 .id(name)
@@ -1221,6 +1222,9 @@ impl Shell {
                     .flex()
                     .items_center()
                     .gap(px(if simple { 5. } else { 4. }))
+                    // While recording, the bar takes the row (VoiceRecordingBar).
+                    .when(recording, |d| d.child(self.render_recording_bar(cx)))
+                    .when(!recording, |d| d
                     .child(
                         div()
                             .id("attach")
@@ -1298,8 +1302,11 @@ impl Shell {
                             .tooltip(ui::tooltip(if empty { "Record a voice message".to_string() } else { t("composer.sendMessage") }))
                             // `.send-button`: the paper plane in dark ink; the mic in white.
                             .child(if empty { icon("mic", 16., gpui::white()) } else { icon("send", 15., gpui::rgb(0x15121f)) })
-                            .on_click(cx.listener(|this, _, _, cx| this.send_composer(cx))),
-                    ),
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                // The mic: an empty composer records a voice message instead.
+                                if empty { this.start_recording(cx) } else { this.send_composer(cx) }
+                            })),
+                    )),
             )
             .child(
                 div()

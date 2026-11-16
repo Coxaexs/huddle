@@ -30,6 +30,7 @@ qrcodegen = "1.8.0"
 # Dock badge, notifications and the menu-bar item (src/desktop.rs); both already come with gpui.
 cocoa = "0.26"
 objc = "0.2.7"
+block = "0.1.6"
 
 [profile.dev]
 debug = 0

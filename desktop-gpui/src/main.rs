@@ -1,6 +1,7 @@
 //! Hoffle Lite, drawn natively with GPUI instead of a web view.
 
 mod voice_clip;
+mod recorder;
 mod api;
 mod assets;
 mod cosmetics;

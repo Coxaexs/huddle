@@ -29,7 +29,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>$version</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>NSHighResolutionCapable</key><true/>
-  <key>NSMicrophoneUsageDescription</key><string>Hoffle uses the microphone when you join a voice room.</string>
+  <key>NSMicrophoneUsageDescription</key><string>Hoffle uses the microphone when you join a voice room or record a voice message.</string>
 </dict>
 </plist>
 PLIST
