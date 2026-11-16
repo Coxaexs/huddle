@@ -209,11 +209,79 @@ pub fn file_icon(name: &str) -> AnyElement {
 
 impl Shell {
     /// `.message-file-card`: icon, name and description, "Download"; opens the file.
-    pub(super) fn render_file_card(&self, message: &Message, n: usize, file: &FileRef) -> AnyElement {
+    pub(super) fn render_file_card(&self, message: &Message, n: usize, file: &FileRef, cx: &mut Context<Self>) -> AnyElement {
         let link = self.client.absolute(&file.url);
         let pdf = file.name.to_lowercase().ends_with(".pdf");
-        let small = if pdf { "PDF document · view and fill in Hoffle" } else { description(&file.name) };
         let muted: Hsla = Theme::muted().into();
+        // isSpoilerFile(): covered until clicked.
+        let key = format!("file:{}:{}", message.id, file.url);
+        let spoiler = {
+            let (name, url) = (file.name.to_lowercase(), file.url.to_lowercase());
+            name.contains("spoiler_") || name.contains("spoiler-") || url.contains("spoiler_") || url.contains("spoiler-") || url.contains("?spoiler") || url.contains("&spoiler")
+        };
+        let ext = file.name.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default();
+        let video = matches!(ext.as_str(), "mp4" | "webm" | "mov" | "m4v" | "ogv" | "mkv");
+        let audio = matches!(ext.as_str(), "mp3" | "wav" | "ogg" | "m4a" | "aac" | "flac" | "opus");
+        let shell = |id: String| {
+            div()
+                .id(SharedString::from(id))
+                .relative()
+                .mt(px(8.))
+                .w(px(430.))
+                .max_w_full()
+                .p(px(12.))
+                .rounded(px(12.))
+                .bg(Theme::panel())
+                .border_1()
+                .border_color(Theme::line())
+                .flex()
+                .items_center()
+                .gap(px(12.))
+        };
+        if spoiler && !self.revealed.contains(&key) {
+            let clean = {
+                let lower = file.name.to_lowercase();
+                if lower.starts_with("spoiler_") || lower.starts_with("spoiler-") { file.name[8..].to_string() } else { file.name.clone() }
+            };
+            return shell(format!("file-{}-{n}", message.id))
+                .cursor_pointer()
+                .child(div().flex_none().size(px(40.)).rounded(px(10.)).bg(gpui::hsla(38. / 360., 0.92, 0.5, 0.2)).flex().items_center().justify_center().child(ui::icon("eye-off", 14., rgb(0xfcd34d))))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .gap(px(3.))
+                        .child(div().truncate().text_size(px(16.)).line_height(px(24.)).font_weight(FontWeight::BOLD).text_color(rgb(0xfde68a)).child(if video { "Spoiler Video" } else if audio { "Spoiler Audio" } else { "Spoiler Attachment" }))
+                        .child(div().truncate().text_size(px(12.8)).line_height(px(19.2)).text_color(muted).child(format!("Hidden content · click to reveal {clean}"))),
+                )
+                .child(div().flex_none().text_size(px(12.)).line_height(px(18.)).font_weight(FontWeight::BOLD).text_color(rgb(0xfcd34d)).child("Reveal"))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.revealed.insert(key.clone());
+                    cx.notify();
+                }))
+                .into_any_element();
+        }
+        // Big temporary files (over 40 MB): a download with a countdown (tmp<expiry s>-<uuid>--name).
+        let big_expiry = file.url.split("/api/uploads/").nth(1).and_then(|k| {
+            let k = url::form_urlencoded::parse(format!("k={}", k.split(['?', '#']).next().unwrap_or_default()).as_bytes()).next().map(|(_, v)| v.to_string())?;
+            let digits: String = k.strip_prefix("tmp")?.chars().take_while(|c| c.is_ascii_digit()).collect();
+            (9..=11).contains(&digits.len()).then(|| digits.parse::<i64>().ok()).flatten().map(|s| s * 1000)
+        });
+        let (small, gone) = match big_expiry {
+            Some(at) => {
+                let left = at - chrono::Utc::now().timestamp_millis();
+                if left <= 0 {
+                    ("Deleted after 12 hours".to_string(), true)
+                } else {
+                    let minutes = (left as f64 / 60_000.).ceil() as i64;
+                    (format!("Big file · deleted in {}", if minutes < 60 { format!("{minutes} min") } else { format!("{} h", (minutes as f64 / 60.).round() as i64) }), false)
+                }
+            }
+            None => ((if pdf { "PDF document · view and fill in Hoffle" } else { description(&file.name) }).to_string(), false),
+        };
+        let pdf = pdf && big_expiry.is_none();
         div()
             .id(SharedString::from(format!("file-{}-{n}", message.id)))
             .mt(px(8.))
@@ -249,8 +317,9 @@ impl Shell {
                     .child(div().truncate().text_size(px(16.)).line_height(px(24.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(file.name.clone()))
                     .child(div().text_size(px(12.8)).line_height(px(19.2)).text_color(muted).child(small)),
             )
-            .child(div().flex_none().text_size(px(12.)).line_height(px(18.)).font_weight(FontWeight::BOLD).text_color(muted).child(if pdf { "Open" } else { "Download" }))
-            .on_click(move |_, _, cx| cx.open_url(&link))
+            .when(!gone, |d| d.child(div().flex_none().text_size(px(12.)).line_height(px(18.)).font_weight(FontWeight::BOLD).text_color(muted).child(if pdf { "Open" } else { "Download" })))
+            .when(gone, |d| d.opacity(0.6))
+            .when(!gone, |d| d.on_click(move |_, _, cx| cx.open_url(&link)))
             .into_any_element()
     }
 

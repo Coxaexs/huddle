@@ -1173,7 +1173,7 @@ impl Shell {
             }
         }
         for (n, file) in message.files.iter().enumerate() {
-            out.push(self.render_file_card(message, n, file));
+            out.push(self.render_file_card(message, n, file, cx));
         }
         out
     }
