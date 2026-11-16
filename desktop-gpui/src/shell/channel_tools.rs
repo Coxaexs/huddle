@@ -32,6 +32,8 @@ pub(super) enum PromptKind {
     CustomStatus,
     /// The user menu: (server, member) nickname.
     Nickname(String, String),
+    /// A staged picture's description (ALT), by its place in the row.
+    ImageAlt(usize),
 }
 
 /// CREATABLE_CHANNEL_KINDS with CHANNEL_KIND_COPY: kind, label, icon, title, message, placeholder.
@@ -314,6 +316,12 @@ impl Shell {
             PromptKind::Homebrew => self.import_homebrew(value, cx),
             PromptKind::CustomStatus => self.save_custom_status(value, cx),
             PromptKind::Nickname(server, user) => self.save_nickname(server, user, value, cx),
+            PromptKind::ImageAlt(ix) => {
+                if let Some(f) = self.pending_files.get_mut(ix) {
+                    f.alt = (!value.is_empty()).then_some(value);
+                }
+                cx.notify();
+            }
             PromptKind::CreateRole => {
                 if value.is_empty() {
                     return;

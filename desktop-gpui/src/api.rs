@@ -299,8 +299,11 @@ impl Client {
     }
 
     /// A message carrying uploaded files: the first key as `attachmentKey`, the rest after it.
-    pub fn send_with_files(&self, channel_id: &str, content: &str, reply_to: Option<&str>, keys: &[String]) -> Result<Message> {
+    pub fn send_with_files(&self, channel_id: &str, content: &str, reply_to: Option<&str>, keys: &[String], payload: Option<Value>) -> Result<Message> {
         let mut body = json!({ "channelId": channel_id, "content": content });
+        if let Some(payload) = payload {
+            body["payload"] = payload;
+        }
         if let Some(reply_to) = reply_to {
             body["replyTo"] = json!(reply_to);
         }

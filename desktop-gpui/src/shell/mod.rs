@@ -280,6 +280,8 @@ pub struct Shell {
     banned_ids: HashSet<String>,
     /// Files from Finder are being dragged over the chat (the "Drop to attach" overlay).
     file_drag: bool,
+    /// The picture whose description (ALT) is shown over it.
+    shown_alt: Option<String>,
     forced_mutes: HashSet<String>,
     auto_idle: bool,
     footer_devices: Option<(Vec<(String, String)>, Vec<(String, String)>)>,
@@ -585,6 +587,7 @@ impl Shell {
             last_input: std::time::Instant::now(),
             banned_ids: HashSet::new(),
             file_drag: false,
+            shown_alt: None,
             forced_mutes: HashSet::new(),
             auto_idle: false,
             footer_devices: None,

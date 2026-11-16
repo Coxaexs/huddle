@@ -599,6 +599,14 @@ impl gpui::Render for Shell {
         {
             self.accept_paths(spec.split(':').map(std::path::PathBuf::from).collect(), cx);
         }
+        // HOFFLE_DEV_SHOW_ALT=1: the newest described picture's description shown.
+        if std::env::var_os("HOFFLE_DEV_SHOW_ALT").is_some()
+            && self.shown_alt.is_none()
+            && let Some(m) = self.channel_id.as_ref().and_then(|c| self.messages.get(c)).and_then(|l| l.iter().rev().find(|m| !m.image_alts.is_empty()))
+            && let Some(url) = m.image_alts.keys().next()
+        {
+            self.shown_alt = Some(format!("img:{}:{}", m.id, self.client.absolute(url)));
+        }
         // HOFFLE_DEV_USERMENU=<user id prefix>,x,y: that person's menu, right-clicked there, once the
         // members have loaded.
         static DEV_USERMENU: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);

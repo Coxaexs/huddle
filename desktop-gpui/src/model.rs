@@ -185,6 +185,8 @@ pub struct Message {
     pub payload: Option<serde_json::Value>,
     /// A voice message's sound file.
     pub audio: Option<String>,
+    /// Descriptions of its pictures, by picture URL (`/hangout/api/uploads/<key>`).
+    pub image_alts: std::collections::HashMap<String, String>,
     pub pinned: bool,
 }
 

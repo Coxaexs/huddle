@@ -14,9 +14,21 @@ use crate::ui;
 /// A file waiting in the composer.
 pub(super) struct Pending {
     pub path: PathBuf,
+    /// The name it goes up under (SPOILER_ in front when marked as a spoiler).
     pub name: String,
     pub size: u64,
     pub image: bool,
+    /// Its description (ALT), and "HD": sent as it is instead of made smaller.
+    pub alt: Option<String>,
+    pub original: bool,
+}
+
+/// lib/big-upload-key.ts IMAGE_UPLOAD_MAX_BYTES: the most a picture may be, as it is.
+const IMAGE_UPLOAD_MAX_BYTES: u64 = 8 * 1024 * 1024;
+
+/// canShrink(): a JPEG, PNG or WebP of 400 kB or more.
+fn can_shrink(file: &Pending) -> bool {
+    matches!(file.path.extension().map(|e| e.to_string_lossy().to_lowercase()).as_deref(), Some("png" | "jpg" | "jpeg" | "webp")) && file.size >= 400_000
 }
 
 /// getFileExtensionBadge: the extension, upper case, at most four letters.
@@ -151,16 +163,25 @@ impl Shell {
             .into_any_element()
     }
 
-    /// A message's picture: as wide as the text column (480 at most), as tall as its shape says
-    /// (380 at most, filled), 10px corners, 8px above.
+    /// A message's picture (`.single-image-wrap .single-attachment`): its own size, no wider than
+    /// the text column or 480 and no taller than 380, 10px corners, 8px above. The wrap around it is
+    /// as wide as the column allows (clicks there open it too, and its description spans it).
     pub(super) fn render_image(&self, message: &Message, n: usize, url: &str, column: f32, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let link = self.client.absolute(url);
         let resource = gpui::Resource::Uri(link.clone().into());
-        let width = column.min(480.);
+        let wrap = column.min(480.);
         let size = ui::image_size(&resource, window, cx);
-        let height = match size {
-            Some((w, h)) if w > 0. => (width * h / w).min(380.),
-            _ => width * 0.6,
+        let (width, height) = match size {
+            Some((w, h)) if w > 0. && h > 0. => {
+                let mut width = w.min(wrap);
+                let mut height = width * h / w;
+                if height > 380. {
+                    height = 380.;
+                    width = 380. * w / h;
+                }
+                (width, height)
+            }
+            _ => (wrap, wrap * 0.6),
         };
         if size.is_some() && self.sized.borrow_mut().insert(format!("{}-{n}", message.id)) {
             // The row was measured with a guess; measure it again now that the picture is here.
@@ -173,12 +194,17 @@ impl Shell {
         let all = vec![link.clone()];
         div()
             .mt(px(8.))
-            .w(px(width))
+            .w(px(wrap))
             .h(px(height))
-            .rounded(px(10.))
-            .overflow_hidden()
-            .child(self.gallery_tile(&message.id, n, &link, all, 0, width, height, cx))
+            .child(self.gallery_tile(&message.id, n, &link, all, 0, wrap, height, Some(width), cx))
             .into_any_element()
+    }
+
+    /// The description sent with this picture of this message (message.imageAlts, by URL).
+    fn image_alt(&self, message: &str, link: &str) -> Option<String> {
+        let list = self.channel_id.as_ref().and_then(|c| self.messages.get(c))?;
+        let m = list.iter().rev().find(|m| m.id == message)?;
+        m.image_alts.iter().find(|(url, _)| self.client.absolute(url) == link).map(|(_, alt)| alt.clone()).filter(|a| !a.is_empty())
     }
 
     /// isSpoilerUrl(): `spoiler_` / `spoiler-` in the name, `?spoiler`, or `#spoiler`.
@@ -189,7 +215,8 @@ impl Shell {
 
     /// One picture of a message: opens the lightbox; a spoiler stays covered until clicked.
     #[allow(clippy::too_many_arguments)]
-    fn gallery_tile(&self, message: &str, n: usize, link: &str, all: Vec<String>, index: usize, w: f32, h: f32, cx: &mut Context<Self>) -> AnyElement {
+    /// `picture`: a lone picture's own width inside a wider tile (drawn at its left, 10px corners).
+    fn gallery_tile(&self, message: &str, n: usize, link: &str, all: Vec<String>, index: usize, w: f32, h: f32, picture: Option<f32>, cx: &mut Context<Self>) -> AnyElement {
         let resource = gpui::Resource::Uri(link.to_string().into());
         let key = format!("img:{message}:{link}");
         let spoiler = Self::is_spoiler_url(link);
@@ -202,11 +229,16 @@ impl Shell {
             .relative()
             .w(px(w))
             .h(px(h))
-            .overflow_hidden()
+            .when(picture.is_none(), |d| d.overflow_hidden())
             .when(framed, |d| d.rounded(px(10.)).border_1().border_color(rgb(0xe0d9d2)))
             .cursor_pointer()
             .group(SharedString::from(format!("tile-{message}-{n}")))
-            .child(gpui::img(ui::cover(resource, w / h.max(1.))).w(px(w)).h(px(h)).object_fit(ObjectFit::Cover).with_loading(|| div().into_any_element()))
+            .map(|d| match picture {
+                Some(pw) => d.child(
+                    div().w(px(pw)).h(px(h)).child(gpui::img(ui::cover(resource, pw / h.max(1.))).w(px(pw)).h(px(h)).rounded(px(10.)).object_fit(ObjectFit::Cover).with_loading(|| div().into_any_element())),
+                ),
+                None => d.child(gpui::img(ui::cover(resource, w / h.max(1.))).w(px(w)).h(px(h)).object_fit(ObjectFit::Cover).with_loading(|| div().into_any_element())),
+            })
             .on_click(cx.listener(move |this, _, _, cx| {
                 if shielded {
                     this.revealed.insert(k.clone());
@@ -265,6 +297,57 @@ impl Shell {
                     })),
             );
         }
+        // `.image-alt-badge`: the picture has a description; clicking shows it over the picture.
+        if let Some(alt) = self.image_alt(message, link).filter(|_| !shielded) {
+            let shown = self.shown_alt.as_deref() == Some(key.as_str());
+            let k = key.clone();
+            tile = tile
+                .child(
+                    div()
+                        .id(SharedString::from(format!("img-alt-{message}-{n}")))
+                        .absolute()
+                        .top(px(6.))
+                        .left(px(6.))
+                        .px(px(5.))
+                        .py(px(3.))
+                        .rounded(px(4.))
+                        .bg(gpui::black().opacity(0.65))
+                        .font_family(".SystemUIFont")
+                        .text_size(px(9.))
+                        .line_height(px(9.))
+                        .font_weight(FontWeight::EXTRA_BOLD)
+                        .text_color(gpui::white().opacity(0.8))
+                        .cursor_pointer()
+                        .child("ALT")
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            cx.stop_propagation();
+                            this.shown_alt = if this.shown_alt.as_deref() == Some(k.as_str()) { None } else { Some(k.clone()) };
+                            cx.notify();
+                        })),
+                )
+                .when(shown, |d| {
+                    d.child(
+                        div()
+                            .id(SharedString::from(format!("img-alt-text-{message}-{n}")))
+                            .absolute()
+                            .top(px(28.))
+                            .left(px(6.))
+                            .right(px(6.))
+                            .max_h(px(h * 0.6))
+                            .overflow_y_scroll()
+                            .px(px(10.))
+                            .py(px(8.))
+                            .rounded(px(8.))
+                            .bg(gpui::black().opacity(0.82))
+                            .text_size(px(13.))
+                            .line_height(px(18.2))
+                            .text_color(gpui::white())
+                            .cursor_default()
+                            .child(alt)
+                            .on_click(|_, _, cx| cx.stop_propagation()),
+                    )
+                });
+        }
         tile.into_any_element()
     }
 
@@ -295,7 +378,7 @@ impl Shell {
                 let w = (inner - 4.) / 2.;
                 let h = tallest(&[(0, w), (1, w)], window, cx).min(260.);
                 for i in 0..2 {
-                    grid = grid.child(self.gallery_tile(&id, i, &links[i], links.clone(), i, w, h, cx));
+                    grid = grid.child(self.gallery_tile(&id, i, &links[i], links.clone(), i, w, h, None, cx));
                 }
             }
             3 => {
@@ -306,8 +389,8 @@ impl Shell {
                 let h = big.max(small).min(280.);
                 let half = (h - 4.) / 2.;
                 grid = grid
-                    .child(self.gallery_tile(&id, 0, &links[0], links.clone(), 0, w1, h, cx))
-                    .child(div().flex().flex_col().gap(px(4.)).child(self.gallery_tile(&id, 1, &links[1], links.clone(), 1, w2, half, cx)).child(self.gallery_tile(&id, 2, &links[2], links.clone(), 2, w2, half, cx)));
+                    .child(self.gallery_tile(&id, 0, &links[0], links.clone(), 0, w1, h, None, cx))
+                    .child(div().flex().flex_col().gap(px(4.)).child(self.gallery_tile(&id, 1, &links[1], links.clone(), 1, w2, half, None, cx)).child(self.gallery_tile(&id, 2, &links[2], links.clone(), 2, w2, half, None, cx)));
             }
             _ => {
                 let w = (inner - 4.) / 2.;
@@ -318,7 +401,7 @@ impl Shell {
                     let mut line = div().flex().gap(px(4.));
                     for c in 0..2 {
                         let i = r * 2 + c;
-                        let mut tile = div().relative().child(self.gallery_tile(&id, i, &links[i], links.clone(), i, w, row, cx));
+                        let mut tile = div().relative().child(self.gallery_tile(&id, i, &links[i], links.clone(), i, w, row, None, cx));
                         if i == 3 && more > 0 {
                             tile = tile.child(div().absolute().inset_0().bg(gpui::black().opacity(0.65)).flex().items_center().justify_center().text_size(px(24.)).font_weight(gpui::FontWeight::BOLD).text_color(gpui::white()).child(format!("+{}", more + 1)));
                         }
@@ -461,7 +544,7 @@ impl Shell {
                 Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "avif" | "heic")
             );
             if self.pending_files.len() < MAX {
-                self.pending_files.push(Pending { path, name, size, image });
+                self.pending_files.push(Pending { path, name, size, image, alt: None, original: false });
             }
         }
         cx.notify();
@@ -534,21 +617,59 @@ impl Shell {
                             .rounded(px(10.))
                             .object_fit(ObjectFit::Cover),
                     )
-                    .child(
+                    // `.attachment-image-options`: ALT (describe it) and, for a picture that would be
+                    // made smaller, HD (send the original).
+                    .child({
+                        let chip = |id: String, label: &'static str, active: bool| {
+                            div()
+                                .id(SharedString::from(id))
+                                .px(px(5.))
+                                .py(px(3.))
+                                .rounded(px(4.))
+                                .bg(if active { gpui::Hsla::from(Theme::lavender()) } else { gpui::Hsla::from(rgba(0x000000a6)) })
+                                .font_family(".SystemUIFont")
+                                .text_size(px(9.))
+                                .line_height(px(9.))
+                                .font_weight(FontWeight::EXTRA_BOLD)
+                                .text_color(if active { gpui::Hsla::from(rgba(0x111111ff)) } else { gpui::Hsla::from(rgba(0xffffffcc)) })
+                                .cursor_pointer()
+                                .child(label)
+                        };
+                        let alt_tip = match &file.alt {
+                            Some(alt) => crate::i18n::tv("composer.imageDescriptionTooltip", &[("alt", alt)]),
+                            None => crate::i18n::t("composer.imageDescriptionAddTooltip"),
+                        };
+                        let current = file.alt.clone().unwrap_or_default();
+                        let hd = can_shrink(file) && file.size <= IMAGE_UPLOAD_MAX_BYTES;
+                        let original = file.original;
                         div()
                             .absolute()
                             .left(px(4.))
                             .bottom(px(4.))
-                            .px(px(5.))
-                            .py(px(3.))
-                            .rounded(px(4.))
-                            .bg(rgba(0x000000a6))
-                            .text_size(px(9.))
-                            .line_height(px(9.))
-                            .font_weight(FontWeight::EXTRA_BOLD)
-                            .text_color(rgba(0xffffffcc))
-                            .child("ALT"),
-                    )
+                            .flex()
+                            .gap(px(3.))
+                            .child(chip(format!("staged-alt-{ix}"), "ALT", file.alt.is_some()).tooltip(ui::tooltip(alt_tip)).on_click(cx.listener(move |this, _, window, cx| {
+                                this.open_prompt(
+                                    super::channel_tools::PromptKind::ImageAlt(ix),
+                                    crate::i18n::t("composer.describeImage"),
+                                    crate::i18n::t("composer.describeImageA11y"),
+                                    current.clone(),
+                                    &crate::i18n::t("composer.imageDescriptionPlaceholder"),
+                                    &crate::i18n::t("common.save"),
+                                    Some(1000),
+                                    window,
+                                    cx,
+                                );
+                            })))
+                            .when(hd, |d| {
+                                d.child(chip(format!("staged-hd-{ix}"), "HD", original).tooltip(ui::tooltip(crate::i18n::t(if original { "composer.hdOn" } else { "composer.hdOff" }))).on_click(cx.listener(move |this, _, _, cx| {
+                                    if let Some(f) = this.pending_files.get_mut(ix) {
+                                        f.original = !f.original;
+                                        cx.notify();
+                                    }
+                                })))
+                            })
+                    })
                     .child(remove(ix, cx))
                     .into_any_element()
             } else {
@@ -589,14 +710,21 @@ impl Shell {
                 .background_executor()
                 .spawn(async move {
                     let mut keys = Vec::new();
+                    let mut alts = serde_json::Map::new();
                     for file in &files {
                         let (name, mime, bytes) = prepare(file)?;
                         if bytes.len() > 40 * 1024 * 1024 {
                             anyhow::bail!("{name} is over 40 MB; send big files from the web app for now.");
                         }
-                        keys.push(client.upload(&name, &mime, &bytes)?);
+                        let key = client.upload(&name, &mime, &bytes)?;
+                        // Descriptions go by upload key; the server keeps them by picture URL.
+                        if let Some(alt) = &file.alt {
+                            alts.insert(key.clone(), alt.clone().into());
+                        }
+                        keys.push(key);
                     }
-                    let message = client.send_with_files(&channel, text.trim(), reply.as_deref(), &keys)?;
+                    let payload = (!alts.is_empty()).then(|| serde_json::json!({ "imageAlts": alts }));
+                    let message = client.send_with_files(&channel, text.trim(), reply.as_deref(), &keys, payload)?;
                     Ok::<_, anyhow::Error>(message)
                 })
                 .await;
@@ -628,7 +756,7 @@ fn prepare(file: &Pending) -> anyhow::Result<(String, String, Vec<u8>)> {
         "mp3" => "audio/mpeg",
         _ => "application/octet-stream",
     };
-    if matches!(mime, "image/png" | "image/jpeg" | "image/webp") && bytes.len() >= 400_000
+    if !file.original && matches!(mime, "image/png" | "image/jpeg" | "image/webp") && bytes.len() >= 400_000
         && let Ok(picture) = image::load_from_memory(&bytes)
     {
         let edge = picture.width().max(picture.height()) as f32;
