@@ -637,6 +637,32 @@ impl Shell {
                                 .child(label),
                         )
                     })
+                    // `.tts-tag`: sent with /tts (read aloud to the channel).
+                    .when(payload.and_then(|p| p.get("tts")).is_some_and(|v| !v.is_null() && v.as_bool() != Some(false) && v.as_str() != Some("") && v.as_i64() != Some(0)), |d| {
+                        let lav: gpui::Hsla = Theme::lavender().into();
+                        d.child(
+                            div()
+                                .id(SharedString::from(format!("tts-{}", message.id)))
+                                .flex()
+                                .items_center()
+                                .gap(px(3.))
+                                .px(px(5.))
+                                .py(px(2.))
+                                .rounded(px(4.))
+                                .bg(lav.opacity(0.14))
+                                .text_color(lav)
+                                .text_size(px(8.))
+                                .line_height(px(12.))
+                                .font_weight(FontWeight::BLACK)
+                                .tooltip(ui::tooltip(t("message.ttsNotice")))
+                                .child(ui::icon("volume-2", 12., lav))
+                                .child("TTS"),
+                        )
+                    })
+                    // `.silent-tag`: sent with @silent (nobody was notified).
+                    .when(payload.and_then(|p| p.get("silent")).is_some_and(|v| !v.is_null() && v.as_bool() != Some(false) && v.as_str() != Some("") && v.as_i64() != Some(0)), |d| {
+                        d.child(div().id(SharedString::from(format!("silent-{}", message.id))).flex().items_center().tooltip(ui::tooltip(t("message.silentNotice"))).child(ui::icon("bell-off", 12., Theme::ink())))
+                    })
                     .child(
                         div()
                             .text_size(px(12.))

@@ -533,12 +533,18 @@ impl gpui::Render for Shell {
         }
         // Development: HOFFLE_DEV_JUMP=<message id> jumps to that message in the open channel.
         static DEV_JUMP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-        if let Ok(id) = std::env::var("HOFFLE_DEV_JUMP")
-            && let Some(channel) = self.channel_id.clone()
-            && self.messages.contains_key(&channel)
+        // HOFFLE_DEV_JUMP=<channel id>:<message id> jumps there in another channel.
+        if let Ok(spec) = std::env::var("HOFFLE_DEV_JUMP")
+            && let Some(open) = self.channel_id.clone()
+            && self.messages.contains_key(&open)
+            && !self.servers.is_empty()
             && !DEV_JUMP.swap(true, std::sync::atomic::Ordering::Relaxed)
         {
-            let server = self.server_id.clone();
+            let (channel, id) = match spec.split_once(':') {
+                Some((c, m)) => (c.to_string(), m.to_string()),
+                None => (open, spec),
+            };
+            let server = self.servers.iter().find(|s| s.channels.iter().any(|c| c.id == channel)).map(|s| s.id.clone()).or(self.server_id.clone());
             self.jump_to_message(server, channel, id, window, cx);
         }
         // Development: HOFFLE_DEV_PLAY_VOICE=<message id> plays that voice message (muted with HOFFLE_DEV_MUTED).

@@ -42,23 +42,40 @@ pub fn message_body(
         let key = format!("{id}-{n}");
         let el: AnyElement = match block {
             Block::Para(text) => line_wrapped(&key, &text, my_username, revealed, on_spoiler.clone(), wrap).into_any_element(),
-            Block::Heading(level, text) => div()
-                .text_size(px(match level { 1 => 20., 2 => 17., _ => 15. }))
-                .font_weight(FontWeight::BOLD)
+            // `.message-heading`: 19 / 16 / 14px, bold, 1.3 lines, 4px above and 2px below.
+            Block::Heading(level, text) => {
+                let size = match level {
+                    1 => 19.,
+                    2 => 16.,
+                    _ => 14.,
+                };
+                div()
+                    .mt(px(4.))
+                    .mb(px(2.))
+                    .text_size(px(size))
+                    .line_height(px(size * 1.3))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(Theme::ink())
+                    .child(line(&key, &text, my_username, revealed, on_spoiler.clone()))
+                    .into_any_element()
+            }
+            // `.messages blockquote`: a 3px lavender edge, 10px in, the text a little faded.
+            Block::Quote(text) => div()
+                .my(px(2.))
+                .pl(px(10.))
+                .py(px(1.))
+                .border_l(px(3.))
+                .border_color(Theme::lavender())
+                .text_color(Theme::ink())
+                .opacity(0.92)
                 .child(line(&key, &text, my_username, revealed, on_spoiler.clone()))
                 .into_any_element(),
-            Block::Quote(text) => div()
-                .pl_3()
-                .border_l_2()
-                .border_color(Theme::lavender_muted())
+            // `.message-subtext`: 0.78em, muted, 1.35 lines.
+            Block::Subtext(text) => div()
+                .text_size(px(12.48))
+                .line_height(px(16.85))
                 .text_color(Theme::muted())
                 .child(line(&key, &text, my_username, revealed, on_spoiler.clone()))
-                .into_any_element(),
-            Block::Bullet(text) => div()
-                .flex()
-                .gap_2()
-                .child(div().text_color(Theme::muted()).child("•"))
-                .child(div().flex_1().min_w_0().child(line(&key, &text, my_username, revealed, on_spoiler.clone())))
                 .into_any_element(),
             Block::Code(code) => div()
                 .w_full()

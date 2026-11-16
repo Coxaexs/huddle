@@ -1,5 +1,6 @@
-//! The Markdown subset Hoffle messages use (as Discord does): **bold**, *italic*, __underline__,
-//! ~~strike~~, `code`, ```blocks```, > quotes, # headings, - bullets, ||spoilers||, links and @mentions.
+//! The Markdown subset Hoffle messages use (message-body.tsx): **bold**, *italic*, __underline__,
+//! ~~strike~~, `code`, ```blocks```, > quotes, # headings, -# subtext, ||spoilers||, links and
+//! @mentions. There are no lists: "- item" stays a line of text, as on the web.
 
 use std::ops::Range;
 
@@ -8,7 +9,8 @@ pub enum Block {
     Para(String),
     Heading(u8, String),
     Quote(String),
-    Bullet(String),
+    /// `-# small print`, like Discord's subtext.
+    Subtext(String),
     Code(String),
 }
 
@@ -45,21 +47,21 @@ pub fn blocks(src: &str) -> Vec<Block> {
                 code.push(inner);
             }
             out.push(Block::Code(code.join("\n")));
-        } else if let Some(rest) = trimmed.strip_prefix("> ").or(trimmed.strip_prefix(">").filter(|r| r.is_empty())) {
-            flush(&mut para, &mut out);
-            match out.last_mut() {
-                Some(Block::Quote(q)) => {
-                    q.push('\n');
-                    q.push_str(rest);
-                }
-                _ => out.push(Block::Quote(rest.to_string())),
-            }
-        } else if let Some((level, rest)) = heading(trimmed) {
+        } else if let Some((level, rest)) = heading(line) {
+            // `^(#{1,3})\s+(.+)$` on the line as written.
             flush(&mut para, &mut out);
             out.push(Block::Heading(level, rest.to_string()));
-        } else if let Some(rest) = trimmed.strip_prefix("- ").or(trimmed.strip_prefix("* ")).or(trimmed.strip_prefix("• ")) {
+        } else if let Some(rest) = line.strip_prefix("-#").filter(|r| r.starts_with(char::is_whitespace) && !r.trim().is_empty()) {
             flush(&mut para, &mut out);
-            out.push(Block::Bullet(rest.to_string()));
+            out.push(Block::Subtext(rest.trim_start().to_string()));
+        } else if let Some(rest) = line.strip_prefix('>') {
+            // Every quoted line is a blockquote of its own (`^>\s?`).
+            flush(&mut para, &mut out);
+            let rest = rest.strip_prefix(|c: char| c.is_whitespace()).unwrap_or(rest);
+            out.push(Block::Quote(rest.to_string()));
+        } else if line.trim().is_empty() {
+            // A blank line ends the paragraph.
+            flush(&mut para, &mut out);
         } else {
             para.push(line);
         }
@@ -69,9 +71,11 @@ pub fn blocks(src: &str) -> Vec<Block> {
 }
 
 fn heading(line: &str) -> Option<(u8, &str)> {
-    for (prefix, level) in [("### ", 3), ("## ", 2), ("# ", 1)] {
-        if let Some(rest) = line.strip_prefix(prefix) {
-            return Some((level, rest));
+    let hashes = line.len() - line.trim_start_matches('#').len();
+    if (1..=3).contains(&hashes) {
+        let rest = &line[hashes..];
+        if rest.starts_with(char::is_whitespace) && !rest.trim().is_empty() {
+            return Some((hashes as u8, rest.trim_start()));
         }
     }
     None
@@ -386,10 +390,10 @@ pub fn link_parts(src: &str) -> (Vec<String>, Vec<String>) {
 }
 
 const TOGGLES: [(&str, Span); 6] = [
+    ("||", Span::Spoiler),
     ("**", Span::Bold),
     ("__", Span::Underline),
     ("~~", Span::Strike),
-    ("||", Span::Spoiler),
     ("*", Span::Italic),
     ("_", Span::Italic),
 ];
@@ -398,7 +402,6 @@ const TOGGLES: [(&str, Span); 6] = [
 /// they pair up, so a lone `*` or a snake_case name reads as written.
 pub fn inline(src: &str, my_username: &str) -> Inline {
     let mut out = Inline::default();
-    let mut open: Vec<(&'static str, Span, usize)> = Vec::new();
     // Style tags waiting for their close: where it starts in `src`, its length, the span, where it began.
     let mut tags: Vec<(usize, usize, Span, usize)> = Vec::new();
     let mut i = 0;
@@ -410,8 +413,24 @@ pub fn inline(src: &str, my_username: &str) -> Inline {
         // The close of an open style tag.
         if let Some(pos) = tags.iter().rposition(|(at, _, _, _)| *at == i) {
             let (_, len, span, start) = tags.remove(pos);
+            if span == Span::Spoiler && start < out.text.len() {
+                // `.spoiler` has 3px side padding: no-break spaces at both ends of the block.
+                out.text.insert(start, '\u{00A0}');
+                out.text.push('\u{00A0}');
+                for (range, _) in out.spans.iter_mut().filter(|(r, _)| r.start >= start) {
+                    range.start += '\u{00A0}'.len_utf8();
+                    range.end += '\u{00A0}'.len_utf8();
+                }
+                for (range, _) in out.links.iter_mut().filter(|(r, _)| r.start >= start) {
+                    range.start += '\u{00A0}'.len_utf8();
+                    range.end += '\u{00A0}'.len_utf8();
+                }
+            }
             if start < out.text.len() {
                 out.spans.push((start..out.text.len(), span));
+                if span == Span::Spoiler {
+                    out.spoilers.push(start..out.text.len());
+                }
             }
             i += len;
             continue;
@@ -534,61 +553,32 @@ pub fn inline(src: &str, my_username: &str) -> Inline {
             }
         }
 
-        // Paired markers.
-        let mut matched = false;
+        // Paired markers, as MARKDOWN_PATTERN finds them: the first alternative that matches here
+        // wins (||, **, __, ~~ with the shortest content of at least one character; then *…* and
+        // _…_ with no marker or line break inside), and the inside is read again on its own, so
+        // nothing in it reaches past the close.
+        let limit = tags.iter().map(|t| t.0).filter(|&at| at > i).min().unwrap_or(src.len());
+        let window = &src[i..limit];
+        let mut found = None;
         for (marker, span) in TOGGLES {
-            if !rest.starts_with(marker) {
+            if !window.starts_with(marker) {
                 continue;
             }
-            // `_` only counts at word edges, so snake_case stays.
-            let word_edge_ok = |at_open: bool| {
-                if marker != "_" {
-                    return true;
-                }
-                if at_open {
-                    prev.is_none_or(|c| !c.is_alphanumeric())
-                } else {
-                    src[i + 1..].chars().next().is_none_or(|c| !c.is_alphanumeric())
-                }
+            let after = &window[marker.len()..];
+            let pos = if marker.len() == 1 {
+                let m = marker.chars().next().unwrap_or('*');
+                after.find(|c: char| c == m || c == '\n').filter(|&p| p > 0 && after[p..].starts_with(m))
+            } else {
+                after.char_indices().nth(1).and_then(|(one, _)| after[one..].find(marker).map(|q| q + one))
             };
-            if let Some(pos) = open.iter().rposition(|(m, _, _)| *m == marker) {
-                if !word_edge_ok(false) {
-                    continue;
-                }
-                let (_, span, start) = open.remove(pos);
-                if span == Span::Spoiler && start < out.text.len() {
-                    // `.spoiler` has 3px side padding: no-break spaces at both ends of the block.
-                    out.text.insert(start, '\u{00A0}');
-                    out.text.push('\u{00A0}');
-                    for (range, _) in out.spans.iter_mut().filter(|(r, _)| r.start >= start) {
-                        range.start += '\u{00A0}'.len_utf8();
-                        range.end += '\u{00A0}'.len_utf8();
-                    }
-                    for (range, _) in out.links.iter_mut().filter(|(r, _)| r.start >= start) {
-                        range.start += '\u{00A0}'.len_utf8();
-                        range.end += '\u{00A0}'.len_utf8();
-                    }
-                }
-                if start < out.text.len() {
-                    out.spans.push((start..out.text.len(), span));
-                    if span == Span::Spoiler {
-                        out.spoilers.push(start..out.text.len());
-                    }
-                }
-                i += marker.len();
-                matched = true;
-                break;
-            }
-            let after = &src[i + marker.len()..];
-            let closes = after.find(marker).is_some_and(|p| p > 0 && !after[..p].starts_with(' '));
-            if closes && word_edge_ok(true) {
-                open.push((marker, span, out.text.len()));
-                i += marker.len();
-                matched = true;
+            if let Some(p) = pos {
+                found = Some((marker.len(), i + marker.len() + p, span));
                 break;
             }
         }
-        if matched {
+        if let Some((len, close_at, span)) = found {
+            tags.push((close_at, len, span, out.text.len()));
+            i += len;
             continue;
         }
 
@@ -645,8 +635,19 @@ mod tests {
     }
 
     #[test]
-    fn snake_case_survives() {
-        assert_eq!(inline("my_var_name stays", "me").text, "my_var_name stays");
+    fn underscores_pair_like_the_web() {
+        // `_[^_\n]+_` has no word-edge rule on the web: "_var_" is italic there too.
+        let r = inline("my_var_name stays", "me");
+        assert_eq!(r.text, "myvarname stays");
+        assert!(r.spans.contains(&(2..5, Span::Italic)));
+    }
+
+    #[test]
+    fn stars_pair_like_the_web() {
+        // "*   **Name:** text": `*   *` (italic spaces), then `*Name:*`, then a lone "*".
+        let r = inline("*   **Name:** text", "me");
+        assert_eq!(r.text, "   Name:* text");
+        assert!(r.spans.contains(&(3..8, Span::Italic)));
     }
 
     #[test]
@@ -700,14 +701,16 @@ mod tests {
 
     #[test]
     fn block_kinds() {
-        let b = blocks("# Title\nplain\n> quoted\n> more\n- item\n```rs\nlet x = 1;\n```\nafter");
+        let b = blocks("# Title\nplain\n> quoted\n> more\n- item\n\n-# small\n```rs\nlet x = 1;\n```\nafter");
         assert_eq!(
             b,
             vec![
                 Block::Heading(1, "Title".into()),
                 Block::Para("plain".into()),
-                Block::Quote("quoted\nmore".into()),
-                Block::Bullet("item".into()),
+                Block::Quote("quoted".into()),
+                Block::Quote("more".into()),
+                Block::Para("- item".into()),
+                Block::Subtext("small".into()),
                 Block::Code("let x = 1;".into()),
                 Block::Para("after".into()),
             ]
