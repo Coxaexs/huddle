@@ -101,7 +101,7 @@ Mesaj kutusuna `/` yazınca kullanabileceğin komutların listesi açılır; yaz
 
 | Komut | Ne yapar |
 | --- | --- |
-| `/roll 2d20+5` | Herkesin göreceği 3D zarlar atar. [D&D bölümüne](/help) bak. |
+| `/roll 2d20+5` | Herkesin göreceği 3D zarlar atar. [D&D bölümüne](/help/dnd) bak. |
 | `/gmroll d20+4` | Zarı gizli atar; sonucu yalnızca sen görürsün. |
 | `/w ali selam` | Fısıltı: mesajı yalnızca o kişi görür ve hiçbir yere kaydedilmez. |
 | `/tts merhaba` | Mesajını kanalda sesli okutur. |

@@ -56,7 +56,7 @@ Odanın üst çubuğunda üç görünüm var:
 
 - **ızgara:** Herkes bir kare içinde; kamerası açık olanların görüntüsü burada.
 - **masa:** Herkes yuvarlak bir masanın etrafında oturur. **Uzamsal ses** açıksa sesler masadaki yerlerine göre soldan, sağdan ya da karşıdan gelir.
-- **harita:** Odaya bir savaş haritası açar. D&D gibi masa oyunları için; [D&D](/help) bölümüne bak.
+- **harita:** Odaya bir savaş haritası açar. D&D gibi masa oyunları için; [D&D](/help/dnd) bölümüne bak.
 
 ![Masa görünümü](/help-media/img/v-masa.webp)
 

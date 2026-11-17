@@ -6,6 +6,7 @@ import moderasyon from "../../docs/help/moderasyon.md?raw";
 import mesajlasma from "../../docs/help/mesajlasma.md?raw";
 import arkadaslar from "../../docs/help/arkadaslar.md?raw";
 import sesliSohbet from "../../docs/help/sesli-sohbet.md?raw";
+import dnd from "../../docs/help/dnd.md?raw";
 
 /**
  * The user manual at hoffle.online/help, in Turkish first.
@@ -80,6 +81,13 @@ export const HELP_CHAPTERS: HelpChapter[] = [
     description: "Ses odaları, mikrofon ve kamera, ekran paylaşımı, ses tahtası, uzamsal ses, gürültü engelleme ve sahne kanalları.",
     icon: "🎙️",
     source: sesliSohbet,
+  },
+  {
+    slug: "dnd",
+    title: "D&D ve masa oyunları",
+    description: "3D zarlar, gizli zar, büyü ve canavar kartları, savaş haritası, inisiyatif takibi ve masa ayarları.",
+    icon: "🐉",
+    source: dnd,
   },
 ];
 
