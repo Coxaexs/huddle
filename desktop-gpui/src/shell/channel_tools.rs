@@ -32,6 +32,8 @@ pub(super) enum PromptKind {
     CustomStatus,
     /// A group DM's name.
     RenameGroup(String),
+    /// The battlemap page asked (its question's id).
+    Battlemap(u64),
     /// The user menu: (server, member) nickname.
     Nickname(String, String),
     /// A staged picture's description (ALT), by its place in the row.
@@ -104,9 +106,7 @@ impl Shell {
                 }
             }
             crate::input::InputEvent::Escape => {
-                this.confirm = None;
-                this.prompt_sub = None;
-                cx.notify();
+                this.dismiss_confirm(cx);
             }
             _ => {
                 if let Some(max) = max {
@@ -318,6 +318,7 @@ impl Shell {
             PromptKind::Homebrew => self.import_homebrew(value, cx),
             PromptKind::CustomStatus => self.save_custom_status(value, cx),
             PromptKind::RenameGroup(channel) => self.save_group_name(channel, value, cx),
+            PromptKind::Battlemap(id) => self.battlemap_answer(id, serde_json::json!(value)),
             PromptKind::Nickname(server, user) => self.save_nickname(server, user, value, cx),
             PromptKind::ImageAlt(ix) => {
                 if let Some(f) = self.pending_files.get_mut(ix) {

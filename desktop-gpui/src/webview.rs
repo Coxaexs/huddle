@@ -493,3 +493,22 @@ pub fn activities_view(window: &gpui::Window, base: &str, session: Option<(Strin
         None
     }
 }
+
+/// The web's battlemap (resources/web/battlemap.html), signed in to `base`, covering the window and
+/// taking clicks only on the board.
+pub fn battlemap_view(window: &gpui::Window, base: &str, session: Option<(String, String)>) -> Option<WebOverlay> {
+    #[cfg(target_os = "macos")]
+    {
+        let html = crate::assets::ASSETS.iter().find(|(p, _)| *p == "web/battlemap.html").map(|(_, b)| String::from_utf8_lossy(b).into_owned())?;
+        let origin = url::Url::parse(base).ok().map(|u| u.origin().ascii_serialization() + "/")?;
+        if let Some((name, value)) = session {
+            set_session_cookie(&origin, &name, &value);
+        }
+        Some(WebOverlay::with_region(content_view(window)?, &html, &origin, true))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, base, session);
+        None
+    }
+}

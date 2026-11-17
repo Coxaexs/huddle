@@ -100,6 +100,10 @@ impl Shell {
                     .when(!active, |d| d.text_color(Theme::quiet()).hover(|s| s.text_color(Theme::ink())))
                     .child(view)
                     .on_click(cx.listener(move |this, _, _, cx| {
+                        // stage-topbar.tsx: map brings the battlemap up when it is not showing.
+                        if view == "map" && !this.battlemap.shown {
+                            this.toggle_battlemap();
+                        }
                         if let Some(stage) = this.stage.as_mut() {
                             stage.view = view;
                             cx.notify();
@@ -295,6 +299,7 @@ impl Shell {
             .flex()
             .flex_col()
             .children(self.render_important_banner(&stage.channel_id, cx))
+            .children(self.render_battlemap(stage_total))
             .children(picker)
             .child(tiles)
             .children(self.render_soundboard(stage_width, window, cx))

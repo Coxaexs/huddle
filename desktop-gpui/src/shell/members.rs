@@ -279,7 +279,21 @@ impl gpui::Render for Shell {
             })
             .detach();
         }
+        // HOFFLE_DEV_WEBSHOTS=<dir>: the activities and battlemap views' own pictures after 12 s.
+        static DEV_WEBSHOTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(dir) = std::env::var("HOFFLE_DEV_WEBSHOTS")
+            && self.stage.is_some()
+            && !DEV_WEBSHOTS.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(std::time::Duration::from_secs(12)).await;
+                this.update(cx, |this, _| this.dev_web_shots(&dir)).ok();
+            })
+            .detach();
+        }
         self.place_activities(window);
+        self.place_battlemap();
+        self.battlemap_tick(window, cx);
         self.activities_tick(cx);
         // HOFFLE_DEV_CAPTION=<name>:<text>: a caption line as if someone in the room shared it.
         static DEV_CAPTION: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);

@@ -37,6 +37,8 @@ pub(super) struct Confirm {
 
 #[derive(Clone)]
 pub(super) enum ConfirmAction {
+    /// The battlemap page asked (its question's id): yes, or no when dismissed.
+    Battlemap(u64),
     LeaveGroup(String),
     RemoveFromGroup(String, String),
     Delete(String),
@@ -599,11 +601,7 @@ impl Shell {
     /// showCustomConfirm: dimmed backdrop, card, title with ×, text, Cancel and the danger button.
     pub(super) fn render_confirm(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let confirm = self.confirm.as_ref()?;
-        let cancel = cx.listener(|this, _, _, cx| {
-            this.confirm = None;
-            this.prompt_sub = None;
-            cx.notify();
-        });
+        let cancel = cx.listener(|this, _, _, cx| this.dismiss_confirm(cx));
         let action = confirm.action.clone();
         let alert = matches!(action, ConfirmAction::Alert);
         // A prompt's button is the plain primary one: lavender, not the danger red.
@@ -640,10 +638,7 @@ impl Shell {
                                 .items_center()
                                 .justify_between()
                                 .child(div().text_size(px(18.)).line_height(px(27.)).font_weight(FontWeight::BOLD).text_color(Theme::ink()).child(confirm.title.clone()))
-                                .child(div().id("confirm-x").mt(px(-5.)).cursor_pointer().child(ui::icon("x", 18., Theme::muted())).on_click(cx.listener(|this, _, _, cx| {
-                                    this.confirm = None;
-                                    cx.notify();
-                                }))),
+                                .child(div().id("confirm-x").mt(px(-5.)).cursor_pointer().child(ui::icon("x", 18., Theme::muted())).on_click(cx.listener(|this, _, _, cx| this.dismiss_confirm(cx)))),
                         )
                         .child(div().mt(px(16.)).text_size(px(14.)).line_height(px(21.)).text_color(Theme::muted()).whitespace_normal().child(confirm.text.clone()))
                         // `.custom-dialog-input`, focused: the lavender border and its 3px ring.
@@ -723,6 +718,19 @@ impl Shell {
         )
     }
 
+    /// Cancel, ×, Esc or the backdrop: closed without doing it (a page that asked hears "no").
+    pub(super) fn dismiss_confirm(&mut self, cx: &mut Context<Self>) {
+        if let Some(confirm) = self.confirm.take() {
+            match confirm.action {
+                ConfirmAction::Battlemap(id) => self.battlemap_answer(id, serde_json::json!(false)),
+                ConfirmAction::Prompt(super::channel_tools::PromptKind::Battlemap(id), _) => self.battlemap_answer(id, serde_json::Value::Null),
+                _ => {}
+            }
+        }
+        self.prompt_sub = None;
+        cx.notify();
+    }
+
     pub(super) fn confirmed_public(&mut self, action: ConfirmAction, cx: &mut Context<Self>) {
         self.confirmed(action, cx);
     }
@@ -748,6 +756,7 @@ impl Shell {
             ConfirmAction::CancelEvent(id) => self.cancel_event(id, cx),
             ConfirmAction::MenuModerate(server, user, action) => self.menu_moderate(server, user, action, cx),
             ConfirmAction::LeaveGroup(channel) => self.leave_group(channel, cx),
+            ConfirmAction::Battlemap(id) => self.battlemap_answer(id, serde_json::json!(true)),
             ConfirmAction::RemoveFromGroup(channel, user) => self.remove_from_group(channel, user, cx),
             ConfirmAction::DeleteCategory(id) => self.delete_category_confirmed(id, cx),
             ConfirmAction::Report(id) => {

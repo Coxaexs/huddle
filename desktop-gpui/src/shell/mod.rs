@@ -32,6 +32,7 @@ mod tts;
 mod qa;
 mod captions;
 mod activities;
+mod battlemap;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -330,6 +331,9 @@ pub struct Shell {
     captions: captions::Captions,
     /// The room's activity and the web view that shows the panel.
     activities: activities::Activities,
+    /// The voice room's battlemap (its web view) and where its board was laid out last frame.
+    battlemap: battlemap::Battlemap,
+    battlemap_frame: std::rc::Rc<std::cell::Cell<Option<(f32, f32, f32, f32)>>>,
     /// Where the activities panel was laid out last frame (window points, and whether covered).
     activities_frame: std::rc::Rc<std::cell::Cell<Option<(f32, f32, f32, f32, bool)>>>,
     fx_overlay: std::rc::Rc<std::cell::RefCell<Option<(String, crate::webview::WebOverlay)>>>,
@@ -688,6 +692,8 @@ impl Shell {
             qa: Default::default(),
             captions: Default::default(),
             activities: Default::default(),
+            battlemap: Default::default(),
+            battlemap_frame: Default::default(),
             activities_frame: Default::default(),
             unlocks: Default::default(),
             ach_checks: false,
@@ -1686,6 +1692,7 @@ impl Shell {
             "qa" => self.on_qa(&value, cx),
             "caption" => self.on_caption(&value, cx),
             "activity" => self.on_activity(&value, cx),
+            "battlemap" => self.on_battlemap(&value),
             // Someone played a soundboard sound in the room you are in.
             "soundboard" => {
                 let room = value.get("channelId").and_then(Value::as_str).unwrap_or_default();

@@ -273,6 +273,15 @@ impl Shell {
             }
             cx.notify();
         })));
+        // Battlemap: map view and the board, or back to the grid.
+        menu = menu.child(item("more-battlemap", "map", Theme::coral(), crate::i18n::t("voiceStage.battlemap")).on_click(cx.listener(|this, _, _, cx| {
+            this.soundboard.more = false;
+            if let Some(stage) = this.stage.as_mut() {
+                stage.view = if stage.view == "map" { "grid" } else { "map" };
+            }
+            this.toggle_battlemap();
+            cx.notify();
+        })));
         Some(gpui::deferred(menu).with_priority(1).into_any_element())
     }
 
