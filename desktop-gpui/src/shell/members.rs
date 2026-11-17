@@ -1007,6 +1007,8 @@ impl gpui::Render for Shell {
             }))
             // The menu-bar item's Toggle Mute (desktop.rs).
             .on_action(cx.listener(|this, _: &crate::TrayToggleMute, _, cx| this.toggle_mute(cx)))
+            .on_action(cx.listener(|this, _: &crate::TrayPttDown, _, cx| this.set_ptt_held(true, cx)))
+            .on_action(cx.listener(|this, _: &crate::TrayPttUp, _, cx| this.set_ptt_held(false, cx)))
             .capture_key_up(cx.listener(|this, event: &gpui::KeyUpEvent, _, cx| {
                 if this.ptt_held && event.keystroke.key == super::settings::load_mic().ptt_key {
                     this.set_ptt_held(false, cx);

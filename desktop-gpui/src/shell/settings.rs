@@ -3347,6 +3347,10 @@ impl Shell {
                 s.mic.deafen_key = combo;
             }
             save_mic(&s.mic);
+            if std::env::var_os("GPUI_SNAPSHOT").is_none() {
+                crate::desktop::set_mute_hotkey(&s.mic.mute_key);
+                crate::desktop::set_ptt_key((s.mic.input_mode == "ptt").then_some(s.mic.ptt_key.as_str()));
+            }
             self.voice_keys = (s.mic.mute_key.clone(), s.mic.deafen_key.clone());
         }
         cx.notify();
@@ -3356,6 +3360,9 @@ impl Shell {
         let Some(s) = self.settings.as_mut() else { return };
         change(&mut s.mic);
         save_mic(&s.mic);
+        if std::env::var_os("GPUI_SNAPSHOT").is_none() {
+            crate::desktop::set_ptt_key((s.mic.input_mode == "ptt").then_some(s.mic.ptt_key.as_str()));
+        }
         s.open_select = None;
         // Switching to or from push to talk in a call opens or closes the mic at once.
         self.apply_mic();

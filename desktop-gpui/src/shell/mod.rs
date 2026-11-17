@@ -793,7 +793,16 @@ impl Shell {
             settings: None,
             account_email: None,
             access: settings::load_access(),
-            voice_keys: { let m = settings::load_mic(); (m.mute_key, m.deafen_key) },
+            voice_keys: {
+                let m = settings::load_mic();
+                // The mute key works system-wide too (the desktop app's global shortcut); test runs
+                // leave it to the installed app.
+                if std::env::var_os("GPUI_SNAPSHOT").is_none() {
+                    crate::desktop::set_mute_hotkey(&m.mute_key);
+                    crate::desktop::set_ptt_key((m.input_mode == "ptt").then_some(m.ptt_key.as_str()));
+                }
+                (m.mute_key, m.deafen_key)
+            },
             unread_bar: None,
             unread_pending: None,
             sized: Default::default(),

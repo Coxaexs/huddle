@@ -38,7 +38,7 @@ use model::User;
 use shell::{Shell, ShellEvent};
 use theme::Theme;
 
-actions!(hoffle, [Quit, Minimize, TrayToggleMute]);
+actions!(hoffle, [Quit, Minimize, TrayToggleMute, TrayPttDown, TrayPttUp]);
 
 /// `HOFFLE_DEBUG=1` traces what the app is doing on stderr.
 pub fn trace(message: impl std::fmt::Display) {
@@ -233,6 +233,11 @@ fn main() {
                         desktop::TrayAction::Quit => cx.quit(),
                         desktop::TrayAction::ToggleMute => {
                             window.update(cx, |_, window, cx| window.dispatch_action(Box::new(TrayToggleMute), cx)).ok();
+                        }
+                        desktop::TrayAction::Ptt(down) => {
+                            window
+                                .update(cx, |_, window, cx| if down { window.dispatch_action(Box::new(TrayPttDown), cx) } else { window.dispatch_action(Box::new(TrayPttUp), cx) })
+                                .ok();
                         }
                     })
                     .ok();
