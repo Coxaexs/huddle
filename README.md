@@ -6,8 +6,8 @@ Hoffle is a chat app for friend groups: voice, 1080p screen sharing with sound, 
 <a href="https://alternativeto.net/software/hoffle/about/?utm_source=badge&utm_medium=referral" target="_blank">
   <img src="https://alternativeto.net/static/badges/badge-compact-color.svg"
        alt="Hoffle | AlternativeTo"
-       width="244" height="79"
-       style="width: 244px; height: 79px;" />
+       width="50" height="16"
+       style="width: 50px; height: 16px;" />
 </a>
 
 [![Verify CI](https://github.com/Coxaexs/huddle/actions/workflows/verify.yml/badge.svg)](https://github.com/Coxaexs/huddle/actions/workflows/verify.yml)
