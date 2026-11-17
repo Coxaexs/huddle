@@ -8,6 +8,7 @@ import arkadaslar from "../../docs/help/arkadaslar.md?raw";
 import sesliSohbet from "../../docs/help/sesli-sohbet.md?raw";
 import dnd from "../../docs/help/dnd.md?raw";
 import muzik from "../../docs/help/muzik.md?raw";
+import oturmaOdasi from "../../docs/help/oturma-odasi.md?raw";
 
 /**
  * The user manual at hoffle.online/help, in Turkish first.
@@ -96,6 +97,13 @@ export const HELP_CHAPTERS: HelpChapter[] = [
     description: "Müzik botunu ekleme, /play ile şarkı açma, tam ekran oynatıcı, senkron sözler, DJ seti, AutoMix ve müzik komutları.",
     icon: "🎵",
     source: muzik,
+  },
+  {
+    slug: "oturma-odasi",
+    title: "3D Oturma Odası",
+    description: "Ses odasının 3D hâli: salon, sinema, D&D masası, oyun salonu, çayır ve kulüp; hareket, tepkiler ve oda ayarları.",
+    icon: "🛋️",
+    source: oturmaOdasi,
   },
 ];
 
