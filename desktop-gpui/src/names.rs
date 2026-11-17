@@ -336,6 +336,16 @@ impl Rgba {
         format!("#{:02x}{:02x}{:02x}", (self.r * 255.).round() as u8, (self.g * 255.).round() as u8, (self.b * 255.).round() as u8)
     }
 
+    /// Fully see-through?
+    pub(crate) fn clear(&self) -> bool {
+        self.a <= 0.
+    }
+
+    /// The same colour with no opacity.
+    pub(crate) fn faded(&self) -> Rgba {
+        Rgba { a: 0., ..*self }
+    }
+
     pub(crate) fn stop(&self, offset: f32) -> String {
         format!(r#"<stop offset="{offset}" stop-color="{}" stop-opacity="{:.3}"/>"#, self.hex(), self.a)
     }

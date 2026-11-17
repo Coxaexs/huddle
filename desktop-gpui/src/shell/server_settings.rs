@@ -1027,7 +1027,7 @@ impl Shell {
     }
 
     /// toggleMemberRole(): shown at once, then POST /api/roles/assign.
-    fn toggle_member_role(&mut self, server: String, user: String, role: String, add: bool, cx: &mut Context<Self>) {
+    pub(super) fn toggle_member_role(&mut self, server: String, user: String, role: String, add: bool, cx: &mut Context<Self>) {
         if let Some(m) = self.members.get_mut(&server).and_then(|l| l.iter_mut().find(|m| m.id == user)) {
             let mut held: Vec<String> = m.role_ids.get(&server).and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
             held.retain(|r| r != &role);

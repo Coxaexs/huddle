@@ -46,6 +46,8 @@ pub(super) struct OpenProfile {
     note_state: NoteState,
     bio_open: bool,
     copied: bool,
+    /// The add-role picker (role managers only).
+    role_picker: bool,
     /// The card's height from the last frame, for keeping it on screen.
     height: Rc<Cell<f32>>,
     key: u64,
@@ -70,9 +72,9 @@ impl Shell {
     pub(super) fn open_profile(&mut self, user_id: &str, bounds: gpui::Bounds<Pixels>, window: &mut Window, cx: &mut Context<Self>) {
         let Some(member) = self.member(user_id).cloned().or_else(|| self.member_anywhere(user_id).cloned()) else { return };
         let anchor = Anchor { x: f32::from(bounds.origin.x), y: f32::from(bounds.origin.y), right: f32::from(bounds.origin.x + bounds.size.width) };
-        let note = cx.new(|cx| {
-            TextArea::new(t("common.loading"), cx).text(12., 16.8).max_lines(7).placeholder_color(Hsla::from(Theme::ink()).opacity(0.45))
-        });
+        // On a styled card the note writes in the card's own ink (dark on light cards).
+        let note_ink: Hsla = super::profile_look::card_look(member.profile_style.as_ref(), &member.color).map(|l| l.ink).unwrap_or_else(|| Theme::ink().into());
+        let note = cx.new(|cx| TextArea::new(t("common.loading"), cx).text(12., 16.8).max_lines(7).color(note_ink).placeholder_color(note_ink.opacity(0.45)));
         let id = member.id.clone();
         let subs = vec![
             cx.subscribe_in(&note, window, |this, _, event, window, cx| match event {
@@ -95,6 +97,7 @@ impl Shell {
             saved: None,
             note_state: NoteState::Idle,
             bio_open: false,
+            role_picker: false,
             copied: false,
             // Assumed tall until measured: the first frame then has the room to measure it whole
             // (an absolute box is cut to the room below its top).
@@ -270,8 +273,12 @@ impl Shell {
 
         let accent: Hsla = css_color(&m.color).unwrap_or_else(|| rgb(0x5865f2).into());
         let line: Hsla = Theme::line().into();
-        let ink: Hsla = Theme::ink().into();
-        let muted: Hsla = Theme::muted().into();
+        // The card's own style (profile-look.ts cardLook): its ink in three strengths, surfaces,
+        // ring, button and background.
+        let look = super::profile_look::card_look(m.profile_style.as_ref(), &m.color);
+        let ink: Hsla = look.as_ref().map(|l| l.ink).unwrap_or_else(|| Theme::ink().into());
+        let muted: Hsla = look.as_ref().map(|l| l.ink3).unwrap_or_else(|| Theme::muted().into());
+        let ink2: Hsla = look.as_ref().map(|l| l.ink2).unwrap_or(muted);
         let me = m.id == self.me.id;
         let presence = self.presence_of(&m.id);
         let (status_label, status_color) = match presence.as_str() {
@@ -326,6 +333,10 @@ impl Shell {
             .relative()
             .size(px(68.))
             .flex_none()
+            // `.pst .profile-card-avatar`: a 5px ring in the card's own colour.
+            .when_some(look.as_ref().map(|l| l.ring), |d, ring| {
+                d.rounded_full().shadow(vec![gpui::BoxShadow { color: ring, offset: gpui::point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(5.) }])
+            })
             .child(crate::cosmetics::decorate(face, &m.avatar_frame, 68.))
             .child(
                 div()
@@ -336,8 +347,10 @@ impl Shell {
                     .rounded_full()
                     .bg(status_color)
                     .border(px(3.))
-                    .border_color(rgb(0x16131f)),
+                    // `.pst { --paper: var(--pst-ring) }`: the dot's ring is the card's ring.
+                    .border_color(look.as_ref().map(|l| l.ring).unwrap_or_else(|| rgb(0x16131f).into())),
             );
+        let bubble_bg: Hsla = look.as_ref().map(|l| l.bubble).unwrap_or_else(|| Theme::panel().into());
         let bubble = m.status_text().map(|text| {
             div()
                 .relative()
@@ -346,19 +359,19 @@ impl Shell {
                 .px(px(10.))
                 .py(px(5.))
                 .rounded(px(14.))
-                .bg(Theme::panel())
+                .bg(look.as_ref().map(|l| l.bubble).unwrap_or_else(|| Theme::panel().into()))
                 .border_1()
                 .border_color(rgba(0xffffff1f))
                 .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.35), offset: gpui::point(px(0.), px(4.)), blur_radius: px(16.), spread_radius: px(0.) }])
                 .text_size(px(12.))
                 .font_weight(FontWeight::MEDIUM)
-                .text_color(rgb(0xf2f3f5))
+                .text_color(ink)
                 .child(div().truncate().child(text))
                 // `.profile-status-bubble-tail`: a 7x10 triangle pointing at the avatar.
                 .child(
                     gpui::canvas(
                         |_, _, _| {},
-                        |bounds, _, window, _| {
+                        move |bounds, _, window, _| {
                             let o = bounds.origin;
                             let mut b = gpui::PathBuilder::fill();
                             b.move_to(gpui::point(o.x + px(7.), o.y));
@@ -366,7 +379,7 @@ impl Shell {
                             b.line_to(gpui::point(o.x + px(7.), o.y + px(10.)));
                             b.close();
                             if let Ok(path) = b.build() {
-                                window.paint_path(path, Theme::panel());
+                                window.paint_path(path, bubble_bg);
                             }
                         },
                     )
@@ -382,12 +395,18 @@ impl Shell {
         // Name, member tag, @username • pronouns, tagline.
         let tag = if self.home { None } else { self.member_tag(m) };
         let style = crate::names::NameStyle::from_profile(m.profile_style.as_ref());
+        // `.profile-display-name:has(> .pn)`: a styled name is 19px.
+        let name_size = if style.is_some() { 19. } else { 17. };
         let name = div()
-            .text_size(px(17.))
-            .line_height(px(20.4))
+            .text_size(px(name_size))
+            .line_height(px(name_size * 1.2))
+            // The name's line box stays 1.2em, whatever the styled name draws over it.
+            .h(px(name_size * 1.2))
+            .flex()
+            .items_center()
             .font_weight(FontWeight::BOLD)
             .text_color(ink)
-            .child(crate::names::styled_name(&m.display_name_or_name(), style.as_ref(), 17., FontWeight::BOLD, ink, window, cx));
+            .child(crate::names::styled_name(&m.display_name_or_name(), style.as_ref(), name_size, FontWeight::BOLD, ink, window, cx));
         let tag = tag.map(|(label, icon, color)| {
             let (bg, fg, border, glow) = match icon {
                 "crown" => (rgba(0xf59e0b2e), rgb(0xfbbf24).into(), rgba(0xf59e0b73), Some(rgba(0xf59e0b1f))),
@@ -416,12 +435,12 @@ impl Shell {
         let mut sub = div().mt(px(1.)).flex().flex_wrap().gap_x(px(6.)).gap_y(px(4.)).text_size(px(12.)).line_height(px(18.));
         if let (Some(nick), Some(global)) = (m.nickname.as_deref().filter(|n| !n.is_empty()), m.global_name.as_deref()) {
             if global != nick {
-                sub = sub.child(div().text_color(muted).child(format!("{global} ·")));
+                sub = sub.child(div().text_color(ink2).child(format!("{global} ·")));
             }
         }
-        sub = sub.child(div().text_color(muted).child(format!("@{}", m.username)));
+        sub = sub.child(div().text_color(ink2).child(format!("@{}", m.username)));
         if let Some(p) = m.pronouns.as_deref().filter(|p| !p.is_empty()) {
-            sub = sub.child(div().text_color(rgb(0x949ba4)).child(format!("• {p}")));
+            sub = sub.child(div().text_color(if look.is_some() { ink2 } else { rgb(0x949ba4).into() }).child(format!("• {p}")));
         }
         // `.profile-inline-pride`: the first badge beside the username, 4px low.
         if let Some(first) = m.pride_badges.first().and_then(|id| super::profile_editor::pride_badge(id, ink, window.scale_factor())) {
@@ -429,15 +448,17 @@ impl Shell {
         }
         let mut header = div().flex_none().flex().flex_col().child(div().flex().flex_wrap().items_center().gap(px(8.)).child(name).children(tag)).child(sub);
         if !m.tagline.is_empty() {
-            header = header.child(div().mt(px(4.)).text_size(px(12.)).line_height(px(18.)).text_color(muted).child(m.tagline.clone()));
+            header = header.child(div().mt(px(4.)).text_size(px(12.)).line_height(px(15.6)).italic().text_color(muted).child(m.tagline.clone()));
         }
 
         // The panel.
-        let h4 = |text: String| div().mb(px(3.)).text_size(px(10.5)).line_height(px(15.75)).font_weight(FontWeight::BOLD).text_color(muted).child(text);
+        // `.pst .profile-section h4`: the card's own ink.
+        let h4_color = if look.is_some() { ink } else { muted };
+        let h4 = |text: String| div().mb(px(3.)).text_size(px(10.5)).line_height(px(15.75)).font_weight(FontWeight::BOLD).text_color(h4_color).child(text);
         let long_bio = m.bio.chars().count() > 130;
         let bio_text = if m.bio.trim().is_empty() { t("profile.noBio") } else { m.bio.clone() };
         let mut bio = div().child(
-            div().text_size(px(12.5)).line_height(px(17.5)).text_color(ink).when(long_bio && !open.bio_open, |d| d.line_clamp(3)).child(bio_text),
+            div().text_size(px(12.5)).line_height(px(17.5)).text_color(if look.is_some() { ink2 } else { ink }).when(long_bio && !open.bio_open, |d| d.line_clamp(3)).child(bio_text),
         );
         if long_bio {
             bio = bio.child(
@@ -465,38 +486,141 @@ impl Shell {
             .px(px(12.))
             .py(px(10.))
             .rounded(px(12.8))
-            .bg(mix(accent, 0.08, ink.opacity(0.05)))
+            .bg(look.as_ref().map(|l| l.surface).unwrap_or_else(|| mix(accent, 0.08, ink.opacity(0.05))))
             .border_1()
-            .border_color(rgba(0xffffff12))
+            .border_color(look.as_ref().map(|l| l.line).unwrap_or_else(|| rgba(0xffffff12).into()))
             .child(bio);
         if !self.home
             && let Some(server) = self.server()
         {
             let held: Vec<String> = m.role_ids.get(&server.id).and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default();
             let roles: Vec<_> = server.roles.iter().filter(|r| held.contains(&r.id)).collect();
-            if !roles.is_empty() {
+            // onToggleRole: the owner and those who manage the server or its roles can take a
+            // role away (its dot turns into an x on hover) or give one (+, a picker).
+            let perms = self.my_permissions();
+            let manage = server.owner_id.as_deref() == Some(self.me.id.as_str()) || perms & (1 << 3) != 0 || perms & (1 << 5) != 0;
+            let givable: Vec<_> = server.roles.iter().filter(|r| !held.contains(&r.id)).collect();
+            if !roles.is_empty() || (manage && !server.roles.is_empty()) {
                 let mut list = div().flex().flex_wrap().gap(px(4.));
                 for role in &roles {
                     let color: Hsla = css_color(&role.color).unwrap_or(muted);
+                    let pill = SharedString::from(format!("role-pill-{}", role.id));
+                    let dot = if manage {
+                        let (sid, uid, rid) = (server.id.clone(), m.id.clone(), role.id.clone());
+                        div()
+                            .id(SharedString::from(format!("role-remove-{}", role.id)))
+                            .size(px(12.))
+                            .flex_none()
+                            .rounded_full()
+                            .bg(color)
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .tooltip(ui::tooltip(tv("profile.removeRole", &[("name", role.name.as_str())])))
+                            .child(div().invisible().group_hover(pill.clone(), |s| s.visible()).child(ui::icon("x", 10., Hsla::from(Theme::paper()))))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                cx.stop_propagation();
+                                this.toggle_member_role(sid.clone(), uid.clone(), rid.clone(), false, cx);
+                            }))
+                            .into_any_element()
+                    } else {
+                        div().size(px(8.)).flex_none().rounded_full().bg(color).into_any_element()
+                    };
                     list = list.child(
                         div()
+                            .group(pill)
                             .flex()
                             .items_center()
                             .gap(px(4.))
                             .px(px(8.))
                             .py(px(2.))
-                            .rounded(px(6.4))
+                            .rounded(px(4.8))
                             .bg(ink.opacity(0.06))
                             .border_1()
                             .border_color(color)
                             .text_size(px(12.))
                             .line_height(px(18.))
                             .font_weight(FontWeight::MEDIUM)
-                            .child(div().size(px(8.)).rounded_full().bg(color))
+                            .child(dot)
                             .child(div().text_color(color).child(role.name.clone())),
                     );
                 }
-                panel = panel.child(div().child(h4(format!("ROLES ({})", roles.len()))).child(list));
+                if manage && !givable.is_empty() {
+                    let picker = open.role_picker.then(|| {
+                        let mut menu = div()
+                            .id("role-picker")
+                            .absolute()
+                            .top(px(26.))
+                            .left_0()
+                            .min_w(px(170.))
+                            .max_h(px(200.))
+                            .overflow_y_scroll()
+                            .p(px(4.))
+                            .rounded(px(7.2))
+                            .border_1()
+                            .border_color(rgba(0xffffff1a))
+                            .bg(Theme::paper())
+                            .shadow(vec![gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.5), offset: gpui::point(px(0.), px(8.)), blur_radius: px(20.), spread_radius: px(0.) }])
+                            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation());
+                        for role in &givable {
+                            let color: Hsla = css_color(&role.color).unwrap_or(muted);
+                            let (sid, uid, rid) = (server.id.clone(), m.id.clone(), role.id.clone());
+                            menu = menu.child(
+                                div()
+                                    .id(SharedString::from(format!("role-give-{}", role.id)))
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.))
+                                    .px(px(8.))
+                                    .py(px(6.))
+                                    .rounded(px(3.6))
+                                    .text_size(px(13.))
+                                    .text_color(Theme::ink())
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(Hsla::from(Theme::ink()).opacity(0.08)))
+                                    .child(div().size(px(10.)).flex_none().rounded_full().bg(color))
+                                    .child(role.name.clone())
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        if let Some(open) = this.profile.as_mut() {
+                                            open.role_picker = false;
+                                        }
+                                        this.toggle_member_role(sid.clone(), uid.clone(), rid.clone(), true, cx);
+                                    })),
+                            );
+                        }
+                        gpui::deferred(menu).with_priority(3)
+                    });
+                    let on = open.role_picker;
+                    list = list.child(
+                        div().relative().child(
+                            div()
+                                .id("role-add")
+                                .w(px(24.))
+                                .h(px(22.))
+                                .rounded(px(4.8))
+                                .border_1()
+                                .border_color(look.as_ref().map(|l| l.line).unwrap_or(line))
+                                .bg(if on { ink.opacity(0.12) } else { ink.opacity(0.06) })
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .cursor_pointer()
+                                .tooltip(ui::tooltip(t("profile.addRole")))
+                                .hover(|s| s.bg(ink.opacity(0.12)))
+                                .child(ui::icon("plus", 12., if on { ink } else { muted }))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    if let Some(open) = this.profile.as_mut() {
+                                        open.role_picker = !open.role_picker;
+                                    }
+                                    cx.notify();
+                                })),
+                        )
+                        .children(picker),
+                    );
+                }
+                let title = if roles.is_empty() { "ROLES".to_string() } else { format!("ROLES ({})", roles.len()) };
+                panel = panel.child(div().child(h4(title)).child(list));
             }
         }
         if let Some(mutuals) = &open.mutuals {
@@ -511,7 +635,7 @@ impl Shell {
                     .rounded_full()
                     .bg(ink.opacity(0.06))
                     .border_1()
-                    .border_color(rgba(0xffffff12))
+                    .border_color(look.as_ref().map(|l| l.line).unwrap_or_else(|| rgba(0xffffff12).into()))
                     .text_size(px(12.))
                     .line_height(px(18.))
                     .text_color(ink)
@@ -586,7 +710,13 @@ impl Shell {
         );
 
         // The buttons.
+        let styled_button: Option<Hsla> = look.as_ref().map(|l| l.button);
+        let button_glow: Hsla = look.as_ref().map(|l| l.pt_a.opacity(0.3)).unwrap_or_default();
+        let made = Cell::new(false);
         let button = |id: &'static str, icon: &'static str, label: String, primary: bool, gap: f32| {
+            // `.pst … .discord-btn:first-child`: buttons are made in order, so the first made leads.
+            let lead = styled_button.is_some() && !made.replace(true);
+            let primary = primary || lead;
             div()
                 .id(id)
                 .flex_1()
@@ -603,17 +733,49 @@ impl Shell {
                 .line_height(px(12.))
                 .font_weight(FontWeight::SEMIBOLD)
                 .cursor_pointer()
-                .when(primary, |d| d.bg(Theme::lavender()).text_color(rgb(0x15121f)))
+                .when(primary && styled_button.is_none(), |d| d.bg(Theme::lavender()).text_color(rgb(0x15121f)))
+                // `.pst … .discord-btn:first-child`: on a styled card the first button (whichever
+                // it is) takes the card's colour.
+                // `.pst … .discord-btn:first-child`: the card's own button colour, white text.
+                .when_some(styled_button.filter(|_| primary), |d, bg| {
+                    // inset 0 0 0 1px rgba(255,255,255,.16), 0 6px 16px (pt-a 30%)
+                    d.bg(bg).text_color(gpui::white()).border_1().border_color(gpui::hsla(0., 0., 1., 0.16)).shadow(vec![gpui::BoxShadow {
+                        color: button_glow,
+                        offset: gpui::point(px(0.), px(6.)),
+                        blur_radius: px(16.),
+                        spread_radius: px(0.),
+                    }])
+                })
                 .when(!primary, |d| d.bg(Theme::card()).border_1().border_color(rgba(0xffffff12)).text_color(ink))
-                .child(ui::icon(icon, 14., if primary { Hsla::from(rgb(0x15121f)) } else { ink }))
-                .child(label)
+                .when(!icon.is_empty(), |d| d.child(ui::icon(icon, 14., if primary { if styled_button.is_some() { gpui::white() } else { Hsla::from(rgb(0x15121f)) } } else { ink })))
+                .when(!label.is_empty(), |d| d.child(label))
         };
         let blocked = self.friends.blocked.iter().any(|f| f.id == m.id);
         // The buttons go two to a row, each half the width (`flex: 1 1 calc(50% - 3px)`).
         let mut buttons: Vec<AnyElement> = Vec::new();
         if !me && !blocked {
             buttons.push(match self.friend_status(&m.id) {
-                "friend" => button("pf-friend", "user-check", t("sidebar.friends"), false, 6.)
+                // Friends (a green check), turning into Remove Friend (a rose minus) on hover.
+                "friend" => button("pf-friend", "", String::new(), false, 6.)
+                    .group("pf-friend")
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .group_hover("pf-friend", |s| s.hidden())
+                            .child(ui::icon("user-check", 14., rgb(0x34d399)))
+                            .child(t("sidebar.friends")),
+                    )
+                    .child(
+                        div()
+                            .hidden()
+                            .items_center()
+                            .gap(px(6.))
+                            .group_hover("pf-friend", |s| s.flex())
+                            .child(ui::icon("user-minus", 14., rgb(0xfb7185)))
+                            .child(t("profile.removeFriend")),
+                    )
                     .tooltip(ui::tooltip(t("profile.removeFriend")))
                     .on_click(cx.listener(|this, _, _, cx| this.profile_action("remove", cx))),
                 "outgoing" => button("pf-friend", "clock", t("friends.outgoingRequest"), false, 6.).text_color(Theme::lavender()).opacity(0.9),
@@ -688,6 +850,9 @@ impl Shell {
             );
         }
 
+        // `.pst .profile-badge-item, .pst .profile-social-link-pill`: the card's surface and line.
+        let chip_bg: Hsla = look.as_ref().map(|l| l.surface).unwrap_or_else(|| rgba(0xffffff14).into());
+        let chip_line: Hsla = look.as_ref().map(|l| l.line).unwrap_or_else(|| rgba(0xffffff1a).into());
         // `.profile-badges-shelf`: the owner mark and every pride badge, when there are any.
         let pride: Vec<AnyElement> = m.pride_badges.iter().filter_map(|id| super::profile_editor::pride_badge(id, ink, window.scale_factor())).collect();
         let shelf = (m.is_admin || !pride.is_empty()).then(|| {
@@ -698,7 +863,20 @@ impl Shell {
                 .items_center()
                 .gap(px(4.))
                 .when(m.is_admin, |d| {
-                    d.child(div().px(px(7.)).py(px(3.)).rounded(px(6.)).border_1().border_color(rgba(0xffffff1a)).bg(rgba(0xffffff14)).text_size(px(11.)).line_height(px(16.5)).font_weight(FontWeight::BOLD).text_color(gpui::white()).child("🛡️ Owner"))
+                    d.child(
+                        div()
+                            .px(px(7.))
+                            .py(px(3.))
+                            .rounded(px(6.))
+                            .border_1()
+                            .border_color(chip_line)
+                            .bg(chip_bg)
+                            .text_size(px(11.))
+                            .line_height(px(16.5))
+                            .font_weight(FontWeight::BOLD)
+                            .text_color(if look.is_some() { ink2 } else { gpui::white() })
+                            .child("🛡️ Owner"),
+                    )
                 })
                 .when(!pride.is_empty(), |d| d.child(div().pt(px(4.)).flex().flex_wrap().gap(px(6.)).children(pride)))
         });
@@ -732,13 +910,44 @@ impl Shell {
                         .hover(|s| s.bg(ink.opacity(0.06)))
                         .tooltip(ui::tooltip(format!("{}: {}", def.label, def.description)))
                         .child(super::achievements::medal(def, true, 34., window.scale_factor()))
-                        .child(div().w(px(item_w - 4.)).h(px(21.8)).overflow_hidden().text_center().text_size(px(9.5)).line_height(px(10.9)).text_color(ink).child(def.label.clone()))
+                        .child({
+                            // CSS breaks only between words: a word wider than the box stays whole
+                            // and is cut off at its edges, centred.
+                            let box_w = item_w - 4.;
+                            let mut lines: Vec<String> = Vec::new();
+                            for word in def.label.split_whitespace() {
+                                match lines.last_mut() {
+                                    Some(last) if f32::from(ui::text_width(window, &format!("{last} {word}"), FontWeight::NORMAL, 9.5)) <= box_w => {
+                                        last.push(' ');
+                                        last.push_str(word);
+                                    }
+                                    _ => lines.push(word.to_string()),
+                                }
+                            }
+                            div()
+                                .w(px(box_w))
+                                .h(px(21.8))
+                                .overflow_hidden()
+                                .flex()
+                                .flex_col()
+                                .items_center()
+                                .text_size(px(9.5))
+                                .line_height(px(10.9))
+                                .text_color(ink)
+                                .children(lines.into_iter().take(2).map(|line| {
+                                    // An overflowing line starts at the left edge, as in CSS.
+                                    let wide = f32::from(ui::text_width(window, &line, FontWeight::NORMAL, 9.5)) > box_w;
+                                    div().flex_none().w_full().whitespace_nowrap().when(!wide, |d| d.text_center()).child(line)
+                                }))
+                        })
                         .on_click(open_board(target.clone())),
                 );
             }
             // `.profile-achievements-shelf { margin: 8px 0 4px }` beside the body's 8px gap.
             div()
                 .flex_none()
+                .mt(px(8.))
+                .mb(px(4.))
                 .child(
                     div()
                         .mb(px(6.))
@@ -756,7 +965,8 @@ impl Shell {
         });
         // `.profile-social-links`: a pill per link, opening it in the browser.
         let socials = (!m.social_links.is_empty()).then(|| {
-            let mut row = div().my(px(8.)).flex().flex_wrap().gap(px(6.));
+            // `.user-profile-card-popover .profile-social-links`: 4px apart, pills 2px 8px.
+            let mut row = div().my(px(8.)).flex().flex_wrap().gap(px(4.));
             for (n, link) in m.social_links.iter().enumerate() {
                 let label = link.label.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| link.platform.clone());
                 let url = if link.url.starts_with("http") { link.url.clone() } else { format!("https://{}", link.url) };
@@ -778,20 +988,20 @@ impl Shell {
                         .flex()
                         .items_center()
                         .gap(px(5.))
-                        .px(px(9.))
-                        .py(px(4.))
+                        .px(px(8.))
+                        .py(px(2.))
                         .rounded(px(14.))
-                        .bg(gpui::rgba(0xffffff14))
+                        .bg(if look.is_some() { chip_bg } else { gpui::rgba(0xffffff14).into() })
                         .border_1()
-                        .border_color(gpui::rgba(0xffffff1f))
+                        .border_color(if look.is_some() { chip_line } else { gpui::rgba(0xffffff1f).into() })
                         .text_size(px(11.))
                         .line_height(px(16.5))
                         .font_weight(FontWeight::MEDIUM)
-                        .text_color(Theme::ink())
+                        .text_color(if look.is_some() { ink2 } else { Theme::ink().into() })
                         .cursor_pointer()
                         .hover(|s| s.bg(gpui::rgba(0xffffff26)).border_color(Theme::lavender()).top(px(-1.)))
                         .tooltip(ui::tooltip(format!("{label}: {}", link.url)))
-                        .child(ui::icon(glyph, 14., Theme::ink()))
+                        .child(ui::icon(glyph, 14., if look.is_some() { ink2 } else { Theme::ink().into() }))
                         .child(label)
                         .on_click(move |_, _, cx| cx.open_url(&url)),
                 );
@@ -800,6 +1010,76 @@ impl Shell {
         });
         let body = div().flex_none().pt(px(8.)).px(px(14.)).pb(px(14.)).flex().flex_col().gap(px(8.)).child(header).children(shelf).children(achievements).children(socials).child(panel).child(actions);
         let measured = open.height.clone();
+        // The card's layers: the edge (a frame's gradient, the style's gradient line, or a plain
+        // line), then the background inside it (the style's finish, or the accent fading down).
+        let frame_edge = if framed { super::profile_look::frame_edge(&frame) } else { None };
+        let edge_grad: Option<(String, f32)> = frame_edge.as_ref().map(|(g, _)| (g.clone(), 3.)).or_else(|| look.as_ref().and_then(|l| l.edge_grad.clone()));
+        let bw = edge_grad.as_ref().map_or(1., |(_, w)| *w);
+        let edge_layer = match &edge_grad {
+            Some((grad, _)) => div().absolute().inset_0().rounded(px(16.)).child(ui::css_background(ui::css_static(grad.clone()), 16.)).into_any_element(),
+            None => div()
+                .absolute()
+                .inset_0()
+                .rounded(px(16.))
+                .bg(look.as_ref().map(|l| l.edge_line.unwrap_or(gpui::hsla(0., 0., 0., 0.))).unwrap_or_else(|| mix(accent, 0.45, line)))
+                .into_any_element(),
+        };
+        // `.pst-backdrop`: an aurora card's lights, then the pattern, over the finish.
+        let lights = look.as_ref().and_then(|l| l.lights.clone()).map(|css| {
+            gpui::canvas(
+                |_, _, _| {},
+                move |bounds, _, window, _| {
+                    let (w, h) = (f32::from(bounds.size.width).round(), f32::from(bounds.size.height).round());
+                    if let Some(picture) = super::profile_look::lights_picture(&css, w, h, window.scale_factor()) {
+                        let _ = window.paint_image(bounds, gpui::Corners::default(), picture, 0, false);
+                    }
+                },
+            )
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+        });
+        let pattern = look.as_ref().and_then(|l| l.pattern.clone().map(|(kind, color)| (kind, color, l.light))).map(|(kind, color, light)| {
+            let radius = 16. - bw;
+            gpui::canvas(
+                |_, _, _| {},
+                move |bounds, _, window, _| {
+                    let (w, h) = (f32::from(bounds.size.width).round(), f32::from(bounds.size.height).round());
+                    if let Some(picture) = super::profile_look::pattern_picture(&kind, color, light, w, h, window.scale_factor()) {
+                        let _ = window.paint_image(bounds, gpui::Corners::all(px(radius)), picture, 0, false);
+                    }
+                },
+            )
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+        });
+        let flow = look.as_ref().and_then(|l| l.flow.clone());
+        // Under a flow edge the background runs to the card's edge (its ring is partly clear).
+        let inset = if flow.is_some() { 0. } else { bw };
+        let flow_ring = flow.map(|stops| {
+            gpui::canvas(|_, _, _| {}, move |bounds, _, window, _| super::profile_look::paint_flow_edge(bounds, &stops, 16., window))
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+        });
+        let bg_layer = div().absolute().top(px(inset)).left(px(inset)).right(px(inset)).bottom(px(inset)).rounded(px(16. - inset)).overflow_hidden().child(match &look {
+            Some(l) => ui::css_background(ui::css_static(l.bg.clone()), 16. - inset).into_any_element(),
+            None => div()
+                .size_full()
+                .bg(gpui::linear_gradient(180., gpui::linear_color_stop(mix(accent, 0.22, rgb(0x17181d)), 0.), gpui::linear_color_stop(mix(accent, 0.08, rgb(0x101115)), 1.)))
+                .into_any_element(),
+        }).children(lights).children(pattern);
+        let shadow = look.as_ref().and_then(|l| l.shadow.clone()).or_else(|| frame_edge.as_ref().map(|(_, s)| s.clone()).filter(|s| !s.is_empty())).unwrap_or_else(|| {
+            vec![
+                gpui::BoxShadow { color: accent.opacity(0.18), offset: gpui::point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(1.) },
+                gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.55), offset: gpui::point(px(0.), px(20.)), blur_radius: px(50.), spread_radius: px(0.) },
+                gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.4), offset: gpui::point(px(0.), px(4.)), blur_radius: px(14.), spread_radius: px(0.) },
+            ]
+        });
         let card = div()
             .id("profile-card")
             .absolute()
@@ -807,25 +1087,17 @@ impl Shell {
             .top(px(top))
             .w(px(width))
             .rounded(px(16.))
-            .bg(gpui::linear_gradient(
-                180.,
-                gpui::linear_color_stop(mix(accent, 0.22, rgb(0x17181d)), 0.),
-                gpui::linear_color_stop(mix(accent, 0.08, rgb(0x101115)), 1.),
-            ))
-            .border_1()
-            .border_color(mix(accent, 0.45, line))
-            .shadow(vec![
-                gpui::BoxShadow { color: accent.opacity(0.18), offset: gpui::point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(1.) },
-                gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.55), offset: gpui::point(px(0.), px(20.)), blur_radius: px(50.), spread_radius: px(0.) },
-                gpui::BoxShadow { color: gpui::hsla(0., 0., 0., 0.4), offset: gpui::point(px(0.), px(4.)), blur_radius: px(14.), spread_radius: px(0.) },
-            ])
-            .when_some(crate::cosmetics::frame_shadow(&frame), |d, shadow| d.shadow(shadow))
+            .p(px(bw))
+            .shadow(shadow)
+            .child(edge_layer)
+            .child(bg_layer)
             .text_color(rgb(0xf2f3f5))
             .flex()
             .flex_col()
-            .child(banner)
-            .child(avatar_row)
-            .child(body)
+            .child(banner.relative())
+            .child(avatar_row.relative())
+            .child(body.relative())
+            .children(flow_ring)
             // `.pfx`: the effect, played by the web's own code in a web view kept over the card.
             .children(self.profile_effect_layer(m, open.key, window, cx))
             // `.pframe-art`: the frame's pieces, over the card and around it.
@@ -854,6 +1126,17 @@ impl Shell {
                 .size_full(),
             )
             .on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_profile(cx)));
+        // A styled card arrives its own way (`.pst-in-*`); others pop in.
+        if let Some(kind) = look.as_ref().and_then(|l| l.entrance.clone()) {
+            let ms = super::profile_look::entrance_ms(&kind);
+            return Some(
+                card.with_animation(SharedString::from(format!("profile-{}", open.key)), gpui::Animation::new(std::time::Duration::from_millis(ms)), move |d, t| {
+                    let (opacity, y) = super::profile_look::entrance_at(&kind, t);
+                    d.opacity(opacity).top(px(top + y))
+                })
+                .into_any_element(),
+            );
+        }
         Some(
             card.with_animation(
                 SharedString::from(format!("profile-{}", open.key)),

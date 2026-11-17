@@ -102,12 +102,34 @@ fn resolve_stops(stops: &[(Rgba, Vec<f32>)], len: f32) -> Vec<(Rgba, f32)> {
     }
     // Positions never go backwards.
     let mut max = 0f32;
-    flat.into_iter()
+    let stops: Vec<(Rgba, f32)> = flat
+        .into_iter()
         .map(|(c, p)| {
             max = max.max(p.unwrap());
             (c, max)
         })
-        .collect()
+        .collect();
+    // CSS blends stops premultiplied, so fading to `transparent` keeps the colour; SVG blends colour
+    // and opacity apart, which would pass through grey. A clear stop takes its neighbours' colour
+    // (split in two where they differ).
+    let mut out = Vec::with_capacity(stops.len() + 2);
+    for (i, &(c, o)) in stops.iter().enumerate() {
+        if !c.clear() {
+            out.push((c, o));
+            continue;
+        }
+        let before = stops[..i].iter().rev().find(|(c, _)| !c.clear()).map(|(c, _)| c.faded());
+        let after = stops[i + 1..].iter().find(|(c, _)| !c.clear()).map(|(c, _)| c.faded());
+        match (before, after) {
+            (Some(b), Some(a)) if b != a => {
+                out.push((b, o));
+                out.push((a, o));
+            }
+            (Some(x), _) | (None, Some(x)) => out.push((x, o)),
+            (None, None) => out.push((c, o)),
+        }
+    }
+    out
 }
 
 /// SVG for one background value painted over `area`. Returns (defs, drawing).

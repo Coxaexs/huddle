@@ -1,0 +1,126 @@
+{
+"gold": {
+"grad": "linear-gradient(135deg, #8a6a14, #ffe9a0 25%, #b8892a 50%, #fff1b0 75%, #8a6a14)",
+"shadow": "0 0 16px rgba(233, 198, 90, 0.35), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"neon": {
+"grad": "linear-gradient(135deg, #06b6d4, #3b82f6 50%, #22d3ee)"
+},
+"rainbow": {
+"grad": "linear-gradient(90deg, #ff3b6b, #ff9f1c, #ffe14d, #4ade80, #22d3ee, #6366f1, #d946ef, #ff3b6b)",
+"size": "300% 100%"
+},
+"flame": {
+"grad": "linear-gradient(0deg, #ff3d00, #ffb300 40%, #ff6d00 70%, #ff3d00)"
+},
+"frost": {
+"grad": "linear-gradient(135deg, #e8f7ff, #4aa8e0 35%, #ffffff 60%, #8fd3f4)",
+"shadow": "0 0 16px rgba(120, 200, 255, 0.35), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"vine": {
+"grad": "linear-gradient(135deg, #134d2a, #8ad06a 40%, #1f6b3a 70%, #a3e07f)",
+"shadow": "0 0 14px rgba(90, 200, 100, 0.25), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"sakura": {
+"grad": "linear-gradient(135deg, #ffd1e6, #e86aa6 45%, #fff 70%, #f08ab8)",
+"shadow": "0 0 16px rgba(240, 130, 180, 0.3), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"cyber": {
+"grad": "linear-gradient(90deg, #ff2bd6, #00e5ff)",
+"shadow": "0 0 14px rgba(255, 43, 214, .35), 0 0 14px rgba(0, 229, 255, .25), 0 12px 32px rgba(0,0,0,.6)"
+},
+"royal": {
+"grad": "linear-gradient(135deg, #5b2a9e, #e9c65a 30%, #3b1a6e 55%, #e9c65a 80%, #5b2a9e)",
+"shadow": "0 0 16px rgba(120, 70, 220, 0.35), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"starlit": {
+"grad": "linear-gradient(135deg, #15104a, #7c6cff 45%, #15104a 70%, #b8b0ff)",
+"shadow": "0 0 20px rgba(124, 108, 255, 0.4), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"roses-red": {
+"grad": "linear-gradient(135deg, #8a0b1b, #ff5d75 50%, #4a0712)"
+},
+"kitty-snow": {
+"grad": "linear-gradient(135deg, #c9c3cf, #ffffff 50%, #a49ead)"
+},
+"kitty-ginger": {
+"grad": "linear-gradient(135deg, #b85a1a, #ffc08a 50%, #7a3c10)"
+},
+"bunny": {
+"grad": "linear-gradient(135deg, #ffb3d1, #fff 50%, #ff8fc2)"
+},
+"blaze-blue": {
+"grad": "linear-gradient(0deg, #0057d9, #22d3ee 60%, #d8fbff)",
+"shadow": "0 -6px 26px rgba(34, 211, 238, 0.4), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"blaze-pink": {
+"grad": "linear-gradient(0deg, #a3104f, #ff5cc0 60%, #ffd6f0)",
+"shadow": "0 -6px 26px rgba(255, 92, 192, 0.4), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"crystal": {
+"grad": "linear-gradient(135deg, #3b1b7a, #c9a7ff 50%, #8b5cf6)"
+},
+"crystal-ice": {
+"grad": "linear-gradient(135deg, #0c4a6e, #bdf3ff 50%, #38bdf8)"
+},
+"vampire": {
+"grad": "linear-gradient(180deg, #ff4d5e, #8a0012 40%, #1a0006)",
+"shadow": "0 0 22px rgba(192, 16, 42, 0.45), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"vampire-roses": {
+"grad": "linear-gradient(135deg, #1a0006, #c0102a 50%, #1a0006)"
+},
+"candlelit": {
+"grad": "linear-gradient(180deg, #8a0012, #2a0a14 60%, #c9a64a)"
+},
+"bat-swarm": {
+"grad": "linear-gradient(135deg, #0d0408, #c0102a 50%, #0d0408)"
+},
+"string-lights": {
+"grad": "linear-gradient(90deg, #ff5c5c, #ffd34d, #5ce1ff, #7cff6b, #ff8fd8)"
+},
+"clouds": {
+"grad": "linear-gradient(135deg, #ffffff, #c8d8ff 50%, #ffffff)"
+},
+"arcade": {
+"grad": "linear-gradient(135deg, #ff3cac, #5cf3ff 50%, #ff3cac)",
+"shadow": "0 0 16px rgba(255, 60, 172, 0.4), 0 0 16px rgba(92, 243, 255, 0.3), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"tide": {
+"grad": "linear-gradient(180deg, #a5f3fc, #0891b2 55%, #164e63)",
+"shadow": "0 0 16px rgba(8, 145, 178, 0.35), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"cobwebs": {
+"grad": "linear-gradient(135deg, #2a2633, #b8b2cc 50%, #2a2633)"
+},
+"autumn": {
+"grad": "linear-gradient(135deg, #7a2e0e, #f2a33a 50%, #c23b1e)",
+"shadow": "0 0 14px rgba(242, 163, 58, 0.3), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"storm": {
+"grad": "linear-gradient(180deg, #cbd5ff, #3a4a7a 50%, #1a2240)"
+},
+"mushrooms": {
+"grad": "linear-gradient(135deg, #2f5a34, #8ad06a 40%, #6b4a2a 70%, #2f5a34)",
+"shadow": "0 0 14px rgba(92, 200, 255, 0.2), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"pumpkins": {
+"grad": "linear-gradient(135deg, #3b1a6e, #ff8a1a 50%, #3b1a6e)",
+"shadow": "0 0 16px rgba(255, 138, 26, 0.3), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"holo-card": {
+"grad": "conic-gradient(from var(--cx-holo), #ff9ad5, #ffe29a, #9affc8, #9ad8ff, #c79aff, #ff9ad5)",
+"shadow": "0 0 18px rgba(200, 160, 255, 0.35), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"tnt": {
+"grad": "linear-gradient(135deg, #db2f20, #f2f2f2 50%, #db2f20)"
+},
+"zombie-hands": {
+"grad": "linear-gradient(180deg, #94a07a, #4c5c3e 45%, #2c2418)",
+"shadow": "0 0 18px rgba(166, 255, 58, 0.18), 0 12px 32px rgba(0, 0, 0, 0.6)"
+},
+"quarantine": {
+"grad": "repeating-linear-gradient(135deg, #f5c400 0 9px, #1a1600 9px 18px)",
+"shadow": "0 0 16px rgba(245, 196, 0, 0.25), 0 12px 32px rgba(0, 0, 0, 0.6)"
+}
+}

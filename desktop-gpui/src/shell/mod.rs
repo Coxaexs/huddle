@@ -34,6 +34,7 @@ mod captions;
 mod activities;
 mod battlemap;
 mod dice;
+mod profile_look;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -888,8 +889,10 @@ impl Shell {
         .detach();
     }
 
-    /// DMs and unread counts: once at start and after reconnecting.
+    /// DMs, unread counts and friends: once at start and after reconnecting (the web loads its
+    /// friends at start too, so a profile card knows who is a friend before Home is opened).
     fn load_side_data(&mut self, cx: &mut Context<Self>) {
+        self.reload_friends(cx);
         let client = self.client.clone();
         cx.spawn(async move |this, cx| {
             let fetch = client.clone();
