@@ -1759,7 +1759,7 @@ impl Shell {
                         .flex_wrap()
                         .items_center()
                         .gap(px(8.))
-                        .child(div().flex_1().min_w(px(180.)).h(px(43.)).px(px(14.)).rounded(px(6.)).bg(Theme::paper()).border_1().border_color(Theme::line()).flex().items_center().child(s.vanity.clone()))
+                        .child(div().flex_1().min_w(px(180.)).child(ui::streamer_hide(div().h(px(43.)).px(px(14.)).rounded(px(6.)).bg(Theme::paper()).border_1().border_color(Theme::line()).flex().items_center().child(s.vanity.clone()), super::settings::streamer_active())))
                         .child(
                             div()
                                 .id("ss-vanity-save")
@@ -1805,7 +1805,7 @@ impl Shell {
                         .flex_wrap()
                         .items_center()
                         .gap(px(8.))
-                        .child(div().px(px(8.)).py(px(2.)).rounded(px(6.)).bg(Theme::card()).font_family(crate::theme::MONO_FONT).text_size(px(15.)).font_weight(FontWeight::BOLD).text_color(ink).child(link))
+                        .child(ui::streamer_hide(div().px(px(8.)).py(px(2.)).rounded(px(6.)).bg(Theme::card()).font_family(crate::theme::MONO_FONT).text_size(px(15.)).font_weight(FontWeight::BOLD).text_color(ink).child(link), super::settings::streamer_active()))
                         .child(Self::ss_button("ss-vanity-copy".into(), &t("vanity.copy"), "plain").on_click(cx.listener(move |this, _, _, cx| {
                             cx.write_to_clipboard(gpui::ClipboardItem::new_string(copy.clone()));
                             this.server_notice(t("vanity.copied"), cx);
@@ -1836,7 +1836,7 @@ impl Shell {
                             .flex()
                             .items_center()
                             .gap(px(10.))
-                            .child(div().px(px(8.)).py(px(2.)).rounded(px(6.)).bg(Theme::card()).font_family(crate::theme::MONO_FONT).text_size(px(15.)).line_height(px(22.5)).font_weight(FontWeight::BOLD).text_color(ink).child(code.clone()))
+                            .child(ui::streamer_hide(div().px(px(8.)).py(px(2.)).rounded(px(6.)).bg(Theme::card()).font_family(crate::theme::MONO_FONT).text_size(px(15.)).line_height(px(22.5)).font_weight(FontWeight::BOLD).text_color(ink).child(code.clone()), super::settings::streamer_active()))
                             .child(div().flex_1().text_size(px(12.)).line_height(px(18.)).text_color(muted).child(meta))
                             .child(
                                 div()

@@ -90,6 +90,19 @@ impl Shell {
             let Ok(m) = serde_json::from_str::<Value>(&raw) else { continue };
             match m["t"].as_str().unwrap_or("") {
                 "ready" => {
+                    // HOFFLE_DEV_LIVING_EVAL=<js>: run in the room 12 s after it is ready (tests).
+                    if let Ok(js) = std::env::var("HOFFLE_DEV_LIVING_EVAL") {
+                        cx.spawn(async move |this, cx| {
+                            cx.background_executor().timer(std::time::Duration::from_secs(12)).await;
+                            this.update(cx, |this, _| {
+                                if let Some(view) = &this.living_room.view {
+                                    view.eval(&js);
+                                }
+                            })
+                            .ok();
+                        })
+                        .detach();
+                    }
                     self.living_room.ready = true;
                     self.living_room.sent = None;
                     self.living_room.rect = None;
@@ -110,6 +123,7 @@ impl Shell {
             }
         }
         for event in sends.into_iter().filter(|e| e.is_object()) {
+            crate::trace(format!("living room sends {event}"));
             self.hub.send(event);
         }
         for command in commands.into_iter().filter(|c| c.starts_with('/')) {

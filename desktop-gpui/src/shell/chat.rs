@@ -1120,7 +1120,9 @@ impl Shell {
                 );
             }
         }
-        if mine || message.sender_id.as_deref() == Some(self.me.id.as_str()) {
+        // canDelete (message-row.tsx): yours, a bot's reply to you, a site admin, or MODERATE here.
+        let moderate = !self.home && self.my_permissions() & (1 << 2) != 0;
+        if mine || message.sender_id.as_deref() == Some(self.me.id.as_str()) || self.me.is_admin || moderate {
             let id = message.id.clone();
             bar = bar.child(
                 button(format!("delete-{}", message.id), false)

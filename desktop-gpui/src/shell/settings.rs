@@ -133,6 +133,25 @@ pub(super) fn streamer_setting() -> String {
     streamer_path().and_then(|p| std::fs::read_to_string(p).ok()).map(|s| s.trim().to_string()).filter(|s| ["off", "auto", "on"].contains(&s.as_str())).unwrap_or_else(|| "off".into())
 }
 
+/// Streamer Mode is on now (streamerModeActive): "on", or "auto" while sharing your screen (this
+/// app does not share screens yet). Read once and kept, as it is asked every frame.
+pub(super) fn streamer_active() -> bool {
+    use std::sync::atomic::Ordering;
+    // HOFFLE_DEV_STREAMER=1 (tests): on, leaving the saved choice alone.
+    if std::env::var_os("HOFFLE_DEV_STREAMER").is_some() {
+        return true;
+    }
+    let state = STREAMER.load(Ordering::Relaxed);
+    if state == 0 {
+        let on = streamer_setting() == "on";
+        STREAMER.store(if on { 2 } else { 1 }, Ordering::Relaxed);
+        return on;
+    }
+    state == 2
+}
+
+static STREAMER: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
 fn streamer_path() -> Option<std::path::PathBuf> {
     Some(dirs::config_dir()?.join("Hoffle Lite").join("streamer-mode"))
 }
@@ -1352,7 +1371,7 @@ impl Shell {
             Self::section("acct-email")
                 .child(Self::section_title("Email", None))
                 .when(email_now.is_empty(), |d| d.child(Self::auth_error("You have no email yet. Add one so you can reset your password if you forget it.".into()).mt(px(12.))))
-                .child(Self::field(&s.email, window, cx).mt(px(if email_now.is_empty() { 10. } else { 14. })))
+                .child(div().mt(px(if email_now.is_empty() { 10. } else { 14. })).child(ui::streamer_hide(Self::field(&s.email, window, cx), streamer_active())))
                 .child(Self::hint("Only used for password reset links. Nobody else sees it.").mt(px(8.)))
                 .when(changed, |d| d.child(Self::label("Password to confirm").mt(px(14.))).child(Self::field(&s.email_password, window, cx)))
                 .child(left(
@@ -1815,6 +1834,7 @@ impl Shell {
             let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
             let _ = std::fs::write(path, value);
         }
+        STREAMER.store(if value == "on" { 2 } else { 1 }, std::sync::atomic::Ordering::Relaxed);
         if let Some(s) = self.settings.as_mut() {
             s.streamer = value.to_string();
         }

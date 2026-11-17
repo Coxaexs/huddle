@@ -721,6 +721,26 @@ impl Shell {
                             .text_color(Theme::ink())
                             .child(ui::fit(window, self.me.name(), FontWeight::EXTRA_BOLD, 13., px(if self.simple() { 170. } else { 96. }))),
                     )
+                    // `.streamer-badge` (StreamerModeBadge): its own row while Streamer Mode is on.
+                    .when(super::settings::streamer_active(), |d| {
+                        d.child(
+                            div()
+                                .id("streamer-badge")
+                                // A column's item stretches: the pill is the column's width.
+                                .w_full()
+                                .px(px(6.))
+                                .py(px(1.))
+                                .rounded_full()
+                                .bg(rgb(0x8e44ad))
+                                .text_size(px(10.))
+                                .line_height(px(12.))
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(gpui::white())
+                                .whitespace_nowrap()
+                                .tooltip(ui::tooltip(t("privacy.streamerDesc")))
+                                .child(t("streamer.badge")),
+                        )
+                    })
                     .child(
                         div()
                             .truncate()

@@ -411,6 +411,32 @@ pub fn outline_emoji(emoji: &str, size: f32) -> AnyElement {
     icon(name, size, gpui::rgb(color)).into_any_element()
 }
 
+/// `[data-streamer-hide]` while Streamer Mode is on: the web blurs it 7px and lets nothing reach it.
+/// gpui cannot blur, so a soft smudge of the same size covers it and takes the mouse.
+pub fn streamer_hide(element: impl IntoElement, on: bool) -> AnyElement {
+    if !on {
+        return element.into_any_element();
+    }
+    let smudge: Hsla = crate::theme::Theme::ink().into();
+    div()
+        .relative()
+        .child(div().opacity(0.).child(element))
+        .child(
+            div()
+                .id("streamer-hide")
+                .absolute()
+                .top(px(3.))
+                .bottom(px(3.))
+                .left(px(4.))
+                .right(px(4.))
+                .rounded(px(8.))
+                .bg(smudge.opacity(0.16))
+                .shadow(vec![gpui::BoxShadow { color: smudge.opacity(0.16), offset: gpui::point(px(0.), px(0.)), blur_radius: px(7.), spread_radius: px(2.) }])
+                .occlude(),
+        )
+        .into_any_element()
+}
+
 /// A CSS background (gradients, via `cssbg`) painted at whatever size its parent ends up, as an
 /// absolute layer: for backgrounds gpui cannot draw itself (radial gradients).
 pub fn css_background(css: &'static str, radius: f32) -> impl IntoElement {
