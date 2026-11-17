@@ -96,6 +96,20 @@ impl Shell {
                             this.mark_server_read_id(&server, cx);
                         })),
                 )
+                .child({
+                    let anything = self.reads.values().any(|r| r.unread || r.count > 0);
+                    item("nm-read-all".into(), t("railMenu.markAllRead"), false).when(!anything, |d| d.opacity(0.45)).on_click(cx.listener(|this, _, _, cx| {
+                        this.notify_menu = None;
+                        this.mark_everything_read(cx);
+                    }))
+                })
+                .when(self.folder_id_of(id).is_some(), |d| {
+                    let server = id.clone();
+                    d.child(item("nm-unfolder".into(), t("railMenu.removeFromFolder"), false).on_click(cx.listener(move |this, _, _, cx| {
+                        this.notify_menu = None;
+                        this.remove_server_from_folder(&server, cx);
+                    })))
+                })
                 .child(div().my(px(6.)).h(px(1.)).bg(rgb(0x41434f)))
                 .child(head_box(div().text_size(px(12.)).text_color(muted).child(t("railMenu.notifications")).into_any_element()));
         }

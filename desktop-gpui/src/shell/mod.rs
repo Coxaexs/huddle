@@ -34,6 +34,7 @@ mod captions;
 mod activities;
 mod battlemap;
 mod dice;
+mod folders;
 mod pdf_view;
 mod living_room;
 mod profile_look;
@@ -337,6 +338,12 @@ pub struct Shell {
     activities: activities::Activities,
     living_room: living_room::LivingRoom,
     pdf: pdf_view::PdfView,
+    /// Server folders on the rail (the account's), which are open (this computer's), the folder
+    /// menu, and where a dragged server would land.
+    server_folders: Vec<folders::ServerFolder>,
+    open_folders: std::collections::HashSet<String>,
+    folder_menu: Option<(String, gpui::Point<gpui::Pixels>)>,
+    server_drop_hint: Option<folders::DropHint>,
     living_room_frame: std::rc::Rc<std::cell::Cell<Option<(f32, f32, f32, f32, bool)>>>,
     /// The voice room's battlemap (its web view) and where its board was laid out last frame.
     battlemap: battlemap::Battlemap,
@@ -704,6 +711,10 @@ impl Shell {
             activities: Default::default(),
             living_room: living_room::LivingRoom::new(),
             pdf: Default::default(),
+            server_folders: Vec::new(),
+            open_folders: folders::load_open(),
+            folder_menu: None,
+            server_drop_hint: None,
             living_room_frame: Default::default(),
             battlemap: Default::default(),
             dice: Default::default(),
@@ -910,6 +921,7 @@ impl Shell {
     /// friends at start too, so a profile card knows who is a friend before Home is opened).
     fn load_side_data(&mut self, cx: &mut Context<Self>) {
         self.reload_friends(cx);
+        self.load_server_folders(cx);
         let client = self.client.clone();
         cx.spawn(async move |this, cx| {
             let fetch = client.clone();

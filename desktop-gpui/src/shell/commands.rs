@@ -121,7 +121,7 @@ fn random_below(n: usize) -> usize {
 }
 
 /// crypto.randomUUID's shape, for a whisper's id.
-fn random_id() -> String {
+pub(super) fn random_id() -> String {
     let hex: String = (0..32).map(|_| format!("{:x}", random_below(16))).collect();
     format!("{}-{}-4{}-{:x}{}-{}", &hex[0..8], &hex[8..12], &hex[13..16], 8 + random_below(4), &hex[17..20], &hex[20..32])
 }

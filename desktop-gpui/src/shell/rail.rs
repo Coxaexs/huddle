@@ -62,7 +62,72 @@ impl Shell {
         ));
         rail = rail.child(divider());
 
-        for server in &self.servers {
+        // Loose servers and folders, in server order (railEntries).
+        for entry in super::folders::rail_entries(&self.servers, &self.server_folders) {
+            match entry {
+                super::folders::RailEntry::Server(server) => rail = rail.child(self.rail_server(server, cx)),
+                super::folders::RailEntry::Folder(folder, servers) => {
+                    let drawn = if self.open_folders.contains(&folder.id) { servers.iter().map(|s| self.rail_server(s, cx)).collect() } else { Vec::new() };
+                    rail = rail.child(self.render_rail_folder(&folder, &servers, drawn, cx));
+                }
+            }
+        }
+
+        rail = rail
+            .child(rail_item(
+                false,
+                false,
+                square_button("add-server", t("rail.createServer"))
+                    .text_size(px(24.))
+                    .font_weight(FontWeight::EXTRA_BOLD)
+                    .text_color(Theme::muted())
+                    .child("+")
+                    .into_any_element(),
+            ))
+            .child(rail_item(
+                false,
+                false,
+                square_button("explore", t("rail.explore"))
+                    .child(icon("compass", 16., Theme::muted()))
+                    .into_any_element(),
+            ));
+
+        let mut dms: Vec<_> = self.dms.iter().filter(|d| !d.hidden).collect();
+        dms.sort_by(|a, b| b.pinned.cmp(&a.pinned).then(b.last_at.cmp(&a.last_at)));
+        if !dms.is_empty() {
+            rail = rail.child(divider());
+        }
+        for dm in dms.into_iter().take(4) {
+            let count = self.reads.get(&dm.channel_id).map_or(0, |r| r.count);
+            let status = self.presence_of(&dm.user.id);
+            let in_call = self.rooms.get(&dm.channel_id).is_some_and(|r| !r.is_empty());
+            let open = dm.channel_id.clone();
+            let title = if count > 0 { format!("{} · {count} new", dm.user.name()) } else { dm.user.name().to_string() };
+            let active = self.home && self.channel_id.as_deref() == Some(dm.channel_id.as_str());
+            let group = dm.group.is_some();
+            rail = rail.child(rail_item(
+                active,
+                false,
+                div()
+                    .id(SharedString::from(format!("dm-{}", dm.channel_id)))
+                    .relative()
+                    .size(px(44.))
+                    .cursor_pointer()
+                    .tooltip(ui::tooltip(title))
+                    .child(ui::avatar(self.picture(&dm.user.avatar_url), &dm.user.avatar, &dm.user.color, dm.user.name(), 44.))
+                    // A group has no presence of its own.
+                    .when(!group, |d| d.child(div().absolute().right_0().bottom_0().child(ui::rail_presence_dot(&status, 10., rgb(0x0f0d18)))))
+                    .when(in_call, |d| d.child(div().absolute().top_0().right_0().size(px(10.)).rounded_full().bg(Theme::mint())))
+                    .when(count > 0, |d| d.child(div().absolute().right(px(-2.)).bottom(px(-2.)).child(rail_badge(count))))
+                    .on_click(cx.listener(move |this, _, _, cx| this.open_dm(open.clone(), cx)))
+                    .into_any_element(),
+            ));
+        }
+        rail
+    }
+
+    /// One server on the rail (also inside an open folder).
+    fn rail_server(&self, server: &crate::model::Server, cx: &mut Context<Self>) -> AnyElement {
             let active = !self.home && self.server_id.as_deref() == Some(&server.id);
             let unread = !active && server.channels.iter().any(|c| self.reads.get(&c.id).is_some_and(|r| r.unread));
             let mentions: u32 = server.channels.iter().map(|c| self.reads.get(&c.id).map_or(0, |r| r.mentions)).sum();
@@ -127,60 +192,26 @@ impl Shell {
                     })
                 })
                 .on_click(cx.listener(move |this, _, _, cx| this.open_server(id.clone(), cx)));
-            rail = rail.child(rail_item(active, unread, mark.into_any_element()));
-        }
-
-        rail = rail
-            .child(rail_item(
-                false,
-                false,
-                square_button("add-server", t("rail.createServer"))
-                    .text_size(px(24.))
-                    .font_weight(FontWeight::EXTRA_BOLD)
-                    .text_color(Theme::muted())
-                    .child("+")
-                    .into_any_element(),
-            ))
-            .child(rail_item(
-                false,
-                false,
-                square_button("explore", t("rail.explore"))
-                    .child(icon("compass", 16., Theme::muted()))
-                    .into_any_element(),
-            ));
-
-        let mut dms: Vec<_> = self.dms.iter().filter(|d| !d.hidden).collect();
-        dms.sort_by(|a, b| b.pinned.cmp(&a.pinned).then(b.last_at.cmp(&a.last_at)));
-        if !dms.is_empty() {
-            rail = rail.child(divider());
-        }
-        for dm in dms.into_iter().take(4) {
-            let count = self.reads.get(&dm.channel_id).map_or(0, |r| r.count);
-            let status = self.presence_of(&dm.user.id);
-            let in_call = self.rooms.get(&dm.channel_id).is_some_and(|r| !r.is_empty());
-            let open = dm.channel_id.clone();
-            let title = if count > 0 { format!("{} · {count} new", dm.user.name()) } else { dm.user.name().to_string() };
-            let active = self.home && self.channel_id.as_deref() == Some(dm.channel_id.as_str());
-            let group = dm.group.is_some();
-            rail = rail.child(rail_item(
-                active,
-                false,
-                div()
-                    .id(SharedString::from(format!("dm-{}", dm.channel_id)))
-                    .relative()
-                    .size(px(44.))
-                    .cursor_pointer()
-                    .tooltip(ui::tooltip(title))
-                    .child(ui::avatar(self.picture(&dm.user.avatar_url), &dm.user.avatar, &dm.user.color, dm.user.name(), 44.))
-                    // A group has no presence of its own.
-                    .when(!group, |d| d.child(div().absolute().right_0().bottom_0().child(ui::rail_presence_dot(&status, 10., rgb(0x0f0d18)))))
-                    .when(in_call, |d| d.child(div().absolute().top_0().right_0().size(px(10.)).rounded_full().bg(Theme::mint())))
-                    .when(count > 0, |d| d.child(div().absolute().right(px(-2.)).bottom(px(-2.)).child(rail_badge(count))))
-                    .on_click(cx.listener(move |this, _, _, cx| this.open_dm(open.clone(), cx)))
-                    .into_any_element(),
-            ));
-        }
-        rail
+            // Dragging servers: onto the middle merges into a folder, onto the top moves it there.
+            let hint = self.server_drop_hint.as_ref().filter(|h| h.id == server.id).map(|h| h.merge);
+            let dragged = super::folders::DraggedServer {
+                id: server.id.clone(),
+                face: self.picture(&server.icon_url),
+                label: if server.icon.trim().is_empty() { initials(&server.name) } else { server.icon.clone() },
+                color: css_color(&server.color).unwrap_or(Theme::lavender().into()),
+            };
+            let (target, target2) = (server.id.clone(), server.id.clone());
+            let mark = mark
+                .when(hint == Some(true), |d| d.rounded(px(12.)).shadow(vec![gpui::BoxShadow { color: Theme::lavender().into(), offset: gpui::point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(3.) }]))
+                .on_drag(dragged, |d, _, _, cx| cx.new(|_| d.clone()))
+                .on_drag_move::<super::folders::DraggedServer>(cx.listener(move |this, e: &gpui::DragMoveEvent<super::folders::DraggedServer>, _, cx| this.server_drag_move(&target, e, cx)))
+                .on_drop(cx.listener(move |this, d: &super::folders::DraggedServer, _, cx| this.drop_server_on(d.id.clone(), target2.clone(), cx)));
+            div()
+                .relative()
+                .child(rail_item(active, unread, mark.into_any_element()))
+                // `.rail-item.drop-before::before`: a 3px line above, 18% in from each side.
+                .when(hint == Some(false), |d| d.child(div().absolute().top(px(-5.)).left(px(11.)).right(px(11.)).h(px(3.)).rounded(px(2.)).bg(Theme::lavender())))
+                .into_any_element()
     }
 
     /// "online", "idle", "dnd" or "offline", from the hub's presence and the member's chosen status.

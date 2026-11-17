@@ -978,6 +978,7 @@ impl gpui::Render for Shell {
             .children(self.render_profile_editor(window, cx))
             .children(self.render_server_menu(cx))
             .children(self.render_notify_menu(window, cx))
+            .children(self.render_folder_menu(window, cx))
             .children(self.render_reaction_viewer(window, cx))
             .children(self.render_profile(window, cx))
             .children(self.render_picker(window, cx))

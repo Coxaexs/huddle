@@ -32,6 +32,7 @@ pub(super) enum PromptKind {
     CustomStatus,
     /// A group DM's name.
     RenameGroup(String),
+    RenameFolder(String),
     /// The battlemap page asked (its question's id).
     Battlemap(u64),
     /// The user menu: (server, member) nickname.
@@ -318,6 +319,7 @@ impl Shell {
             PromptKind::Homebrew => self.import_homebrew(value, cx),
             PromptKind::CustomStatus => self.save_custom_status(value, cx),
             PromptKind::RenameGroup(channel) => self.save_group_name(channel, value, cx),
+            PromptKind::RenameFolder(id) => self.save_folder_name(id, value, cx),
             PromptKind::Battlemap(id) => self.battlemap_answer(id, serde_json::json!(value)),
             PromptKind::Nickname(server, user) => self.save_nickname(server, user, value, cx),
             PromptKind::ImageAlt(ix) => {
