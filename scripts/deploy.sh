@@ -109,7 +109,12 @@ rsync -a --delete \
   --exclude=/node_modules --exclude=/state/ --exclude='/state.*/' --exclude=/backups/ --exclude=/.wrangler/ \
   --exclude=/.vinext/ --exclude=/mobile/ --exclude=/desktop/ --exclude=/desktop-tauri/ \
   --exclude=/native-qt/ --exclude='*/node_modules/' --exclude=/.deploying \
+  --exclude=/.tools/ --exclude=/.claude/ \
   "$ROOT/" "$STAGE/"
+# .tools (macOS SDKs and zig for the native desktop apps, ~2.6 GB) and .claude
+# (agent worktrees) are not part of the web build. Copying them made every
+# deploy move ~3 GB on a nearly full SSD; older stages may still hold a copy.
+rm -rf "$STAGE/.tools" "$STAGE/.claude"
 ln -sfn "$ROOT/node_modules" "$STAGE/node_modules"
 lap "copy"
 
