@@ -31255,8 +31255,41 @@ a.link-preview-author:hover {
     grid-template-rows: calc(100dvh - 32px) !important;
   }
 
-  :root[data-desktop-titlebar]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) :is(.discord-server-settings-fullscreen, .settings-modal-overlay) {
-    top: 32px;
+  :root[data-desktop-titlebar]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) :is(
+    .music-player,
+    .discord-server-settings-fullscreen,
+    .settings-modal-overlay,
+    .profile-editor,
+    .voice-focus-main.window-full,
+    .pdfv-backdrop,
+    .web-view-backdrop,
+    .lightbox,
+    .modal-backdrop,
+    .custom-dialog-backdrop,
+    .recording-modal-backdrop,
+    .shortcuts-dialog-backdrop,
+    .poll-dialog-backdrop,
+    .quick-switcher-backdrop,
+    .ach-modal-backdrop,
+    .dp-backdrop
+  ) {
+    top: 32px !important;
+  }
+
+  :root[data-desktop-titlebar]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) :is(.update-banner, .connection-banner) {
+    top: 42px !important;
+  }
+
+  :root[data-desktop-titlebar]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .pe-close {
+    top: 54px !important;
+  }
+
+  :root[data-desktop-titlebar]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .incoming-call-overlay {
+    top: 52px !important;
+  }
+
+  :root[data-desktop-titlebar]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .ach-toast {
+    top: 46px !important;
   }
 
   :root[data-desktop-titlebar]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .app-topbar-nav,
