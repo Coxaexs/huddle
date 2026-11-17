@@ -1,6 +1,8 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { publishStructureChange } from "@/lib/hub-client";
 import { can, Permission } from "@/lib/permissions";
+import { setMemberPicks } from "@/lib/role-picker";
 import { ensureSchema } from "@/lib/schema";
 import { isServerMember } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
@@ -157,7 +159,7 @@ export async function PUT(request: Request, context: Context) {
   return Response.json({ welcome: { enabled, rules, fields } satisfies WelcomeConfig });
 }
 
-/** A newcomer accepts the rules and sends their answers. */
+/** A newcomer accepts the rules and sends their answers (and the roles they picked). */
 export async function POST(request: Request, context: Context) {
   const ctx = await setup(request, context);
   if ("error" in ctx) return ctx.error;
@@ -166,7 +168,7 @@ export async function POST(request: Request, context: Context) {
     return Response.json({ error: "You are not in this server." }, { status: 403 });
   }
   const row = await loadRow(db, server.id);
-  const body = (await request.json().catch(() => ({}))) as { answers?: unknown };
+  const body = (await request.json().catch(() => ({}))) as { answers?: unknown; roles?: unknown };
   const checked = validateAnswers(toConfig(row).fields, body.answers);
   if ("error" in checked) return Response.json({ error: checked.error }, { status: 400 });
 
@@ -179,5 +181,9 @@ export async function POST(request: Request, context: Context) {
     )
     .bind(server.id, user.id, JSON.stringify(checked.answers), new Date().toISOString())
     .run();
+  if (Array.isArray(body.roles)) {
+    const picked = await setMemberPicks(db, server.id, user.id, body.roles);
+    if (picked.changed) await publishStructureChange(server.id);
+  }
   return Response.json({ ok: true });
 }

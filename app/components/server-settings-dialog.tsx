@@ -1136,7 +1136,7 @@ export function ServerSettingsDialog({
         handleDeleteEmoji={handleDeleteEmoji}
       />
 
-        {tab === "welcome" && <WelcomeTab serverId={server.id} onNotice={setNotice} />}
+        {tab === "welcome" && <WelcomeTab server={server} onNotice={setNotice} />}
 
         {tab === "stickers" && (
           <StickersTab

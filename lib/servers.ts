@@ -5,6 +5,7 @@
  * decides whether the channel takes messages, holds a voice call, or restricts
  * posting. See `lib/channel-kinds.ts` for those rules.
  */
+import type { RolePickInfo } from "./role-picker";
 import { DM_SERVER_ID } from "./schema";
 import { serversWithMusicBot, serversWithPlayerBot } from "./music-bot";
 import { channelKindInfo, isChannelKind, type ChannelKind } from "./channel-kinds";
@@ -56,6 +57,9 @@ interface RoleRow {
   icon?: string | null;
   permissions: number;
   position: number;
+  pick_order?: number | null;
+  pick_emoji?: string | null;
+  pick_note?: string | null;
 }
 
 export interface ServerRow {
@@ -121,6 +125,8 @@ export interface PublicRole {
   icon?: string | null;
   permissions: number;
   position: number;
+  /** Members can pick this role for themselves (lib/role-picker.ts). */
+  pick?: RolePickInfo | null;
 }
 
 export interface PublicServer {
@@ -312,7 +318,7 @@ export async function listServers(
     ),
     scoped(
       (filter) =>
-        `SELECT id, server_id, name, color, icon, permissions, position
+        `SELECT id, server_id, name, color, icon, permissions, position, pick_order, pick_emoji, pick_note
            FROM roles WHERE server_id != ?1 AND ${filter}
           ORDER BY position DESC, name ASC`,
     ),
@@ -365,6 +371,10 @@ export async function listServers(
       icon: row.icon || null,
       permissions: row.permissions,
       position: row.position,
+      pick:
+        row.pick_order === null || row.pick_order === undefined
+          ? null
+          : { order: row.pick_order, emoji: row.pick_emoji || "", note: row.pick_note || "" },
     });
     rolesByServer.set(row.server_id, list);
   }

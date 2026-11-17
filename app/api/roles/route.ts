@@ -33,6 +33,8 @@ export async function POST(request: Request) {
     name?: string;
     color?: string;
     permissions?: number;
+    /** Put it under every other role, so it never decides a name colour. */
+    atBottom?: boolean;
   };
   const serverId = body.serverId || "";
   const authority = await roleAuthority(db, user.id, serverId);
@@ -61,7 +63,13 @@ export async function POST(request: Request) {
   // Someone with a ceiling creates roles just under their own highest one
   // (shifting the rest up), so they can still edit what they made.
   let position = (top?.max ?? -1) + 1;
-  if (!authority.unlimited) {
+  if (body.atBottom) {
+    position = 0;
+    await db
+      .prepare("UPDATE roles SET position = position + 1 WHERE server_id = ?")
+      .bind(serverId)
+      .run();
+  } else if (!authority.unlimited) {
     position = Math.max(0, authority.top);
     await db
       .prepare("UPDATE roles SET position = position + 1 WHERE server_id = ? AND position >= ?")

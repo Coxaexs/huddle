@@ -408,6 +408,7 @@ export function renderChatOverlays(v: ShellRenderState) {
           key={activeServer.id}
           serverId={activeServer.id}
           serverName={activeServer.name}
+          roles={activeServer.roles}
           onDone={() => markWelcomeChecked(activeServer.id)}
           onLeave={() => {
             markWelcomeChecked(activeServer.id);

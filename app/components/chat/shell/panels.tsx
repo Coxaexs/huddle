@@ -9,7 +9,9 @@ import { MsnAdBanner, MsnWhatsNew } from "../../msn-chrome";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
 import { PRESENCE, memberActivityLine, type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
 import { activeUntil } from "@/lib/timeouts";
-import { Search, Bell, BellOff, CheckCheck, Pin, Settings, Users, Pencil, Plus, Trash2, LogOut, StickyNote, MessageSquare, PhoneCall, ChevronDown, X, UserPlus, Send, Timer, CalendarDays, Compass, MessageCircle, Mic } from "lucide-react";
+import { RolePickerDialog } from "../../role-picker";
+import { pickableRoles } from "@/lib/role-picker";
+import { Search, Bell, BellOff, CheckCheck, Pin, Tags, Settings, Users, Pencil, Plus, Trash2, LogOut, StickyNote, MessageSquare, PhoneCall, ChevronDown, X, UserPlus, Send, Timer, CalendarDays, Compass, MessageCircle, Mic } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { AvatarDecoration, NameplateArt, nameplateClass } from "../../cosmetics-lite";
 import { StyledName } from "../../profile-style-parts";
@@ -389,8 +391,12 @@ export function ChannelSidebar({
   const { t } = useI18n();
   const simpleUi = useUiMode() === "simple";
   const musicWidgetPlaced = useLayoutPrefs().widgets.some((widget) => widget.id === "music");
+  const [rolePickerOpen, setRolePickerOpen] = useState(false);
   return (
     <aside className={`sidebar ${mobileNav ? "mobile-open" : ""}`}>
+      {rolePickerOpen && activeServer && !inDmHome && (
+        <RolePickerDialog server={activeServer} onClose={() => setRolePickerOpen(false)} />
+      )}
       {/* Mobile close button from Figma */}
       <div className="mobile-drawer-header md:hidden">
         <button
@@ -504,6 +510,19 @@ export function ChannelSidebar({
                 <CheckCheck size={16} /> {t("sidebar.menu.markRead")}
               </span>
             </button>
+            {pickableRoles(activeServer.roles).length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setServerMenuOpen(false);
+                  setRolePickerOpen(true);
+                }}
+              >
+                <span className="flex items-center gap-2">
+                  <Tags size={16} /> {t("sidebar.menu.pickRoles")}
+                </span>
+              </button>
+            )}
             <div className="server-menu-divider" />
             <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
               {t("sidebar.menu.notifications")}

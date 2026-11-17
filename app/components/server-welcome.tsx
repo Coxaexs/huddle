@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { apiFetch } from "../lib/client";
+import { useI18n } from "../lib/i18n-context";
+import { pickableRoles, type RolePick } from "@/lib/role-picker";
+import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { WelcomeConfig, WelcomeField, WelcomeFieldType } from "@/lib/welcome";
+import { RolePickerEditor, RolePickList } from "./role-picker";
 
 interface WelcomeResponse {
   userId: string;
@@ -19,15 +23,23 @@ const TYPE_LABELS: Record<WelcomeFieldType, string> = {
   date: "Date",
 };
 
-/** Server Settings → Welcome Screen: rules and an optional intro form for newcomers. */
+/** Server Settings → Welcome Screen: rules, an optional intro form and a role picker for newcomers. */
 export function WelcomeTab({
-  serverId,
+  server,
   onNotice,
 }: {
-  serverId: string;
+  server: PublicServer;
   onNotice: (text: string) => void;
 }) {
+  const serverId = server.id;
   const [config, setConfig] = useState<WelcomeConfig>({ enabled: false, rules: "", fields: [] });
+  const [picks, setPicks] = useState<RolePick[]>(() =>
+    pickableRoles(server.roles).map((role) => ({
+      roleId: role.id,
+      emoji: role.pick.emoji,
+      note: role.pick.note,
+    })),
+  );
   const [responses, setResponses] = useState<WelcomeResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -72,6 +84,10 @@ export function WelcomeTab({
         { method: "PUT", body: JSON.stringify(config) },
       );
       setConfig(res.welcome);
+      await apiFetch(`/api/servers/${encodeURIComponent(serverId)}/role-picker`, {
+        method: "PUT",
+        body: JSON.stringify({ picks }),
+      });
       onNotice("Welcome screen saved.");
     } catch (error) {
       onNotice(error instanceof Error ? error.message : "Could not save the welcome screen.");
@@ -88,7 +104,7 @@ export function WelcomeTab({
         <h1 className="pane-title">Welcome Screen</h1>
         <p className="pane-subtitle">
           Show people who join the server your rules, and optionally a short form to introduce
-          themselves. Only people who join after you switch it on are asked.
+          themselves and roles to pick. Only people who join after you switch it on are asked.
         </p>
       </div>
 
@@ -180,6 +196,14 @@ export function WelcomeTab({
         )}
       </div>
 
+      <RolePickerEditor
+        server={server}
+        picks={picks}
+        onChange={setPicks}
+        welcomeOn={config.enabled}
+        onNotice={onNotice}
+      />
+
       <div className="button-group">
         <button type="button" className="discord-btn primary-indigo" disabled={saving} onClick={save}>
           {saving ? "Saving…" : "Save Changes"}
@@ -218,16 +242,21 @@ export function WelcomeTab({
 export function WelcomeGate({
   serverId,
   serverName,
+  roles = [],
   onDone,
   onLeave,
 }: {
   serverId: string;
   serverName: string;
+  /** The server's roles; the ones on offer are shown to pick from. */
+  roles?: PublicRole[];
   onDone: () => void;
   onLeave: () => void;
 }) {
+  const { t } = useI18n();
   const [config, setConfig] = useState<WelcomeConfig | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -257,7 +286,7 @@ export function WelcomeGate({
     try {
       await apiFetch(`/api/servers/${encodeURIComponent(serverId)}/welcome`, {
         method: "POST",
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify({ answers, roles: [...picked] }),
       });
       onDone();
     } catch (err) {
@@ -268,6 +297,7 @@ export function WelcomeGate({
   }
 
   const missing = config.fields.some((field) => field.required && !answers[field.id]?.trim());
+  const offered = pickableRoles(roles);
 
   return (
     <div className="poll-dialog-backdrop welcome-gate-backdrop">
@@ -315,6 +345,24 @@ export function WelcomeGate({
               </label>
             ))}
           </form>
+        )}
+        {offered.length > 0 && (
+          <>
+            <h3>{t("rolePicker.title")}</h3>
+            <RolePickList
+              roles={roles}
+              selected={picked}
+              onToggle={(id) =>
+                setPicked((current) => {
+                  const next = new Set(current);
+                  if (next.has(id)) next.delete(id);
+                  else next.add(id);
+                  return next;
+                })
+              }
+            />
+            <p className="role-picker-hint">{t("rolePicker.later")}</p>
+          </>
         )}
         {error && <p className="welcome-gate-error">{error}</p>}
         <div className="welcome-gate-actions">

@@ -1052,6 +1052,14 @@ async function migrate(db: D1Database): Promise<void> {
   if (!roleColumns.has("icon")) {
     await db.prepare("ALTER TABLE roles ADD COLUMN icon TEXT").run();
   }
+  // Roles members pick for themselves (lib/role-picker.ts). NULL order = not offered.
+  if (!roleColumns.has("pick_order")) {
+    await db.batch([
+      db.prepare("ALTER TABLE roles ADD COLUMN pick_order INTEGER"),
+      db.prepare("ALTER TABLE roles ADD COLUMN pick_emoji TEXT"),
+      db.prepare("ALTER TABLE roles ADD COLUMN pick_note TEXT"),
+    ]);
+  }
 
   const pollColumns = await columnNames(db, "polls");
   if (!pollColumns.has("is_private")) {

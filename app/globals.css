@@ -30245,6 +30245,7 @@ a.link-preview-author:hover {
   z-index: 1200;
 }
 .welcome-gate {
+  padding: 20px;
   width: min(520px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
   overflow-y: auto;
@@ -30285,6 +30286,170 @@ a.link-preview-author:hover {
   justify-content: space-between;
   gap: 8px;
   margin-top: 16px;
+}
+
+/* ── Role picker: roles members pick for themselves (welcome screen, server menu) ── */
+.role-pick-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.role-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  background: rgba(127, 127, 127, 0.08);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.role-pick:hover {
+  background: rgba(127, 127, 127, 0.16);
+}
+.role-pick.is-on {
+  border-color: var(--lavender, #5865f2);
+  background: color-mix(in srgb, var(--lavender, #5865f2) 18%, transparent);
+}
+.role-pick:focus-visible {
+  outline: 2px solid var(--lavender, #5865f2);
+  outline-offset: 2px;
+}
+.role-pick:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.role-pick-emoji {
+  font-size: 22px;
+  line-height: 1;
+  width: 28px;
+  text-align: center;
+  flex: none;
+}
+.role-pick-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.role-pick-name {
+  font-weight: 600;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.role-pick-note {
+  font-size: 12px;
+  opacity: 0.75;
+  line-height: 1.35;
+}
+.role-pick-check {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(127, 127, 127, 0.5);
+  display: grid;
+  place-items: center;
+}
+.role-pick.is-on .role-pick-check {
+  border-color: var(--lavender, #5865f2);
+  background: var(--lavender, #5865f2);
+  color: var(--on-accent, #fff);
+}
+.role-picker-hint {
+  font-size: 13px;
+  opacity: 0.75;
+  margin: 8px 0;
+}
+.role-picker-dialog {
+  padding: 20px;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
+.role-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.role-picker-head h2 {
+  margin: 0;
+}
+.role-picker-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+}
+.role-picker-status {
+  font-size: 13px;
+  opacity: 0.75;
+}
+.role-picker-status.failed {
+  color: #f23f43;
+  opacity: 1;
+}
+.role-picker-warn {
+  color: #f0b232;
+  font-size: 12px;
+}
+.role-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.role-pick-row .discord-text-input {
+  flex: 1;
+  min-width: 0;
+}
+.role-pick-row .role-pick-emoji-input {
+  flex: none;
+  width: 52px;
+  text-align: center;
+  font-size: 18px;
+}
+.role-pick-row-name {
+  flex: none;
+  max-width: 140px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.role-pick-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.role-pick-add > select {
+  flex: 1 1 200px;
+}
+.role-pick-new {
+  display: flex;
+  gap: 8px;
+  flex: 1 1 260px;
+}
+.role-pick-new .discord-text-input {
+  flex: 1;
+  min-width: 0;
+}
+@media (max-width: 560px) {
+  .role-pick-row {
+    flex-wrap: wrap;
+  }
+  .role-pick-row .discord-text-input:not(.role-pick-emoji-input) {
+    flex-basis: 100%;
+    order: 5;
+  }
 }
 
 /* ── Board hall: the game page stays loaded out of sight (the hall's menu plays it), at a desktop size so its controls lay out normally ── */
