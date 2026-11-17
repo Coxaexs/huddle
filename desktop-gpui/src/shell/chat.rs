@@ -60,6 +60,8 @@ impl Shell {
             .flex()
             .flex_col()
             .rounded_t(px(16.))
+            // `.chat-dice-overlay`: rolls in this channel tumble over the panel (the stage has its own).
+            .when(self.stage.is_none(), |d| d.children(self.dice_area()))
             // onChannelDragOver / onChannelDrop: files dropped on the conversation are attached.
             .when(self.channel_id.is_some(), |d| {
                 d.on_drag_move::<gpui::ExternalPaths>(cx.listener(|this, e: &gpui::DragMoveEvent<gpui::ExternalPaths>, _, cx| {

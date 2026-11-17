@@ -293,6 +293,16 @@ impl gpui::Render for Shell {
         }
         self.place_activities(window);
         self.place_battlemap();
+        // HOFFLE_DEV_ROLL=<command>: run that slash command once the channel is open (a real roll).
+        static DEV_ROLL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(command) = std::env::var("HOFFLE_DEV_ROLL")
+            && self.channel_id.as_ref().is_some_and(|c| self.messages.contains_key(c))
+            && !DEV_ROLL.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            self.run_command(command, cx);
+        }
+        self.place_dice();
+        self.dice_tick(window, cx);
         self.battlemap_tick(window, cx);
         self.activities_tick(cx);
         // HOFFLE_DEV_CAPTION=<name>:<text>: a caption line as if someone in the room shared it.

@@ -512,3 +512,21 @@ pub fn battlemap_view(window: &gpui::Window, base: &str, session: Option<(String
         None
     }
 }
+
+/// The web's 3D dice overlay (resources/web/dice.html), click-through, signed in to `base`.
+pub fn dice_view(window: &gpui::Window, base: &str, session: Option<(String, String)>) -> Option<WebOverlay> {
+    #[cfg(target_os = "macos")]
+    {
+        let html = crate::assets::ASSETS.iter().find(|(p, _)| *p == "web/dice.html").map(|(_, b)| String::from_utf8_lossy(b).into_owned())?;
+        let origin = url::Url::parse(base).ok().map(|u| u.origin().ascii_serialization() + "/")?;
+        if let Some((name, value)) = session {
+            set_session_cookie(&origin, &name, &value);
+        }
+        Some(WebOverlay::with_messages(content_view(window)?, &html, &origin, false, true))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, base, session);
+        None
+    }
+}

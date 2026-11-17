@@ -304,7 +304,8 @@ impl Shell {
             .child(tiles)
             .children(self.render_soundboard(stage_width, window, cx))
             .child(bar)
-            // LiveCaptionsOverlay, QaBanner and QaPanel, over the stage.
+            // DiceOverlay, LiveCaptionsOverlay, QaBanner and QaPanel, over the stage.
+            .children(self.dice_area())
             .children(self.render_captions(stage_width))
             .children(self.render_qa_banner())
             .children(self.render_qa_panel(cx));

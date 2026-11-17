@@ -660,6 +660,10 @@ impl Shell {
                     if let (Some(seed), Some(card)) = (v.pointer("/roll/animationSeed").and_then(Value::as_str), v.get("secretCard").filter(|c| c.is_object())) {
                         super::dnd_rolls::remember_secret_roll(seed, card);
                     }
+                    // Your own roll tumbles here at once (the hub's copy has the same seed).
+                    if let Some(roll) = v.get("roll").filter(|r| r.is_object()).cloned() {
+                        this.show_dice_roll(None, &roll, cx);
+                    }
                     if v.get("posted").and_then(Value::as_bool).unwrap_or(false) {
                         this.pending_command = None;
                         return;

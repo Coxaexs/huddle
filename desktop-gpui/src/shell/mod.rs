@@ -33,6 +33,7 @@ mod qa;
 mod captions;
 mod activities;
 mod battlemap;
+mod dice;
 mod channel_tools;
 mod music_player;
 mod thread;
@@ -333,6 +334,9 @@ pub struct Shell {
     activities: activities::Activities,
     /// The voice room's battlemap (its web view) and where its board was laid out last frame.
     battlemap: battlemap::Battlemap,
+    /// The 3D dice overlay and where it was laid out last frame.
+    dice: dice::Dice,
+    dice_frame: std::rc::Rc<std::cell::Cell<Option<(f32, f32, f32, f32)>>>,
     battlemap_frame: std::rc::Rc<std::cell::Cell<Option<(f32, f32, f32, f32)>>>,
     /// Where the activities panel was laid out last frame (window points, and whether covered).
     activities_frame: std::rc::Rc<std::cell::Cell<Option<(f32, f32, f32, f32, bool)>>>,
@@ -693,6 +697,8 @@ impl Shell {
             captions: Default::default(),
             activities: Default::default(),
             battlemap: Default::default(),
+            dice: Default::default(),
+            dice_frame: Default::default(),
             battlemap_frame: Default::default(),
             activities_frame: Default::default(),
             unlocks: Default::default(),
@@ -1693,6 +1699,12 @@ impl Shell {
             "caption" => self.on_caption(&value, cx),
             "activity" => self.on_activity(&value, cx),
             "battlemap" => self.on_battlemap(&value),
+            "dice-roll" => {
+                let channel = value.get("channelId").and_then(Value::as_str).map(String::from);
+                if let Some(roll) = value.get("roll").filter(|r| r.is_object()).cloned() {
+                    self.show_dice_roll(channel.as_deref(), &roll, cx);
+                }
+            }
             // Someone played a soundboard sound in the room you are in.
             "soundboard" => {
                 let room = value.get("channelId").and_then(Value::as_str).unwrap_or_default();
