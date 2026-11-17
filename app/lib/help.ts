@@ -3,6 +3,9 @@ import baslarken from "../../docs/help/baslarken.md?raw";
 import sunucular from "../../docs/help/sunucular.md?raw";
 import roller from "../../docs/help/roller.md?raw";
 import moderasyon from "../../docs/help/moderasyon.md?raw";
+import mesajlasma from "../../docs/help/mesajlasma.md?raw";
+import arkadaslar from "../../docs/help/arkadaslar.md?raw";
+import sesliSohbet from "../../docs/help/sesli-sohbet.md?raw";
 
 /**
  * The user manual at hoffle.online/help, in Turkish first.
@@ -56,6 +59,27 @@ export const HELP_CHAPTERS: HelpChapter[] = [
     description: "Susturma, zaman aşımı, atma ve yasaklama; AutoMod, doğrulama düzeyi ve denetim kaydı.",
     icon: "🚨",
     source: moderasyon,
+  },
+  {
+    slug: "mesajlasma",
+    title: "Mesajlaşma",
+    description: "Yanıt, tepki, konu, anket, metin efektleri, GIF ve çıkartmalar, eğik çizgi komutları ve arama.",
+    icon: "💬",
+    source: mesajlasma,
+  },
+  {
+    slug: "arkadaslar",
+    title: "Arkadaşlar ve özel mesajlar",
+    description: "Arkadaş ekleme ve kabul etme, doğrudan mesajlar, grup DM, sesli ve görüntülü arama, engelleme.",
+    icon: "🤝",
+    source: arkadaslar,
+  },
+  {
+    slug: "sesli-sohbet",
+    title: "Sesli sohbet ve ekran paylaşımı",
+    description: "Ses odaları, mikrofon ve kamera, ekran paylaşımı, ses tahtası, uzamsal ses, gürültü engelleme ve sahne kanalları.",
+    icon: "🎙️",
+    source: sesliSohbet,
   },
 ];
 
