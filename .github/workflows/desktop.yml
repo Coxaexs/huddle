@@ -138,6 +138,8 @@ jobs:
         with:
           workspaces: desktop-tauri/src-tauri
       - run: npm install
+      - name: Sync Hoffle Lite version
+        run: node -e "const fs=require('fs'),v=JSON.parse(fs.readFileSync('../desktop/package.json','utf8')).version;for(const f of ['package.json','src-tauri/tauri.conf.json']){const j=JSON.parse(fs.readFileSync(f,'utf8'));j.version=v;fs.writeFileSync(f,JSON.stringify(j,null,2)+String.fromCharCode(10));}const c='src-tauri/Cargo.toml';fs.writeFileSync(c,fs.readFileSync(c,'utf8').replace(/^version = .*$/m,'version = '+JSON.stringify(v)));"
       # The per-app screen-share audio helper ships inside Lite too
       # (tauri.windows.conf.json), built by Zig like the Electron one.
       - uses: mlugg/setup-zig@v1
@@ -205,6 +207,8 @@ jobs:
         with:
           workspaces: desktop-tauri/src-tauri
       - run: npm install
+      - name: Sync Hoffle Lite version
+        run: node -e "const fs=require('fs'),v=JSON.parse(fs.readFileSync('../desktop/package.json','utf8')).version;for(const f of ['package.json','src-tauri/tauri.conf.json']){const j=JSON.parse(fs.readFileSync(f,'utf8'));j.version=v;fs.writeFileSync(f,JSON.stringify(j,null,2)+String.fromCharCode(10));}const c='src-tauri/Cargo.toml';fs.writeFileSync(c,fs.readFileSync(c,'utf8').replace(/^version = .*$/m,'version = '+JSON.stringify(v)));"
       # "app" too: the self-update is the zipped .app (with its .sig), which
       # gets a name without spaces so its Release URL is predictable.
       - run: npx tauri build --target universal-apple-darwin --bundles app,dmg

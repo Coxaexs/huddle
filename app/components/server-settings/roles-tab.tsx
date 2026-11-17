@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Shield, GripVertical, Users, Pencil, MoreHorizontal } from "lucide-react";
+import { Search, Shield, GripVertical, Users, Pencil, Trash2 } from "lucide-react";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
@@ -93,6 +93,7 @@ function RoleIconEditor({
 
 export function ServerRolesTab({
   tab,
+  serverId,
   roleSearch,
   setRoleSearch,
   canManageRolesEffective,
@@ -105,8 +106,12 @@ export function ServerRolesTab({
   toggleRolePermission,
   updateRoleIcon,
   uploadRoleIcon,
+  updateRoleDetails,
+  handleDeleteRole,
+  toggleMemberRole,
 }: {
   tab: Tab;
+  serverId: string;
   roleSearch: string;
   setRoleSearch: React.Dispatch<React.SetStateAction<string>>;
   canManageRolesEffective: boolean;
@@ -119,7 +124,35 @@ export function ServerRolesTab({
   toggleRolePermission: (flag: PermissionFlag) => Promise<void>;
   updateRoleIcon: (icon: string | null) => Promise<void>;
   uploadRoleIcon: (file: File) => Promise<void>;
+  updateRoleDetails: (roleId: string, patch: { name?: string; color?: string }) => Promise<void>;
+  handleDeleteRole: (role: PublicRole) => void;
+  toggleMemberRole: (userId: string, roleId: string, add: boolean) => Promise<void>;
 }) {
+  const [nameDraft, setNameDraft] = useState("");
+  const [colorDraft, setColorDraft] = useState("#99aab5");
+  const [savingDetails, setSavingDetails] = useState(false);
+
+  useEffect(() => {
+    if (!activeRole || activeRole.id === EVERYONE_ROLE_ID) return;
+    setNameDraft(activeRole.name);
+    setColorDraft(activeRole.color || "#99aab5");
+  }, [activeRole?.id, activeRole?.name, activeRole?.color]);
+
+  async function saveDetails() {
+    if (!activeRole || activeRole.id === EVERYONE_ROLE_ID) return;
+    const trimmed = nameDraft.trim();
+    if (!trimmed) return;
+    setSavingDetails(true);
+    try {
+      await updateRoleDetails(activeRole.id, {
+        name: trimmed,
+        color: colorDraft,
+      });
+    } finally {
+      setSavingDetails(false);
+    }
+  }
+
   return (
     <>
       {tab === "roles" && (
@@ -167,45 +200,107 @@ export function ServerRolesTab({
             </div>
 
             <div className="roles-list-wrapper">
-              {filteredRoles.map((role) => (
-                <div
-                  key={role.id}
-                  className={`role-table-row ${activeRole?.id === role.id ? "selected" : ""}`}
-                  onClick={() => setActiveRole(role)}
-                >
-                  <div className="role-name-col">
-                    <span className="drag-dots"><GripVertical size={14} /></span>
-                    <span
-                      className="role-shield-icon"
-                      style={{ color: role.color || "#99aab5" }}
-                    >
-                      <Shield size={16} />
-                    </span>
-                    <strong>{role.name}</strong>
-                    {role.icon && (
-                      <span className="role-icon" aria-hidden="true">{roleIconIsImage(role.icon) ? <img src={role.icon} alt="" /> : role.icon}</span>
-                    )}
+              {filteredRoles.map((role) => {
+                const roleMemberCount = members.filter((m) =>
+                  (m.roleIds?.[serverId] || []).includes(role.id),
+                ).length;
+                return (
+                  <div
+                    key={role.id}
+                    className={`role-table-row ${activeRole?.id === role.id ? "selected" : ""}`}
+                    onClick={() => setActiveRole(role)}
+                  >
+                    <div className="role-name-col">
+                      <span className="drag-dots"><GripVertical size={14} /></span>
+                      <span
+                        className="role-shield-icon"
+                        style={{ color: role.color || "#99aab5" }}
+                      >
+                        <Shield size={16} />
+                      </span>
+                      <strong>{role.name}</strong>
+                      {role.icon && (
+                        <span className="role-icon" aria-hidden="true">{roleIconIsImage(role.icon) ? <img src={role.icon} alt="" /> : role.icon}</span>
+                      )}
+                    </div>
+                    <div className="role-members-col flex items-center gap-1">
+                      <span>{roleMemberCount}</span>
+                      <Users size={14} />
+                    </div>
+                    <div className="role-actions-col">
+                      <button
+                        type="button"
+                        className="icon-action-btn"
+                        title="Edit Role"
+                        aria-label={`Edit ${role.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveRole(role);
+                        }}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      {canManageRolesEffective && (
+                        <button
+                          type="button"
+                          className="icon-action-btn"
+                          title="Delete Role"
+                          aria-label={`Delete ${role.name}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteRole(role);
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="role-members-col flex items-center gap-1">
-                    <span>{members.length}</span>
-                    <Users size={14} />
-                  </div>
-                  <div className="role-actions-col">
-                    <button type="button" className="icon-action-btn" title="Edit Role">
-                      <Pencil size={14} />
-                    </button>
-                    <button type="button" className="icon-action-btn" title="More">
-                      <MoreHorizontal size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {activeRole && canManageRolesEffective && (
               <div className="active-role-permissions-editor">
                 {activeRole.id !== EVERYONE_ROLE_ID && (
-                  <RoleIconEditor role={activeRole} updateRoleIcon={updateRoleIcon} uploadRoleIcon={uploadRoleIcon} />
+                  <>
+                    <div className="role-editor-head" style={{ marginBottom: 14 }}>
+                      <input
+                        type="color"
+                        aria-label="Role colour"
+                        value={colorDraft}
+                        onChange={(e) => setColorDraft(e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        className="discord-search-input"
+                        aria-label="Role name"
+                        maxLength={40}
+                        value={nameDraft}
+                        onChange={(e) => setNameDraft(e.target.value)}
+                        style={{ color: colorDraft }}
+                      />
+                      {(nameDraft.trim() !== activeRole.name ||
+                        colorDraft !== (activeRole.color || "#99aab5")) && (
+                        <button
+                          type="button"
+                          className="discord-btn primary-indigo"
+                          disabled={savingDetails || !nameDraft.trim()}
+                          onClick={() => void saveDetails()}
+                        >
+                          {savingDetails ? "Saving…" : "Save changes"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="role-delete"
+                        onClick={() => handleDeleteRole(activeRole)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                    <RoleIconEditor role={activeRole} updateRoleIcon={updateRoleIcon} uploadRoleIcon={uploadRoleIcon} />
+                  </>
                 )}
                 <h3>Edit Permissions for {activeRole.name}</h3>
                 {activeRole.id === EVERYONE_ROLE_ID && (
@@ -231,6 +326,43 @@ export function ServerRolesTab({
                     );
                   })}
                 </div>
+                {filteredRoles.length > 0 && members.length > 0 && (
+                  <div style={{ marginTop: 24 }}>
+                    <span className="field-label" style={{ display: "block", marginBottom: 8 }}>
+                      Assign roles
+                    </span>
+                    <div className="assign-list">
+                      {members.map((member) => {
+                        const held = new Set(member.roleIds?.[serverId] || []);
+                        return (
+                          <div key={member.id} className="assign-row">
+                            <strong>{member.displayName}</strong>
+                            <div className="assign-chips">
+                              {filteredRoles.map((role) => {
+                                const on = held.has(role.id);
+                                return (
+                                  <button
+                                    type="button"
+                                    key={role.id}
+                                    className={`assign-chip ${on ? "on" : ""}`}
+                                    style={
+                                      on && role.color
+                                        ? { borderColor: role.color, color: role.color }
+                                        : undefined
+                                    }
+                                    onClick={() => void toggleMemberRole(member.id, role.id, !on)}
+                                  >
+                                    {role.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -5,6 +5,7 @@ import { type PublicUser } from "@/lib/users";
 import { MatrixRain } from "../../matrix-rain";
 import { Starfield } from "../../starfield";
 import { MsnOverlays } from "./overlays";
+import { AppTopbar } from "./app-topbar";
 import { ServerRail, ChannelSidebar, ThreadPanel, MemberPanel } from "./panels";
 import type { useShellComposer } from "../../../hooks/chat-shell/use-shell-composer";
 import { withShellRenderers } from "./chat-shell-renderers";
@@ -26,7 +27,7 @@ export function renderChatShell(s: ChatShellViewState) {
     categoryDropProps, channelLayout, channelPrefs, collapsedCats, collapsedGroups,
     createContactGroup, createServer, currentVoiceChannel, deleteCategory, deleteContactGroup,
     dmCall, dmUnreadTotal, emojiMap, hoverCard, hoverTimer, hub, inDmHome, joinServerDirect,
-    kindMenu, markServerRead, memberFilterQuery, members, membersById, membersOpen, membersWidth,
+    kindMenu, markServerRead, memberFilterQuery, members, membersById, membersOpen, membersWidth, mentionsOpen,
     mobileNav, msnContacts, msnTheme, myCustomStatus, myStatus, nextEvent, offlineMembers,
     onMembersResizeDown, onSidebarResizeDown, onThreadResizeDown, onlineMembers, openDm,
     openMentionedChannel, openProfile, openProfileByHandle, openUserMenu, pendingFriendCount,
@@ -36,14 +37,14 @@ export function renderChatShell(s: ChatShellViewState) {
     sendNudge, sendThreadReply, serverEvents, serverFolders, serverMenuOpen, servers,
     setActiveChannelId, setActiveServerId, setAutoReply, setCollapsedGroups, setDirectoryOpen,
     setDmClosed, setEventsOpen, setGlobalSearchOpen, setGroupDialog, setGroupDmMenu, setHoverCard, setInviteDialog,
-    setKindMenu, setLightbox, setLightboxImage, setMemberFilterQuery, setMembersOpen, setMobileNav,
+    setKindMenu, setLightbox, setLightboxImage, setMemberFilterQuery, setMembersOpen, setMentionsOpen, setMobileNav,
     setNotifyLevel, setPdfViewer, setPictureOpen, setQuickSoundboardOpen, setServerMenuOpen,
     setServerSettingsOpen, setServers, setSettingsOpen, setShareListening, setShortcutsOpen,
     setSidebarShareSetupOpen, setSoundsOpen, setStageChannelId, setStatusOpen, setStockPicture,
     setThreadDraft, setThreadRoot, setTodayOpen, setUserMenu, shareListening, showCustomConfirm, leaveServer,
     showCustomPrompt, sidebarShareSetupOpen, sidebarWidth, signOut, soundsOpen, stageChannel,
     stageChannelId, statusOpen, textChannels, threadBottomRef, threadDraft, threadMessages,
-    threadRoot, threadWidth, todayData, todayOpen, toggleCategory, togglePinDm, unread, user,
+    threadRoot, threadWidth, todayData, todayOpen, toggleCategory, togglePinDm, unread, unreadMentionTotal, user,
     userMenuHandlers, visibleDms, voice, voiceChannelName, voiceParticipants, voiceRooms,
     voiceSoundboardAllowed, whatsNew, whatsNewPeople,
   } = v;
@@ -132,6 +133,19 @@ export function renderChatShell(s: ChatShellViewState) {
         onOpenToday={() => setTodayOpen(true)}
         onSendNudge={() => void sendNudge()}
         onSignOut={() => void signOut()}
+      />
+      <AppTopbar
+        inDmHome={inDmHome}
+        activeServer={activeServer}
+        activeChannelId={activeChannelId}
+        stageChannelId={stageChannelId}
+        setActiveServerId={setActiveServerId}
+        setActiveChannelId={setActiveChannelId}
+        setStageChannelId={setStageChannelId}
+        mentionsOpen={mentionsOpen}
+        unreadMentionTotal={unreadMentionTotal}
+        setMentionsOpen={setMentionsOpen}
+        setShortcutsOpen={setShortcutsOpen}
       />
       <MsnOverlays
         msnTheme={msnTheme}
@@ -307,7 +321,7 @@ export function renderChatShell(s: ChatShellViewState) {
       />
 
       <MemberPanel
-        membersOpen={membersOpen}
+        membersOpen={membersShown}
         activeServer={inDmHome ? null : activeServer}
         inDmHome={inDmHome}
         activeChannelId={activeChannelId}

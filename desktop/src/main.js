@@ -123,13 +123,13 @@ function saveBounds() {
 
 function createTray() {
   if (tray) return;
-  const iconPath = path.join(__dirname, "../build/icon.png");
-  let icon;
-  if (fs.existsSync(iconPath)) {
-    icon = nativeImage.createFromPath(iconPath);
-  } else {
-    icon = nativeImage.createEmpty();
-  }
+  // The icons live in src/ because the package only carries src/** (build/
+  // is not shipped, which left the menu bar slot empty). macOS gets the "h"
+  // as a template the menu bar tints white or black; elsewhere the purple tile.
+  // createFromPath picks up the @2x file on its own.
+  const mac = process.platform === "darwin";
+  const icon = nativeImage.createFromPath(path.join(__dirname, "tray", mac ? "trayTemplate.png" : "tray.png"));
+  if (mac) icon.setTemplateImage(true);
   tray = new Tray(icon);
   tray.setToolTip("Hoffle");
   refreshTrayMenu();
@@ -260,6 +260,16 @@ function createWindow() {
     backgroundColor: "#1b1b21",
     title: "Hoffle",
     autoHideMenuBar: true,
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 14, y: 10 } }
+      : {
+          titleBarStyle: "hidden",
+          titleBarOverlay: {
+            color: "#1b1b21",
+            symbolColor: "#dcddde",
+            height: 32,
+          },
+        }),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

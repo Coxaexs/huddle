@@ -249,8 +249,6 @@ export function ServerSettingsDialog({
   const [roles, setRoles] = useState<PublicRole[]>(server.roles || []);
   const [activeRole, setActiveRole] = useState<PublicRole | null>(roles[0] || null);
   const [roleSearch, setRoleSearch] = useState("");
-  const [editingRoleName, setEditingRoleName] = useState(false);
-  const [roleNameDraft, setRoleNameDraft] = useState("");
 
   // Members state
   const [serverMembers, setServerMembers] = useState<Member[]>(members || []);
@@ -269,7 +267,7 @@ export function ServerSettingsDialog({
   }, [server.id]);
 
   useEffect(() => {
-    if (tab === "members") void loadServerMembers();
+    if (tab === "members" || tab === "roles") void loadServerMembers();
   }, [tab, loadServerMembers]);
 
   useEffect(() => {
@@ -611,28 +609,34 @@ export function ServerSettingsDialog({
     });
   };
 
-  const updateRoleName = async (name: string) => {
-    if (!activeRole || !canManageRolesEffective || !name.trim()) return;
+  const updateRoleDetails = async (
+    roleId: string,
+    patch: { name?: string; color?: string },
+  ) => {
+    if (!canManageRolesEffective) return;
+    const body: { name?: string; color?: string } = {};
+    if (patch.name !== undefined && patch.name.trim()) body.name = patch.name.trim();
+    if (patch.color !== undefined) body.color = patch.color;
+    if (!Object.keys(body).length) return;
     try {
       const res = await apiFetch<{ servers: PublicServer[] }>(
-        `/api/roles/${activeRole.id}`,
+        `/api/roles/${roleId}`,
         {
           method: "PATCH",
-          body: JSON.stringify({ name: name.trim() }),
+          body: JSON.stringify(body),
         },
       );
       const updatedServer = res.servers.find((s) => s.id === server.id);
       if (updatedServer) {
         setRoles(updatedServer.roles);
         setActiveRole(
-          updatedServer.roles.find((r) => r.id === activeRole.id) || null,
+          updatedServer.roles.find((r) => r.id === roleId) || null,
         );
       }
       onServerUpdated();
-      setEditingRoleName(false);
-      setNotice("Role name updated.");
+      setNotice("Role updated.");
     } catch (e) {
-      setNotice(e instanceof Error ? e.message : "Could not update role name");
+      setNotice(e instanceof Error ? e.message : "Could not update role");
     }
   };
 
@@ -1178,6 +1182,7 @@ export function ServerSettingsDialog({
         {/* Tab 3: Roles (SS 3) */}
         <ServerRolesTab
         tab={tab}
+        serverId={server.id}
         roleSearch={roleSearch}
         setRoleSearch={setRoleSearch}
         canManageRolesEffective={canManageRolesEffective}
@@ -1186,10 +1191,13 @@ export function ServerSettingsDialog({
         everyoneRole={everyoneRoleOf(server)}
         activeRole={activeRole}
         setActiveRole={setActiveRole}
-        members={members}
+        members={serverMembers}
         toggleRolePermission={toggleRolePermission}
         updateRoleIcon={updateRoleIcon}
         uploadRoleIcon={uploadRoleIcon}
+        updateRoleDetails={updateRoleDetails}
+        handleDeleteRole={handleDeleteRole}
+        toggleMemberRole={toggleMemberRole}
       />
 
         {/* Tab 4: Bans (SS 4) */}

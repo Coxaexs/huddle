@@ -28,6 +28,16 @@
   text-wrap: balance;
 }
 
+:root:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"], [data-chan="top"], [data-chan="bottom"]) .space-header h1 {
+  font-size: 15px !important;
+  line-height: 1.2 !important;
+  white-space: nowrap !important;
+  text-wrap: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  min-width: 0;
+}
+
 :root:not([data-custom-theme-id^="msn"]) .channel-heading > span {
   font-size: 13px !important;
   font-weight: 450 !important;
@@ -192,48 +202,53 @@
   }
 }
 
-/* Layout: one calm canvas, one floating sheet ------------------------------
-   Rail, sidebar and member list share the canvas colour with no dividers;
-   the conversation sits on a raised, rounded sheet. Desktop only. */
+/* Layout: Discord-aligned top bar + flush 48px header row -----------------
+   Desktop only; retro window skins (Winamp, TeamSpeak, MSN) keep their own. */
 @media (min-width: 769px) {
-  :root:not([data-custom-theme-id^="msn"]) .app-shell {
-    background: var(--panel) !important;
+  :root:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .app-shell {
+    background: var(--rail-bg, var(--panel)) !important;
   }
 
-  :root:not([data-custom-theme-id^="msn"]) :is(.rail, .sidebar, .member-panel) {
+  :root:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) :is(.sidebar, .member-panel) {
     background: var(--panel) !important;
     border-color: transparent !important;
     box-shadow: none !important;
   }
 
-  /* Rail and channel list read as one column, split by a hairline. */
-  :root:not([data-custom-theme-id^="msn"]) .rail {
-    border-right: 1px solid var(--line) !important;
+  :root:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .app-shell > .rail {
+    background: var(--rail-bg, var(--panel)) !important;
+    border-right: 0 !important;
+    box-shadow: none !important;
   }
 
-  /* The sheet runs off the bottom edge: rounded top corners only. */
-  :root:not([data-custom-theme-id^="msn"]) .chat-panel {
-    margin: 10px 0 0;
-    height: calc(100% - 10px);
-    border-radius: 16px 16px 0 0;
-    border: 1px solid var(--line);
-    border-bottom: 0;
+  :root:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .app-shell > .sidebar {
+    border-top-left-radius: 10px;
+    border-top: 1px solid var(--line) !important;
+    border-left: 1px solid var(--line) !important;
+    overflow: hidden;
+  }
+
+  :root:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]):not(#_) .app-shell > .chat-panel {
+    margin: 0;
+    height: 100%;
+    border-radius: 0;
+    border: 0;
+    border-top: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
     background: var(--chat-bg) !important;
-    box-shadow: var(--shadow-md);
+    box-shadow: none;
   }
 
-  :root:not([data-custom-theme-id^="msn"]) .app-shell:not(.has-members):not(.has-thread) .chat-panel {
-    margin-right: 10px;
-  }
-
-  :root:not([data-custom-theme-id^="msn"]) .chat-header {
-    border-bottom-color: transparent !important;
+  :root:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .chat-header {
+    border-bottom: 1px solid var(--line) !important;
     background: transparent !important;
-    padding-left: 26px;
+    padding: 0 12px 0 16px;
   }
 
-  :root:not([data-custom-theme-id^="msn"]) .member-panel {
-    padding: 22px 16px;
+  :root:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .member-panel {
+    border-top: 1px solid var(--line) !important;
+    padding: 12px 14px;
   }
 }
 
@@ -305,8 +320,8 @@
   font-weight: 500;
 }
 
-:root:not([data-custom-theme-id^="msn"]) .space-header {
-  border-bottom-color: transparent !important;
+:root:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) .space-header {
+  border-bottom: 1px solid var(--line) !important;
 }
 
 /* Server icons: neutral tiles; colour comes from the icon itself. */

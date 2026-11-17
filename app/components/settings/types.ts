@@ -27,7 +27,6 @@ export type Tab =
   | "dice"
   | "custom_ui_css"
   | "accessibility"
-  | "roles"
   | "requests"
   | "tutorial"
   | "language"

@@ -60,7 +60,7 @@ export function renderChatOverlays(v: ShellRenderState) {
     groupDialog, groupDmMenu, inviteDialog, setInviteDialog, setDms, handleAcceptFriend, handleAddFriend, handleBlockUser,
     handleForwardMessage, handleRemoveFriend, handleShareThemeToChat, handleUnblockUser, hub,
     inDmHome, incomingDmCall, incomingFriendUserIds, leaveGroupDm, leaveServer, lightbox,
-    livingRoom, loadMembers, loadServers, markServerRead, markWelcomeChecked, markdownModalOpen,
+    livingRoom, loadMembers, loadServers, markAllRead, markServerRead, markWelcomeChecked, markdownModalOpen,
     members, membersById, messages, moderateMember, moveMember, disconnectMember, msnContacts, msnTheme,
     musicBotActions, myPermissions, openDm, openProfile, openVoiceChannel, outgoingFriendUserIds,
     pdfViewer, pipDismissed, placeContact, pollDialogOpen, prefFor, presenceOf, profileCardTarget,
@@ -277,6 +277,7 @@ export function renderChatOverlays(v: ShellRenderState) {
         setRailMenu={setRailMenu}
         unread={unread}
         markServerRead={markServerRead}
+        markAllRead={markAllRead}
         folderIdOf={folderIdOf}
         saveServerFolders={saveServerFolders}
         serverFolders={serverFolders}
@@ -397,9 +398,6 @@ export function renderChatOverlays(v: ShellRenderState) {
           onMicTestHold={voice.holdForMicTest}
           screenShareAudio={voice.screenShareAudio}
           onScreenShareAudioChange={voice.setScreenShareAudio}
-          server={inDmHome ? null : activeServer}
-          members={members}
-          canManageServer={canManageServer}
         />
       )}
 

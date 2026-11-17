@@ -12,6 +12,7 @@ const { contextBridge, ipcRenderer } = require("electron");
  */
 contextBridge.exposeInMainWorld("huddle", {
   desktop: true,
+  titlebarInset: true,
   setBadge: (count) => ipcRenderer.send("set-badge", Number(count) || 0),
   /** Re-binds the global mute shortcut to the accelerator chosen in Settings. */
   setMuteHotkey: (accelerator) =>

@@ -4,7 +4,8 @@ import { useModuleOn } from "@/app/lib/modules";
 import { WidgetArea } from "../../widgets/widget-area";
 import type { VoiceApi } from "../../../hooks/use-voice";
 import type { PublicChannel } from "@/lib/servers";
-import { ArrowUpToLine, Search, Pin, Bookmark, Settings, Users, Menu, MoreHorizontal, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut, MessageCircle, Award, Megaphone } from "lucide-react";
+import { ArrowUpToLine, Search, Pin, Bookmark, Settings, Users, Menu, MoreHorizontal, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut, MessageCircle, Award, Megaphone, X } from "lucide-react";
+import { Avatar } from "../../avatar";
 import { FollowChannelDialog } from "../../follow-channel-dialog";
 import { type DmSummary } from "../../../lib/chat/types";
 import { channelKindIcon } from "../channel-kind";
@@ -27,6 +28,7 @@ export function ChatHeader({
   inDmHome,
   isSelfDm,
   activeChannel,
+  activeServerName,
   channelTitle,
   activeScreenShare,
   voiceParticipants,
@@ -54,6 +56,10 @@ export function ChatHeader({
   setGlobalSearchOpen,
   searchOpen,
   setSearchOpen,
+  searchQuery,
+  setSearchQuery,
+  runSearch,
+  setSearchResults,
   mentionsOpen,
   unreadMentionTotal,
   setMentionsOpen,
@@ -76,6 +82,7 @@ export function ChatHeader({
   inDmHome: boolean;
   isSelfDm: boolean;
   activeChannel: PublicChannel | null;
+  activeServerName: string;
   channelTitle: string;
   activeScreenShare: { streamerName: string; isScreen: boolean; streamId?: string; participantId?: string; self?: boolean; } | null;
   voiceParticipants: VoiceParticipant[];
@@ -103,6 +110,10 @@ export function ChatHeader({
   setGlobalSearchOpen: Dispatch<SetStateAction<boolean>>;
   searchOpen: boolean;
   setSearchOpen: Dispatch<SetStateAction<boolean>>;
+  searchQuery: string;
+  setSearchQuery: Dispatch<SetStateAction<string>>;
+  runSearch: (query: string) => void;
+  setSearchResults: Dispatch<SetStateAction<{ id: string; channelId: string; channelName: string; author: string; snippet: string; }[]>>;
   mentionsOpen: boolean;
   unreadMentionTotal: number;
   setMentionsOpen: Dispatch<SetStateAction<boolean>>;
@@ -161,6 +172,13 @@ export function ChatHeader({
               ) : inDmHome ? (
                 isSelfDm ? (
                   <StickyNote size={20} />
+                ) : activeDm ? (
+                  <Avatar
+                    size={22}
+                    avatar={activeDm.user.avatar}
+                    avatarUrl={activeDm.user.avatarUrl}
+                    color={activeDm.user.color}
+                  />
                 ) : (
                   <AtSign size={20} />
                 )
@@ -179,8 +197,8 @@ export function ChatHeader({
                   </div>
                 </>
               )}
-              <span className="channel-topic text-xs text-[var(--muted)] whitespace-nowrap flex-shrink-0">
-                {stageChannel
+              {(() => {
+                const topicText = stageChannel
                   ? `· ${t("header.inCall", { count: voiceParticipants.length })}`
                   : inDmHome
                     ? activeDm
@@ -190,11 +208,14 @@ export function ChatHeader({
                           ? t("header.dmGroupMembers", { count: activeDm.group.members.length })
                           : t("header.dmJustYouAnd", { name: activeDm.user.displayName })
                       : t("header.pickConversation")
-                    : activeChannel?.topic ||
-                    (activeChannel
-                      ? t("header.channelDefaultTopic", { name: activeChannel.name })
-                      : t("header.createChannelHint"))}
-              </span>
+                    : activeChannel?.topic?.trim() ||
+                      (!activeChannel ? t("header.createChannelHint") : "");
+                return topicText ? (
+                  <span className="channel-topic text-xs text-[var(--muted)] whitespace-nowrap flex-shrink-0">
+                    {topicText}
+                  </span>
+                ) : null;
+              })()}
             </div>
             <div className="header-actions items-center" {...tb.bar()}>
               <WidgetArea area="header" />
@@ -435,16 +456,7 @@ export function ChatHeader({
                   </Icon>
                 </span>
               )}
-              {!inDmHome && !simpleTools && (
-                <Icon
-                  label={t("header.searchMessages")}
-                  active={searchOpen}
-                  onClick={() => setSearchOpen((open) => !open)}
-                  tb={tb.item("search")}
-                >
-                  <Search size={18} />
-                </Icon>
-              )}
+
               {(!simpleTools || unreadMentionTotal > 0) && (
                 <Icon
                   label={t("header.mentions")}
@@ -507,6 +519,54 @@ export function ChatHeader({
                   <Users size={18} />
                 </Icon>
               )}
+              {!simpleTools && (
+                <div className="header-search-box">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    placeholder={
+                      inDmHome
+                        ? `Search ${channelTitle}`
+                        : `Search ${activeServerName || channelTitle}`
+                    }
+                    aria-label={t("header.searchMessages")}
+                    onFocus={() => {
+                      if (searchQuery.trim()) setSearchOpen(true);
+                    }}
+                    onChange={(event) => {
+                      const val = event.target.value;
+                      setSearchOpen(true);
+                      void runSearch(val);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        setSearchOpen(false);
+                        setSearchQuery("");
+                        setSearchResults([]);
+                        event.currentTarget.blur();
+                      }
+                    }}
+                  />
+                  {searchQuery || searchOpen ? (
+                    <button
+                      type="button"
+                      className="header-search-icon-btn"
+                      aria-label="Clear search"
+                      onClick={() => {
+                        setSearchOpen(false);
+                        setSearchQuery("");
+                        setSearchResults([]);
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  ) : (
+                    <span className="header-search-icon" aria-hidden="true">
+                      <Search size={14} />
+                    </span>
+                  )}
+                </div>
+              )}
               <div className={`header-more ${anyHidden ? "has-hidden" : ""}`} ref={moreRef}>
                 <Icon label={t("header.more")} active={moreOpen} onClick={() => setMoreOpen((open) => !open)}>
                   <MoreHorizontal size={18} />
@@ -514,8 +574,8 @@ export function ChatHeader({
                 {moreOpen && (
                   <div className="header-more-menu" role="menu">
                     {/* On desktop the menu lists only what was moved out of the bar (tb-in-bar hides the rest). */}
-                    {(simpleTools || tb.hidden("search")) && !inDmHome && (
-                      <button type="button" role="menuitem" className={simpleTools ? "" : "tb-moved"} onClick={pick(() => setSearchOpen((open) => !open))}>
+                    {!inDmHome && (
+                      <button type="button" role="menuitem" className={simpleTools ? "" : tb.hidden("search") ? "tb-moved" : "tb-in-bar"} onClick={pick(() => setSearchOpen((open) => !open))}>
                         <Search size={18} /> {t("header.searchMessages")}
                       </button>
                     )}
