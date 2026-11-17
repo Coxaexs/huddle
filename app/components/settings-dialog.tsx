@@ -29,12 +29,11 @@ import { isThemeFxEnabled } from "../lib/theme-fx";
 
 
 import type { PublicServer } from "@/lib/servers";
-import { type Member, type PrideBadgeId, type ProfileStyle, type ProfileActivity, type PublicUser, type SocialLink, type SpotifyActivity } from "@/lib/users";
+import { type PrideBadgeId, type ProfileStyle, type ProfileActivity, type PublicUser, type SocialLink, type SpotifyActivity } from "@/lib/users";
 import { activitySharingEnabled } from "../hooks/use-activity-detector";
 import { apiFetch } from "../lib/client";
 import { DEVICE_SAVED_EVENT, listDevices, primeDeviceLabels, savedDevice, type DeviceLists } from "../lib/devices";
 import { readMicSettings, writeMicSettings, type MicSettings, type MicTelemetry } from "../lib/mic-chain";
-import { RolesTab } from "./settings/roles-tab";
 import { Invite, Tab, PrideTheme, Density, Backdrop, type AppearanceSubtab } from "./settings/types";
 import { ProfileTab } from "./settings/profile-tab";
 import { ProfileEditorShell } from "./settings/profile-editor-shell";
@@ -109,11 +108,6 @@ interface SettingsDialogProps {
   /** Screen share audio defaults. */
   screenShareAudio?: boolean;
   onScreenShareAudioChange?: (enabled: boolean) => void;
-  /** The active server, for the roles tab. */
-  server?: PublicServer | null;
-  members?: Member[];
-  /** Whether this user may manage the server (shows the Roles tab). */
-  canManageServer?: boolean;
   /** Callback to open a DM conversation directly with a target user. */
   onOpenDm?: (userId: string) => void;
   /** Opens the welcome tutorial (Settings → Tutorial). */
@@ -179,9 +173,6 @@ export function SettingsDialog({
   onMicTestHold,
   screenShareAudio = true,
   onScreenShareAudioChange,
-  server,
-  members = [],
-  canManageServer = false,
   onShareThemeToChat,
   onOpenDm,
   onOpenTutorial,
@@ -1072,17 +1063,12 @@ export function SettingsDialog({
         { id: "custom_ui_css" as Tab, label: t("userSettings.tab.customUiCss"), icon: Sparkles, desc: "Personal client-side UI styling", advanced: true },
       ],
     },
-    ...(canCreateInvites || (canManageServer && server)
+    ...(canCreateInvites
       ? [
           {
             title: t("userSettings.group.server"),
             items: [
-              ...(canCreateInvites
-                ? [{ id: "invites" as Tab, label: t("userSettings.tab.invites"), icon: Share2, desc: "Manage server invites and links" }]
-                : []),
-              ...(canManageServer && server
-                ? [{ id: "roles" as Tab, label: t("userSettings.tab.roles"), icon: Layers, desc: "Configure server roles and permissions" }]
-                : []),
+              { id: "invites" as Tab, label: t("userSettings.tab.invites"), icon: Share2, desc: "Manage server invites and links" },
             ],
           },
         ]
@@ -1318,7 +1304,6 @@ export function SettingsDialog({
               {tab === "tts" && t("userSettings.tab.tts")}
               {tab === "accessibility" && t("userSettings.tab.accessibility")}
               {tab === "invites" && t("userSettings.tab.invites")}
-              {tab === "roles" && t("userSettings.tab.roles")}
               {tab === "requests" && t("userSettings.tab.requests")}
               {tab === "licenses" && t("userSettings.tab.licenses")}
               {tab === "language" && t("settings.nav.language")}
@@ -1565,10 +1550,6 @@ export function SettingsDialog({
         motion={motion}
         setMotion={setMotion}
       />
-
-          {tab === "roles" && server && (
-            <RolesTab server={server} members={members} onError={setError} />
-          )}
 
           {tab === "licenses" && <LicensesTab />}
           {tab === "language" && <LanguageTab />}

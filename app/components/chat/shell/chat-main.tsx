@@ -132,6 +132,7 @@ export function renderChatMain(v: ShellRenderState) {
             setPendingFriendCount(count);
           }}
           onOpenMobileNav={() => setMobileNav(true)}
+          onCreateGroupDm={() => setGroupDialog({ mode: "create" })}
         />
       ) : (
         <>
@@ -141,6 +142,7 @@ export function renderChatMain(v: ShellRenderState) {
       inDmHome={inDmHome}
       isSelfDm={isSelfDm}
       activeChannel={activeChannel}
+      activeServerName={activeServer?.name || ""}
       channelTitle={channelTitle}
       activeScreenShare={activeScreenShare}
       voiceParticipants={voiceParticipants}
@@ -168,6 +170,10 @@ export function renderChatMain(v: ShellRenderState) {
       setGlobalSearchOpen={setGlobalSearchOpen}
       searchOpen={searchOpen}
       setSearchOpen={setSearchOpen}
+      searchQuery={searchQuery}
+      setSearchQuery={setSearchQuery}
+      runSearch={runSearch}
+      setSearchResults={setSearchResults}
       mentionsOpen={mentionsOpen}
       unreadMentionTotal={unreadMentionTotal}
       setMentionsOpen={setMentionsOpen}

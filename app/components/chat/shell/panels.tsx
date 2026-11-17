@@ -9,7 +9,7 @@ import { MsnAdBanner, MsnWhatsNew } from "../../msn-chrome";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
 import { PRESENCE, memberActivityLine, type Member, type PresenceStatus, type PublicUser } from "@/lib/users";
 import { activeUntil } from "@/lib/timeouts";
-import { Search, Bell, BellOff, CheckCheck, Pin, Settings, Users, Pencil, Plus, Trash2, LogOut, StickyNote, MessageSquare, PhoneCall, ChevronDown, X, UserPlus, Send, Timer, CalendarDays, Compass, MessageCircle, Mic } from "lucide-react";
+import { Search, Bell, BellOff, CheckCheck, Pin, Settings, Users, Pencil, Plus, Trash2, LogOut, StickyNote, MessageSquare, PhoneCall, ChevronDown, X, UserPlus, Send, Timer, CalendarDays, Compass, MessageCircle, Mic, Globe, Sparkles } from "lucide-react";
 import { Avatar } from "../../avatar";
 import { AvatarDecoration, NameplateArt, nameplateClass } from "../../cosmetics-lite";
 import { StyledName } from "../../profile-style-parts";
@@ -50,17 +50,6 @@ import type { PublicCategory } from "@/lib/servers";
 import { RoleIcon } from "../../role-icon";
 import type { MsnContacts } from "@/lib/msn-contacts";
 import type { WhatsNewEntry } from "../../../hooks/use-msn-extras";
-
-/** "⌘K" on a Mac; elsewhere Ctrl+K works but the badge would only crowd the label. Decided after mount, so the first render matches the server's. */
-function SearchShortcut() {
-  const [mac, setMac] = useState(true);
-  useEffect(() => {
-    setMac(/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent));
-  }, []);
-  return mac ? (
-    <kbd className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.08] text-[var(--muted)]">⌘K</kbd>
-  ) : null;
-}
 
 export function ServerRail({
   inDmHome,
@@ -402,27 +391,52 @@ export function ChannelSidebar({
           <X size={18} />
         </button>
       </div>
-      <header className="space-header" style={{ position: "relative" }}>
-        <div>
-          <span className="eyebrow">
-            {inDmHome
-              ? t("sidebar.private")
-              : activeServer
-                ? t(activeServer.isPublic ? "sidebar.publicSpace" : "sidebar.privateSpace")
-                : null}
-          </span>
-          <h1
-            className={inDmHome ? undefined : "space-name-button"}
-            onClick={inDmHome ? undefined : () => setServerMenuOpen((o) => !o)}
-            title={inDmHome ? undefined : t("sidebar.serverMenu")}
+      <header className={`space-header ${inDmHome ? "dm-space-header" : ""}`} style={{ position: "relative" }}>
+        {inDmHome ? (
+          <button
+            type="button"
+            onClick={() => setGlobalSearchOpen(true)}
+            className="dm-find-conversation-btn"
+            title={t("sidebar.searchUsers")}
           >
-            {inDmHome ? t("sidebar.dms") : activeServer?.name || "Hoffle"}
-          </h1>
-        </div>
-        {!inDmHome && (
-          <Icon label={t("sidebar.serverMenu")} onClick={() => setServerMenuOpen((o) => !o)}>
-            •••
-          </Icon>
+            <span className="truncate">{t("sidebar.findConversation")}</span>
+          </button>
+        ) : activeServer ? (
+          <>
+            <button
+              type="button"
+              className="space-name-button discord-space-trigger"
+              onPointerDown={(e) => {
+                if (serverMenuOpen) e.stopPropagation();
+              }}
+              onClick={() => setServerMenuOpen((o) => !o)}
+              title={t("sidebar.serverMenu")}
+              aria-label={t("sidebar.serverMenu")}
+              aria-expanded={serverMenuOpen}
+            >
+              <span className="eyebrow">
+                {t(activeServer.isPublic ? "sidebar.publicSpace" : "sidebar.privateSpace")}
+              </span>
+              <span className="space-title-row">
+                {activeServer.isPublic ? (
+                  <Globe size={15} className="space-kind-badge" aria-hidden="true" />
+                ) : (
+                  <Sparkles size={15} className="space-kind-badge" aria-hidden="true" />
+                )}
+                <h1>{activeServer.name}</h1>
+                <ChevronDown size={16} className="space-chevron" aria-hidden="true" />
+              </span>
+            </button>
+            {canCreateServerInvites && (
+              <Icon label={t("sidebar.menu.createInvite")} onClick={openInviteDialog}>
+                <UserPlus size={17} />
+              </Icon>
+            )}
+          </>
+        ) : (
+          <div>
+            <h1>Hoffle</h1>
+          </div>
         )}
 
         {serverMenuOpen && !inDmHome && activeServer && (
@@ -592,21 +606,6 @@ export function ChannelSidebar({
       {inDmHome ? (
         <nav className="channel-nav" aria-label={t("sidebar.conversations")}>
           <div className="px-2 pt-1 pb-2">
-            <button
-              type="button"
-              onClick={() => setGlobalSearchOpen(true)}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-[var(--muted)] hover:text-white transition-colors text-xs font-semibold border border-white/[0.04]"
-              title={t("sidebar.searchUsers")}
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                <Search size={14} className="shrink-0 text-[var(--lavender)]" />
-                <span className="truncate">{t("sidebar.findConversation")}</span>
-              </span>
-              <SearchShortcut />
-            </button>
-          </div>
-
-          <div className="px-2 pb-2">
             <button
               type="button"
               onClick={() => {
@@ -1437,7 +1436,7 @@ export function MemberPanel({
   const { t } = useI18n();
   return (
     <aside
-      className={`member-panel ${membersOpen && !(inDmHome && !activeChannelId) ? "" : "closed"} ${
+      className={`member-panel ${membersOpen && !stageChannelId && !(inDmHome && !activeChannelId) ? "" : "closed"} ${
         voice.channelId && !collapsedGroups.voice ? "voice-panel-open" : ""
       }`}
     >

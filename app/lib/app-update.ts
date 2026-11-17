@@ -58,6 +58,7 @@ interface ElectronUpdates {
 interface TauriApi {
   core?: { invoke?: (command: string, args?: Record<string, unknown>) => Promise<unknown> };
   event?: { listen?: (name: string, handler: (event: { payload: unknown }) => void) => Promise<() => void> };
+  shell?: { open?: (url: string) => Promise<void> };
 }
 
 function asUpdate(value: unknown): DesktopUpdate | null {
@@ -98,7 +99,15 @@ export function desktopUpdates(): DesktopUpdates | null {
         return () => { gone = true; off?.(); };
       },
       install: () => void invoke("update_install").catch(() => undefined),
-      download: () => undefined,
+      download() {
+        const target = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent)
+          ? "mac-lite"
+          : "windows-lite";
+        const url = `https://hoffle.online/download/${target}`;
+        const open = scope.__TAURI__?.shell?.open;
+        if (open) void open(url).catch(() => window.open(url, "_blank", "noopener,noreferrer"));
+        else window.open(url, "_blank", "noopener,noreferrer");
+      },
     };
   }
   return null;

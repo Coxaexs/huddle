@@ -15,6 +15,7 @@ import {
   Sparkles,
   Menu,
   AlertCircle,
+  MessageSquarePlus,
 } from "lucide-react";
 import { apiFetch } from "../lib/client";
 import { Avatar } from "./avatar";
@@ -40,6 +41,7 @@ interface FriendsViewProps {
   onCallUser?: (user: { id: string; username: string; displayName: string }) => void;
   onPendingCountChange?: (count: number) => void;
   onOpenMobileNav?: () => void;
+  onCreateGroupDm?: () => void;
   /** Who sits in which voice room (the hub's state), for Active now. */
   voiceRooms?: Record<string, VoiceParticipant[]>;
   servers?: PublicServer[];
@@ -61,6 +63,7 @@ export function FriendsView({
   onCallUser,
   onPendingCountChange,
   onOpenMobileNav,
+  onCreateGroupDm,
   voiceRooms = NO_ROOMS,
   servers = NO_SERVERS,
   myVoiceChannelId = null,
@@ -261,7 +264,7 @@ export function FriendsView({
   return (
     <div className="friends-view-panel flex-1 flex flex-col h-full bg-[var(--chat-bg)] text-[var(--ink)] select-none overflow-hidden font-['Nunito',sans-serif]">
       {/* Top Header Bar */}
-      <div className="h-14 border-b border-[var(--line)] px-5 flex items-center justify-between shrink-0 bg-[var(--chat-bg)]/90 backdrop-blur-sm">
+      <div className="h-12 border-b border-[var(--line)] px-5 flex items-center justify-between shrink-0 bg-[var(--chat-bg)]/90 backdrop-blur-sm">
         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
           {onOpenMobileNav && (
             <button
@@ -359,16 +362,25 @@ export function FriendsView({
                 setTab("add");
                 setMenuUserId(null);
               }}
-              className={`ml-2 px-3.5 py-1.5 rounded-lg font-extrabold transition-all flex items-center gap-1.5 text-xs ${
-                tab === "add"
-                  ? "bg-emerald-500 text-white shadow-md shadow-emerald-500/20"
-                  : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/25"
+              className={`ml-2 px-3.5 py-1.5 rounded-lg font-extrabold transition-all flex items-center gap-1.5 text-xs bg-[#5865f2] text-white hover:bg-[#4752c4] ${
+                tab === "add" ? "ring-2 ring-white/30" : ""
               }`}
             >
               <UserPlus size={14} /> {t("friends.tab.add")}
             </button>
           </div>
         </div>
+        {onCreateGroupDm && (
+          <button
+            type="button"
+            onClick={onCreateGroupDm}
+            className="icon-button"
+            title={t("sidebar.createDm")}
+            aria-label={t("sidebar.createDm")}
+          >
+            <MessageSquarePlus size={18} />
+          </button>
+        )}
       </div>
 
       {/* Main Content Area */}

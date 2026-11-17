@@ -34,7 +34,6 @@ export function SearchPanel({
                   <div className="search-panel">
                     <div className="search-head">
                       <input
-                        autoFocus
                         value={searchQuery}
                         placeholder={`Search #${channelTitle}'s server…`}
                         onChange={(event) => void runSearch(event.target.value)}

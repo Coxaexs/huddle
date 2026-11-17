@@ -23,6 +23,7 @@ export function GET(request: Request) {
     start_url: root,
     scope: root,
     display: "standalone",
+    display_override: ["window-controls-overlay", "standalone"],
     background_color: "#11131a",
     theme_color: "#7b63e6",
     categories: ["social", "games"],
