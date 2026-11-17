@@ -326,7 +326,12 @@ impl Shell {
             )
             .when(!gone, |d| d.child(div().flex_none().text_size(px(12.)).line_height(px(18.)).font_weight(FontWeight::BOLD).text_color(muted).child(if pdf { "Open" } else { "Download" })))
             .when(gone, |d| d.opacity(0.6))
-            .when(!gone, |d| d.on_click(move |_, _, cx| cx.open_url(&link)))
+            .when(!gone && !pdf, |d| d.on_click(move |_, _, cx| cx.open_url(&link)))
+            // A PDF opens in the app's viewer (setPdfViewer).
+            .when(!gone && pdf, |d| {
+                let (url, name) = (self.client.absolute(&file.url), file.name.clone());
+                d.on_click(cx.listener(move |this, _, _, cx| this.open_pdf(url.clone(), name.clone(), cx)))
+            })
             .into_any_element()
     }
 

@@ -307,6 +307,7 @@ impl gpui::Render for Shell {
         self.battlemap_tick(window, cx);
         self.activities_tick(cx);
         self.living_room_tick(cx);
+        self.pdf_tick(window, cx);
         // HOFFLE_DEV_CAPTION=<name>:<text>: a caption line as if someone in the room shared it.
         static DEV_CAPTION: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if let Ok(spec) = std::env::var("HOFFLE_DEV_CAPTION")

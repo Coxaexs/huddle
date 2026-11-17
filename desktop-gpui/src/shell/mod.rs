@@ -34,6 +34,7 @@ mod captions;
 mod activities;
 mod battlemap;
 mod dice;
+mod pdf_view;
 mod living_room;
 mod profile_look;
 mod channel_tools;
@@ -335,6 +336,7 @@ pub struct Shell {
     /// The room's activity and the web view that shows the panel.
     activities: activities::Activities,
     living_room: living_room::LivingRoom,
+    pdf: pdf_view::PdfView,
     living_room_frame: std::rc::Rc<std::cell::Cell<Option<(f32, f32, f32, f32, bool)>>>,
     /// The voice room's battlemap (its web view) and where its board was laid out last frame.
     battlemap: battlemap::Battlemap,
@@ -701,6 +703,7 @@ impl Shell {
             captions: Default::default(),
             activities: Default::default(),
             living_room: living_room::LivingRoom::new(),
+            pdf: Default::default(),
             living_room_frame: Default::default(),
             battlemap: Default::default(),
             dice: Default::default(),

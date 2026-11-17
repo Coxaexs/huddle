@@ -494,6 +494,26 @@ pub fn activities_view(window: &gpui::Window, base: &str, session: Option<(Strin
     }
 }
 
+/// One of the bundled web pages (resources/web/<page>.html), signed in to `base`, covering the
+/// window and taking clicks only in the region the app sets.
+pub fn page_view(window: &gpui::Window, page: &str, base: &str, session: Option<(String, String)>) -> Option<WebOverlay> {
+    #[cfg(target_os = "macos")]
+    {
+        let path = format!("web/{page}.html");
+        let html = crate::assets::ASSETS.iter().find(|(p, _)| *p == path).map(|(_, b)| String::from_utf8_lossy(b).into_owned())?;
+        let origin = url::Url::parse(base).ok().map(|u| u.origin().ascii_serialization() + "/")?;
+        if let Some((name, value)) = session {
+            set_session_cookie(&origin, &name, &value);
+        }
+        Some(WebOverlay::with_region(content_view(window)?, &html, &origin, true))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, page, base, session);
+        None
+    }
+}
+
 /// The web's 3D Living Room (resources/web/livingroom.html), signed in to `base`, covering the window
 /// and taking clicks only over the stage.
 pub fn living_room_view(window: &gpui::Window, base: &str, session: Option<(String, String)>) -> Option<WebOverlay> {
