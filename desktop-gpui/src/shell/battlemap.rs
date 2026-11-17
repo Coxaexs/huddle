@@ -192,5 +192,6 @@ impl Shell {
             view.snapshot(&format!("{dir}/battlemap.png"));
         }
         self.dev_activities_shot(&format!("{dir}/activities.png"));
+        self.dev_living_room_shot(&format!("{dir}/livingroom.png"));
     }
 }

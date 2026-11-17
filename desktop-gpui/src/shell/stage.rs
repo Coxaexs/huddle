@@ -292,16 +292,17 @@ impl Shell {
         } else {
             self.render_stage_bar(stage_width, cx).into_any_element()
         };
+        // The Living Room covers the stage above the call bar (`.living-room`, inset 0, under the bar).
+        let living = self.render_living_room();
+        let in_room = living.is_some();
         let left = div()
             .relative()
             .w(px(stage_width))
             .h_full()
             .flex()
             .flex_col()
-            .children(self.render_important_banner(&stage.channel_id, cx))
-            .children(self.render_battlemap(stage_total))
-            .children(picker)
-            .child(tiles)
+            .when(!in_room, |d| d.children(self.render_important_banner(&stage.channel_id, cx)).children(self.render_battlemap(stage_total)).children(picker).child(tiles))
+            .children(living)
             .children(self.render_soundboard(stage_width, window, cx))
             .child(bar)
             // DiceOverlay, LiveCaptionsOverlay, QaBanner and QaPanel, over the stage.
@@ -880,7 +881,16 @@ impl Shell {
             .items_center()
             .gap(px(6.))
             .child(button("sb-settings", "sliders-horizontal"))
-            .child(button("sb-seat", "armchair"))
+            // The Living Room: a shared 3D room (shown while the module is on, or while you are in it).
+            .when(self.living_room_button(), |d| {
+                let on = self.living_room.open;
+                d.child(
+                    button("sb-seat", "armchair")
+                        .when(on, |d| d.bg(Theme::lavender_muted()).border_color(Hsla::from(Theme::lavender()).opacity(0.35)))
+                        .tooltip(ui::tooltip("Living Room: hang out in a shared 3D room, voices come from where people sit"))
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_living_room(cx))),
+                )
+            })
             // Speak Important: listeners hear you louder and see the banner (not while muted).
             .child({
                 let can = !muted && !deafened && !self.forced_mutes.contains(&self.me.id);

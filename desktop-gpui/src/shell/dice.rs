@@ -34,6 +34,10 @@ impl Shell {
             return;
         }
         self.dice.last_seed = seed;
+        // In the Living Room the dice go onto the table instead (at the tabletop).
+        if self.living_room_dice(roll) {
+            return;
+        }
         self.dice.pending = Some(roll.clone());
         self.dice.showing = true;
         // HOFFLE_DEV_DICE_SHOT=<png>: the overlay's own picture 2.5 s in.

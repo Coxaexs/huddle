@@ -359,6 +359,14 @@ impl Shell {
             .map(|c| c.id.clone())
     }
 
+    /// A slash command from the Living Room (its dice tray, spells): run in the call's room.
+    pub(super) fn run_command_in_call(&mut self, raw: String, cx: &mut Context<Self>) {
+        let Some(room) = self.call.as_ref().map(|c| c.channel_id.clone()) else { return };
+        let was = self.channel_id.replace(room);
+        self.run_command(raw, cx);
+        self.channel_id = was;
+    }
+
     /// runCommand.
     pub(super) fn run_command(&mut self, raw: String, cx: &mut Context<Self>) {
         let raw = raw.trim().to_string();

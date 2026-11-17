@@ -34,6 +34,7 @@ mod captions;
 mod activities;
 mod battlemap;
 mod dice;
+mod living_room;
 mod profile_look;
 mod channel_tools;
 mod music_player;
@@ -333,6 +334,8 @@ pub struct Shell {
     captions: captions::Captions,
     /// The room's activity and the web view that shows the panel.
     activities: activities::Activities,
+    living_room: living_room::LivingRoom,
+    living_room_frame: std::rc::Rc<std::cell::Cell<Option<(f32, f32, f32, f32, bool)>>>,
     /// The voice room's battlemap (its web view) and where its board was laid out last frame.
     battlemap: battlemap::Battlemap,
     /// The 3D dice overlay and where it was laid out last frame.
@@ -697,6 +700,8 @@ impl Shell {
             qa: Default::default(),
             captions: Default::default(),
             activities: Default::default(),
+            living_room: living_room::LivingRoom::new(),
+            living_room_frame: Default::default(),
             battlemap: Default::default(),
             dice: Default::default(),
             dice_frame: Default::default(),
@@ -1702,6 +1707,8 @@ impl Shell {
             "caption" => self.on_caption(&value, cx),
             "activity" => self.on_activity(&value, cx),
             "battlemap" => self.on_battlemap(&value),
+            // The Living Room's poses, venue and shared things, and the club's lights (use-hub.ts).
+            "lounge" | "lounge-state" | "lounge-venue" | "lounge-shared" | "club" | "club-desk" | "club-fx" => self.on_lounge(&value),
             "dice-roll" => {
                 let channel = value.get("channelId").and_then(Value::as_str).map(String::from);
                 if let Some(roll) = value.get("roll").filter(|r| r.is_object()).cloned() {
@@ -1765,6 +1772,15 @@ impl Shell {
             "muted": self.muted,
             "deafened": self.deafened,
         }));
+        // Development: HOFFLE_DEV_HUB_ONLY=1 takes the seat and stops there (no voice server: a test
+        // copy has none), for what only needs the seat, like the Living Room.
+        if std::env::var("HOFFLE_DEV_HUB_ONLY").is_ok() {
+            if let Some(call) = self.call.as_mut() {
+                call.state = CallState::Connected;
+            }
+            cx.notify();
+            return;
+        }
         let people = self.rooms.get(&channel_id).map_or(0, Vec::len) + 1;
         let wanted = self.channel_by_id(&channel_id).and_then(|c| c.bitrate).unwrap_or(64_000);
         // Hoffle's 320k tier is for rooms of up to 10; bigger rooms stay at or under 192k.
