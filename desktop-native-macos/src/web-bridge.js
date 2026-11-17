@@ -43,6 +43,7 @@
   // Define window.huddle API expected by the Hoffle frontend
   const huddleApi = {
     desktop: true,
+    titlebarInset: true,
     native: true,
     platform: "darwin",
     arch: "arm64",
@@ -156,76 +157,16 @@
     if (target.closest("button, input, textarea, a, select, [role='button'], .channel, .message, .rail-item, .space-mark")) {
       return;
     }
-    if (e.detail === 2 && e.clientY <= 50) {
+    if (e.detail === 2 && (e.clientY <= 50 || target.closest(".app-topbar"))) {
       postNative({ type: "windowZoom" });
       return;
     }
-    if (e.clientY <= 34 || target.closest(".chat-header, .space-header, header")) {
+    if (e.clientY <= 34 || target.closest(".app-topbar, .chat-header, .space-header, header")) {
       postNative({ type: "startWindowDrag" });
     }
   });
 
-  // 3. Inject CSS for Traffic Lights clearance & Sleek Navigation Controls
-  function injectNativeStyles() {
-    if (document.getElementById("hoffle-native-injected-style")) return;
-    var style = document.createElement("style");
-    style.id = "hoffle-native-injected-style";
-    style.textContent = [
-      "/* Top spacing for native macOS traffic lights */",
-      ".rail { padding-top: 36px !important; }",
-      "#hoffle-native-nav {",
-      "  position: fixed;",
-      "  top: 7px;",
-      "  left: 72px;",
-      "  z-index: 999999;",
-      "  display: flex;",
-      "  gap: 3px;",
-      "  -webkit-user-select: none;",
-      "}",
-      "#hoffle-native-nav button {",
-      "  background: rgba(255, 255, 255, 0.08);",
-      "  border: 0;",
-      "  color: rgba(255, 255, 255, 0.7);",
-      "  font-size: 13px;",
-      "  width: 18px;",
-      "  height: 18px;",
-      "  border-radius: 4px;",
-      "  cursor: pointer;",
-      "  display: flex;",
-      "  align-items: center;",
-      "  justify-content: center;",
-      "  padding: 0;",
-      "  line-height: 1;",
-      "  transition: background 0.15s, color 0.15s;",
-      "}",
-      "#hoffle-native-nav button:hover {",
-      "  background: rgba(255, 255, 255, 0.20);",
-      "  color: #fff;",
-      "}"
-    ].join("\n");
-    (document.head || document.documentElement).appendChild(style);
-
-    // Create Back / Forward navigation buttons beside traffic lights
-    if (!document.getElementById("hoffle-native-nav")) {
-      var nav = document.createElement("div");
-      nav.id = "hoffle-native-nav";
-      nav.innerHTML = '<button id="hoffle-nav-back" title="Back (⌘[)">‹</button><button id="hoffle-nav-fwd" title="Forward (⌘])">›</button>';
-      (document.body || document.documentElement).appendChild(nav);
-
-      document.getElementById("hoffle-nav-back").addEventListener("click", function () {
-        window.history.back();
-      });
-      document.getElementById("hoffle-nav-fwd").addEventListener("click", function () {
-        window.history.forward();
-      });
-    }
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", injectNativeStyles);
-  } else {
-    injectNativeStyles();
-  }
+  // Topbar spacing and back/forward buttons are rendered natively by AppTopbar.
 
   console.log("[Hoffle] Full native macOS (arm64 Apple Silicon) bridge initialized.");
   postNative({ type: "updateState" });

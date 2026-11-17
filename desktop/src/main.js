@@ -260,6 +260,16 @@ function createWindow() {
     backgroundColor: "#1b1b21",
     title: "Hoffle",
     autoHideMenuBar: true,
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 14, y: 10 } }
+      : {
+          titleBarStyle: "hidden",
+          titleBarOverlay: {
+            color: "#1b1b21",
+            symbolColor: "#dcddde",
+            height: 32,
+          },
+        }),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
