@@ -375,7 +375,8 @@ async function handleRequest(
       }
       const forwarded = new Request(target, request);
       // The root layout sets <html lang> from this; it can't see the path.
-      if (isLanding && /^\/tr(\/|$)/.test(url.pathname)) forwarded.headers.set("x-hoffle-lang", "tr");
+      // The manual at /help is in Turkish first.
+      if (isLanding && /^\/(tr|help)(\/|$)/.test(url.pathname)) forwarded.headers.set("x-hoffle-lang", "tr");
       const res = await handler.fetch(forwarded, env as never, ctx as never);
       if (
         isLanding &&
@@ -388,6 +389,8 @@ async function handleRequest(
           url.pathname === "/tr/vs-discord" ||
           url.pathname === "/docs" ||
           url.pathname.startsWith("/docs/") ||
+          url.pathname === "/help" ||
+          url.pathname.startsWith("/help/") ||
           url.pathname === "/terms" ||
           url.pathname === "/privacy")
       ) {

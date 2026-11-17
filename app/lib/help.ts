@@ -1,0 +1,175 @@
+import { Marked, type Token } from "marked";
+import baslarken from "../../docs/help/baslarken.md?raw";
+import sunucular from "../../docs/help/sunucular.md?raw";
+import roller from "../../docs/help/roller.md?raw";
+import moderasyon from "../../docs/help/moderasyon.md?raw";
+
+/**
+ * The user manual at hoffle.online/help, in Turkish first.
+ *
+ * Each chapter is one markdown file in docs/help/. The file's `##` headings are
+ * the chapter's sections and show up in the sidebar of the chapter page and on
+ * the index. Screenshots live in public/help-media/img and the short silent
+ * clips in public/help-media/video; both are made from a throwaway test copy
+ * with made-up people (Deniz, Ece, Mert, Zeynep, Can), never from real users.
+ *
+ * A chapter appears on the site as soon as it is listed here, so the manual can
+ * grow one chapter at a time.
+ */
+
+export interface HelpChapter {
+  /** URL segment under /help. */
+  slug: string;
+  title: string;
+  /** One line for the index card and the meta description. */
+  description: string;
+  /** Emoji shown on the index card. */
+  icon: string;
+  source: string;
+}
+
+export const HELP_CHAPTERS: HelpChapter[] = [
+  {
+    slug: "baslarken",
+    title: "Başlarken",
+    description: "Hesap açma, davetle katılma, ilk açılıştaki tur ve Hoffle ekranının bölümleri.",
+    icon: "👋",
+    source: baslarken,
+  },
+  {
+    slug: "sunucular",
+    title: "Sunucular ve kanallar",
+    description: "Sunucu kurma, arkadaş davet etme, kanal ve kategori açma, kanal türleri.",
+    icon: "🏠",
+    source: sunucular,
+  },
+  {
+    slug: "roller",
+    title: "Roller ve izinler",
+    description: "Rol oluşturma, renk ve simge verme, izinler, rol atama ve özel kanallar.",
+    icon: "🛡️",
+    source: roller,
+  },
+  {
+    slug: "moderasyon",
+    title: "Moderasyon ve güvenlik",
+    description: "Susturma, zaman aşımı, atma ve yasaklama; AutoMod, doğrulama düzeyi ve denetim kaydı.",
+    icon: "🚨",
+    source: moderasyon,
+  },
+];
+
+export const HELP_TITLE = "Hoffle Kullanım Kılavuzu";
+
+export function findHelpChapter(slug: string): HelpChapter | undefined {
+  return HELP_CHAPTERS.find((chapter) => chapter.slug === slug);
+}
+
+export function helpHref(chapter?: HelpChapter): string {
+  return chapter ? `/help/${chapter.slug}` : "/help";
+}
+
+export interface HelpSection {
+  id: string;
+  text: string;
+}
+
+/** Anchor ids that keep Turkish letters, like GitHub's. */
+function makeSlugger() {
+  const seen = new Map<string, number>();
+  return (text: string) => {
+    const base = text
+      .toLocaleLowerCase("tr")
+      .trim()
+      .replace(/[^\p{L}\p{N}\s_-]/gu, "")
+      .replace(/\s+/g, "-");
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    return count ? `${base}-${count}` : base;
+  };
+}
+
+function plainText(tokens: Token[] | undefined): string {
+  return (tokens || [])
+    .map((token) => {
+      if ("tokens" in token && token.tokens) return plainText(token.tokens);
+      return "text" in token ? token.text : "";
+    })
+    .join("");
+}
+
+function escapeAttr(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+/** The `##` headings of a chapter, without rendering it. */
+export function helpSections(chapter: HelpChapter): HelpSection[] {
+  const slug = makeSlugger();
+  const sections: HelpSection[] = [];
+  for (const token of new Marked({ gfm: true }).lexer(chapter.source)) {
+    if (token.type !== "heading") continue;
+    const text = plainText(token.tokens);
+    const id = slug(text);
+    if (token.depth === 2) sections.push({ id, text });
+  }
+  return sections;
+}
+
+export function renderHelp(chapter: HelpChapter): { html: string; sections: HelpSection[] } {
+  const tokens = new Marked({ gfm: true }).lexer(expandVideos(chapter.source));
+  // The page supplies its own <h1>.
+  const first = tokens.findIndex((token) => token.type !== "space");
+  if (first >= 0 && tokens[first].type === "heading" && (tokens[first] as { depth: number }).depth === 1) {
+    tokens.splice(first, 1);
+  }
+  const sections: HelpSection[] = [];
+  const slug = makeSlugger();
+  const marked = new Marked({
+    gfm: true,
+    renderer: {
+      heading(token) {
+        const text = plainText(token.tokens);
+        const id = slug(text);
+        if (token.depth === 2) sections.push({ id, text });
+        const inner = this.parser.parseInline(token.tokens);
+        return `<h${token.depth} id="${escapeAttr(id)}"><a class="doc-anchor" href="#${escapeAttr(id)}">${inner}</a></h${token.depth}>\n`;
+      },
+      image(token) {
+        const title = token.title ? `<figcaption>${escapeAttr(token.title)}</figcaption>` : "";
+        return `<figure class="help-shot"><img src="${escapeAttr(token.href)}" alt="${escapeAttr(token.text)}" loading="lazy" decoding="async">${title}</figure>`;
+      },
+      link(token) {
+        const external = /^https?:/i.test(token.href) && !token.href.startsWith("https://hoffle.online");
+        const rel = external ? ` rel="noopener"` : "";
+        return `<a href="${escapeAttr(token.href)}"${rel}>${this.parser.parseInline(token.tokens)}</a>`;
+      },
+      table(token) {
+        const head = token.header.map((cell) => `<th>${this.parser.parseInline(cell.tokens)}</th>`).join("");
+        const rows = token.rows
+          .map((row) => `<tr>${row.map((cell) => `<td>${this.parser.parseInline(cell.tokens)}</td>`).join("")}</tr>`)
+          .join("");
+        return `<div class="doc-table"><table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>\n`;
+      },
+    },
+  });
+  return { html: marked.parser(tokens), sections };
+}
+
+/**
+ * `::video name | caption` on a line of its own becomes a silent clip with a
+ * poster frame. Clips load only when someone presses play.
+ */
+export function expandVideos(source: string): string {
+  return source.replace(/^::video\s+([\w-]+)\s*(?:\|\s*(.+))?$/gm, (_line, name: string, caption?: string) => {
+    const base = `/help-media/video/${name}`;
+    const label = escapeAttr(caption?.trim() || "");
+    return [
+      `<figure class="help-video">`,
+      `<video controls preload="none" playsinline muted width="1280" height="800" poster="${base}.jpg"${label ? ` aria-label="${label}"` : ""}>`,
+      `<source src="${base}.mp4" type="video/mp4">`,
+      `</video>`,
+      label ? `<figcaption>${label}</figcaption>` : "",
+      `</figure>`,
+    ].join("");
+  });
+}
