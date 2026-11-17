@@ -7,6 +7,7 @@ import mesajlasma from "../../docs/help/mesajlasma.md?raw";
 import arkadaslar from "../../docs/help/arkadaslar.md?raw";
 import sesliSohbet from "../../docs/help/sesli-sohbet.md?raw";
 import dnd from "../../docs/help/dnd.md?raw";
+import muzik from "../../docs/help/muzik.md?raw";
 
 /**
  * The user manual at hoffle.online/help, in Turkish first.
@@ -88,6 +89,13 @@ export const HELP_CHAPTERS: HelpChapter[] = [
     description: "3D zarlar, gizli zar, büyü ve canavar kartları, savaş haritası, inisiyatif takibi ve masa ayarları.",
     icon: "🐉",
     source: dnd,
+  },
+  {
+    slug: "muzik",
+    title: "Müzik botu ve DJ modu",
+    description: "Müzik botunu ekleme, /play ile şarkı açma, tam ekran oynatıcı, senkron sözler, DJ seti, AutoMix ve müzik komutları.",
+    icon: "🎵",
+    source: muzik,
   },
 ];
 
