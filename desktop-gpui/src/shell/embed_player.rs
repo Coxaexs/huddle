@@ -284,8 +284,10 @@ impl Shell {
 
     /// Once a frame, before drawing: players not drawn last frame are taken down, and all of them
     /// hide while something covers the chat (they sit above GPUI's drawing).
-    pub(super) fn players_tick(&self, window: &mut Window) {
-        let covered = self.settings.is_some()
+    /// Something is drawn over the chat and stage (a dialog, a menu, settings): web views, which
+    /// sit above GPUI's drawing, hide meanwhile.
+    pub(super) fn chat_covered(&self) -> bool {
+        self.settings.is_some()
             || self.server_settings.is_some()
             || self.forward.is_some()
             || self.group_dialog.is_some()
@@ -299,7 +301,10 @@ impl Shell {
             || self.invite.is_some()
             || self.poll_dialog.is_some()
             || self.music_player.is_some()
-            || self.stage.is_some();
+    }
+
+    pub(super) fn players_tick(&self, window: &mut Window) {
+        let covered = self.chat_covered() || self.stage.is_some();
         let mut players = self.link_players.borrow_mut();
         let frame = players.frame;
         players.playing.retain(|_, p| p.seen == u64::MAX || p.seen + 1 >= frame);

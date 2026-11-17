@@ -36,18 +36,108 @@ mod mac {
         Class::get("HoffleOverlayWebView").expect("registered")
     }
 
+    /// WKWebView that takes clicks only inside a region (window points from the top left) and lets
+    /// the rest through: for a page that covers the window but shows one box.
+    fn region_class() -> &'static Class {
+        static REGISTER: Once = Once::new();
+        REGISTER.call_once(|| {
+            let mut decl = ClassDecl::new("HoffleRegionWebView", class!(WKWebView)).expect("class");
+            for name in ["rx", "ry", "rw", "rh"] {
+                decl.add_ivar::<f64>(name);
+            }
+            extern "C" fn hit_test(this: &Object, _: Sel, point: NSPoint) -> id {
+                unsafe {
+                    let (rx, ry, rw, rh): (f64, f64, f64, f64) = (*this.get_ivar("rx"), *this.get_ivar("ry"), *this.get_ivar("rw"), *this.get_ivar("rh"));
+                    let parent: id = msg_send![this, superview];
+                    let flipped: BOOL = if parent == nil { YES } else { msg_send![parent, isFlipped] };
+                    let bounds: NSRect = if parent == nil { NSRect::new(NSPoint::new(0., 0.), NSSize::new(0., 0.)) } else { msg_send![parent, bounds] };
+                    let y = if flipped == YES { point.y } else { bounds.size.height - point.y };
+                    if point.x < rx || point.x > rx + rw || y < ry || y > ry + rh {
+                        return nil;
+                    }
+                    msg_send![super(this, class!(WKWebView)), hitTest: point]
+                }
+            }
+            unsafe {
+                decl.add_method(sel!(hitTest:), hit_test as extern "C" fn(&Object, Sel, NSPoint) -> id);
+            }
+            decl.register();
+        });
+        Class::get("HoffleRegionWebView").expect("registered")
+    }
+
     pub struct WebOverlay {
         view: id,
         parent: id,
         frame: (f32, f32, f32, f32),
+        /// Set when the page can post to `webkit.messageHandlers.hoffle` (see `messages`).
+        tag: Option<u64>,
+    }
+
+    /// What pages posted to `webkit.messageHandlers.hoffle`, by the overlay they came from.
+    static MESSAGES: std::sync::Mutex<Vec<(u64, String)>> = std::sync::Mutex::new(Vec::new());
+
+    /// WKScriptMessageHandler: keeps each posted string for the app to read on its next frame.
+    fn handler_class() -> &'static Class {
+        static REGISTER: Once = Once::new();
+        REGISTER.call_once(|| {
+            let mut decl = ClassDecl::new("HoffleScriptHandler", class!(NSObject)).expect("class");
+            decl.add_ivar::<u64>("tag");
+            extern "C" fn received(this: &Object, _: Sel, _controller: id, message: id) {
+                unsafe {
+                    let tag: u64 = *this.get_ivar("tag");
+                    let body: id = msg_send![message, body];
+                    if body == nil {
+                        return;
+                    }
+                    let text: id = msg_send![body, description];
+                    let bytes: *const std::os::raw::c_char = msg_send![text, UTF8String];
+                    if bytes.is_null() {
+                        return;
+                    }
+                    let text = std::ffi::CStr::from_ptr(bytes).to_string_lossy().into_owned();
+                    if let Ok(mut list) = MESSAGES.lock() {
+                        list.push((tag, text));
+                    }
+                }
+            }
+            unsafe {
+                decl.add_method(sel!(userContentController:didReceiveScriptMessage:), received as extern "C" fn(&Object, Sel, id, id));
+            }
+            decl.register();
+        });
+        Class::get("HoffleScriptHandler").expect("registered")
     }
 
     impl WebOverlay {
         /// Over `parent` (the window's content view), showing `html` as if loaded from `base`;
         /// `interactive` takes clicks and scrolls itself (a player), otherwise they pass through.
         pub fn new(parent: id, html: &str, base: &str, interactive: bool) -> Self {
+            Self::with_messages(parent, html, base, interactive, false)
+        }
+
+        /// The same, and `webkit.messageHandlers.hoffle.postMessage(text)` reaches `messages()`.
+        pub fn with_messages(parent: id, html: &str, base: &str, interactive: bool, messages: bool) -> Self {
+            Self::make(parent, html, base, if interactive { class!(WKWebView) } else { passthrough_class() }, messages)
+        }
+
+        /// Covering the window, taking clicks only inside `set_region`'s box.
+        pub fn with_region(parent: id, html: &str, base: &str, messages: bool) -> Self {
+            Self::make(parent, html, base, region_class(), messages)
+        }
+
+        fn make(parent: id, html: &str, base: &str, class: &Class, messages: bool) -> Self {
+            static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
             unsafe {
                 let config: id = msg_send![class!(WKWebViewConfiguration), new];
+                let tag = messages.then(|| NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+                if let Some(tag) = tag {
+                    let handler: id = msg_send![handler_class(), new];
+                    (*handler).set_ivar("tag", tag);
+                    let content: id = msg_send![config, userContentController];
+                    let _: () = msg_send![content, addScriptMessageHandler: handler name: NSString::alloc(nil).init_str("hoffle")];
+                    let _: () = msg_send![handler, release];
+                }
                 // Media may start without a click (WKAudiovisualMediaTypeNone).
                 let _: () = msg_send![config, setMediaTypesRequiringUserActionForPlayback: 0u64];
                 let prefs: id = msg_send![config, preferences];
@@ -57,7 +147,6 @@ mod mac {
                 } else {
                     let _: () = msg_send![prefs, setValue: yes forKey: NSString::alloc(nil).init_str("fullScreenEnabled")];
                 }
-                let class = if interactive { class!(WKWebView) } else { passthrough_class() };
                 let view: id = msg_send![class, alloc];
                 let rect = NSRect::new(NSPoint::new(0., 0.), NSSize::new(1., 1.));
                 let view: id = msg_send![view, initWithFrame: rect configuration: config];
@@ -76,7 +165,7 @@ mod mac {
                 let _: () = msg_send![parent, addSubview: view];
                 let url: id = msg_send![class!(NSURL), URLWithString: NSString::alloc(nil).init_str(base)];
                 let _: id = msg_send![view, loadHTMLString: NSString::alloc(nil).init_str(html) baseURL: url];
-                Self { view, parent, frame: (0., 0., 0., 0.) }
+                Self { view, parent, frame: (0., 0., 0., 0.), tag }
             }
         }
 
@@ -115,6 +204,40 @@ mod mac {
             }
         }
 
+        /// What the page posted since the last call.
+        pub fn messages(&self) -> Vec<String> {
+            let Some(tag) = self.tag else { return Vec::new() };
+            let Ok(mut list) = MESSAGES.lock() else { return Vec::new() };
+            let mine = list.iter().filter(|(t, _)| *t == tag).map(|(_, m)| m.clone()).collect();
+            list.retain(|(t, _)| *t != tag);
+            mine
+        }
+
+        /// The box that takes clicks (a region view's), in window points from the top left.
+        pub fn set_region(&self, x: f32, y: f32, w: f32, h: f32) {
+            unsafe {
+                let view = &mut *self.view;
+                view.set_ivar::<f64>("rx", x as f64);
+                view.set_ivar::<f64>("ry", y as f64);
+                view.set_ivar::<f64>("rw", w as f64);
+                view.set_ivar::<f64>("rh", h as f64);
+            }
+        }
+
+        /// The size of the view it sits in (the window's content), in points.
+        pub fn parent_size(&self) -> (f32, f32) {
+            unsafe {
+                let bounds: NSRect = msg_send![self.parent, bounds];
+                (bounds.size.width as f32, bounds.size.height as f32)
+            }
+        }
+
+        pub fn set_hidden(&self, hidden: bool) {
+            unsafe {
+                let _: () = msg_send![self.view, setHidden: if hidden { YES } else { NO }];
+            }
+        }
+
         pub fn eval(&self, js: &str) {
             unsafe {
                 let source = NSString::alloc(nil).init_str(js);
@@ -146,6 +269,12 @@ mod mac {
     impl Drop for WebOverlay {
         fn drop(&mut self) {
             unsafe {
+                if self.tag.is_some() {
+                    // The controller holds the handler: let it go, so neither outlives the view.
+                    let config: id = msg_send![self.view, configuration];
+                    let content: id = msg_send![config, userContentController];
+                    let _: () = msg_send![content, removeScriptMessageHandlerForName: NSString::alloc(nil).init_str("hoffle")];
+                }
                 let _: () = msg_send![self.view, removeFromSuperview];
                 let _: () = msg_send![self.view, release];
             }
@@ -264,6 +393,14 @@ impl ClipHost {
 
 #[cfg(not(target_os = "macos"))]
 impl WebOverlay {
+    pub fn set_region(&self, _: f32, _: f32, _: f32, _: f32) {}
+    pub fn parent_size(&self) -> (f32, f32) {
+        (0., 0.)
+    }
+    pub fn messages(&self) -> Vec<String> {
+        Vec::new()
+    }
+    pub fn set_hidden(&self, _: bool) {}
     pub fn eval_with(&self, _: &str, _: impl Fn(String) + 'static) {}
     pub fn set_frame(&mut self, _: f32, _: f32, _: f32, _: f32) {}
     pub fn eval(&self, _: &str) {}
@@ -330,6 +467,25 @@ pub fn speech_view(window: &gpui::Window, base: &str, session: Option<(String, S
             set_session_cookie(&origin, &name, &value);
         }
         Some(WebOverlay::new(content_view(window)?, &html, &origin, false))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, base, session);
+        None
+    }
+}
+
+/// The web's Room Activities panel (resources/web/activities.html), signed in to `base`, taking
+/// clicks, posting back through `webkit.messageHandlers.hoffle`.
+pub fn activities_view(window: &gpui::Window, base: &str, session: Option<(String, String)>) -> Option<WebOverlay> {
+    #[cfg(target_os = "macos")]
+    {
+        let html = crate::assets::ASSETS.iter().find(|(p, _)| *p == "web/activities.html").map(|(_, b)| String::from_utf8_lossy(b).into_owned())?;
+        let origin = url::Url::parse(base).ok().map(|u| u.origin().ascii_serialization() + "/")?;
+        if let Some((name, value)) = session {
+            set_session_cookie(&origin, &name, &value);
+        }
+        Some(WebOverlay::with_region(content_view(window)?, &html, &origin, true))
     }
     #[cfg(not(target_os = "macos"))]
     {

@@ -261,6 +261,26 @@ impl gpui::Render for Shell {
         self.players_tick(window);
         self.speech_tick(window, cx);
         self.qa_tick(cx);
+        // HOFFLE_DEV_ACTIVITIES=<png>: the activities panel open, and its own picture 10 s later.
+        static DEV_ACT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if let Ok(path) = std::env::var("HOFFLE_DEV_ACTIVITIES")
+            && self.stage.is_some()
+            && !DEV_ACT.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
+                this.update(cx, |this, cx| {
+                    this.activities.open = true;
+                    cx.notify();
+                })
+                .ok();
+                cx.background_executor().timer(std::time::Duration::from_secs(10)).await;
+                this.update(cx, |this, _| this.dev_activities_shot(&path)).ok();
+            })
+            .detach();
+        }
+        self.place_activities(window);
+        self.activities_tick(cx);
         // HOFFLE_DEV_CAPTION=<name>:<text>: a caption line as if someone in the room shared it.
         static DEV_CAPTION: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if let Ok(spec) = std::env::var("HOFFLE_DEV_CAPTION")

@@ -207,7 +207,69 @@ impl Shell {
             }
             return Some(split.into_any_element());
         }
-        let tiles = if stage.view == "table" {
+        // Room Activities: a running one takes the stage over; the picker sits across its top at 68%
+        // of the stage's height (280 to 760).
+        let stage_total = f32::from(window.viewport_size().height) - 10. - 1. - 73.;
+        let takeover = self.activity_takeover();
+        let picker = if takeover { None } else { self.render_activities(Some((stage_total * 0.68).clamp(280., 760.))) };
+        let tiles = if takeover {
+            // The people fold away behind a pill above the call buttons (`.activity-people-pill`).
+            let people_open = self.activities.people_open;
+            let vh = f32::from(window.viewport_size().height);
+            let count = people.len();
+            div()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .flex_col()
+                .children(self.render_activities(None))
+                .when(people_open, |d| {
+                    d.child(
+                        div()
+                            .id("takeover-people")
+                            .flex_none()
+                            .max_h(px(190f32.min(vh * 0.3)))
+                            .overflow_y_scroll()
+                            .px(px(12.))
+                            .py(px(8.))
+                            .border_t_1()
+                            .border_color(Theme::line())
+                            .bg(Theme::panel())
+                            .child(div().flex().justify_center().child(grid)),
+                    )
+                })
+                .child(
+                    div().flex_none().flex().justify_center().child(
+                        div()
+                            .id("people-pill")
+                            .mt(px(6.))
+                            .mb(px(2.))
+                            .h(px(28.))
+                            .px(px(12.))
+                            .rounded_full()
+                            .border_1()
+                            .border_color(rgba(0xfff4e11f))
+                            .bg(rgb(0x1a1917))
+                            .hover(|s| s.bg(rgb(0x23211e)))
+                            .flex()
+                            .items_center()
+                            .gap(px(5.))
+                            .text_size(px(12.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(rgb(0xe6e0d4))
+                            .cursor_pointer()
+                            .tooltip(ui::tooltip(if people_open { "Hide people" } else { "Show people in the call" }))
+                            .child(ui::icon(if people_open { "chevron-down" } else { "chevron-up" }, 14., rgb(0xe6e0d4)))
+                            .child(ui::icon("users", 15., rgb(0xe6e0d4)))
+                            .child(count.to_string())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.activities.people_open = !this.activities.people_open;
+                                cx.notify();
+                            })),
+                    ),
+                )
+                .into_any_element()
+        } else if stage.view == "table" {
             self.render_table_view(&people, stage_width, window)
         } else {
             div()
@@ -233,6 +295,7 @@ impl Shell {
             .flex()
             .flex_col()
             .children(self.render_important_banner(&stage.channel_id, cx))
+            .children(picker)
             .child(tiles)
             .children(self.render_soundboard(stage_width, window, cx))
             .child(bar)
@@ -888,7 +951,11 @@ impl Shell {
             .flex()
             .items_center()
             .gap(px(6.))
-            .child(button("sb-games", "gamepad-2"))
+            .child(
+                button("sb-games", "gamepad-2")
+                    .tooltip(ui::tooltip(t("voiceStage.activities")))
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_activities(cx))),
+            )
             .child(
                 div()
                     .relative()
