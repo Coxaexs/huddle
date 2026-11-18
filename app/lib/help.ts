@@ -9,6 +9,13 @@ import sesliSohbet from "../../docs/help/sesli-sohbet.md?raw";
 import dnd from "../../docs/help/dnd.md?raw";
 import muzik from "../../docs/help/muzik.md?raw";
 import oturmaOdasi from "../../docs/help/oturma-odasi.md?raw";
+import birlikteIzle from "../../docs/help/birlikte-izle.md?raw";
+import ayarlar from "../../docs/help/ayarlar.md?raw";
+import discordGecis from "../../docs/help/discord-gecis.md?raw";
+import profil from "../../docs/help/profil.md?raw";
+import temalar from "../../docs/help/temalar.md?raw";
+import oyunlar from "../../docs/help/oyunlar.md?raw";
+import botlar from "../../docs/help/botlar.md?raw";
 
 /**
  * The user manual at hoffle.online/help, in Turkish first.
@@ -104,6 +111,55 @@ export const HELP_CHAPTERS: HelpChapter[] = [
     description: "Ses odasının 3D hâli: salon, sinema, D&D masası, oyun salonu, çayır ve kulüp; hareket, tepkiler ve oda ayarları.",
     icon: "🛋️",
     source: oturmaOdasi,
+  },
+  {
+    slug: "birlikte-izle",
+    title: "Birlikte İzle ve Reels",
+    description: "Ses odasında herkesle aynı anda video izleme, sıra ve arama, kalite seçimi; Shorts'ları grupça kaydırma.",
+    icon: "🎬",
+    source: birlikteIzle,
+  },
+  {
+    slug: "ayarlar",
+    title: "Ayarlar",
+    description: "Hesap güvenliği, iki adımlı giriş ve geçiş anahtarı, gizlilik, bildirimler, metin okuma, erişilebilirlik ve özellik anahtarları.",
+    icon: "⚙️",
+    source: ayarlar,
+  },
+  {
+    slug: "discord-gecis",
+    title: "Discord'dan geçiş",
+    description: "Discord sunucusunu şablonla kopyalama, iki yönlü Discord köprüsü ve discord.js / discord.py botlarını Hoffle'da çalıştırma.",
+    icon: "🔁",
+    source: discordGecis,
+  },
+  {
+    slug: "profil",
+    title: "Profil ve başarımlar",
+    description: "Profil resmi, hazır görünümler, avatar süslemeleri, profil efektleri, hakkımda, durum ve başarımlar.",
+    icon: "🪪",
+    source: profil,
+  },
+  {
+    slug: "temalar",
+    title: "Temalar ve Y2K / MSN",
+    description: "Tema değiştirme, hazır temalar, yerleşim; Y2K Sohbet teması, titreşim, göz kırpmalar, el yazısı ve ses klibi.",
+    icon: "🎨",
+    source: temalar,
+  },
+  {
+    slug: "oyunlar",
+    title: "Oyunlar, aktiviteler ve etkinlikler",
+    description: "Sohbet içi oyunlar (XOX, Dört Taş, Rota…), ses odası aktiviteleri (Beyaz Tahta, Beatbox…) ve katılım toplayan etkinlikler.",
+    icon: "🎲",
+    source: oyunlar,
+  },
+  {
+    slug: "botlar",
+    title: "Botlar ve entegrasyonlar",
+    description: "Beslemeler, web kancaları, sunucudaki botlar, Geliştirici Portalı'nda kendi botunu yazmak ve Minecraft sunucusu bileşeni.",
+    icon: "🤖",
+    source: botlar,
   },
 ];
 
