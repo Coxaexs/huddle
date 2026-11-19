@@ -36,6 +36,8 @@ import {
   snapPoint,
 } from "@/lib/battlemap";
 import { apiFetch } from "../lib/client";
+import { useDismiss } from "../hooks/use-dismiss";
+import { freeSpot } from "@/lib/battlemap-spot";
 
 interface BattlemapBoardProps {
   channelId: string;
@@ -113,6 +115,9 @@ export function BattlemapBoard({
   const [resizing, setResizing] = useState<string | null>(null);
   /** Monster palette dropdown open state (GM only). */
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteLeft, setPaletteLeft] = useState(false);
+  const paletteWrapRef = useRef<HTMLDivElement | null>(null);
+  useDismiss(paletteOpen, () => setPaletteOpen(false), paletteWrapRef);
   /** Fog rectangle being drawn (GM): start point in grid units. */
   const fogStartRef = useRef<{ x: number; y: number } | null>(null);
   const [fogDraft, setFogDraft] = useState<MapFog | null>(null);
@@ -549,17 +554,18 @@ function onBoardPointerDown(event: React.PointerEvent) {
     }).catch(() => undefined);
   }
 
-  /** GM: drop a monster from the palette at the board center. */
+  /** GM: drop a monster from the palette near the board center, on a free square. */
   function addMonster(monster: (typeof MONSTER_PALETTE)[number]) {
     setPaletteOpen(false);
+    const spot = freeSpot(map.tokens, Math.round(map.grid / 2), Math.round(rows / 2), monster.size, map.grid, rows);
     void act({
       action: "add-token",
       token: {
         label: monster.label,
         color: monster.color,
         size: monster.size,
-        x: Math.round(map.grid / 2),
-        y: Math.round(rows / 2),
+        x: spot.x,
+        y: spot.y,
       },
     });
   }
@@ -702,17 +708,22 @@ function onBoardPointerDown(event: React.PointerEvent) {
           )}
           {gm && (
             <>
-              <div className="battlemap-palette-wrap">
+              <div className="battlemap-palette-wrap" ref={paletteWrapRef}>
                 <button
                   type="button"
                   className={paletteOpen ? "on" : ""}
                   title="Add a monster or fixture"
-                  onClick={() => setPaletteOpen((open) => !open)}
+                  onClick={() => {
+                    // Open towards whichever side has room, so it is never cut off.
+                    const box = paletteWrapRef.current?.getBoundingClientRect();
+                    setPaletteLeft(Boolean(box && box.right < 300));
+                    setPaletteOpen((open) => !open);
+                  }}
                 >
                   <Plus size={14} />
                 </button>
                 {paletteOpen && (
-                  <div className="battlemap-palette">
+                  <div className={`battlemap-palette ${paletteLeft ? "battlemap-palette-left" : ""}`}>
                     <div className="battlemap-palette-title">Add to table</div>
                     <div className="battlemap-palette-grid">
                       {MONSTER_PALETTE.map((monster) => (

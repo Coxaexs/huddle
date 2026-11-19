@@ -58,6 +58,8 @@ const NEEDED_FOR_THREADS = ["CreatePublicThreads", "SendMessagesInThreads"];
 /** Voice channels also carry the call. */
 const NEEDED_FOR_VOICE = ["Connect", "Speak"];
 const WATCHDOG_MS = 3 * 60_000;
+/** How long one login may take before it is given up and tried again. */
+const LOGIN_TIMEOUT_MS = 2 * 60_000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -167,7 +169,16 @@ export class Bridge {
       const client = makeClient();
       onClient(client);
       try {
-        await client.login(token);
+        // A login whose gateway never answers neither resolves nor fails; on
+        // 2026-11-17 one hung that way after a Hoffle restart and the bridge
+        // sat at "Reconnecting to Hoffle…" until someone restarted it.
+        let timer;
+        await Promise.race([
+          client.login(token),
+          new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error(`login took over ${LOGIN_TIMEOUT_MS / 1000}s`)), LOGIN_TIMEOUT_MS);
+          }),
+        ]).finally(() => clearTimeout(timer));
         delay = 5000;
         // Watch it until it has been not-ready for too long.
         let notReadySince = null;

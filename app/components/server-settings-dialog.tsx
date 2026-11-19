@@ -591,13 +591,16 @@ export function ServerSettingsDialog({
             "/api/roles",
             {
               method: "POST",
-              body: JSON.stringify({ serverId: server.id, name: roleName.trim() }),
+              // New roles start at the bottom, as on Discord, so they never
+              // outrank the roles already there until someone moves them up.
+              body: JSON.stringify({ serverId: server.id, name: roleName.trim(), atBottom: true }),
             },
           );
           const updatedServer = res.servers.find((s) => s.id === server.id);
           if (updatedServer) {
+            const before = new Set(roles.map((r) => r.id));
             setRoles(updatedServer.roles);
-            const newRole = updatedServer.roles[updatedServer.roles.length - 1];
+            const newRole = updatedServer.roles.find((r) => !before.has(r.id));
             if (newRole) setActiveRole(newRole);
           }
           onServerUpdated();
@@ -637,6 +640,26 @@ export function ServerSettingsDialog({
       setNotice("Role updated.");
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Could not update role");
+    }
+  };
+
+  /** Saves a new role order (ids, highest first). */
+  const reorderRoles = async (order: string[]) => {
+    if (!canManageRolesEffective) return;
+    const previous = roles;
+    const byId = new Map(roles.map((r) => [r.id, r]));
+    setRoles(order.map((id) => byId.get(id)).filter((r): r is PublicRole => Boolean(r)));
+    try {
+      const res = await apiFetch<{ servers: PublicServer[] }>("/api/roles/reorder", {
+        method: "POST",
+        body: JSON.stringify({ serverId: server.id, order }),
+      });
+      const updatedServer = res.servers.find((s) => s.id === server.id);
+      if (updatedServer) setRoles(updatedServer.roles);
+      onServerUpdated();
+    } catch (e) {
+      setRoles(previous);
+      setNotice(e instanceof Error ? e.message : "Could not move that role.");
     }
   };
 
@@ -1188,6 +1211,8 @@ export function ServerSettingsDialog({
         canManageRolesEffective={canManageRolesEffective}
         handleCreateRole={handleCreateRole}
         filteredRoles={filteredRoles}
+        allRoleIds={roles.map((r) => r.id)}
+        reorderRoles={reorderRoles}
         everyoneRole={everyoneRoleOf(server)}
         activeRole={activeRole}
         setActiveRole={setActiveRole}

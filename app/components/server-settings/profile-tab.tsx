@@ -203,9 +203,13 @@ export function ServerProfileTab({
                   <h3 className="server-card-name">{serverName}</h3>
                   <div className="server-card-stats">
                     <span className="dot green" /> {onlineCount} Online &nbsp;
-                    <span className="dot gray" /> {serverMembers.length || 12} Members
+                    <span className="dot gray" /> {serverMembers.length} Members
                   </div>
-                  <div className="server-card-est">Est. Jun 2026</div>
+                  {server.createdAt && (
+                    <div className="server-card-est">
+                      Est. {new Date(server.createdAt).toLocaleDateString(undefined, { month: "short", year: "numeric" })}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -59,6 +59,45 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
       return;
     }
 
+    // /nick [name]: your nickname in this server; empty clears it.
+    if (name === "nick") {
+      const serverId = s.activeServerId;
+      if (!user || !serverId || inDmHome) {
+        setNotice("Nicknames belong to a server. Open one of its channels first.");
+        return;
+      }
+      try {
+        await s.setNickname(serverId, user.id, value.slice(0, 32) || null);
+        setNotice(value ? `Your nickname here is now ${value.slice(0, 32)}.` : "Nickname cleared; your account name shows here again.");
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "Could not change your nickname.");
+      }
+      return;
+    }
+
+    // /topic [text]: show the channel topic, or set it (needs Manage Channels).
+    if (name === "topic") {
+      const channel = s.activeChannel;
+      if (!channel || inDmHome) {
+        setNotice("Topics belong to a server channel.");
+        return;
+      }
+      if (!value) {
+        setNotice(channel.topic?.trim() ? `Topic: ${channel.topic.trim()}` : "This channel has no topic yet. Type /topic and the text to set one.");
+        return;
+      }
+      try {
+        await apiFetch(`/api/channels/${encodeURIComponent(channel.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ topic: value.slice(0, 1024) }),
+        });
+        setNotice("Topic updated.");
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "Could not change the topic.");
+      }
+      return;
+    }
+
     if (name === "markdown") {
       setMarkdownModalOpen((prev) => !prev);
       setNotice("Markdown enabled! Use ```cpp for code blocks, **bold**, *italic*.");

@@ -25,6 +25,9 @@
 .guest-save-card label { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: -8px; }
 .username-card .guest-switch { display: block; width: 100%; margin-top: 4px; }
 @media (max-width: 640px) { .guest-bar { bottom: 76px; } }
+/* While the welcome tour is open the bar would sit on top of its Next button;
+   it comes back when the tour closes. */
+body:has(.tutorial-backdrop) .guest-bar { display: none; }
 
 /* The notification offer (app/components/notify-prompt.tsx) is one of Hoffy's
    tips; while it is up, the tip of the moment waits its turn. */

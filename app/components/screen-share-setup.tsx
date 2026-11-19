@@ -1,6 +1,7 @@
 "use client";
 
 import { Monitor, X } from "lucide-react";
+import { useDismiss } from "../hooks/use-dismiss";
 import {
   makeScreenQuality,
   SCREEN_FRAMERATES,
@@ -34,6 +35,7 @@ export function ScreenShareSetup({
   onClose: () => void;
   className?: string;
 }) {
+  useDismiss(true, onClose);
   const { height, fps } = screenQualityParts(quality);
   const chip = (selected: boolean) =>
     `screen-setup-chip px-2 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${

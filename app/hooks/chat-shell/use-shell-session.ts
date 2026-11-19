@@ -19,6 +19,7 @@ import { membersText, shownCounts } from "@/lib/member-counts";
 import type { useShellState } from "./use-shell-state";
 import { adoptUiMode, installUiMode } from "@/app/lib/ui-mode";
 import { adoptLayout, installLayout } from "@/app/lib/layout-store";
+import { avatarForShownName } from "@/lib/avatar-initial";
 
 /** ChatShell, part 2 of 9. The signed-in session: loading servers, members, friends, prefs and unread counts; message and invite links; permissions and the active server/channel/DM. */
 export function useShellSession(s: ReturnType<typeof useShellState>) {
@@ -468,6 +469,12 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
     });
   }, [user, messages, threadMessages, threadRoot, resolvedInvites]);
 
+  // A thread belongs to its channel: leaving the channel (for another one, a
+  // DM or the Friends page) closes it instead of leaving it open beside them.
+  useEffect(() => {
+    if (threadRoot?.channelId && threadRoot.channelId !== activeChannelId) s.setThreadRoot(null);
+  }, [activeChannelId, threadRoot?.channelId]);
+
   // Opening a channel marks it read.
   useEffect(() => {
     if (!activeChannelId) return;
@@ -583,6 +590,7 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
         ...own,
         ...memberFromPublicUser(user, own?.lastSeenAt || (user as any).lastSeenAt || new Date().toISOString()),
         displayName: own?.nickname || user.displayName,
+        avatar: avatarForShownName(user.avatar, user.displayName, own?.nickname),
         avatarUrl: own?.serverAvatarUrl || user.avatarUrl,
       });
     }

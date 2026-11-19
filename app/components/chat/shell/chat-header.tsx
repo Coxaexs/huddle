@@ -187,7 +187,7 @@ export function ChatHeader({
               )}
             </span>
             <div className="channel-heading min-w-0 flex items-center gap-2">
-              <strong className="truncate">{stageChannel ? stageChannel.name : channelTitle}</strong>
+              <strong className="truncate flex-shrink-0 max-w-[60%]">{stageChannel ? stageChannel.name : channelTitle}</strong>
               {stageChannel && activeScreenShare && (
                 <>
                   <span className="voice-stage-topbar-divider text-[var(--muted)]/40 font-light select-none">/</span>
@@ -211,7 +211,7 @@ export function ChatHeader({
                     : activeChannel?.topic?.trim() ||
                       (!activeChannel ? t("header.createChannelHint") : "");
                 return topicText ? (
-                  <span className="channel-topic text-xs text-[var(--muted)] whitespace-nowrap flex-shrink-0">
+                  <span className="channel-topic text-xs text-[var(--muted)] whitespace-nowrap truncate min-w-0" title={topicText}>
                     {topicText}
                   </span>
                 ) : null;

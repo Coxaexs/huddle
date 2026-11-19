@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Vote, Plus, Trash2, X, Lock } from "lucide-react";
+import { useDismiss } from "../hooks/use-dismiss";
 
 interface PollDialogProps {
   open: boolean;
@@ -21,6 +22,7 @@ export function PollDialog({ open, onClose, onSubmit }: PollDialogProps) {
       setIsPrivate(false);
     }
   }, [open]);
+  useDismiss(open, onClose);
 
   if (!open) return null;
 

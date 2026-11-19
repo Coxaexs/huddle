@@ -139,6 +139,8 @@ export interface PublicServer {
   iconUrl?: string | null;
   bannerUrl?: string | null;
   ownerId: string | null;
+  /** When the server was made (ISO). The profile card shows its month and year. */
+  createdAt?: string;
   isPublic?: boolean;
   description?: string;
   disabledModules?: string[];
@@ -395,6 +397,7 @@ export async function listServers(
       iconUrl: server.icon_url || null,
       bannerUrl: server.banner_url || null,
       ownerId: server.created_by,
+      ...(server.created_at ? { createdAt: server.created_at } : {}),
       ...(server.is_public !== undefined ? { isPublic: Boolean(server.is_public) } : {}),
       ...(server.description !== undefined ? { description: server.description || "" } : {}),
       ...(server.disabled_modules !== undefined ? { disabledModules } : {}),

@@ -846,6 +846,8 @@ function LyricsPane({
   const [data, setData] = useState<LyricsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [finding, setFinding] = useState(false);
+  // The saved-lyrics check is taking long (a busy bot): offer the search anyway.
+  const [slowCheck, setSlowCheck] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // What "Try again" repeats: the saved-lyrics check, or the search.
   const [retrySearch, setRetrySearch] = useState(false);
@@ -904,6 +906,13 @@ function LyricsPane({
     },
     [roomId, trackId],
   );
+
+  useEffect(() => {
+    setSlowCheck(false);
+    if (data || error || finding) return;
+    const timer = setTimeout(() => setSlowCheck(true), 4000);
+    return () => clearTimeout(timer);
+  }, [trackId, data, error, finding]);
 
   useEffect(() => {
     setData((old) => (old?.trackId === trackId ? old : null));
@@ -1120,7 +1129,13 @@ function LyricsPane({
     }
     if (loading || (!data && !error)) {
       return (
-        <Empty icon={<LoaderCircle size={28} className="mp-spin" />} title="Checking for saved lyrics…" />
+        <Empty icon={<LoaderCircle size={28} className="mp-spin" />} title="Checking for saved lyrics…">
+          {slowCheck && roomId && trackId && (
+            <button type="button" className="mp-button" onClick={() => void load(true)}>
+              <Search size={16} /> Search for lyrics
+            </button>
+          )}
+        </Empty>
       );
     }
     if (error) {

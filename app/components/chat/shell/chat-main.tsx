@@ -308,6 +308,7 @@ export function renderChatMain(v: ShellRenderState) {
                 onClose={() => setVoiceChatOpen(false)}
                 onImage={setLightboxImage}
                 onNotice={setNotice}
+                onCommand={(raw) => void runCommand(raw)}
               />
             )}
             </div>

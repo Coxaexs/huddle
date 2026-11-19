@@ -9,6 +9,7 @@ import { pickImageFile } from "../../lib/chat/browser";
 import { formatDuration, type VoiceClip } from "../../components/voice-message";
 import { type Theme, findThemeById, applyThemeToDocument, exportThemeCode } from "@/lib/themes";
 import type { useShellHistory } from "./use-shell-history";
+import { initialOf } from "@/lib/avatar-initial";
 
 /** ChatShell, part 6 of 9. Actions: theme, games, winks and nudges, DMs and group DMs, pins, moderation, bot buttons, sending text and voice messages. */
 export function useShellActions(s: ReturnType<typeof useShellHistory>) {
@@ -442,6 +443,27 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
     });
   }
 
+  /** Saves a nickname (null clears it) for someone in a server and shows it at once. */
+  async function setNickname(serverId: string, userId: string, nickname: string | null) {
+    await apiFetch(`/api/members/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ serverId, nickname }),
+    });
+    setMembers((prev) =>
+      prev.map((m) =>
+        m.id === userId
+          ? {
+              ...m,
+              nickname,
+              displayName: nickname || m.globalName || m.displayName,
+              // The automatic initial follows the name shown here; a chosen one stays.
+              avatar: m.avatar === initialOf(m.displayName) ? initialOf(nickname || m.globalName || m.displayName) : m.avatar,
+            }
+          : m,
+      ),
+    );
+  }
+
   /** Set or clear someone's nickname in the active server (yours, or theirs with permission). */
   function editNickname(userId: string) {
     if (!activeServerId || activeServerId === DM_HOME) return;
@@ -458,17 +480,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
       onConfirm: async (value) => {
         const nickname = (value || "").trim() || null;
         try {
-          await apiFetch(`/api/members/${userId}`, {
-            method: "PATCH",
-            body: JSON.stringify({ serverId, nickname }),
-          });
-          setMembers((prev) =>
-            prev.map((m) =>
-              m.id === userId
-                ? { ...m, nickname, displayName: nickname || m.globalName || m.displayName }
-                : m,
-            ),
-          );
+          await setNickname(serverId, userId, nickname);
         } catch (error) {
           setNotice(error instanceof Error ? error.message : "Could not change that nickname.");
         }
@@ -769,7 +781,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
     applyTheme, wrapSelection, pendingInvite, answerInvite, startGame, sendWink, sendNudge,
     handleShareThemeToChat, postBotMessage, setDmClosed, togglePinDm, openDm, createGroupDm,
     addToGroupDm, renameGroupDm, removeFromGroupDm, leaveGroupDm, deleteMessage, togglePin,
-    saveVoicePref, moderateMember, editNickname, setServerAvatar, timeoutMember, moveMember, disconnectMember, pressBotComponent,
+    saveVoicePref, moderateMember, editNickname, setNickname, setServerAvatar, timeoutMember, moveMember, disconnectMember, pressBotComponent,
     openMusicDashboard, sendVoiceMessage, sendText, sendTextComposer,
   };
 }

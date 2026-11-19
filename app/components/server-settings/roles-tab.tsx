@@ -99,6 +99,8 @@ export function ServerRolesTab({
   canManageRolesEffective,
   handleCreateRole,
   filteredRoles,
+  allRoleIds,
+  reorderRoles,
   everyoneRole,
   activeRole,
   setActiveRole,
@@ -117,6 +119,9 @@ export function ServerRolesTab({
   canManageRolesEffective: boolean;
   handleCreateRole: () => void;
   filteredRoles: PublicRole[];
+  /** Every role id in order, highest first (the list may be filtered by a search). */
+  allRoleIds: string[];
+  reorderRoles: (order: string[]) => Promise<void>;
   everyoneRole: PublicRole;
   activeRole: PublicRole | null;
   setActiveRole: React.Dispatch<React.SetStateAction<PublicRole | null>>;
@@ -131,6 +136,17 @@ export function ServerRolesTab({
   const [nameDraft, setNameDraft] = useState("");
   const [colorDraft, setColorDraft] = useState("#99aab5");
   const [savingDetails, setSavingDetails] = useState(false);
+  const [draggingRoleId, setDraggingRoleId] = useState<string | null>(null);
+  const [dropRoleId, setDropRoleId] = useState<string | null>(null);
+  // Moving roles only makes sense on the full list, not a search result.
+  const canReorder = canManageRolesEffective && !roleSearch.trim() && allRoleIds.length > 1;
+  const moveRole = (id: string, toIndex: number) => {
+    const from = allRoleIds.indexOf(id);
+    if (from < 0 || toIndex < 0 || toIndex >= allRoleIds.length || toIndex === from) return;
+    const order = allRoleIds.filter((x) => x !== id);
+    order.splice(toIndex, 0, id);
+    void reorderRoles(order);
+  };
 
   useEffect(() => {
     if (!activeRole || activeRole.id === EVERYONE_ROLE_ID) return;
@@ -138,19 +154,47 @@ export function ServerRolesTab({
     setColorDraft(activeRole.color || "#99aab5");
   }, [activeRole?.id, activeRole?.name, activeRole?.color]);
 
-  async function saveDetails() {
-    if (!activeRole || activeRole.id === EVERYONE_ROLE_ID) return;
-    const trimmed = nameDraft.trim();
-    if (!trimmed) return;
+  // Permissions save the moment they are switched, so the name and colour do
+  // too: the colour shortly after the picker settles, the name when you leave
+  // the box or press Enter. There used to be a separate "Save changes" button
+  // that was easy to miss, and a new colour was lost on switching roles.
+  const colorTimer = useRef<{ timer: ReturnType<typeof setTimeout>; run: () => void } | null>(null);
+  const flushColor = () => {
+    const pending = colorTimer.current;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    colorTimer.current = null;
+    pending.run();
+  };
+  useEffect(() => flushColor, [activeRole?.id]);
+
+  async function saveDetails(patch: { name?: string; color?: string }, roleId = activeRole?.id) {
+    if (!roleId || roleId === EVERYONE_ROLE_ID) return;
     setSavingDetails(true);
     try {
-      await updateRoleDetails(activeRole.id, {
-        name: trimmed,
-        color: colorDraft,
-      });
+      await updateRoleDetails(roleId, patch);
     } finally {
       setSavingDetails(false);
     }
+  }
+
+  function changeColor(color: string) {
+    setColorDraft(color);
+    const roleId = activeRole?.id;
+    if (!roleId) return;
+    if (colorTimer.current) clearTimeout(colorTimer.current.timer);
+    const run = () => void saveDetails({ color }, roleId);
+    colorTimer.current = { timer: setTimeout(() => { colorTimer.current = null; run(); }, 600), run };
+  }
+
+  function commitName() {
+    if (!activeRole) return;
+    const trimmed = nameDraft.trim();
+    if (!trimmed) {
+      setNameDraft(activeRole.name);
+      return;
+    }
+    if (trimmed !== activeRole.name) void saveDetails({ name: trimmed });
   }
 
   return (
@@ -207,11 +251,55 @@ export function ServerRolesTab({
                 return (
                   <div
                     key={role.id}
-                    className={`role-table-row ${activeRole?.id === role.id ? "selected" : ""}`}
+                    className={`role-table-row ${activeRole?.id === role.id ? "selected" : ""} ${draggingRoleId === role.id ? "dragging" : ""} ${dropRoleId === role.id && draggingRoleId && draggingRoleId !== role.id ? (allRoleIds.indexOf(draggingRoleId) < allRoleIds.indexOf(role.id) ? "drop-target drop-below" : "drop-target") : ""}`}
                     onClick={() => setActiveRole(role)}
+                    draggable={canReorder}
+                    onDragStart={(e) => {
+                      if (!canReorder) return;
+                      setDraggingRoleId(role.id);
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("text/plain", role.id);
+                    }}
+                    onDragOver={(e) => {
+                      if (!draggingRoleId) return;
+                      e.preventDefault();
+                      if (dropRoleId !== role.id) setDropRoleId(role.id);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (draggingRoleId) moveRole(draggingRoleId, allRoleIds.indexOf(role.id));
+                      setDraggingRoleId(null);
+                      setDropRoleId(null);
+                    }}
+                    onDragEnd={() => {
+                      setDraggingRoleId(null);
+                      setDropRoleId(null);
+                    }}
                   >
                     <div className="role-name-col">
-                      <span className="drag-dots"><GripVertical size={14} /></span>
+                      {canReorder ? (
+                        <button
+                          type="button"
+                          className="drag-dots"
+                          title="Drag to move. Arrow keys move it up or down. Higher roles outrank lower ones."
+                          aria-label={`Move ${role.name}: use the up and down arrow keys`}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            const index = allRoleIds.indexOf(role.id);
+                            if (e.key === "ArrowUp") {
+                              e.preventDefault();
+                              moveRole(role.id, index - 1);
+                            } else if (e.key === "ArrowDown") {
+                              e.preventDefault();
+                              moveRole(role.id, index + 1);
+                            }
+                          }}
+                        >
+                          <GripVertical size={14} />
+                        </button>
+                      ) : (
+                        <span className="drag-dots drag-dots-off" aria-hidden="true"><GripVertical size={14} /></span>
+                      )}
                       <span
                         className="role-shield-icon"
                         style={{ color: role.color || "#99aab5" }}
@@ -269,7 +357,7 @@ export function ServerRolesTab({
                         type="color"
                         aria-label="Role colour"
                         value={colorDraft}
-                        onChange={(e) => setColorDraft(e.target.value)}
+                        onChange={(e) => changeColor(e.target.value)}
                       />
                       <input
                         type="text"
@@ -278,19 +366,19 @@ export function ServerRolesTab({
                         maxLength={40}
                         value={nameDraft}
                         onChange={(e) => setNameDraft(e.target.value)}
+                        onBlur={commitName}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.currentTarget.blur();
+                          if (e.key === "Escape") {
+                            e.stopPropagation();
+                            setNameDraft(activeRole.name);
+                          }
+                        }}
                         style={{ color: colorDraft }}
                       />
-                      {(nameDraft.trim() !== activeRole.name ||
-                        colorDraft !== (activeRole.color || "#99aab5")) && (
-                        <button
-                          type="button"
-                          className="discord-btn primary-indigo"
-                          disabled={savingDetails || !nameDraft.trim()}
-                          onClick={() => void saveDetails()}
-                        >
-                          {savingDetails ? "Saving…" : "Save changes"}
-                        </button>
-                      )}
+                      <span className="role-save-state" aria-live="polite" style={{ fontSize: 12, opacity: 0.7, minWidth: 52 }}>
+                        {savingDetails ? "Saving…" : ""}
+                      </span>
                       <button
                         type="button"
                         className="role-delete"

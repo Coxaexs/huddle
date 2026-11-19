@@ -4,6 +4,7 @@ import { ensureSchema } from "@/lib/schema";
 import { markServerRead } from "@/lib/servers";
 import { getSignupSettings, OPEN_SIGNUPS_PER_ADDRESS_PER_DAY, signupAddressHash, verifyTurnstile } from "@/lib/signup";
 import { bindings } from "@/lib/storage";
+import { guestUsername } from "@/lib/guest-username";
 
 export const dynamic = "force-dynamic";
 
@@ -92,7 +93,7 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
   let user: User | null = null;
   for (let attempt = 0; attempt < 4 && !user; attempt++) {
-    const username = `guest-${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
+    const username = guestUsername(displayName, crypto.randomUUID().replace(/-/g, "").slice(0, attempt < 2 ? 4 : 8));
     const candidate: User = {
       id: crypto.randomUUID(),
       username,

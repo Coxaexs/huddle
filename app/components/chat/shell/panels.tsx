@@ -886,6 +886,7 @@ export function ChannelSidebar({
                         {kindMenu?.categoryId === category.id && renderKindMenu(category.id)}
                       </span>
                       <button
+                        className="category-delete"
                         aria-label={t("sidebar.deleteNamed", { name: category.name })}
                         title={t("sidebar.deleteCategory")}
                         onClick={() => void deleteCategory(category.id, category.name)}

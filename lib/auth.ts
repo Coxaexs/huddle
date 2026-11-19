@@ -25,6 +25,7 @@ import {
   normalizeProfileActivity,
   normalizeProfileStyle,
 } from "./users";
+import { avatarForShownName } from "./avatar-initial";
 
 export { AVATAR_COLORS } from "./users";
 export type { PublicUser } from "./users";
@@ -254,6 +255,7 @@ export function memberFromRow(
   return {
     ...profile,
     displayName: nickname || profile.displayName,
+    avatar: avatarForShownName(profile.avatar, profile.displayName, nickname),
     globalName: profile.displayName,
     nickname,
     avatarUrl: serverAvatarUrl || profile.avatarUrl,

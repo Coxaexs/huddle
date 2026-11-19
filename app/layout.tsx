@@ -139,6 +139,14 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+/**
+ * crypto.randomUUID only exists on secure pages (https or localhost). A
+ * self-hosted Hoffle opened over plain http on a LAN address lacks it, and the
+ * battlemap's paint tool (and other places) threw "crypto.randomUUID is not a
+ * function". This fills it in from getRandomValues, which works everywhere.
+ */
+const RANDOM_UUID_SCRIPT = `(function(){var c=window.crypto;if(!c||typeof c.randomUUID==="function"||typeof c.getRandomValues!=="function")return;c.randomUUID=function(){var b=c.getRandomValues(new Uint8Array(16));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;var h=[];for(var i=0;i<16;i++)h.push((b[i]+256).toString(16).slice(1));return h.slice(0,4).join("")+"-"+h.slice(4,6).join("")+"-"+h.slice(6,8).join("")+"-"+h.slice(8,10).join("")+"-"+h.slice(10).join("")};})();`;
+
 export default async function RootLayout({ children }: { children: ReactNode }) {
   // The worker marks hoffle.online/tr (worker/index.ts); everything else is English
   // until the app's own language setting takes over on the client.
@@ -153,6 +161,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=3" />
         <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=3" />
         {app && <script dangerouslySetInnerHTML={{ __html: INSTALL_EVENT_SCRIPT }} />}
+        {app && <script dangerouslySetInnerHTML={{ __html: RANDOM_UUID_SCRIPT }} />}
       </head>
       <body>
         <I18nProvider>

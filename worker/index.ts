@@ -111,6 +111,23 @@ async function handleRequest(
       "/api/realtime",
     ]);
 
+    // Bot invite links and the Developer Portal need the app's sign-in, whose
+    // cookie lives on chat.<domain>. Opened on the landing domain they showed a
+    // sign-up form to people who were already signed in, so send them over.
+    {
+      const landingHost = (request.headers.get("host") || url.host).split(":")[0].toLowerCase();
+      const landingDomains = (env?.LANDING_DOMAINS || "hoffle.online,www.hoffle.online")
+        .split(",")
+        .map((d) => d.trim().toLowerCase())
+        .filter(Boolean);
+      const appPage = url.pathname.match(/^(?:\/hangout|)\/(oauth2\/|developers(?:\/|$))/);
+      if (landingDomains.includes(landingHost) && appPage && request.method === "GET") {
+        const apex = landingHost.replace(/^www\./, "");
+        const path = url.pathname.startsWith(`${effectiveBasePath}/`) ? url.pathname : `${effectiveBasePath}${url.pathname}`;
+        return new Response(null, { status: 302, headers: { location: `https://chat.${apex}${path}${url.search}` } });
+      }
+    }
+
     // Built assets are emitted without the basePath, so a request for
     // /hangout/assets/x.js or /assets/x.js matches here.
     if (

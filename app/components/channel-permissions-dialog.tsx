@@ -8,6 +8,7 @@ import { Permission, type PermissionFlag } from "@/lib/permissions";
 import type { PublicChannel } from "@/lib/servers";
 import type { TranslatableKey } from "@/lib/i18n";
 import { apiFetch } from "../lib/client";
+import { useDismiss } from "../hooks/use-dismiss";
 import { useI18n } from "../lib/i18n-context";
 
 /** Opens the editor for a channel; the dialog is mounted once in the chat overlays. */
@@ -46,6 +47,7 @@ export function ChannelPermissionsDialog() {
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  useDismiss(channel !== null, () => setChannel(null));
 
   useEffect(() => {
     const open = (event: Event) => {

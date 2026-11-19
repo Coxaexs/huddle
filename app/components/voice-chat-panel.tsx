@@ -53,6 +53,7 @@ export function VoiceChatPanel({
   onClose,
   onImage,
   onNotice,
+  onCommand,
 }: {
   channelId: string;
   channelName: string;
@@ -68,6 +69,8 @@ export function VoiceChatPanel({
   onClose: () => void;
   onImage?: (url: string) => void;
   onNotice?: (text: string) => void;
+  /** Runs a slash command typed here, as the main message box would. */
+  onCommand?: (raw: string) => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -133,6 +136,12 @@ export function VoiceChatPanel({
   const send = useCallback(
     async (text: string, keys: string[] = []) => {
       if (!text.trim() && !keys.length) return;
+      // "/play …" typed here used to go out as a plain message. Commands run the
+      // same way as in the main message box.
+      if (onCommand && !keys.length && /^\/[a-z0-9]/i.test(text.trim())) {
+        onCommand(text.trim());
+        return;
+      }
       setSending(true);
       stickToBottom.current = true;
       try {
@@ -152,7 +161,7 @@ export function VoiceChatPanel({
         setSending(false);
       }
     },
-    [channelId, onNotice],
+    [channelId, onNotice, onCommand],
   );
 
   async function submit() {

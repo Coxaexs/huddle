@@ -10764,6 +10764,20 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
   background: var(--lavender-soft);
 }
 
+/* The delete × shows when you point at the category (or tab to it), so it is
+   not sitting there to be clicked by accident. The + stays visible. On touch
+   screens there is no hover, so both stay. */
+@media (hover: hover) {
+  .category-actions .category-delete {
+    opacity: 0;
+    transition: opacity .12s ease;
+  }
+  .category-head:hover .category-delete,
+  .category-head:focus-within .category-delete {
+    opacity: 1;
+  }
+}
+
 .category-body {
   display: flex;
   flex-direction: column;
@@ -11518,6 +11532,25 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
   z-index: 100;
   overflow: hidden;
   animation: popoverFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* In the channel sidebar the 380px popover ran past the sidebar's edge and
+   was cut off; there it takes the sidebar's own width instead. */
+.mini-voice-bar .soundboard-quick-popover {
+  left: 4px;
+  right: 4px;
+  width: auto;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+}
+
+/* "No custom server emojis yet." sat in one narrow emoji cell, a word per line. */
+.no-emoji-hint {
+  grid-column: 1 / -1;
+  margin: 4px 2px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: normal;
 }
 
 @keyframes popoverFadeIn {
@@ -12945,6 +12978,11 @@ html[data-motion="reduced"] .typing-dots i {
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
   padding: 10px;
+}
+
+.battlemap-palette.battlemap-palette-left {
+  right: auto;
+  left: 0;
 }
 
 .battlemap-palette-title {
@@ -15199,6 +15237,38 @@ button.forum-tag:hover:not(:disabled) {
 
 .role-name-col .drag-dots {
   color: #6d6f78;
+}
+
+button.drag-dots {
+  display: inline-grid;
+  place-items: center;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  cursor: grab;
+}
+
+button.drag-dots:hover,
+button.drag-dots:focus-visible {
+  color: var(--ink, #fff);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.role-name-col .drag-dots-off {
+  opacity: 0.35;
+}
+
+.role-table-row.dragging {
+  opacity: 0.45;
+}
+
+.role-table-row.drop-target {
+  box-shadow: inset 0 2px 0 var(--accent, #5865f2);
+}
+
+.role-table-row.drop-target.drop-below {
+  box-shadow: inset 0 -2px 0 var(--accent, #5865f2);
 }
 
 .role-name-col strong {

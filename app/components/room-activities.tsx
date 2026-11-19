@@ -56,6 +56,7 @@ import { apiFetch } from "../lib/client";
 import { deferred } from "./chat/shell/deferred";
 import { useModulesOff } from "../lib/modules";
 import type { FeatureModuleKey } from "@/lib/features";
+import { useDismiss } from "../hooks/use-dismiss";
 
 const GestureSynth = deferred(() => import("./gesture-synth").then((m) => m.GestureSynth));
 const BeatboxActivity = deferred(() => import("./beatbox-activity").then((m) => m.BeatboxActivity));
@@ -1025,6 +1026,9 @@ export function RoomActivities({
   useEffect(() => {
     if (activity) onOpen(true);
   }, [activity?.kind]);
+  // Escape closes the picker. A running activity keeps Escape for itself
+  // (games and the whiteboard use it); its ⌄ button collapses it.
+  useDismiss(open && !activity, () => onOpen(false));
 
   // The living room's board hall plays DeepPixel from its own menu: relay between it and the game's iframe.
   const isDeepPixel = activity?.kind === "deeppixel";
@@ -1274,13 +1278,13 @@ export function RoomActivities({
                 key={choice.kind}
                 disabled={busy || needsBot}
                 className={isBotActivity(choice.kind) ? "bot-activity" : undefined}
-                title={needsBot ? "Add the Music Bot in Server Settings → Integrations" : undefined}
+                title={needsBot ? "This server does not have the Music Bot" : undefined}
                 onClick={() => void openActivity(choice.kind)}
               >
                 <span>{choice.icon}</span>
                 <strong>{choice.name}</strong>
                 <small>
-                  {needsBot ? "Needs the Music Bot: add it in Server Settings → Integrations" : choice.description}
+                  {needsBot ? "Needs the Music Bot, which this server has not added" : choice.description}
                 </small>
                 {isBotActivity(choice.kind) && (
                   <em className="activity-bot-tag">
