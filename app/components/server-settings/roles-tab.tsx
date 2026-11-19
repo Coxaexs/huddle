@@ -3,7 +3,11 @@
 import { Search, Shield, GripVertical, Users, Pencil, Trash2 } from "lucide-react";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
-import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
+import { Permission, PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
+
+const PERM_KEY_BY_FLAG: Partial<Record<PermissionFlag, string>> = Object.fromEntries(
+  Object.entries(Permission).map(([k, v]) => [v, k.toLowerCase()]),
+);
 import { Tab } from "./types";
 import { useEffect, useRef, useState } from "react";
 import { roleIconIsImage } from "@/lib/role-icon";
@@ -197,12 +201,13 @@ export function ServerRolesTab({
     if (trimmed !== activeRole.name) void saveDetails({ name: trimmed });
   }
 
+  const { t } = useI18n();
   return (
     <>
       {tab === "roles" && (
           <div className="tab-pane roles-pane">
-            <h1 className="pane-title">Roles</h1>
-            <p className="pane-subtitle">Use roles to group your server members and assign permissions.</p>
+            <h1 className="pane-title">{t("serverRoles.title")}</h1>
+            <p className="pane-subtitle">{t("serverRoles.subtitle")}</p>
 
             <button
               type="button"
@@ -210,8 +215,8 @@ export function ServerRolesTab({
               onClick={() => setActiveRole((prev) => (prev?.id === EVERYONE_ROLE_ID ? prev : everyoneRole))}
             >
               <div className="card-info">
-                <strong>Default Permissions</strong>
-                <span>@everyone · applies to all server members</span>
+                <strong>{t("serverRoles.defaultPerms")}</strong>
+                <span>{t("serverRoles.defaultPermsDesc")}</span>
               </div>
               <span className="chevron-arrow">›</span>
             </button>
@@ -222,7 +227,7 @@ export function ServerRolesTab({
                 <input
                   type="text"
                   className="discord-search-input"
-                  placeholder="Search Roles"
+                  placeholder={t("serverRoles.search")}
                   value={roleSearch}
                   onChange={(e) => setRoleSearch(e.target.value)}
                 />
@@ -233,14 +238,14 @@ export function ServerRolesTab({
                   className="discord-btn primary-indigo"
                   onClick={handleCreateRole}
                 >
-                  Create Role
+                  {t("serverRoles.createRole")}
                 </button>
               )}
             </div>
 
             <div className="roles-table-head">
-              <span>ROLES - {filteredRoles.length}</span>
-              <span>MEMBERS</span>
+              <span>{t("serverRoles.tableRoles", { count: filteredRoles.length })}</span>
+              <span>{t("serverRoles.tableMembers")}</span>
             </div>
 
             <div className="roles-list-wrapper">
@@ -281,7 +286,7 @@ export function ServerRolesTab({
                         <button
                           type="button"
                           className="drag-dots"
-                          title="Drag to move. Arrow keys move it up or down. Higher roles outrank lower ones."
+                          title={t("serverRoles.dragTitle")}
                           aria-label={`Move ${role.name}: use the up and down arrow keys`}
                           onClick={(e) => e.stopPropagation()}
                           onKeyDown={(e) => {
@@ -319,7 +324,7 @@ export function ServerRolesTab({
                       <button
                         type="button"
                         className="icon-action-btn"
-                        title="Edit Role"
+                        title={t("serverRoles.editRole")}
                         aria-label={`Edit ${role.name}`}
                         onClick={(e) => {
                           e.stopPropagation();
@@ -332,7 +337,7 @@ export function ServerRolesTab({
                         <button
                           type="button"
                           className="icon-action-btn"
-                          title="Delete Role"
+                          title={t("serverRoles.deleteRole")}
                           aria-label={`Delete ${role.name}`}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -355,14 +360,14 @@ export function ServerRolesTab({
                     <div className="role-editor-head" style={{ marginBottom: 14 }}>
                       <input
                         type="color"
-                        aria-label="Role colour"
+                        aria-label={t("serverRoles.roleColor")}
                         value={colorDraft}
                         onChange={(e) => changeColor(e.target.value)}
                       />
                       <input
                         type="text"
                         className="discord-search-input"
-                        aria-label="Role name"
+                        aria-label={t("serverRoles.roleName")}
                         maxLength={40}
                         value={nameDraft}
                         onChange={(e) => setNameDraft(e.target.value)}
@@ -377,33 +382,36 @@ export function ServerRolesTab({
                         style={{ color: colorDraft }}
                       />
                       <span className="role-save-state" aria-live="polite" style={{ fontSize: 12, opacity: 0.7, minWidth: 52 }}>
-                        {savingDetails ? "Saving…" : ""}
+                        {savingDetails ? t("serverRoles.saving") : ""}
                       </span>
                       <button
                         type="button"
                         className="role-delete"
                         onClick={() => handleDeleteRole(activeRole)}
                       >
-                        Delete
+                        {t("dialog.delete")}
                       </button>
                     </div>
                     <RoleIconEditor role={activeRole} updateRoleIcon={updateRoleIcon} uploadRoleIcon={uploadRoleIcon} />
                   </>
                 )}
-                <h3>Edit Permissions for {activeRole.name}</h3>
+                <h3>{t("serverRoles.editPermsFor", { name: activeRole.name })}</h3>
                 {activeRole.id === EVERYONE_ROLE_ID && (
                   <p className="pane-subtitle" style={{ margin: "0 0 12px" }}>
-                    Every member has these, whatever roles they hold.
+                    {t("serverRoles.everyoneHint")}
                   </p>
                 )}
                 <div className="permissions-toggle-grid">
                   {PERMISSION_INFO.map((info) => {
                     const enabled = (activeRole.permissions & info.flag) === info.flag;
+                    const pk = PERM_KEY_BY_FLAG[info.flag];
+                    const label = pk ? t(`perm.${pk}.label` as "perm.administrator.label") : info.label;
+                    const desc = pk ? t(`perm.${pk}.desc` as "perm.administrator.desc") : info.description;
                     return (
                       <label key={info.flag} className="perm-item-row">
                         <div>
-                          <strong>{info.label}</strong>
-                          <p>{info.description}</p>
+                          <strong>{label}</strong>
+                          <p>{desc}</p>
                         </div>
                         <input
                           type="checkbox"
@@ -417,7 +425,7 @@ export function ServerRolesTab({
                 {filteredRoles.length > 0 && members.length > 0 && (
                   <div style={{ marginTop: 24 }}>
                     <span className="field-label" style={{ display: "block", marginBottom: 8 }}>
-                      Assign roles
+                      {t("serverRoles.assignRoles")}
                     </span>
                     <div className="assign-list">
                       {members.map((member) => {

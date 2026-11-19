@@ -31,6 +31,7 @@ export function WelcomeTab({
   server: PublicServer;
   onNotice: (text: string) => void;
 }) {
+  const { t } = useI18n();
   const serverId = server.id;
   const [config, setConfig] = useState<WelcomeConfig>({ enabled: false, rules: "", fields: [] });
   const [picks, setPicks] = useState<RolePick[]>(() =>
@@ -53,7 +54,7 @@ export function WelcomeTab({
         setConfig(res.welcome);
         setResponses(res.responses || []);
       })
-      .catch(() => onNotice("Could not load the welcome screen."))
+      .catch(() => onNotice(t("welcome.loadFailed")))
       .finally(() => setLoading(false));
   }, [serverId, onNotice]);
 
@@ -88,24 +89,21 @@ export function WelcomeTab({
         method: "PUT",
         body: JSON.stringify({ picks }),
       });
-      onNotice("Welcome screen saved.");
+      onNotice(t("welcome.saved"));
     } catch (error) {
-      onNotice(error instanceof Error ? error.message : "Could not save the welcome screen.");
+      onNotice(error instanceof Error ? error.message : t("welcome.saveFailed"));
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading) return <p className="loading-state">Loading…</p>;
+  if (loading) return <p className="loading-state">{t("welcome.loading")}</p>;
 
   return (
     <div className="tab-pane">
       <div>
-        <h1 className="pane-title">Welcome Screen</h1>
-        <p className="pane-subtitle">
-          Show people who join the server your rules, and optionally a short form to introduce
-          themselves and roles to pick. Only people who join after you switch it on are asked.
-        </p>
+        <h1 className="pane-title">{t("serverSettings.tab.welcome")}</h1>
+        <p className="pane-subtitle">{t("welcome.subtitle")}</p>
       </div>
 
       <label className="welcome-toggle">
@@ -114,31 +112,31 @@ export function WelcomeTab({
           checked={config.enabled}
           onChange={(e) => setConfig({ ...config, enabled: e.target.checked })}
         />
-        Show the welcome screen to new members
+        {t("welcome.enable")}
       </label>
 
       <div className="form-field">
-        <label>Rules</label>
-        <p className="field-hint">One rule per line works well. Markdown-style text is shown as written.</p>
+        <label>{t("welcome.rules")}</label>
+        <p className="field-hint">{t("welcome.rulesHint")}</p>
         <textarea
           className="discord-text-input welcome-rules-input"
           rows={7}
           maxLength={4000}
           value={config.rules}
-          placeholder={"1. Be kind to each other.\n2. No spam or self-promotion.\n3. Keep it safe for work."}
+          placeholder={t("welcome.rulesPlaceholder")}
           onChange={(e) => setConfig({ ...config, rules: e.target.value })}
         />
       </div>
 
       <div className="form-field">
-        <label>Intro form (optional)</label>
-        <p className="field-hint">Questions newcomers answer before they start. Leave empty for rules only.</p>
+        <label>{t("welcome.introForm")}</label>
+        <p className="field-hint">{t("welcome.introFormHint")}</p>
         {config.fields.map((field, index) => (
           <div key={field.id} className="welcome-field-row">
             <input
               type="text"
               className="discord-text-input"
-              placeholder="Question, e.g. What should we call you?"
+              placeholder={t("welcome.questionPlaceholder")}
               maxLength={80}
               value={field.label}
               onChange={(e) => updateField(index, { label: e.target.value })}
@@ -150,7 +148,7 @@ export function WelcomeTab({
             >
               {(Object.keys(TYPE_LABELS) as WelcomeFieldType[]).map((type) => (
                 <option key={type} value={type}>
-                  {TYPE_LABELS[type]}
+                  {t(`welcome.type.${type}` as "welcome.type.text")}
                 </option>
               ))}
             </select>
@@ -160,12 +158,12 @@ export function WelcomeTab({
                 checked={field.required}
                 onChange={(e) => updateField(index, { required: e.target.checked })}
               />
-              Required
+              {t("welcome.required")}
             </label>
             <button
               type="button"
               className="icon-action-btn"
-              aria-label="Remove question"
+              aria-label={t("welcome.removeQuestion")}
               onClick={() =>
                 setConfig({ ...config, fields: config.fields.filter((_, i) => i !== index) })
               }
@@ -177,19 +175,19 @@ export function WelcomeTab({
         {config.fields.length < 10 && (
           <div className="button-group">
             <button type="button" className="discord-btn secondary-gray" onClick={() => addField()}>
-              <Plus size={14} /> Add question
+              <Plus size={14} /> {t("welcome.addQuestion")}
             </button>
             {config.fields.length === 0 && (
               <button
                 type="button"
                 className="discord-btn secondary-gray"
                 onClick={() => {
-                  addField("Name");
-                  addField("Birthdate", "date");
-                  addField("Tell us a bit about yourself", "long");
+                  addField(t("welcome.presetName"));
+                  addField(t("welcome.presetBirthdate"), "date");
+                  addField(t("welcome.presetAbout"), "long");
                 }}
               >
-                Name + birthdate + about
+                {t("welcome.preset")}
               </button>
             )}
           </div>
@@ -206,13 +204,13 @@ export function WelcomeTab({
 
       <div className="button-group">
         <button type="button" className="discord-btn primary-indigo" disabled={saving} onClick={save}>
-          {saving ? "Saving…" : "Save Changes"}
+          {saving ? t("serverRoles.saving") : t("serverOverview.save")}
         </button>
       </div>
 
       {responses.length > 0 && (
         <div className="form-field">
-          <label>Answers ({responses.length})</label>
+          <label>{t("welcome.answers", { count: responses.length })}</label>
           <div className="welcome-responses">
             {responses.map((response) => (
               <div key={response.userId} className="welcome-response">
@@ -290,7 +288,7 @@ export function WelcomeGate({
       });
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "That did not go through. Try again.");
+      setError(err instanceof Error ? err.message : t("welcome.gateFailed"));
     } finally {
       setSending(false);
     }
@@ -302,10 +300,10 @@ export function WelcomeGate({
   return (
     <div className="poll-dialog-backdrop welcome-gate-backdrop">
       <div className="poll-dialog-card welcome-gate" role="dialog" aria-modal="true" aria-label={`Welcome to ${serverName}`}>
-        <h2>Welcome to {serverName}!</h2>
+        <h2>{t("welcome.gateTitle", { server: serverName })}</h2>
         {config.rules.trim() && (
           <>
-            <h3>Rules</h3>
+            <h3>{t("welcome.rules")}</h3>
             <div className="welcome-gate-rules">{config.rules}</div>
           </>
         )}
@@ -317,7 +315,7 @@ export function WelcomeGate({
               if (!missing) void accept();
             }}
           >
-            <h3>Introduce yourself</h3>
+            <h3>{t("welcome.gateIntro")}</h3>
             {config.fields.map((field) => (
               <label key={field.id} className="welcome-gate-field">
                 <span>
@@ -367,7 +365,7 @@ export function WelcomeGate({
         {error && <p className="welcome-gate-error">{error}</p>}
         <div className="welcome-gate-actions">
           <button type="button" className="discord-btn secondary-gray" onClick={onLeave}>
-            Leave server
+            {t("welcome.gateLeave")}
           </button>
           <button
             type="button"
@@ -375,7 +373,7 @@ export function WelcomeGate({
             disabled={sending || missing}
             onClick={() => void accept()}
           >
-            {config.fields.length ? "Submit and join" : "I agree"}
+            {config.fields.length ? t("welcome.gateSubmit") : t("welcome.gateAgree")}
           </button>
         </div>
       </div>

@@ -891,7 +891,7 @@ export function ServerSettingsDialog({
             className={`sidebar-item ${tab === "tag" ? "active" : ""}`}
             onClick={() => setTab("tag")}
           >
-            Server Tag
+            {t("serverSettings.tab.tag")}
           </button>
         )}
         {isTabVisible("engagement") && (
@@ -900,7 +900,7 @@ export function ServerSettingsDialog({
             className={`sidebar-item ${tab === "engagement" ? "active" : ""}`}
             onClick={() => setTab("engagement")}
           >
-            Engagement
+            {t("serverSettings.tab.engagement")}
           </button>
         )}
         {isTabVisible("boost") && (
@@ -909,7 +909,7 @@ export function ServerSettingsDialog({
             className={`sidebar-item ${tab === "boost" ? "active" : ""}`}
             onClick={() => setTab("boost")}
           >
-            Boost Perks
+            {t("serverSettings.tab.boost")}
           </button>
         )}
 
@@ -1018,7 +1018,7 @@ export function ServerSettingsDialog({
                 className={`sidebar-item ${tab === "app_directory" ? "active" : ""}`}
                 onClick={() => setTab("app_directory")}
               >
-                App Directory <ExternalLink size={13} />
+                {t("serverSettings.tab.appDirectory")} <ExternalLink size={13} />
               </button>
             )}
           </>
@@ -1076,7 +1076,7 @@ export function ServerSettingsDialog({
                 className={`sidebar-item ${tab === "community" ? "active" : ""}`}
                 onClick={() => setTab("community")}
               >
-                Enable Community
+                {t("serverSettings.tab.enableCommunity")}
               </button>
             )}
             {isTabVisible("template") && (

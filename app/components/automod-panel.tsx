@@ -28,6 +28,7 @@ import {
   type AutomodRule,
 } from "@/lib/automod";
 import { apiFetch } from "../lib/client";
+import { useI18n } from "../lib/i18n-context";
 
 /**
  * A rule as this panel tracks it. `AutomodRule` has no `enabled` field because
@@ -392,16 +393,18 @@ export function AutomodPanel({
     }
   }
   const fieldId = (name: string) => `${formId}-${name}`;
+  const { t } = useI18n();
+  const kindLabel = (k: AutomodKind) => t(`automod.kind.${k}` as "automod.kind.keyword");
+  const kindHelp = (k: AutomodKind) => t(`automod.help.${k}` as "automod.help.keyword");
   const update = (patch: Partial<RuleDraft>) => setDraft((current) => ({ ...current, ...patch }));
 
   return (
     <div className="tab-pane automod-pane">
       <div className="roles-toolbar">
         <div>
-          <h1 className="pane-title">AutoMod</h1>
+          <h1 className="pane-title">{t("serverSettings.tab.automod")}</h1>
           <p className="pane-subtitle">
-            Every message posted in {serverName} is checked against these rules before
-            it appears.
+            {t("automod.subtitle", { server: serverName })}
           </p>
         </div>
         <div className="button-group">
@@ -411,7 +414,7 @@ export function AutomodPanel({
             onClick={() => void load()}
             disabled={loading}
           >
-            Refresh
+            {t("automod.refresh")}
           </button>
           {canManageServer && !editing && (
             <button
@@ -419,7 +422,7 @@ export function AutomodPanel({
               className="discord-btn primary-indigo"
               onClick={startCreate}
             >
-              <Plus size={16} style={{ marginRight: 6 }} /> Create Rule
+              <Plus size={16} style={{ marginRight: 6 }} /> {t("automod.createRule")}
             </button>
           )}
         </div>
@@ -433,7 +436,7 @@ export function AutomodPanel({
 
       {!canManageServer && (
         <p className="pane-subtitle">
-          You can read these rules, but only members with Manage Server can change them.
+          {t("automod.readOnly")}
         </p>
       )}
 
@@ -447,7 +450,7 @@ export function AutomodPanel({
           }}
         >
           <div className="form-field">
-            <label htmlFor={fieldId("kind")}>Rule type</label>
+            <label htmlFor={fieldId("kind")}>{t("automod.ruleType")}</label>
             <select
               id={fieldId("kind")}
               className="discord-text-input"
@@ -458,22 +461,22 @@ export function AutomodPanel({
             >
               {AUTOMOD_KINDS.map((kind) => (
                 <option key={kind} value={kind}>
-                  {KIND_LABELS[kind]}
+                  {kindLabel(kind)}
                 </option>
               ))}
             </select>
-            <p className="field-hint">{KIND_HELP[draft.kind]}</p>
+            <p className="field-hint">{kindHelp(draft.kind)}</p>
           </div>
 
           {draft.kind === "keyword" && (
             <div className="form-field">
-              <label htmlFor={fieldId("words")}>Words or phrases</label>
+              <label htmlFor={fieldId("words")}>{t("automod.wordsLabel")}</label>
               <textarea
                 id={fieldId("words")}
                 className="discord-text-input"
                 rows={4}
                 value={draft.words}
-                placeholder={"one per line, or separated by commas"}
+                placeholder={t("automod.wordsPlaceholder")}
                 onChange={(event) => update({ words: event.target.value })}
               />
               <label className="automod-check">
@@ -499,13 +502,13 @@ export function AutomodPanel({
 
           {draft.kind === "link" && (
             <div className="form-field">
-              <label htmlFor={fieldId("allow")}>Allowed sites</label>
+              <label htmlFor={fieldId("allow")}>{t("automod.allowLabel")}</label>
               <textarea
                 id={fieldId("allow")}
                 className="discord-text-input"
                 rows={3}
                 value={draft.allow}
-                placeholder={"youtube.com\ntenor.com   (leave empty to block every link)"}
+                placeholder={t("automod.allowPlaceholder")}
                 onChange={(event) => update({ allow: event.target.value })}
               />
             </div>
@@ -541,7 +544,7 @@ export function AutomodPanel({
           )}
 
           <div className="form-field">
-            <label htmlFor={fieldId("action")}>When it matches</label>
+            <label htmlFor={fieldId("action")}>{t("automod.whenMatches")}</label>
             <select
               id={fieldId("action")}
               className="discord-text-input"
@@ -568,31 +571,25 @@ export function AutomodPanel({
 
           <div className="button-group">
             <button type="button" className="discord-btn secondary" onClick={closeForm}>
-              Cancel
+              {t("dialog.cancel")}
             </button>
             <button type="submit" className="discord-btn primary-indigo" disabled={saving}>
-              {saving ? "Saving…" : editing === "new" ? "Create Rule" : "Save Rule"}
+              {saving ? t("serverRoles.saving") : editing === "new" ? t("automod.createRule") : t("automod.saveRule")}
             </button>
           </div>
         </form>
       )}
 
       {loading && !rules.length ? (
-        <p className="pane-subtitle">Loading automod rules…</p>
+        <p className="pane-subtitle">{t("automod.loading")}</p>
       ) : !rules.length ? (
         <div className="empty-illustration-box">
           <span className="illustration-graphic" aria-hidden="true">
             <Shield size={42} />
           </span>
-          <h2>NO AUTOMOD RULES</h2>
-          <p>
-            AutoMod reads each message as it is posted and either refuses it, or
-            refuses it and times the author out.
-          </p>
-          <p>
-            Moderators are never subject to these rules, and direct messages between
-            two people are never filtered.
-          </p>
+          <h2>{t("automod.emptyTitle")}</h2>
+          <p>{t("automod.emptyBody1")}</p>
+          <p>{t("automod.emptyBody2")}</p>
         </div>
       ) : (
         <ul className="ban-list">
@@ -605,7 +602,7 @@ export function AutomodPanel({
               style={{ opacity: rule.enabled ? 1 : 0.55 }}
             >
               <span className="ban-who">
-                <strong>{KIND_LABELS[rule.kind]}</strong>
+                <strong>{kindLabel(rule.kind)}</strong>
                 <small>
                   {summarizeRule(rule)} · {describeAction(rule)}
                 </small>
@@ -639,11 +636,11 @@ export function AutomodPanel({
                         rule.enabled ? "Enabled" : "Disabled"
                       }`}
                     />
-                    <span>{rule.enabled ? "Enabled" : "Disabled"}</span>
+                    <span>{rule.enabled ? t("automod.enabled") : t("automod.disabled")}</span>
                   </label>
                 ) : (
                   <span style={{ fontSize: 13, color: "#b5bac1" }}>
-                    {rule.enabled ? "Enabled" : "Disabled"}
+                    {rule.enabled ? t("automod.enabled") : t("automod.disabled")}
                   </span>
                 )}
                 {canManageServer && (
@@ -654,7 +651,7 @@ export function AutomodPanel({
                       onClick={() => startEdit(rule)}
                       aria-label={`Edit the ${KIND_LABELS[rule.kind].toLowerCase()} rule`}
                     >
-                      <Pencil size={14} style={{ marginRight: 4 }} /> Edit
+                      <Pencil size={14} style={{ marginRight: 4 }} /> {t("automod.edit")}
                     </button>
                     <button
                       type="button"

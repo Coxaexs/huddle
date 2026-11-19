@@ -5,6 +5,7 @@ import { Avatar } from "../avatar";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { Tab } from "./types";
+import { useI18n } from "../../lib/i18n-context";
 
 export function ServerMembersTab({
   tab,
@@ -39,11 +40,12 @@ export function ServerMembersTab({
   kickMember: (member: Member) => void;
   banMember: (member: Member) => void;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {tab === "members" && (
           <div className="tab-pane members-pane">
-            <h1 className="pane-title">Server Members</h1>
+            <h1 className="pane-title">{t("serverMembers.title")}</h1>
             <p className="pane-subtitle">
               {filteredMembers.length} {filteredMembers.length === 1 ? "member" : "members"} in {server.name}. Manage their server roles, view invite sources, and moderate members here.
             </p>
@@ -54,7 +56,7 @@ export function ServerMembersTab({
                 <input
                   type="text"
                   className="discord-search-input"
-                  placeholder="Search Members, Roles, or Invites"
+                  placeholder={t("serverMembers.searchPlaceholder")}
                   value={memberSearch}
                   onChange={(e) => setMemberSearch(e.target.value)}
                 />
@@ -62,10 +64,10 @@ export function ServerMembersTab({
             </div>
 
             <div className="members-table-head">
-              <span>MEMBER</span>
-              <span>JOINED VIA</span>
-              <span>ROLES</span>
-              <span style={{ textAlign: "right" }}>ACTIONS</span>
+              <span>{t("serverMembers.colMember")}</span>
+              <span>{t("serverMembers.colJoinedVia")}</span>
+              <span>{t("serverMembers.colRoles")}</span>
+              <span style={{ textAlign: "right" }}>{t("serverMembers.colActions")}</span>
             </div>
 
             <div className="members-list-wrapper">
@@ -103,7 +105,7 @@ export function ServerMembersTab({
                         <span className="member-info-name">
                           {member.displayName}
                           {isOwner && (
-                            <span title="Server Owner" className="owner-crown">
+                            <span title={t("serverMembers.owner")} className="owner-crown">
                               <Crown size={14} />
                             </span>
                           )}
@@ -172,7 +174,7 @@ export function ServerMembersTab({
                           <button
                             type="button"
                             className="add-role-btn"
-                            title="Add Role"
+                            title={t("serverMembers.addRole")}
                             onClick={(e) => {
                               e.stopPropagation();
                               setRoleAssignMenuUser(isMenuOpen ? null : member.id);
@@ -224,7 +226,7 @@ export function ServerMembersTab({
                             <button
                               type="button"
                               className="member-action-btn"
-                              title="Kick Member"
+                              title={t("serverMembers.kickMember")}
                               onClick={() => kickMember(member)}
                             >
                               <UserMinus size={15} />
@@ -234,7 +236,7 @@ export function ServerMembersTab({
                             <button
                               type="button"
                               className="member-action-btn danger"
-                              title="Ban Member"
+                              title={t("serverMembers.banMember")}
                               onClick={() => banMember(member)}
                             >
                               <Hammer size={15} />

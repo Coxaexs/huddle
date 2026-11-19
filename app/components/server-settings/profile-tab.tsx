@@ -5,6 +5,7 @@ import type { PublicServer } from "@/lib/servers";
 import type { Member } from "@/lib/users";
 import { Tab } from "./types";
 import { BANNER_COLORS } from "./constants";
+import { useI18n } from "../../lib/i18n-context";
 
 export function ServerProfileTab({
   tab,
@@ -47,6 +48,7 @@ export function ServerProfileTab({
   onlineCount: number;
   serverMembers: Member[];
 }) {
+  const { t, locale } = useI18n();
   return (
     <>
       {tab === "profile" && (
@@ -55,16 +57,16 @@ export function ServerProfileTab({
               {!canManageServer && (
                 <div className="server-settings-readonly-banner">
                   <Info size={16} />
-                  <span>Viewing server overview in read-only mode. You need the Manage Server permission to edit server details.</span>
+                  <span>{t("serverProfile.readOnly")}</span>
                 </div>
               )}
-              <h1 className="pane-title">Server Profile</h1>
+              <h1 className="pane-title">{t("serverSettings.tab.profile")}</h1>
               <p className="pane-subtitle">
-                Customize how your server appears in invite links and, if enabled, in Server Discovery and Announcement Channel messages
+                {t("serverProfile.subtitle")}
               </p>
 
               <div className="form-field">
-                <label>Name</label>
+                <label>{t("serverProfile.name")}</label>
                 <input
                   type="text"
                   className="discord-text-input"
@@ -99,7 +101,7 @@ export function ServerProfileTab({
                     className="discord-btn primary-indigo"
                     onClick={() => iconFileInputRef.current?.click()}
                   >
-                    Upload Server Icon
+                    {t("serverProfile.uploadIcon")}
                   </button>
                   {serverIconUrl && (
                     <button
@@ -107,22 +109,22 @@ export function ServerProfileTab({
                       className="discord-btn secondary-gray"
                       onClick={() => setServerIconUrl("")}
                     >
-                      Remove Icon
+                      {t("serverOverview.removeIcon")}
                     </button>
                   )}
                 </div>
               </div>
 
               <div className="form-field">
-                <label>Server Banner Image</label>
-                <p className="field-hint">Upload a custom header banner image for your server sidebar.</p>
+                <label>{t("serverProfile.banner")}</label>
+                <p className="field-hint">{t("serverProfile.bannerHint")}</p>
                 <div className="button-group">
                   <button
                     type="button"
                     className="discord-btn primary-indigo"
                     onClick={() => bannerFileInputRef.current?.click()}
                   >
-                    Upload Server Banner
+                    {t("serverProfile.uploadBanner")}
                   </button>
                   {serverBannerUrl && (
                     <button
@@ -130,14 +132,14 @@ export function ServerProfileTab({
                       className="discord-btn secondary-gray"
                       onClick={() => setServerBannerUrl("")}
                     >
-                      Remove Banner
+                      {t("serverProfile.removeBanner")}
                     </button>
                   )}
                 </div>
               </div>
 
               <div className="form-field">
-                <label>Or Pick Banner Gradient</label>
+                <label>{t("serverProfile.bannerGradient")}</label>
                 <div className="banner-swatches">
                   {BANNER_COLORS.map((b) => (
                     <button
@@ -156,8 +158,8 @@ export function ServerProfileTab({
               </div>
 
               <div className="form-field">
-                <label>Traits</label>
-                <p className="field-hint">Add up to 5 traits to show off your server's interests and personality.</p>
+                <label>{t("serverProfile.traits")}</label>
+                <p className="field-hint">{t("serverProfile.traitsHint")}</p>
                 <div className="traits-grid">
                   {[1, 2, 3, 4, 5].map((i) => (
                     <div key={i} className="trait-box">
@@ -174,7 +176,7 @@ export function ServerProfileTab({
                     className="discord-btn primary-indigo"
                     onClick={handleSaveProfile}
                   >
-                    Save Changes
+                    {t("serverOverview.save")}
                   </button>
                 </div>
               )}
@@ -202,12 +204,12 @@ export function ServerProfileTab({
                   </div>
                   <h3 className="server-card-name">{serverName}</h3>
                   <div className="server-card-stats">
-                    <span className="dot green" /> {onlineCount} Online &nbsp;
-                    <span className="dot gray" /> {serverMembers.length} Members
+                    <span className="dot green" /> {t("serverProfile.online", { count: onlineCount })} &nbsp;
+                    <span className="dot gray" /> {t("serverProfile.members", { count: serverMembers.length })}
                   </div>
                   {server.createdAt && (
                     <div className="server-card-est">
-                      Est. {new Date(server.createdAt).toLocaleDateString(undefined, { month: "short", year: "numeric" })}
+                      {t("serverProfile.est", { date: new Date(server.createdAt).toLocaleDateString(locale, { month: "short", year: "numeric" }) })}
                     </div>
                   )}
                 </div>
