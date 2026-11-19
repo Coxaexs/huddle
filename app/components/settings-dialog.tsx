@@ -1057,7 +1057,7 @@ export function SettingsDialog({
         { id: "appearance" as Tab, label: t("userSettings.tab.appearance"), icon: Palette, desc: "Themes, colours and extras" },
         { id: "language" as Tab, label: t("settings.nav.language"), icon: Languages, desc: t("settings.nav.language.desc") },
         { id: "notifications" as Tab, label: t("userSettings.tab.notifications"), icon: Bell, desc: "Desktop, phone and email digest" },
-        { id: "tts" as Tab, label: t("userSettings.tab.tts"), icon: AudioLines, desc: "Your /tts and /say voice, hearing /tts messages, and live captions", advanced: true },
+        { id: "tts" as Tab, label: t("userSettings.tab.tts"), icon: AudioLines, desc: t("userSettings.tab.ttsDesc"), advanced: true },
         { id: "accessibility" as Tab, label: t("userSettings.tab.accessibility"), icon: Eye, desc: "Font size, readability, preview and animation" },
         { id: "dice" as Tab, label: t("userSettings.tab.dice"), icon: Dices, desc: "3D dice styles, materials, textures, and roll sound physics", advanced: true },
         { id: "custom_ui_css" as Tab, label: t("userSettings.tab.customUiCss"), icon: Sparkles, desc: "Personal client-side UI styling", advanced: true },

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ALANIA_VOICES } from "@/lib/speech";
+import { useI18n } from "../../lib/i18n-context";
 import { duyuAvailable, getCaptionPrefs, setCaptionPrefs, type CaptionPrefs } from "../../lib/stt/duyu";
 import {
   clampTtsVoice,
@@ -30,10 +31,12 @@ const SAMPLE: Record<TtsLanguage, string> = {
  * Also which recognizer live captions use (Duyu or the browser's own).
  */
 export function TtsSettings() {
+  const { t, locale } = useI18n();
+  const initialLang: TtsLanguage = locale === "tr" ? "tr" : "en";
   const [voice, setVoice] = useState<TtsVoice>(() => getTtsVoice());
   const [playback, setPlayback] = useState(() => ttsPlaybackEnabled());
-  const [lang, setLang] = useState<TtsLanguage>("en");
-  const [text, setText] = useState(SAMPLE.en);
+  const [lang, setLang] = useState<TtsLanguage>(initialLang);
+  const [text, setText] = useState(SAMPLE[initialLang]);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [error, setError] = useState("");
   const [captionPrefs, setCaptionPrefsState] = useState<CaptionPrefs>(() => getCaptionPrefs());
@@ -66,22 +69,16 @@ export function TtsSettings() {
       setStatus("idle");
     } catch (err) {
       setStatus("error");
-      setError(err instanceof Error ? err.message : "The voice could not load.");
+      setError(err instanceof Error ? err.message : t("tts.loadFailed"));
     }
   };
 
-  const describeTempo = (t: number) => (t < 0.97 ? "slower" : t > 1.03 ? "faster" : "normal");
-  const describePitch = (p: number) => (p < 0.97 ? "deeper" : p > 1.03 ? "higher" : "normal");
+  const describeTempo = (v: number) => (v < 0.97 ? t("tts.slower") : v > 1.03 ? t("tts.faster") : t("tts.normal"));
+  const describePitch = (p: number) => (p < 0.97 ? t("tts.deeper") : p > 1.03 ? t("tts.higher") : t("tts.normal"));
 
   return (
     <div className="tts-settings">
-      <p className="modal-hint">
-        Turkish is spoken by Alania (on the server) when it is available, else
-        EMA Lightning on your device. English is made on your device with
-        Paradee (or Piper for the male voice); the first use downloads the
-        voice once. These are the same
-        settings as <code>/tts on|off</code> and <code>/ttsvoice</code>.
-      </p>
+      <p className="modal-hint">{t("tts.intro")}</p>
 
       <label className="tts-settings-check">
         <input
@@ -92,23 +89,23 @@ export function TtsSettings() {
             setTtsPlaybackEnabled(event.target.checked);
           }}
         />
-        Read /tts messages aloud on this device
+        {t("tts.readAloud")}
       </label>
 
-      <h3 className="tts-settings-heading">Your voice</h3>
-      <p className="modal-hint">Used for your own /tts messages (everyone hears it the same way) and /say in voice.</p>
+      <h3 className="tts-settings-heading">{t("tts.yourVoice")}</h3>
+      <p className="modal-hint">{t("tts.yourVoiceHint")}</p>
 
-      <label htmlFor="tts-speaker">English voice</label>
+      <label htmlFor="tts-speaker">{t("tts.englishVoice")}</label>
       <select
         id="tts-speaker"
         value={voice.speaker ?? "default"}
         onChange={(event) => update({ speaker: event.target.value === "male" ? "male" : "default" })}
       >
-        <option value="default">Female</option>
-        <option value="male">Male</option>
+        <option value="default">{t("tts.female")}</option>
+        <option value="male">{t("tts.male")}</option>
       </select>
 
-      <label htmlFor="tts-turkish-voice">Turkish voice</label>
+      <label htmlFor="tts-turkish-voice">{t("tts.turkishVoice")}</label>
       <select
         id="tts-turkish-voice"
         value={voice.turkish}
@@ -116,7 +113,7 @@ export function TtsSettings() {
         disabled={speechServer === false}
       >
         {(["female", "male"] as const).map((gender) => (
-          <optgroup key={gender} label={gender === "female" ? "Female" : "Male"}>
+          <optgroup key={gender} label={gender === "female" ? t("tts.female") : t("tts.male")}>
             {ALANIA_VOICES.filter((option) => option.gender === gender).map((option) => (
               <option key={option.id} value={option.id}>
                 {option.name} — {option.description.toLowerCase()}
@@ -126,11 +123,11 @@ export function TtsSettings() {
         ))}
       </select>
       {speechServer === false && (
-        <p className="modal-hint">This server has no Alania key, so Turkish uses the one on-device voice.</p>
+        <p className="modal-hint">{t("tts.noAlaniaKey")}</p>
       )}
 
       <label htmlFor="tts-tempo">
-        Tempo <span className="tts-settings-value">{voice.tempo.toFixed(2)}× · {describeTempo(voice.tempo)}</span>
+        {t("tts.tempo")} <span className="tts-settings-value">{voice.tempo.toFixed(2)}× · {describeTempo(voice.tempo)}</span>
       </label>
       <input
         id="tts-tempo"
@@ -143,7 +140,7 @@ export function TtsSettings() {
       />
 
       <label htmlFor="tts-pitch">
-        Pitch <span className="tts-settings-value">{voice.pitch.toFixed(2)}× · {describePitch(voice.pitch)}</span>
+        {t("tts.pitch")} <span className="tts-settings-value">{voice.pitch.toFixed(2)}× · {describePitch(voice.pitch)}</span>
       </label>
       <input
         id="tts-pitch"
@@ -155,20 +152,20 @@ export function TtsSettings() {
         onChange={(event) => update({ pitch: Number(event.target.value) })}
       />
 
-      <label htmlFor="tts-effect">Effect</label>
+      <label htmlFor="tts-effect">{t("tts.effect")}</label>
       <select
         id="tts-effect"
         value={voice.effect ?? "none"}
         onChange={(event) => update({ effect: event.target.value === "robot" ? "robot" : "none" })}
       >
-        <option value="none">Natural</option>
-        <option value="robot">Robot</option>
+        <option value="none">{t("tts.effectNatural")}</option>
+        <option value="robot">{t("tts.effectRobot")}</option>
       </select>
 
-      <h3 className="tts-settings-heading">Preview</h3>
+      <h3 className="tts-settings-heading">{t("tts.preview")}</h3>
       <div className="tts-settings-preview">
         <select
-          aria-label="Preview language"
+          aria-label={t("tts.previewLanguage")}
           value={lang}
           onChange={(event) => {
             const next = event.target.value === "tr" ? "tr" : "en";
@@ -180,23 +177,20 @@ export function TtsSettings() {
           <option value="tr">Türkçe</option>
         </select>
         <input
-          aria-label="Preview text"
+          aria-label={t("tts.previewText")}
           value={text}
           maxLength={200}
           onChange={(event) => setText(event.target.value)}
         />
         <button type="button" className="primary" onClick={() => void preview()} disabled={status === "loading"}>
-          {status === "loading" ? "Loading voice…" : "Play"}
+          {status === "loading" ? t("tts.loadingVoice") : t("tts.play")}
         </button>
       </div>
       {status === "error" && <p className="modal-hint tts-settings-error" role="alert">{error}</p>}
 
-      <h3 className="tts-settings-heading">Live captions</h3>
-      <p className="modal-hint">
-        What turns your speech into text when you caption your voice in a call. Duyu is Turkish speech
-        recognition run by this server; the browser&apos;s own works in Chrome, Edge and Safari.
-      </p>
-      <label htmlFor="stt-engine">Recognizer</label>
+      <h3 className="tts-settings-heading">{t("tts.liveCaptions")}</h3>
+      <p className="modal-hint">{t("tts.liveCaptionsHint")}</p>
+      <label htmlFor="stt-engine">{t("tts.recognizer")}</label>
       <select
         id="stt-engine"
         value={captionPrefs.engine}
@@ -205,24 +199,24 @@ export function TtsSettings() {
           updateCaptions({ engine: value === "duyu" || value === "browser" ? value : "auto" });
         }}
       >
-        <option value="auto">Automatic (Duyu when available)</option>
+        <option value="auto">{t("tts.recognizerAuto")}</option>
         <option value="duyu" disabled={speechServer === false}>Duyu</option>
-        <option value="browser">Browser</option>
+        <option value="browser">{t("tts.recognizerBrowser")}</option>
       </select>
       {captionPrefs.engine !== "browser" && speechServer !== false && (
         <>
-          <label htmlFor="stt-language">Duyu language</label>
+          <label htmlFor="stt-language">{t("tts.duyuLanguage")}</label>
           <select
             id="stt-language"
             value={captionPrefs.language}
             onChange={(event) => updateCaptions({ language: event.target.value === "auto" ? "auto" : "tr" })}
           >
-            <option value="tr">Turkish</option>
-            <option value="auto">Detect</option>
+            <option value="tr">{t("tts.langTurkish")}</option>
+            <option value="auto">{t("tts.langDetect")}</option>
           </select>
         </>
       )}
-      {speechServer === false && <p className="modal-hint">This server has no Duyu key, so captions use the browser.</p>}
+      {speechServer === false && <p className="modal-hint">{t("tts.noDuyuKey")}</p>}
 
       <button
         type="button"
@@ -232,7 +226,7 @@ export function TtsSettings() {
           setTtsVoice(DEFAULT_TTS_VOICE);
         }}
       >
-        Reset to the normal voice
+        {t("tts.reset")}
       </button>
     </div>
   );

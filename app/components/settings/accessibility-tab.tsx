@@ -5,10 +5,10 @@ import { useI18n } from "../../lib/i18n-context";
 
 export type NameMotion = "hover" | "always" | "still";
 
-const NAME_MOTION_OPTIONS: { id: NameMotion; label: string }[] = [
-  { id: "hover", label: "On hover" },
-  { id: "always", label: "Always" },
-  { id: "still", label: "Never" },
+const NAME_MOTION_OPTIONS: { id: NameMotion; labelKey: "accessibilitySettings.motionHover" | "accessibilitySettings.motionAlways" | "accessibilitySettings.motionNever" }[] = [
+  { id: "hover", labelKey: "accessibilitySettings.motionHover" },
+  { id: "always", labelKey: "accessibilitySettings.motionAlways" },
+  { id: "still", labelKey: "accessibilitySettings.motionNever" },
 ];
 
 export function AccessibilityTab({
@@ -48,7 +48,7 @@ export function AccessibilityTab({
             <div className="space-y-6">
               {/* Live Chat Preview Card matching Screenshot 5 */}
               <div className="settings-preview-box">
-                <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Preview</div>
+                <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">{t("accessibilitySettings.preview")}</div>
                 <div className="bg-[#1e1f22] border border-white/10 rounded-xl p-4 space-y-3">
                   {/* Message 1 */}
                   <div className="flex items-start gap-3">
@@ -205,7 +205,7 @@ export function AccessibilityTab({
                           className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${nameMotion === option.id ? "bg-white/15 text-white" : "text-gray-400 hover:text-white"}`}
                           onClick={() => setNameMotion(option.id)}
                         >
-                          {option.label}
+                          {t(option.labelKey)}
                         </button>
                       ))}
                     </div>

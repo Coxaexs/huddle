@@ -3,6 +3,7 @@
 import { type PublicUser } from "@/lib/users";
 import { SecuritySection } from "./security-section";
 import { Tab } from "./types";
+import { useI18n } from "../../lib/i18n-context";
 
 export function PasswordTab({
   tab,
@@ -61,12 +62,13 @@ export function PasswordTab({
   deletingAccount: boolean;
   deleteAccount: () => Promise<void>;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {tab === "password" && (
             <div className="account-settings">
-              <section className="profile-studio-section" data-settings-anchor="username" data-settings-label="Username">
-                <h3 id="settings-username-title" className="profile-studio-section-title">Username</h3>
+              <section className="profile-studio-section" data-settings-anchor="username" data-settings-label={t("account.username")}>
+                <h3 id="settings-username-title" className="profile-studio-section-title">{t("account.username")}</h3>
                 <input
                   id="settings-username"
                   aria-labelledby="settings-username-title"
@@ -77,11 +79,11 @@ export function PasswordTab({
                   onChange={(event) => setNewUsername(event.target.value)}
                 />
                 <p className="modal-hint">
-                  2–24 letters, numbers, dots, dashes or underscores. You sign in with this.
+                  {t("account.usernameHint")}
                 </p>
                 {newUsername.trim() !== user.username && (
                   <>
-                    <label htmlFor="settings-username-password">Password to confirm</label>
+                    <label htmlFor="settings-username-password">{t("account.passwordToConfirm")}</label>
                     <input
                       id="settings-username-password"
                       type="password"
@@ -97,33 +99,33 @@ export function PasswordTab({
                   onClick={saveUsername}
                   disabled={!newUsername.trim() || newUsername.trim() === user.username || !usernamePassword}
                 >
-                  Change username
+                  {t("account.changeUsername")}
                 </button>
               </section>
 
-              <section className="profile-studio-section" data-settings-anchor="email" data-settings-label="Email">
-                <h3 className="profile-studio-section-title">Email</h3>
+              <section className="profile-studio-section" data-settings-anchor="email" data-settings-label={t("account.email")}>
+                <h3 className="profile-studio-section-title">{t("account.email")}</h3>
                 {!user.email && (
                   <p className="auth-error">
-                    You have no email yet. Add one so you can reset your password if you forget it.
+                    {t("account.noEmailYet")}
                   </p>
                 )}
                 <input
                   id="settings-email"
-                  aria-label="Email"
+                  aria-label={t("account.email")}
                   style={{ marginTop: 10 }}
                   type="email"
                   data-streamer-hide
                   value={newEmail}
                   autoComplete="email"
                   maxLength={254}
-                  placeholder="you@example.com"
+                  placeholder={t("emailPrompt.placeholder")}
                   onChange={(event) => setNewEmail(event.target.value)}
                 />
-                <p className="modal-hint">Only used for password reset links. Nobody else sees it.</p>
+                <p className="modal-hint">{t("account.emailHint")}</p>
                 {newEmail.trim().toLowerCase() !== (user.email || "") && (
                   <>
-                    <label htmlFor="settings-email-password">Password to confirm</label>
+                    <label htmlFor="settings-email-password">{t("account.passwordToConfirm")}</label>
                     <input
                       id="settings-email-password"
                       type="password"
@@ -143,11 +145,11 @@ export function PasswordTab({
                     !emailPassword
                   }
                 >
-                  {user.email ? "Send code to change email" : "Send code to add email"}
+                  {user.email ? t("account.sendCodeChangeEmail") : t("account.sendCodeAddEmail")}
                 </button>
                 {pendingEmail && (
                   <>
-                    <label htmlFor="settings-email-code">Code sent to {pendingEmail}</label>
+                    <label htmlFor="settings-email-code">{t("account.codeSentTo", { email: pendingEmail })}</label>
                     <input
                       id="settings-email-code"
                       value={emailCode}
@@ -164,16 +166,16 @@ export function PasswordTab({
                       onClick={verifyEmail}
                       disabled={emailCode.length !== 6}
                     >
-                      Verify email
+                      {t("account.verifyEmail")}
                     </button>
                   </>
                 )}
               </section>
 
-              <section className="profile-studio-section" data-settings-anchor="password" data-settings-label="Password">
-                <h3 className="profile-studio-section-title">Password</h3>
-                <p className="modal-hint">Changing it signs you out on every other device.</p>
-                <label htmlFor="settings-current">Current password</label>
+              <section className="profile-studio-section" data-settings-anchor="password" data-settings-label={t("account.password")}>
+                <h3 className="profile-studio-section-title">{t("account.password")}</h3>
+                <p className="modal-hint">{t("account.passwordHint")}</p>
+                <label htmlFor="settings-current">{t("account.currentPassword")}</label>
                 <input
                   id="settings-current"
                   type="password"
@@ -181,7 +183,7 @@ export function PasswordTab({
                   autoComplete="current-password"
                   onChange={(event) => setCurrent(event.target.value)}
                 />
-                <label htmlFor="settings-next">New password</label>
+                <label htmlFor="settings-next">{t("account.newPassword")}</label>
                 <input
                   id="settings-next"
                   type="password"
@@ -195,19 +197,17 @@ export function PasswordTab({
                   onClick={savePassword}
                   disabled={!current || !next}
                 >
-                  Change password
+                  {t("account.changePassword")}
                 </button>
               </section>
               <SecuritySection />
               {!user.isAdmin && (
-                <section className="profile-studio-section danger-zone" data-settings-anchor="delete" data-settings-label="Delete account">
-                  <h3 className="profile-studio-section-title">Delete account</h3>
+                <section className="profile-studio-section danger-zone" data-settings-anchor="delete" data-settings-label={t("account.deleteTitle")}>
+                  <h3 className="profile-studio-section-title">{t("account.deleteTitle")}</h3>
                   <p className="modal-hint">
-                    This signs you out everywhere and removes your profile, friends and settings.
-                    Your messages stay in their conversations as &ldquo;Deleted user&rdquo; unless
-                    you remove them too. It cannot be undone.
+                    {t("account.deleteHint")}
                   </p>
-                  <label htmlFor="settings-delete-password">Password</label>
+                  <label htmlFor="settings-delete-password">{t("account.password")}</label>
                   <input
                     id="settings-delete-password"
                     type="password"
@@ -217,7 +217,7 @@ export function PasswordTab({
                   />
                   <label className="appearance-switch">
                     <span>
-                      <strong>Also delete my messages and files</strong>
+                      <strong>{t("account.deleteMessagesToo")}</strong>
                     </span>
                     <input
                       type="checkbox"
@@ -231,7 +231,7 @@ export function PasswordTab({
                     disabled={!deletePassword || deletingAccount}
                     onClick={() => void deleteAccount()}
                   >
-                    {deletingAccount ? "Deleting…" : "Delete my account"}
+                    {deletingAccount ? t("account.deleting") : t("account.deleteMyAccount")}
                   </button>
                 </section>
               )}
