@@ -3,6 +3,7 @@
 import { Hand } from "lucide-react";
 import type { VoiceParticipant } from "@/lib/protocol";
 import { VoiceApi } from "./types";
+import { useI18n } from "../../lib/i18n-context";
 
 export function StageRoster({
   stageMode,
@@ -25,6 +26,7 @@ export function StageRoster({
   amAudience: boolean;
   self: VoiceParticipant | null;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {stageMode && (
@@ -35,7 +37,7 @@ export function StageRoster({
               <span className="stage-roster-list">
                 {onStage.length === 0 && <span className="stage-roster-names">Nobody yet</span>}
                 {onStage.map((person) => {
-                  const name = person.connectionId === connectionId ? "You" : person.displayName;
+                  const name = person.connectionId === connectionId ? t("voiceStage.you") : person.displayName;
                   return (
                     <span key={person.connectionId} className="stage-roster-person">
                       {name}
@@ -55,7 +57,7 @@ export function StageRoster({
               <span className="stage-roster-names">
                 {onStage.length
                   ? onStage
-                      .map((p) => (p.connectionId === connectionId ? "You" : p.displayName))
+                      .map((p) => (p.connectionId === connectionId ? t("voiceStage.you") : p.displayName))
                       .join(", ")
                   : "Nobody yet"}
               </span>
@@ -73,7 +75,7 @@ export function StageRoster({
               <span className="stage-roster-list">
                 {audience.length === 0 && <span className="stage-roster-names">Nobody yet</span>}
                 {audience.map((person) => {
-                  const name = person.connectionId === connectionId ? "You" : person.displayName;
+                  const name = person.connectionId === connectionId ? t("voiceStage.you") : person.displayName;
                   return (
                     <span key={person.connectionId} className="stage-roster-person">
                       {name}
@@ -102,7 +104,7 @@ export function StageRoster({
                 {audience.length
                   ? audience
                       .map((p) => {
-                        const name = p.connectionId === connectionId ? "You" : p.displayName;
+                        const name = p.connectionId === connectionId ? t("voiceStage.you") : p.displayName;
                         // The hand is the only bit of this worth surfacing
                         // loudly; it is the whole reason the roster exists.
                         return p.handRaised ? `${name} ✋` : name;

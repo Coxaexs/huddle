@@ -111,6 +111,10 @@ export function currentLocale(): Locale {
 }
 
 /** Translates with the language in use, outside a component. */
+export function localeNow(): Locale {
+  return activeLocale;
+}
+
 export function tNow(key: TranslatableKey, vars?: TranslateVars): string {
   return activeT(key, vars);
 }

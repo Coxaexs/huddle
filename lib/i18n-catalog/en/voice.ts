@@ -1,6 +1,9 @@
 /** Voice stage, screenshare, call controls and participants. */
 export const voice = {
   "voiceStage.live": "LIVE",
+  "voiceStage.you": "You",
+  "voiceStage.stream": "Stream",
+  "voiceStage.speakingImportant": "speaking important",
   "voiceStage.screenShare": "{name}'s Screen",
   "voiceStage.camera": "{name}'s Camera",
   "voiceStage.startScreenShare": "Share Screen",

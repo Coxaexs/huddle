@@ -2,6 +2,9 @@ import type { voice as en } from "../en/voice";
 
 export const voice: Record<keyof typeof en, string> = {
   "voiceStage.live": "CANLI",
+  "voiceStage.you": "Sen",
+  "voiceStage.stream": "Yayın",
+  "voiceStage.speakingImportant": "önemli konuşuyor",
   "voiceStage.screenShare": "{name} adlı kişinin Ekranı",
   "voiceStage.camera": "{name} adlı kişinin Kamerası",
   "voiceStage.startScreenShare": "Ekran Paylaş",

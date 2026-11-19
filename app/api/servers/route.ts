@@ -8,6 +8,7 @@ import {
 } from "@/lib/rate-limit";
 import { ensureSchema } from "@/lib/schema";
 import { addServerMember, deleteServerData, listServers, serverColor } from "@/lib/servers";
+import { pickLocale, resolveLocale } from "@/lib/i18n";
 import { bindings } from "@/lib/storage";
 import { isRestrictedAccount } from "@/lib/trust";
 import { fetchDiscordTemplate } from "@/lib/discord-import";
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
     color?: string;
     isPublic?: boolean;
     description?: string;
+    locale?: string;
     /** A Discord server template link: the new server gets its channels, roles and permissions. */
     discordTemplate?: string;
   };
@@ -156,17 +158,20 @@ export async function POST(request: Request) {
   }
 
   // A brand new server is useless without somewhere to talk.
+  const reqLocale = resolveLocale(body.locale) ?? pickLocale(request.headers.get("accept-language"));
+  const defaultTextName = reqLocale === "tr" ? "genel" : "general";
+  const defaultVoiceName = reqLocale === "tr" ? "Genel Ses" : "General Voice";
   if (!hasChannels) await db.batch([
     db
       .prepare(
-        "INSERT INTO channels (id, server_id, name, kind, topic, position, created_at) VALUES (?, ?, 'general', 'text', '', 0, ?)",
+        "INSERT INTO channels (id, server_id, name, kind, topic, position, created_at) VALUES (?, ?, ?, 'text', '', 0, ?)",
       )
-      .bind(crypto.randomUUID(), id, now),
+      .bind(crypto.randomUUID(), id, defaultTextName, now),
     db
       .prepare(
-        "INSERT INTO channels (id, server_id, name, kind, topic, position, created_at) VALUES (?, ?, 'General Voice', 'voice', '', 0, ?)",
+        "INSERT INTO channels (id, server_id, name, kind, topic, position, created_at) VALUES (?, ?, ?, 'voice', '', 0, ?)",
       )
-      .bind(crypto.randomUUID(), id, now),
+      .bind(crypto.randomUUID(), id, defaultVoiceName, now),
   ]);
 
   const servers = await listServers(db, user.id);

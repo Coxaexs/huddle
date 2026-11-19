@@ -22,7 +22,7 @@ import {
 } from "@/lib/server-folders";
 import type { ResolvedInvite } from "../components/server-invite-card";
 import {
-  CHANNEL_KIND_COPY,
+  channelKindCopy,
   channelKindIcon,
   channelKindLabel,
 } from "../components/chat/channel-kind";
@@ -31,7 +31,7 @@ import { withArticle } from "../lib/chat/format";
 import { apiFetch } from "../lib/client";
 import { looksLikeDiscordTemplate } from "@/lib/discord-import";
 import { showDiscordMove, type DiscordMoveDetail } from "../components/discord-move-dialog";
-import { tNow } from "../lib/i18n-context";
+import { localeNow, tNow } from "../lib/i18n-context";
 
 export function useChannelServerActions({
   activeServer,
@@ -118,7 +118,7 @@ export function useChannelServerActions({
       setServers(data.servers);
       setServerSettingsOpen(false);
       setActiveServerId(data.servers[0]?.id || DM_HOME);
-      setNotice("You left the server.");
+      setNotice(tNow("serverAction.left"));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not leave.");
     }
@@ -172,7 +172,7 @@ export function useChannelServerActions({
           [code]: { ...existing, isMember: true },
         };
       });
-      setNotice(data.alreadyMember ? "Switched to server." : "Joined the server.");
+      setNotice(data.alreadyMember ? tNow("serverAction.switched") : tNow("serverAction.joined"));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not join.");
     }
@@ -180,10 +180,10 @@ export function useChannelServerActions({
 
   async function joinServerByCode() {
     showCustomPrompt({
-      title: "Join a Server",
-      message: "Paste the invite code or invite link:",
-      placeholder: "e.g. HX3F-9K2Q or chat.hoffle.online/i/HX3F-9K2Q",
-      confirmText: "Join Server",
+      title: tNow("joinServer.title"),
+      message: tNow("joinServer.message"),
+      placeholder: tNow("joinServer.placeholder"),
+      confirmText: tNow("joinServer.confirm"),
       onConfirm: async (rawInput) => {
         await joinServerDirect(rawInput);
       },
@@ -192,16 +192,16 @@ export function useChannelServerActions({
 
   function createServer() {
     showCustomConfirm({
-      title: "Add a Server",
-      message: "Create your own server, or join one with an invite code.",
-      confirmText: "Create New",
-      cancelText: "Join with Code",
+      title: tNow("addServer.title"),
+      message: tNow("addServer.message"),
+      confirmText: tNow("addServer.createNew"),
+      cancelText: tNow("addServer.joinWithCode"),
       onConfirm: () => {
         showCustomPrompt({
-          title: "Create Server",
+          title: tNow("addServer.createTitle"),
           message: tNow("discordMove.createHint"),
           placeholder: tNow("discordMove.createPlaceholder"),
-          confirmText: "Create Server",
+          confirmText: tNow("addServer.createConfirm"),
           maxLength: 60,
           onConfirm: async (input) => {
             const value = input?.trim();
@@ -215,7 +215,7 @@ export function useChannelServerActions({
                 imported?: DiscordMoveDetail["imported"];
               }>("/api/servers", {
                 method: "POST",
-                body: JSON.stringify(fromDiscord ? { discordTemplate: value } : { name: value.slice(0, 50) }),
+                body: JSON.stringify(fromDiscord ? { discordTemplate: value, locale: localeNow() } : { name: value.slice(0, 50), locale: localeNow() }),
               });
               setServers(data.servers);
               setActiveServerId(data.server.id);
@@ -223,7 +223,7 @@ export function useChannelServerActions({
                 showDiscordMove({ server: data.server, imported: data.imported });
                 return;
               }
-              setNotice(`${data.server.name} is live — invite people from its settings.`);
+              setNotice(tNow("serverAction.live", { name: data.server.name }));
             } catch (error) {
               setNotice(error instanceof Error ? error.message : "Could not create it.");
             }
@@ -239,12 +239,12 @@ export function useChannelServerActions({
     categoryId: string | null = null,
   ) {
     if (!activeServerId || activeServerId === DM_HOME) return;
-    const copy = CHANNEL_KIND_COPY[kind] ?? CHANNEL_KIND_COPY.text;
+    const copy = channelKindCopy(kind);
     showCustomPrompt({
       title: copy.title,
       message: copy.message,
       placeholder: copy.placeholder,
-      confirmText: "Create Channel",
+      confirmText: tNow("createChannel.create"),
       maxLength: channelNameRules(kind).maxLength,
       onConfirm: async (name) => {
         if (!name?.trim()) return;

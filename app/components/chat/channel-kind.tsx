@@ -4,6 +4,7 @@
 
 import { Hash, MessageSquare, Radio, Users, Volume2 } from "lucide-react";
 import type { ChannelKind } from "@/lib/channel-kinds";
+import { tNow } from "../../lib/i18n-context";
 
 /**
  * Creation-UI copy per channel kind.
@@ -45,19 +46,28 @@ export const CHANNEL_KIND_COPY: Record<
 };
 
 /** Human label for a kind, for menus and badges. */
+export function channelKindCopy(kind: string): { title: string; message: string; placeholder: string } {
+  const k = kind in CHANNEL_KIND_COPY ? kind : "text";
+  return {
+    title: tNow(`channelCreate.${k}.title` as "channelCreate.text.title"),
+    message: tNow(`channelCreate.${k}.message` as "channelCreate.text.message"),
+    placeholder: tNow(`channelCreate.${k}.placeholder` as "channelCreate.text.placeholder"),
+  };
+}
+
 export function channelKindLabel(kind: ChannelKind): string {
   switch (kind) {
     case "announcement":
-      return "Announcement";
+      return tNow("channelKind.announcement");
     case "forum":
-      return "Forum";
+      return tNow("channelKind.forum");
     case "voice":
-      return "Voice room";
+      return tNow("channelKind.voice");
     case "stage":
-      return "Stage";
+      return tNow("channelKind.stage");
     case "text":
     default:
-      return "Text channel";
+      return tNow("channelKind.text");
   }
 }
 

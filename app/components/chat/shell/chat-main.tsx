@@ -21,6 +21,7 @@ import { ChatHeader } from "./chat-header";
 import type { ShellRenderState } from "./chat-shell-renderers";
 import { deferred } from "./deferred";
 import { AgeGate, AgeGateHidden } from "../../age-gate";
+import { tNow } from "../../../lib/i18n-context";
 
 const VoiceStage = deferred(() => import("../../voice-stage").then((m) => m.VoiceStage));
 const BattlemapBoard = deferred(() => import("../../battlemap").then((m) => m.BattlemapBoard));
@@ -549,13 +550,13 @@ export function renderChatMain(v: ShellRenderState) {
                   type="button"
                   className={`jump-latest ${showJumpLatest || unseenCount > 0 ? "visible" : ""} ${unseenCount > 0 ? "has-unseen" : ""}`}
                   onClick={jumpToLatest}
-                  aria-label={unseenCount > 0 ? `Jump to latest, ${unseenCount} new message${unseenCount === 1 ? "" : "s"}` : "Jump to latest message"}
+                  aria-label={unseenCount > 0 ? tNow("message.jumpToLatestUnread", { count: unseenCount }) : tNow("message.jumpToLatest")}
                   tabIndex={showJumpLatest || unseenCount > 0 ? 0 : -1}
                   aria-hidden={!(showJumpLatest || unseenCount > 0)}
                 >
                   {unseenCount > 0 && (
                     <span className="jump-latest-count">
-                      {unseenCount > 99 ? "99+" : unseenCount} new
+                      {tNow("message.newCount", { count: unseenCount > 99 ? "99+" : unseenCount })}
                     </span>
                   )}
                   <ChevronDown size={18} strokeWidth={2.4} />

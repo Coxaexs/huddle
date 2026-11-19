@@ -22,6 +22,7 @@ import type { ClientEvent, VoiceParticipant, RecordingState } from "@/lib/protoc
 import { MessageRow } from "./message-row";
 import type { PublicBotMenu } from "@/lib/bot-menus";
 import { Hoffy } from "../../hoffy";
+import { useI18n } from "../../../lib/i18n-context";
 
 export function MessageList({
   messagesScrollRef,
@@ -322,6 +323,7 @@ export function MessageList({
     },
     ["roleColorFor", "prefFor"],
   );
+  const { t } = useI18n();
   return (
     <div
                 ref={messagesScrollRef}
@@ -384,26 +386,28 @@ export function MessageList({
                     <span className="cozy-intro-text">
                       {inDmHome
                         ? isSelfDm
-                          ? "This is your personal space for notes, drafts, and reminders."
+                          ? t("intro.selfDmBanner")
                           : activeDm?.group
-                            ? `Welcome to the beginning of ${channelTitle}`
-                            : `This is the beginning of your conversation with ${channelTitle}`
-                        : `Welcome to #${channelTitle}${activeChannel?.topic ? ` — ${activeChannel.topic}` : ""}`}
+                            ? t("intro.groupDmBanner", { name: channelTitle })
+                            : t("intro.dmBanner", { name: channelTitle })
+                        : activeChannel?.topic
+                          ? t("intro.welcomeChannelTopic", { channel: channelTitle, topic: activeChannel.topic })
+                          : t("intro.welcomeChannel", { channel: channelTitle })}
                     </span>
                   </div>
                   <div className="legacy-intro-content">
                     <div className="intro-icon">
                       {inDmHome ? (isSelfDm ? "📝" : "@") : "#"}
                     </div>
-                    <h2>{inDmHome ? channelTitle : `Welcome to #${channelTitle}`}</h2>
+                    <h2>{inDmHome ? channelTitle : t("intro.welcomeChannel", { channel: channelTitle })}</h2>
                     <p>
                       {inDmHome
                         ? isSelfDm
-                          ? "Messages sent here are private and only visible to you. Great for jotting down thoughts, saving links, or staging drafts."
+                          ? t("intro.selfDmBody")
                           : activeDm?.group
-                            ? "Welcome to the beginning of this group. Only its members can see it."
-                            : "This conversation is only visible to the two of you."
-                        : "This is the start of the channel. Be excellent to each other."}
+                            ? t("intro.groupDmBody")
+                            : t("intro.dmBody")
+                        : t("intro.channelBody")}
                     </p>
                   </div>
                 </div>}

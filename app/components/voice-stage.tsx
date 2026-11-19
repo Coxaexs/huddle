@@ -36,6 +36,7 @@ import { StageRoster } from "./voice-stage/stage-roster";
 import { StageTopbar } from "./voice-stage/stage-topbar";
 import { StageBody } from "./voice-stage/stage-body";
 import { StageBottomBar } from "./voice-stage/stage-bottom-bar";
+import { useI18n } from "../lib/i18n-context";
 
 
 
@@ -484,7 +485,8 @@ export function VoiceStage({
     : focused?.self
       ? self
       : null;
-  const streamerName = focusedPerson?.displayName || (focused?.self ? "You" : focused?.label?.split(" · ")[0] || "Stream");
+  const { t } = useI18n();
+  const streamerName = focusedPerson?.displayName || (focused?.self ? t("voiceStage.you") : focused?.label?.split(" · ")[0] || t("voiceStage.stream"));
 
   // Notify parent shell of focused streamer name and stream kind for unified topbar.
   // Depends on primitives only: `focused` is a fresh object every render, and the
@@ -830,7 +832,7 @@ export function VoiceStage({
       />}
       {participants.some((person) => person.important && !person.muted && !person.serverMuted) && (
         <div className="voice-important-banner" role="status"><Megaphone size={16} />
-          <span>{participants.filter((p) => p.important && !p.muted && !p.serverMuted).map((p) => p.connectionId === connectionId ? "You" : p.displayName).join(", ")} · speaking important</span>
+          <span>{participants.filter((p) => p.important && !p.muted && !p.serverMuted).map((p) => p.connectionId === connectionId ? t("voiceStage.you") : p.displayName).join(", ")} · {t("voiceStage.speakingImportant")}</span>
           {voice.important && <button type="button" onClick={voice.toggleImportant}>Finish</button>}
         </div>
       )}

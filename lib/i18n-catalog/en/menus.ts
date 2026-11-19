@@ -83,6 +83,11 @@ export const menus = {
   "channelMenu.region.nl": "Netherlands",
   "channelMenu.region.auto": "Automatic",
   "channelMenu.makeKind": "Make it {kind}",
+  "channelMenu.makeKind.text": "Turn into a text channel",
+  "channelMenu.makeKind.announcement": "Turn into an announcement channel",
+  "channelMenu.makeKind.forum": "Turn into a forum",
+  "channelMenu.makeKind.voice": "Turn into a voice room",
+  "channelMenu.makeKind.stage": "Turn into a stage",
   "channelMenu.delete": "Delete channel",
 
   // Group DM Menu

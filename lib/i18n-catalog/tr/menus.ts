@@ -84,6 +84,11 @@ export const menus: Record<keyof typeof en, string> = {
   "channelMenu.region.nl": "Hollanda",
   "channelMenu.region.auto": "Otomatik",
   "channelMenu.makeKind": "{kind} kanalına dönüştür",
+  "channelMenu.makeKind.text": "Metin kanalına dönüştür",
+  "channelMenu.makeKind.announcement": "Duyuru kanalına dönüştür",
+  "channelMenu.makeKind.forum": "Forum kanalına dönüştür",
+  "channelMenu.makeKind.voice": "Ses odasına dönüştür",
+  "channelMenu.makeKind.stage": "Sahneye dönüştür",
   "channelMenu.delete": "Kanalı sil",
 
   // Group DM Menu

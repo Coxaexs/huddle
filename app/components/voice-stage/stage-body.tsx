@@ -10,6 +10,7 @@ import { SubtitlePicker } from "../watch-subtitles";
 import { useRef } from "react";
 import { ringColor, useProfileStyles, voiceTileLook } from "../../lib/profile-look";
 import { StyledName, VoiceAura } from "../profile-style-parts";
+import { useI18n } from "../../lib/i18n-context";
 
 /** A seat younger than this still gets its join flourish when the stage opens. */
 const JOIN_FRESH_MS = 6000;
@@ -149,6 +150,7 @@ export function StageBody({
           : null,
     };
   };
+  const { t } = useI18n();
   return (
     <div className="voice-stage-body">
       {(voice.whisperRouted?.length || voice.whisperLatched?.length) && voice.whisperStop ? (
@@ -218,7 +220,7 @@ export function StageBody({
                       color={p.color}
                     />
                     <span className="table-seat-name">
-                      {p.connectionId === connectionId ? "You" : p.displayName}
+                      {p.connectionId === connectionId ? t("voiceStage.you") : p.displayName}
                     </span>
                     {seatTime(p, "table-seat-time")}
                     {isSpeaking && (
@@ -528,7 +530,7 @@ export function StageBody({
             {videoTiles.map((tile) => {
               const isStreamerSpeaking = tile.remoteId ? speakingIds.has(tile.remoteId) : speakingIds.has("self");
               const tilePerson = tile.remoteId ? participants.find((p) => p.connectionId === tile.remoteId) : self;
-              const tileName = tilePerson?.displayName || (tile.self ? "You" : tile.label);
+              const tileName = tilePerson?.displayName || (tile.self ? t("voiceStage.you") : tile.label);
               return (
                 <button
                   type="button"
@@ -589,7 +591,7 @@ export function StageBody({
                       <MicOff size={11} className="film-person-muted-icon" />
                     )}
                     <span className="film-person-name truncate">
-                      {person.connectionId === connectionId ? "You" : <StyledName name={person.displayName} style={look.style} live />}
+                      {person.connectionId === connectionId ? t("voiceStage.you") : <StyledName name={person.displayName} style={look.style} live />}
                     </span>
                   </div>
                   {seatTime(person, "film-voice-time")}
@@ -665,7 +667,7 @@ export function StageBody({
                 <figcaption>
                   <span>
                     {person.connectionId === connectionId
-                      ? "You"
+                      ? t("voiceStage.you")
                       : <StyledName name={person.displayName} style={look.style} live />}
                   </span>
                   {person.discord && (

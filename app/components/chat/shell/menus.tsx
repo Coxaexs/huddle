@@ -848,7 +848,7 @@ export function ChannelMenuLayer({
                     }}
                   >
                     <span className="flex items-center gap-2">
-                      {channelKindIcon(kind)} {t("channelMenu.makeKind", { kind: withArticle(channelKindLabel(kind)) })}
+                      {channelKindIcon(kind)} {t(`channelMenu.makeKind.${kind}` as "channelMenu.makeKind.text")}
                     </span>
                   </button>
                 ))}
