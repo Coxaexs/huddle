@@ -46,6 +46,7 @@ import { openWebView } from "./widgets/web-view";
 import { lyricsSource } from "@/app/lib/lyrics-source";
 import { closeMusicPlayer, openMusicPlayer, useMusicPlayerView, type MusicPlayerSeed, type MusicPlayerTab, type MusicPlayerView } from "./music-player-store";
 import type { TimedWord, WordsDonor, WordsFrom } from "@/lib/musicbot";
+import { tNow } from "../lib/i18n-context";
 
 /**
  * Hoffle's full-screen music player: the room's song with synced lyrics you
@@ -363,7 +364,7 @@ export function MusicPlayer({
               onClick={() => setTab(item.id)}
             >
               {item.icon}
-              <span>{item.label}</span>
+              <span>{tNow(`music.tab.${item.id}` as "music.tab.lyrics")}</span>
               {item.id === "queue" && state?.queue.length ? (
                 <em className="mp-count">{state.queue.length}</em>
               ) : null}
@@ -378,7 +379,7 @@ export function MusicPlayer({
             {art ? <img src={art} alt="" /> : <Music2 size={56} aria-hidden="true" />}
           </div>
           <div className="mp-meta">
-            <h2 title={track?.title}>{track?.title ?? "Nothing is playing"}</h2>
+            <h2 title={track?.title}>{track?.title ?? tNow("music.nothingPlaying")}</h2>
             <p>
               {track
                 ? track.artist || "Unknown artist"
@@ -1062,8 +1063,8 @@ function LyricsPane({
     return (
       <Empty
         icon={<MicVocal size={28} />}
-        title="Lyrics show up here"
-        text="Play a song and its words can scroll along with it. Click a line to jump there."
+        title={tNow("music.lyricsEmptyTitle")}
+        text={tNow("music.lyricsEmptyText")}
       />
     );
   }
@@ -1117,22 +1118,22 @@ function LyricsPane({
   const findButton = data && !data.checked && !lines.length && (
     <button type="button" className="mp-button" onClick={() => void load(true)} disabled={finding}>
       {finding ? <LoaderCircle size={16} className="mp-spin" /> : <Search size={16} />}
-      {finding ? "Searching…" : data.plain ? "Search for synced lyrics" : "Search for lyrics"}
+      {finding ? tNow("music.searching") : data.plain ? tNow("music.searchSyncedLyrics") : tNow("music.searchLyrics")}
     </button>
   );
 
   if (!lines.length) {
     if (finding) {
       return (
-        <Empty icon={<LoaderCircle size={28} className="mp-spin" />} title="Searching for lyrics…" text="This takes a few seconds." />
+        <Empty icon={<LoaderCircle size={28} className="mp-spin" />} title={tNow("music.searchingLyricsTitle")} text={tNow("music.searchingLyricsText")} />
       );
     }
     if (loading || (!data && !error)) {
       return (
-        <Empty icon={<LoaderCircle size={28} className="mp-spin" />} title="Checking for saved lyrics…">
+        <Empty icon={<LoaderCircle size={28} className="mp-spin" />} title={tNow("music.checkingLyrics")}>
           {slowCheck && roomId && trackId && (
             <button type="button" className="mp-button" onClick={() => void load(true)}>
-              <Search size={16} /> Search for lyrics
+              <Search size={16} /> {tNow("music.searchLyrics")}
             </button>
           )}
         </Empty>
@@ -1140,7 +1141,7 @@ function LyricsPane({
     }
     if (error) {
       return (
-        <Empty icon={<MicVocal size={28} />} title="No lyrics right now" text={error}>
+        <Empty icon={<MicVocal size={28} />} title={tNow("music.noLyrics")} text={error}>
           <button type="button" className="mp-button" onClick={() => void load(retrySearch)}>Try again</button>
         </Empty>
       );
@@ -1166,7 +1167,7 @@ function LyricsPane({
     return (
       <Empty
         icon={<MicVocal size={28} />}
-        title={data?.checked ? "No lyrics found for this song" : "Want the lyrics?"}
+        title={data?.checked ? tNow("music.noLyricsFound") : tNow("music.wantLyrics")}
         text={
           data?.checked
             ? "Nobody has synced this one yet. Another version of the song might have them."
@@ -1333,7 +1334,7 @@ function QueuePane({
   const queue = state?.queue ?? [];
   if (!queue.length) {
     return (
-      <Empty icon={<ListMusic size={28} />} title="Nothing up next" text="Songs you add play after this one.">
+      <Empty icon={<ListMusic size={28} />} title={tNow("music.nothingUpNext")} text={tNow("music.nothingUpNextText")}>
         <button type="button" className="mp-button" onClick={onSearch}>
           <Search size={16} /> Find a song
         </button>
@@ -2089,7 +2090,7 @@ function DjPane({
   };
 
   if (!roomId) {
-    return <Empty icon={<Disc3 size={28} />} title="No voice room" text="The DJ plays in a voice room." />;
+    return <Empty icon={<Disc3 size={28} />} title={tNow("music.djNoRoom")} text={tNow("music.djNoRoomText")} />;
   }
 
   const onAir = Boolean(dj?.active);
@@ -2105,8 +2106,8 @@ function DjPane({
           <header className="mp-dj-head">
             <span className="mp-empty-icon" aria-hidden="true"><Disc3 size={26} /></span>
             <div>
-              <strong>DJ set</strong>
-              <p>The bot mixes the room's music like a DJ: beat-matched transitions, remixes and drops, for everyone in the room.</p>
+              <strong>{tNow("music.djSet")}</strong>
+              <p>{tNow("music.djIntro")}</p>
             </div>
           </header>
           <div className="mp-choice" role="radiogroup" aria-label="Who picks the songs">
@@ -2119,13 +2120,13 @@ function DjPane({
                 className={mode === item.id ? "on" : ""}
                 onClick={() => setMode(item.id)}
               >
-                <strong>{item.label}</strong>
-                <small>{item.hint}</small>
+                <strong>{tNow(`music.djMode.${item.id}` as "music.djMode.real")}</strong>
+                <small>{tNow(`music.djMode.${item.id}Hint` as "music.djMode.realHint")}</small>
               </button>
             ))}
           </div>
           <div className="mp-chips" role="radiogroup" aria-label="Vibe">
-            <span className="mp-chips-label">Vibe</span>
+            <span className="mp-chips-label">{tNow("music.djVibe")}</span>
             {VIBES.map((item) => (
               <button
                 key={item.id}
@@ -2135,34 +2136,34 @@ function DjPane({
                 className={`mp-chip ${vibe === item.id ? "on" : ""}`}
                 onClick={() => setVibe(item.id)}
               >
-                {item.label}
+                {tNow(`music.djVibe.${item.id}` as "music.djVibe.chill")}
               </button>
             ))}
           </div>
           <div className="mp-dj-actions">
             <button type="button" className="mp-button" disabled={locked} onClick={() => void booth({ op: "club", mode, vibe })}>
-              <Zap size={15} /> Start the set
+              <Zap size={15} /> {tNow("music.djStart")}
             </button>
             <button type="button" className="mp-button ghost" onClick={() => void openBooth()}>
-              <ExternalLink size={15} /> Full DJ booth
+              <ExternalLink size={15} /> {tNow("music.djFullBooth")}
             </button>
           </div>
           <small className="mp-dj-hint">
             {inRoom
-              ? "If the queue is short, the DJ adds songs that have stems so the set keeps going."
-              : "Join the room to start a set."}
+              ? tNow("music.djHintInRoom")
+              : tNow("music.djHintJoin")}
           </small>
         </section>
       ) : (
         <section className="mp-dj-card">
           <header className="mp-dj-head">
-            <span className="mp-onair">On air</span>
+            <span className="mp-onair">{tNow("music.djOnAir")}</span>
             <div>
-              <strong>{dj!.auto.on ? (dj!.auto.mode === "real" ? "Real DJ" : "Auto DJ") : "Hands on the decks"}</strong>
-              <p>{vibeLabel} vibe{dj!.paused ? " · paused" : ""}</p>
+              <strong>{dj!.auto.on ? (dj!.auto.mode === "real" ? tNow("music.djMode.real") : tNow("music.djMode.auto")) : tNow("music.djManual")}</strong>
+              <p>{vibeLabel}{dj!.paused ? " · ⏸" : ""}</p>
             </div>
             <button type="button" className="mp-button danger small" disabled={locked} onClick={() => void booth({ op: "stop" })}>
-              <CircleStop size={14} /> End the set
+              <CircleStop size={14} /> {tNow("music.djEnd")}
             </button>
           </header>
           <div className="mp-decks">
@@ -2222,7 +2223,7 @@ function DjPane({
                 {item.label}
               </button>
             ))}
-            <span className="mp-chips-label">Vibe</span>
+            <span className="mp-chips-label">{tNow("music.djVibe")}</span>
             {VIBES.map((item) => (
               <button
                 key={item.id}

@@ -14,6 +14,7 @@ import { BANNER_PRESETS, COLOR_SWATCHES, STATUS_EMOJIS, PROFILE_CSS_SNIPPETS } f
 import { DecorationPicker, DecorationSwatch, DecoratedAvatar, cosmeticName, type DecorationKind } from "./decoration-picker";
 import { ProfilePreviewCard, bannerBackground, type PreviewProfile } from "./profile-preview-card";
 import { DiscordAccountLink } from "./discord-account";
+import { useI18n } from "../../lib/i18n-context";
 
 type DetailsTab = "identity" | "about" | "links" | "music" | "css";
 
@@ -164,6 +165,7 @@ export function ProfileTab({
   error: string;
   user: PublicUser;
 }) {
+  const { t } = useI18n();
   const [picker, setPicker] = useState<DecorationKind | null>(null);
   const [studio, setStudio] = useState<StudioKind | null>(null);
   const [panel, setPanel] = useState<"color" | "banner" | null>(null);
@@ -297,7 +299,7 @@ export function ProfileTab({
 
       <aside className="pe-rail" aria-label="Decorations">
         <div className="pe-rail-head">
-          <h2>Main Profile</h2>
+          <h2>{t("profileEditor.mainProfile")}</h2>
           <p>Changes show up on the right as you make them.</p>
           <button type="button" className="pe-looks-btn" onClick={() => setStudio("looks")}>
             <Sparkles size={15} /> Browse looks
@@ -533,7 +535,7 @@ export function ProfileTab({
         <div className="pe-details-body">
           {details === "identity" && (
             <>
-              <Field label="Display Name" htmlFor="pe-name" count={`${displayName.length}/40`}>
+              <Field label={t("profileEditor.displayName")} htmlFor="pe-name" count={`${displayName.length}/40`}>
                 <input id="pe-name" className="pe-input" value={displayName} maxLength={40} placeholder={user.username} onChange={(event) => setDisplayName(event.target.value)} />
                 <button type="button" className="pe-style-link ps-hover" onClick={() => setStudio("name")}>
                   <Sparkles size={14} />
@@ -543,7 +545,7 @@ export function ProfileTab({
                   </span>
                 </button>
               </Field>
-              <Field label="Pronouns" htmlFor="pe-pronouns">
+              <Field label={t("profileEditor.pronouns")} htmlFor="pe-pronouns">
                 <input id="pe-pronouns" className="pe-input" value={pronouns} maxLength={30} placeholder="Add your pronouns" onChange={(event) => setPronouns(event.target.value)} />
                 <div className="pe-chips">
                   {PRONOUN_CHIPS.map((p) => (
@@ -553,10 +555,10 @@ export function ProfileTab({
                   ))}
                 </div>
               </Field>
-              <Field label="Tagline" htmlFor="pe-tagline" hint="A short line under your name.">
+              <Field label={t("profileEditor.tagline")} htmlFor="pe-tagline" hint={t("profileEditor.taglineHint")}>
                 <input id="pe-tagline" className="pe-input" value={tagline} maxLength={80} placeholder="Pixel artist, coffee addict…" onChange={(event) => setTagline(event.target.value)} />
               </Field>
-              <Field label="Custom Status" htmlFor="pe-status" hint="Shows as a bubble beside your avatar.">
+              <Field label={t("profileEditor.customStatus")} htmlFor="pe-status" hint={t("profileEditor.customStatusHint")}>
                 <div className="pe-input-wrap">
                   <input id="pe-status" className="pe-input" value={customStatus} maxLength={100} placeholder="What's on your mind?" onChange={(event) => setCustomStatus(event.target.value)} />
                   {customStatus && (
@@ -573,7 +575,7 @@ export function ProfileTab({
                   ))}
                 </div>
               </Field>
-              <Field label="Avatar Letters" htmlFor="pe-letters" hint="Shown when you have no picture.">
+              <Field label={t("profileEditor.avatarLetters")} htmlFor="pe-letters" hint={t("profileEditor.avatarLettersHint")}>
                 <input id="pe-letters" className="pe-input pe-input-short" value={avatar} maxLength={2} onChange={(event) => setAvatar(event.target.value)} />
               </Field>
             </>
@@ -581,10 +583,10 @@ export function ProfileTab({
 
           {details === "about" && (
             <>
-              <Field label="About Me" htmlFor="pe-bio" count={`${bio.length}/500`}>
+              <Field label={t("profileEditor.aboutMe")} htmlFor="pe-bio" count={`${bio.length}/500`}>
                 <textarea id="pe-bio" className="pe-input pe-textarea" rows={6} value={bio} maxLength={500} placeholder="Tell everyone a bit about yourself…" onChange={(event) => setBio(event.target.value)} />
               </Field>
-              <Field label="Pride Badges" hint="Optional, up to 4. These are public, so pick only what you want to share.">
+              <Field label={t("profileEditor.prideBadges")} hint={t("profileEditor.prideBadgesHint")}>
                 <div className="pe-pride">
                   {PRIDE_BADGES.map((badge) => {
                     const selected = prideBadges.includes(badge.id);
@@ -614,7 +616,7 @@ export function ProfileTab({
           {details === "links" && (
             <>
               <DiscordAccountLink />
-              <Field label="Add a Connection" hint="Links show at the bottom of your profile.">
+              <Field label={t("profileEditor.addConnection")} hint={t("profileEditor.addConnectionHint")}>
                 <div className="pe-link-form">
                   <select className="pe-input" value={newPlatform} onChange={(event) => setNewPlatform(event.target.value)} aria-label="Platform">
                     {SOCIAL_PLATFORMS.map(([id, label]) => (
@@ -622,7 +624,7 @@ export function ProfileTab({
                     ))}
                   </select>
                   <input className="pe-input" value={newUrl} placeholder="https://…" onChange={(event) => setNewUrl(event.target.value)} aria-label="Link URL" />
-                  <input className="pe-input" value={newLabel} placeholder="Label (optional)" onChange={(event) => setNewLabel(event.target.value)} aria-label="Label" />
+                  <input className="pe-input" value={newLabel} placeholder={t("profileEditor.labelOptional")} onChange={(event) => setNewLabel(event.target.value)} aria-label="Label" />
                   <button
                     type="button"
                     className="pe-btn pe-btn-primary"
@@ -663,14 +665,14 @@ export function ProfileTab({
             <>
               <p className="pe-hint">Pin a song to your profile. It shows as “Listening to” on your card.</p>
               <div className="pe-two">
-                <Field label="Song" htmlFor="pe-song">
+                <Field label={t("profileEditor.song")} htmlFor="pe-song">
                   <input id="pe-song" className="pe-input" value={spotifySong} maxLength={60} placeholder="Resonance" onChange={(event) => setSpotifySong(event.target.value)} />
                 </Field>
-                <Field label="Artist" htmlFor="pe-artist">
+                <Field label={t("profileEditor.artist")} htmlFor="pe-artist">
                   <input id="pe-artist" className="pe-input" value={spotifyArtist} maxLength={60} placeholder="HOME" onChange={(event) => setSpotifyArtist(event.target.value)} />
                 </Field>
               </div>
-              <Field label="Album Art URL" htmlFor="pe-cover" hint="Optional.">
+              <Field label={t("profileEditor.albumArt")} htmlFor="pe-cover" hint={t("profileEditor.optional")}>
                 <input id="pe-cover" className="pe-input" value={spotifyCover} placeholder="https://…" onChange={(event) => setSpotifyCover(event.target.value)} />
               </Field>
               {spotifySong && (
@@ -704,7 +706,7 @@ export function ProfileTab({
                   ))}
                 </div>
               )}
-              <Field label="Presets">
+              <Field label={t("profileEditor.presets")}>
                 <div className="pe-chips">
                   {PROFILE_CSS_PRESETS.map((preset) => (
                     <button key={preset.name} type="button" className="pe-chip" title={preset.desc} onClick={() => setProfileCustomCss(preset.css)}>
@@ -713,7 +715,7 @@ export function ProfileTab({
                   ))}
                 </div>
               </Field>
-              <Field label="Snippets">
+              <Field label={t("profileEditor.snippets")}>
                 <div className="pe-chips">
                   {PROFILE_CSS_SNIPPETS.map((snippet) => (
                     <button key={snippet.name} type="button" className="pe-chip" onClick={() => setProfileCustomCss((prev) => prev + snippet.snippet)}>

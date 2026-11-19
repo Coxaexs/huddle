@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Vote, Plus, Trash2, X, Lock } from "lucide-react";
 import { useDismiss } from "../hooks/use-dismiss";
+import { useI18n } from "../lib/i18n-context";
 
 interface PollDialogProps {
   open: boolean;
@@ -11,6 +12,7 @@ interface PollDialogProps {
 }
 
 export function PollDialog({ open, onClose, onSubmit }: PollDialogProps) {
+  const { t } = useI18n();
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState<string[]>(["", ""]);
   const [isPrivate, setIsPrivate] = useState(false);
@@ -63,7 +65,7 @@ export function PollDialog({ open, onClose, onSubmit }: PollDialogProps) {
           <div className="poll-dialog-header">
             <div className="flex items-center gap-2">
               <Vote size={20} className="text-indigo-400" />
-              <h3>Create a Poll</h3>
+              <h3>{t("poll.createTitle")}</h3>
             </div>
             <button type="button" className="close-btn" onClick={onClose} aria-label="Close">
               <X size={18} />
@@ -72,12 +74,12 @@ export function PollDialog({ open, onClose, onSubmit }: PollDialogProps) {
 
           <div className="poll-dialog-body">
             <div className="form-group">
-              <label htmlFor="poll-question">Poll Question</label>
+              <label htmlFor="poll-question">{t("poll.questionLabel")}</label>
               <input
                 id="poll-question"
                 type="text"
                 className="poll-input"
-                placeholder="Ask a question (e.g., What game should we play tonight?)"
+                placeholder={t("poll.questionPlaceholder")}
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 autoFocus
@@ -85,14 +87,14 @@ export function PollDialog({ open, onClose, onSubmit }: PollDialogProps) {
             </div>
 
             <div className="form-group">
-              <label>Options (Minimum 2)</label>
+              <label>{t("poll.optionsLabel")}</label>
               <div className="poll-options-list">
                 {options.map((opt, idx) => (
                   <div key={idx} className="poll-option-row">
                     <input
                       type="text"
                       className="poll-input"
-                      placeholder={`Option ${idx + 1}`}
+                      placeholder={t("poll.optionPlaceholder", { num: idx + 1 })}
                       value={opt}
                       onChange={(e) => handleOptionChange(idx, e.target.value)}
                     />
@@ -101,7 +103,7 @@ export function PollDialog({ open, onClose, onSubmit }: PollDialogProps) {
                         type="button"
                         className="poll-remove-btn"
                         onClick={() => handleRemoveOption(idx)}
-                        title="Remove option"
+                        title={t("poll.removeOption")}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -116,7 +118,7 @@ export function PollDialog({ open, onClose, onSubmit }: PollDialogProps) {
                   className="poll-add-btn"
                   onClick={handleAddOption}
                 >
-                  <Plus size={16} /> Add Option
+                  <Plus size={16} /> {t("poll.addOption")}
                 </button>
               )}
             </div>
@@ -130,27 +132,25 @@ export function PollDialog({ open, onClose, onSubmit }: PollDialogProps) {
                   className="w-4 h-4 accent-indigo-500 rounded"
                 />
                 <span className="inline-flex items-center gap-1">
-                  <Lock size={12} /> Private Mode (Anonymous voting, hide voter names)
+                  <Lock size={12} /> {t("poll.privateLabel")}
                 </span>
               </label>
               <p className="text-[11px] text-gray-400 pl-6">
-                {isPrivate
-                  ? "Voters' identities will be hidden. Only total votes will be shown."
-                  : "Public Mode (Default): Everyone can see who voted for each option."}
+                {isPrivate ? t("poll.privateHint") : t("poll.publicHint")}
               </p>
             </div>
           </div>
 
           <div className="poll-dialog-footer">
             <button type="button" className="discord-btn secondary" onClick={onClose}>
-              Cancel
+              {t("dialog.cancel")}
             </button>
             <button
               type="submit"
               className="discord-btn primary-indigo"
               disabled={!canSubmit}
             >
-              Post Poll
+              {t("poll.post")}
             </button>
           </div>
         </form>

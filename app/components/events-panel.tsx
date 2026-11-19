@@ -6,6 +6,7 @@ import type { PublicEvent, RsvpStatus } from "@/lib/events";
 import { buildIcs } from "@/lib/ics";
 import { apiFetch, basePath } from "../lib/client";
 import { Avatar } from "./avatar";
+import { useI18n } from "../lib/i18n-context";
 
 /** Upcoming events for a server, refetched whenever `refreshKey` changes. */
 export function useServerEvents(serverId: string | null, refreshKey: number) {
@@ -202,6 +203,7 @@ export function EventsPanel({
   onClose,
   onRequestConfirm,
 }: EventsPanelProps) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [subscribing, setSubscribing] = useState(false);
   const [error, setError] = useState("");
@@ -301,7 +303,7 @@ export function EventsPanel({
       >
         <header className="events-panel-head">
           <h2 id="events-panel-title">
-            <CalendarDays size={18} /> Events
+            <CalendarDays size={18} /> {t("events.title")}
           </h2>
           <div className="events-panel-head-actions">
             {!draft && (
@@ -311,12 +313,12 @@ export function EventsPanel({
                 aria-expanded={subscribing}
                 onClick={() => setSubscribing((open) => !open)}
               >
-                <CalendarPlus size={14} /> Subscribe
+                <CalendarPlus size={14} /> {t("events.subscribe")}
               </button>
             )}
             {!draft && (
               <button type="button" className="events-primary" onClick={() => startDraft()}>
-                <Plus size={14} /> New event
+                <Plus size={14} /> {t("events.newEvent")}
               </button>
             )}
             <button type="button" className="events-icon-btn" aria-label="Close" onClick={onClose}>
@@ -336,18 +338,18 @@ export function EventsPanel({
               void save();
             }}
           >
-            <label htmlFor="event-title">Name</label>
+            <label htmlFor="event-title">{t("events.name")}</label>
             <input
               id="event-title"
               value={draft.title}
               maxLength={100}
-              placeholder="Game night"
+              placeholder={t("events.namePlaceholder")}
               autoFocus
               onChange={(event) => setDraft({ ...draft, title: event.target.value })}
             />
             <div className="events-form-row">
               <div>
-                <label htmlFor="event-start">Starts</label>
+                <label htmlFor="event-start">{t("events.starts")}</label>
                 <input
                   id="event-start"
                   type="datetime-local"
@@ -356,7 +358,7 @@ export function EventsPanel({
                 />
               </div>
               <div>
-                <label htmlFor="event-end">Ends (optional)</label>
+                <label htmlFor="event-end">{t("events.ends")}</label>
                 <input
                   id="event-end"
                   type="datetime-local"
@@ -366,49 +368,46 @@ export function EventsPanel({
                 />
               </div>
             </div>
-            <label htmlFor="event-channel">Voice channel</label>
+            <label htmlFor="event-channel">{t("events.voiceChannel")}</label>
             <select
               id="event-channel"
               value={draft.channelId}
               onChange={(event) => setDraft({ ...draft, channelId: event.target.value })}
             >
-              <option value="">None</option>
+              <option value="">{t("events.none")}</option>
               {voiceChannels.map((channel) => (
                 <option key={channel.id} value={channel.id}>
                   {channel.name}
                 </option>
               ))}
             </select>
-            <label htmlFor="event-description">Details (optional)</label>
+            <label htmlFor="event-description">{t("events.details")}</label>
             <textarea
               id="event-description"
               value={draft.description}
               maxLength={1000}
               rows={3}
-              placeholder="What are we playing? Bring snacks?"
+              placeholder={t("events.detailsPlaceholder")}
               onChange={(event) => setDraft({ ...draft, description: event.target.value })}
             />
             <div className="events-form-actions">
               <button type="button" className="events-secondary" onClick={() => setDraft(null)}>
-                Cancel
+                {t("dialog.cancel")}
               </button>
               <button
                 type="submit"
                 className="events-primary"
                 disabled={saving || !draft.title.trim() || !draft.startsAt}
               >
-                {saving ? "Saving…" : draft.id ? "Save changes" : "Create event"}
+                {saving ? t("events.saving") : draft.id ? t("events.saveChanges") : t("events.createEvent")}
               </button>
             </div>
           </form>
         ) : events.length === 0 ? (
           <div className="events-empty">
             <CalendarDays size={36} />
-            <p>Nothing planned yet.</p>
-            <p className="events-muted">
-              Schedule a game night and everyone who says they&apos;re going gets a reminder 15
-              minutes before.
-            </p>
+            <p>{t("events.emptyTitle")}</p>
+            <p className="events-muted">{t("events.emptyBody")}</p>
           </div>
         ) : (
           <ul className="events-list">
@@ -426,7 +425,7 @@ export function EventsPanel({
                         type="button"
                         className="events-icon-btn"
                         aria-label={`Add ${event.title} to your calendar`}
-                        title="Add to calendar"
+                        title={t("events.addToCalendar")}
                         onClick={() => downloadEvent(event, serverName)}
                       >
                         <Download size={13} />

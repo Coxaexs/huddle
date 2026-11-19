@@ -57,6 +57,7 @@ import { deferred } from "./chat/shell/deferred";
 import { useModulesOff } from "../lib/modules";
 import type { FeatureModuleKey } from "@/lib/features";
 import { useDismiss } from "../hooks/use-dismiss";
+import { useI18n } from "../lib/i18n-context";
 
 const GestureSynth = deferred(() => import("./gesture-synth").then((m) => m.GestureSynth));
 const BeatboxActivity = deferred(() => import("./beatbox-activity").then((m) => m.BeatboxActivity));
@@ -1016,6 +1017,7 @@ export function RoomActivities({
   musicBot = true,
   serverNow,
 }: RoomActivitiesProps) {
+  const { t } = useI18n();
   const modulesOff = useModulesOff();
   const [busy, setBusy] = useState(false);
   const gameFrameRef = useRef<HTMLDivElement>(null);
@@ -1223,11 +1225,11 @@ export function RoomActivities({
               : <Gamepad2 size={18} />}
           </span>
           <div>
-            <strong>{activity ? activityTitle(activity.kind, activity.state) : "Room Activities"}</strong>
+            <strong>{activity ? (activity.kind === "app" ? activityTitle(activity.kind, activity.state) : t(`activity.${activity.kind}.name` as "activity.watch.name")) : t("activity.roomTitle")}</strong>
             <small>
               {activity
-                ? `Shared live in ${channelName}`
-                : "Pick something to do together"}
+                ? t("activity.sharedLive", { channel: channelName })
+                : t("activity.pickTogether")}
             </small>
           </div>
         </div>
@@ -1237,19 +1239,19 @@ export function RoomActivities({
               type="button"
               onClick={() => void toggleElementFullscreen(gameFrameRef.current)}
               aria-label="Play full screen"
-              title="Full screen"
+              title={t("activity.fullScreen")}
             >
               <Maximize2 size={15} />
             </button>
           )}
           {isGame && (
             <a href={gameSrc} target="_blank" rel="noreferrer">
-              Pop out <ExternalLink size={12} />
+              {t("activity.popOut")} <ExternalLink size={12} />
             </a>
           )}
           {botActivity && (
             <button type="button" onClick={() => void popOut(botActivity)} title="Open in its own tab">
-              Pop out <ExternalLink size={12} />
+              {t("activity.popOut")} <ExternalLink size={12} />
             </button>
           )}
           {activity && (
@@ -1259,7 +1261,7 @@ export function RoomActivities({
               disabled={busy}
               onClick={() => void action({ action: "close" })}
             >
-              End
+              {t("activity.end")}
             </button>
           )}
           <button type="button" onClick={() => onOpen(false)} aria-label="Collapse activity">
@@ -1278,17 +1280,17 @@ export function RoomActivities({
                 key={choice.kind}
                 disabled={busy || needsBot}
                 className={isBotActivity(choice.kind) ? "bot-activity" : undefined}
-                title={needsBot ? "This server does not have the Music Bot" : undefined}
+                title={needsBot ? t("activity.needsMusicBotTitle") : undefined}
                 onClick={() => void openActivity(choice.kind)}
               >
                 <span>{choice.icon}</span>
-                <strong>{choice.name}</strong>
+                <strong>{t(`activity.${choice.kind}.name` as "activity.watch.name")}</strong>
                 <small>
-                  {needsBot ? "Needs the Music Bot, which this server has not added" : choice.description}
+                  {needsBot ? t("activity.needsMusicBotDesc") : t(`activity.${choice.kind}.desc` as "activity.watch.desc")}
                 </small>
                 {isBotActivity(choice.kind) && (
                   <em className="activity-bot-tag">
-                    <Bot size={11} /> Music Bot
+                    <Bot size={11} /> {t("activity.musicBotTag")}
                   </em>
                 )}
               </button>
