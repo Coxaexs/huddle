@@ -28,6 +28,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { tNow } from "../lib/i18n-context";
 
 export interface MusicSettings {
   voiceChannelId?: string;
@@ -279,7 +280,7 @@ export function MusicSettingsCard({
         <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/like")}><Heart size={14} /> Like</button>
         <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/dislike")}><ThumbsDown size={14} /> Avoid</button>
         <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/lyricsnow")}><Music2 size={14} /> Lyrics</button>
-        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/queue")}><List size={14} /> Queue</button>
+        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/queue")}><List size={14} /> {tNow("musicCard.queue")}</button>
         <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/shuffle")}><Shuffle size={14} /> Shuffle</button>
       </div>
     </section>
@@ -527,7 +528,7 @@ export function MusicQueueCard({
           <List size={18} />
         </span>
         <div>
-          <strong>Room Music Queue</strong>
+          <strong>{tNow("musicCard.roomQueue")}</strong>
           <small>{queue.length ? `${queue.length} track${queue.length === 1 ? "" : "s"} waiting in queue` : "The queue is currently empty"}</small>
         </div>
         <span className="music-live-pill live">
@@ -601,7 +602,7 @@ export function MusicQueueCard({
         <div className="music-quick-actions">
           <button type="button" className="flex items-center gap-1" onClick={() => void handleAction("/shuffle")}><Shuffle size={14} /> Shuffle</button>
           <button type="button" className="flex items-center gap-1" onClick={() => void handleAction("/removedupes")}><RotateCcw size={14} /> Remove Dupes</button>
-          <button type="button" className="flex items-center gap-1" onClick={() => void handleAction("/clear")}><Trash2 size={14} /> Clear Queue</button>
+          <button type="button" className="flex items-center gap-1" onClick={() => void handleAction("/clear")}><Trash2 size={14} /> {tNow("musicCard.clearQueue")}</button>
           <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/settings")}><Settings size={14} /> Settings</button>
         </div>
       )}
@@ -834,7 +835,7 @@ export function MusicSearchCard({
               disabled={disabled || busyAction === `/playnext ${track.title}`}
               onClick={() => void handleAction(`/playnext ${track.title}`)}
             >
-              <Plus size={14} /> Queue Next
+              <Plus size={14} /> {tNow("musicCard.queueNext")}
             </button>
             <button
               type="button"

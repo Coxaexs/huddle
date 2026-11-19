@@ -15,6 +15,7 @@ import { MUSIC_BOT_MISSING, musicBotInServer, PLAYER_COMMANDS, playerBotInServer
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { publicMessage } from "@/app/api/messages/route";
 import { redactSecrets } from "@/lib/redact-secrets";
+import { pickLocale } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -461,7 +462,8 @@ export async function POST(request: Request) {
         if (before?.track) {
           const position = name === "playnext" ? 1 : (state?.queue.length ?? 1);
           const extra = tracks.length > 1 ? ` and ${tracks.length - 1} more` : "";
-          const text = `Queued ${trackLabel(track)}${extra} (#${position} in line).`;
+          const tr = pickLocale(request.headers.get("accept-language")) === "tr";
+          const text = tr ? `Sıraya eklendi: ${trackLabel(track)}${extra} (sırada #${position}).` : `Queued ${trackLabel(track)}${extra} (#${position} in line).`;
           await say(db, textChannelId, text);
           return Response.json({ text, state });
         }
@@ -469,7 +471,8 @@ export async function POST(request: Request) {
         const extra = tracks.length > 1
           ? ` · queued ${tracks.length - 1} more`
           : "";
-        await say(db, textChannelId, `Now playing ${trackLabel(track)}${extra}`, {
+        const trNow = pickLocale(request.headers.get("accept-language")) === "tr";
+        await say(db, textChannelId, trNow ? `Şimdi çalıyor: ${trackLabel(track)}${extra}` : `Now playing ${trackLabel(track)}${extra}`, {
           kind: "nowplaying",
           payload: {
             voiceChannelId,
@@ -477,7 +480,7 @@ export async function POST(request: Request) {
             label: trackLabel(track),
           },
         });
-        return Response.json({ text: `Now playing ${trackLabel(track)}`, state });
+        return Response.json({ text: trNow ? `Şimdi çalıyor: ${trackLabel(track)}` : `Now playing ${trackLabel(track)}`, state });
       }
 
       case "pause":
@@ -506,7 +509,7 @@ export async function POST(request: Request) {
               : "Stopped playback and cleared the queue."
             : name === "skip"
               ? state?.track
-                ? `Skipped. Now playing ${trackLabel(state.track)}`
+                ? (pickLocale(request.headers.get("accept-language")) === "tr" ? `Atlandı. Şimdi çalıyor: ${trackLabel(state.track)}` : `Skipped. Now playing ${trackLabel(state.track)}`)
                 : "Skipped. The queue is empty."
               : name === "pause"
                 ? "Paused."

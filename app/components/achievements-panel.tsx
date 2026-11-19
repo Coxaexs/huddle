@@ -16,6 +16,9 @@ import { announceUnlocked, formatAchievementValue, previewAchievement, SHOWCASE_
 import { AchievementMedal } from "./achievement-medal";
 import { achievementSoundEnabled, setAchievementSoundEnabled } from "./achievement-toast";
 import { showToast } from "./toast";
+import { localizeAchievement, localizeAchievementCategory } from "@/lib/achievement-defs-tr";
+import { useI18n } from "../lib/i18n-context";
+import { localeNow, tNow } from "../lib/i18n-context";
 
 interface Row {
   id: string;
@@ -281,7 +284,7 @@ export function AchievementsBoard({
               className={category === c.id ? "is-active" : ""}
               onClick={() => setCategory(c.id)}
             >
-              {c.label} <span>{n ? `${n.earned}/${n.total}` : ""}</span>
+              {localizeAchievementCategory(c.id, c.label, localeNow())} <span>{n ? `${n.earned}/${n.total}` : ""}</span>
             </button>
           );
         })}
@@ -348,10 +351,10 @@ function AchievementCard({
       <AchievementMedal def={def} earned={earned} size={46} />
       <div className="ach-card-body">
         <div className="ach-card-top">
-          <h3>{hidden ? "Secret achievement" : def.label}</h3>
+          <h3>{hidden ? tNow("achievements.secret") : localizeAchievement(def, localeNow()).label}</h3>
           <span className={`ach-tier-chip ach-tier-${def.tier}`}>{TIER_LABELS[def.tier]}</span>
         </div>
-        <p className="ach-card-desc">{hidden ? def.hint || "Keep exploring…" : def.description}</p>
+        <p className="ach-card-desc">{hidden ? localizeAchievement(def, localeNow()).hint || (localeNow() === "tr" ? "Keşfetmeye devam et…" : "Keep exploring…") : localizeAchievement(def, localeNow()).description}</p>
         {!earned && !viewingOther && !hidden && row && (
           <div className="ach-progress">
             <div className="ach-bar">

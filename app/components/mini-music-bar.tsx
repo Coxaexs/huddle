@@ -3,6 +3,7 @@
 import { useCallback, type MouseEvent } from "react";
 import { Maximize2, Music2, Play, Pause, SkipForward } from "lucide-react";
 import { playbackPosition, type PlayerState } from "@/lib/protocol";
+import { useI18n } from "../lib/i18n-context";
 
 interface MiniMusicBarProps {
   state: PlayerState | null;
@@ -26,6 +27,7 @@ export function MiniMusicBar({
   onExpand,
   className = "",
 }: MiniMusicBarProps) {
+  const { t } = useI18n();
   const track = state?.track;
   if (!track) return null;
 
@@ -83,8 +85,8 @@ export function MiniMusicBar({
                 onToggle();
               }}
               className="p-0.5 hover:text-white transition-colors cursor-pointer"
-              title={isPaused ? "Play" : "Pause"}
-              aria-label={isPaused ? "Play" : "Pause"}
+              title={isPaused ? t("musicCard.play") : t("musicCard.pause")}
+              aria-label={isPaused ? t("musicCard.play") : t("musicCard.pause")}
             >
               {isPaused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
             </button>

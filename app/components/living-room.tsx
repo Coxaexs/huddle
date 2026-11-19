@@ -55,6 +55,7 @@ import { SubtitleOverlay } from "./watch-subtitles";
 import { apiFetch } from "../lib/client";
 import { playCriticalFumbleSound, playCriticalSuccessSound, playDiceRollSound } from "../lib/dice-sounds";
 import { RoomAmbience } from "./living-room-ambience";
+import { tNow } from "../lib/i18n-context";
 
 /** Overhead, through your eyes, or (in the board hall) riding behind your pawn. */
 type CameraView = "overhead" | "eyes" | "pawn";
@@ -2487,30 +2488,30 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           {venueId === "tabletop" && (
             <>
               <button type="button" className={panel === "initiative" || room.shared.initiative ? "active" : ""} onClick={() => setPanel(panel === "initiative" ? null : "initiative")} title="Initiative" aria-label="Initiative" aria-expanded={panel === "initiative"}><Swords size={16} /></button>
-              <button type="button" className={panel === "character" ? "active" : ""} onClick={() => setPanel(panel === "character" ? null : "character")} title="My character" aria-label="My character" aria-expanded={panel === "character"}><UserRound size={16} /></button>
-              <button type="button" className={panel === "gm" || isGm ? "active" : ""} onClick={() => setPanel(panel === "gm" ? null : "gm")} title="Game master: the GM's chair, the battle map and your screen" aria-label="Game master" aria-expanded={panel === "gm"}><Crown size={16} /></button>
-              <button type="button" className={panel === "pawns" || heldPawn ? "active" : ""} onClick={() => setPanel(panel === "pawns" ? null : "pawns")} title="Miniatures: take a pawn to the table" aria-label="Miniatures" aria-expanded={panel === "pawns"}><ChessPawn size={16} /></button>
+              <button type="button" className={panel === "character" ? "active" : ""} onClick={() => setPanel(panel === "character" ? null : "character")} title={tNow("livingRoom.myCharacter")} aria-label={tNow("livingRoom.myCharacter")} aria-expanded={panel === "character"}><UserRound size={16} /></button>
+              <button type="button" className={panel === "gm" || isGm ? "active" : ""} onClick={() => setPanel(panel === "gm" ? null : "gm")} title="Game master: the GM's chair, the battle map and your screen" aria-label={tNow("livingRoom.gameMaster")} aria-expanded={panel === "gm"}><Crown size={16} /></button>
+              <button type="button" className={panel === "pawns" || heldPawn ? "active" : ""} onClick={() => setPanel(panel === "pawns" ? null : "pawns")} title="Miniatures: take a pawn to the table" aria-label={tNow("livingRoom.miniatures")} aria-expanded={panel === "pawns"}><ChessPawn size={16} /></button>
             </>
           )}
           {venueId === "boardhall" && (
             <>
-              <button type="button" className="living-room-play" onClick={() => onPlayBoardGame?.()} disabled={!onPlayBoardGame} title={boardGameId ? "Open the game to play" : "Start a DeepPixel game for the room"} aria-label={boardGameId ? "Open the game" : "Start a game"}><Gamepad2 size={16} /><span>Play</span></button>
-              <button type="button" className={followPawn ? "active" : ""} onClick={() => setFollowPawn((on) => !on)} title="Walk with my pawn: when it moves, you walk over to it" aria-label="Walk with my pawn" aria-pressed={followPawn}><Footprints size={16} /></button>
+              <button type="button" className="living-room-play" onClick={() => onPlayBoardGame?.()} disabled={!onPlayBoardGame} title={boardGameId ? "Open the game to play" : "Start a DeepPixel game for the room"} aria-label={boardGameId ? "Open the game" : "Start a game"}><Gamepad2 size={16} /><span>{tNow("livingRoom.play")}</span></button>
+              <button type="button" className={followPawn ? "active" : ""} onClick={() => setFollowPawn((on) => !on)} title="Walk with my pawn: when it moves, you walk over to it" aria-label={tNow("livingRoom.walkWithPawn")} aria-pressed={followPawn}><Footprints size={16} /></button>
             </>
           )}
           <span className="living-room-sep" aria-hidden="true" />
-          <button type="button" className={view === "overhead" ? "active" : ""} onClick={() => setView("overhead")} title="Overhead view" aria-label="Overhead view"><MapIcon size={16} /></button>
-          <button type="button" className={view === "eyes" ? "active" : ""} onClick={() => setView("eyes")} title="Through your eyes" aria-label="First-person view"><Eye size={16} /></button>
-          {venueId === "boardhall" && <button type="button" className={view === "pawn" ? "active" : ""} onClick={() => setView("pawn")} title="Behind my pawn" aria-label="Pawn view"><Navigation size={16} /></button>}
-          {venueId === "lounge" && <button type="button" className={room.settings.ambience ? "active" : ""} onClick={() => room.setSettings({ ambience: !room.settings.ambience })} title="Room sounds (only you hear them)" aria-label="Room sounds" aria-pressed={room.settings.ambience}><Flame size={16} /></button>}
-          <button type="button" className={settingsOpen ? "active" : ""} onClick={() => setSettingsOpen((open) => !open)} title="Living Room settings" aria-label="Living Room settings" aria-expanded={settingsOpen}><Settings2 size={16} /></button>
-          <button type="button" onClick={toggleFullscreen} title={fullscreen ? "Exit full screen" : "Full screen"} aria-label={fullscreen ? "Exit full screen" : "Full screen"}>{fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
-          <button type="button" onClick={() => { setControlsHidden(true); setSettingsOpen(false); }} title="Hide controls (H)" aria-label="Hide controls"><EyeOff size={16} /></button>
+          <button type="button" className={view === "overhead" ? "active" : ""} onClick={() => setView("overhead")} title={tNow("livingRoom.overheadView")} aria-label={tNow("livingRoom.overheadView")}><MapIcon size={16} /></button>
+          <button type="button" className={view === "eyes" ? "active" : ""} onClick={() => setView("eyes")} title={tNow("livingRoom.throughYourEyes")} aria-label={tNow("livingRoom.firstPersonView")}><Eye size={16} /></button>
+          {venueId === "boardhall" && <button type="button" className={view === "pawn" ? "active" : ""} onClick={() => setView("pawn")} title={tNow("livingRoom.behindPawn")} aria-label={tNow("livingRoom.behindPawn")}><Navigation size={16} /></button>}
+          {venueId === "lounge" && <button type="button" className={room.settings.ambience ? "active" : ""} onClick={() => room.setSettings({ ambience: !room.settings.ambience })} title={tNow("livingRoom.roomSounds")} aria-label={tNow("livingRoom.roomSounds")} aria-pressed={room.settings.ambience}><Flame size={16} /></button>}
+          <button type="button" className={settingsOpen ? "active" : ""} onClick={() => setSettingsOpen((open) => !open)} title={tNow("livingRoom.settings")} aria-label={tNow("livingRoom.settings")} aria-expanded={settingsOpen}><Settings2 size={16} /></button>
+          <button type="button" onClick={toggleFullscreen} title={fullscreen ? tNow("livingRoom.exitFullScreen") : tNow("livingRoom.fullScreen")} aria-label={fullscreen ? tNow("livingRoom.exitFullScreen") : tNow("livingRoom.fullScreen")}>{fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
+          <button type="button" onClick={() => { setControlsHidden(true); setSettingsOpen(false); }} title={tNow("livingRoom.hideControls")} aria-label={tNow("livingRoom.hideControls")}><EyeOff size={16} /></button>
         </div>
       </div>}
       {room.shared.watch?.url && <SubtitleOverlay url={room.shared.watch.url} time={() => watchApi.current.time()} className="watch-subtitles-room" />}
       {watchInfo.error && <div className="watch-surface-problem watch-room-note">{watchInfo.error}</div>}
-      {watchInfo.buffering && !watchInfo.error && <div className="watch-surface-note watch-room-note">Loading the film…</div>}
+      {watchInfo.buffering && !watchInfo.error && <div className="watch-surface-note watch-room-note">{tNow("livingRoom.loadingFilm")}</div>}
       {!controlsHidden && venueId === "meadow" && (canFish || fishing.phase !== "idle" || lastCatch) && (
         <FishingPanel
           phase={fishing} canFish={canFish} lastCatch={lastCatch} tackle={tackle}
@@ -2724,14 +2725,14 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
             {[4, 6, 8, 10, 12, 20, 100].map((sides) => (
               <button key={sides} type="button" onClick={() => rollNow(`/roll 1d${sides}${sides === 20 ? rollMode : ""}`)} title={`Roll a d${sides}${sides === 20 && rollMode ? (rollMode === " adv" ? " with advantage" : " with disadvantage") : ""}`}>d{sides}</button>
             ))}
-            <button type="button" className={rollMode === " adv" ? "active" : ""} aria-pressed={rollMode === " adv"} onClick={() => setRollMode(rollMode === " adv" ? "" : " adv")} title="Advantage: d20 rolls take the better of two">Adv</button>
-            {isGm && <button type="button" className={hiddenMode ? "active" : ""} aria-pressed={hiddenMode} onClick={() => setHiddenMode(!hiddenMode)} title="Game master: roll behind your screen, so only you see the faces">Hidden</button>}
-            <button type="button" className={rollMode === " dis" ? "active" : ""} aria-pressed={rollMode === " dis"} onClick={() => setRollMode(rollMode === " dis" ? "" : " dis")} title="Disadvantage: d20 rolls take the worse of two">Dis</button>
+            <button type="button" className={rollMode === " adv" ? "active" : ""} aria-pressed={rollMode === " adv"} onClick={() => setRollMode(rollMode === " adv" ? "" : " adv")} title="Advantage: d20 rolls take the better of two">{tNow("livingRoom.adv")}</button>
+            {isGm && <button type="button" className={hiddenMode ? "active" : ""} aria-pressed={hiddenMode} onClick={() => setHiddenMode(!hiddenMode)} title="Game master: roll behind your screen, so only you see the faces">{tNow("livingRoom.hidden")}</button>}
+            <button type="button" className={rollMode === " dis" ? "active" : ""} aria-pressed={rollMode === " dis"} onClick={() => setRollMode(rollMode === " dis" ? "" : " dis")} title="Disadvantage: d20 rolls take the worse of two">{tNow("livingRoom.dis")}</button>
           </div>
           {rollNote && <small className="living-room-dice-note">{rollNote}</small>}
           <form className="living-room-dice-row" onSubmit={(event) => { event.preventDefault(); runTyped(); }}>
             <input value={rollText} onChange={(event) => setRollText(event.target.value)} placeholder="2d6+3  ·  /spell fireball  ·  /monster goblin (floats over the table)" aria-label="Roll dice or look something up" maxLength={120} />
-            <button type="submit" disabled={!rollText.trim()}>Go</button>
+            <button type="submit" disabled={!rollText.trim()}>{tNow("livingRoom.go")}</button>
           </form>
         </div>
       )}
@@ -2740,9 +2741,9 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           <button key={emoji} type="button" onClick={() => room.emote(emoji)} aria-label={`Emote ${emoji}`}>{emoji}</button>
         ))}
         {me && (me.seat && me.seat !== "floor" ? (
-          <button type="button" className="living-room-stand" onClick={() => (atDecks ? leaveDecks() : room.move({ ...stepTo(me, { x: me.x + Math.sin(me.facing) * 0.6, z: me.z - Math.cos(me.facing) * 0.6 }, venue, canProject), facing: me.facing }))}>{atDecks ? "Leave the decks" : "Stand up"}</button>
+          <button type="button" className="living-room-stand" onClick={() => (atDecks ? leaveDecks() : room.move({ ...stepTo(me, { x: me.x + Math.sin(me.facing) * 0.6, z: me.z - Math.cos(me.facing) * 0.6 }, venue, canProject), facing: me.facing }))}>{atDecks ? tNow("livingRoom.leaveDecks") : tNow("livingRoom.standUp")}</button>
         ) : (
-          <button type="button" className="living-room-stand" onClick={room.toggleFloor} title="Sit right here, on the floor (X)">{me.seat === "floor" ? "Stand up" : "Sit here"}</button>
+          <button type="button" className="living-room-stand" onClick={room.toggleFloor} title={tNow("livingRoom.sitFloorTitle")}>{me.seat === "floor" ? tNow("livingRoom.standUp") : tNow("livingRoom.sitHere")}</button>
         ))}
       </div>}
     </div>
@@ -2766,7 +2767,7 @@ function FishingPanel({ phase, canFish, lastCatch, tackle, onCast, onReel, onTac
   return (
     <div className="lr-fish" role="group" aria-label="Fishing">
       {phase.phase === "bite" ? (
-        <button type="button" className="lr-fish-reel bite" onClick={onReel}>🎣 Reel in! <kbd>F</kbd></button>
+        <button type="button" className="lr-fish-reel bite" onClick={onReel}>🎣 {tNow("livingRoom.reelIn")} <kbd>F</kbd></button>
       ) : phase.phase === "waiting" ? (
         <>
           <span className="lr-fish-note">Line's out. Wait for the float to dip…</span>

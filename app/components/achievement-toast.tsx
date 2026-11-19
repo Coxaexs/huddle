@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { TIER_LABELS, type AchievementDef } from "@/lib/achievement-defs";
 import { AchievementMedal, achievementIcon } from "./achievement-medal";
+import { localizeAchievement } from "@/lib/achievement-defs-tr";
+import { localeNow } from "../lib/i18n-context";
 
 /**
  * The unlock popup. Each theme gets its own delivery: a Minecraft advancement
@@ -232,7 +234,8 @@ export function AchievementToast({
   const [leaving, setLeaving] = useState(false);
   const doneRef = useRef(onDone);
   doneRef.current = onDone;
-  const decoded = useDecode(def.label, variant === "matrix");
+  const ldef = localizeAchievement(def, localeNow());
+  const decoded = useDecode(ldef.label, variant === "matrix");
 
   useEffect(() => {
     playJingle(variant, def.tier);
@@ -263,7 +266,7 @@ export function AchievementToast({
       className={`ach-toast ach-toast--${variant} ach-tier-${def.tier}${leaving ? " is-leaving" : ""}`}
       role="status"
       aria-live="polite"
-      aria-label={`Achievement unlocked: ${def.label}. ${def.description}`}
+      aria-label={`Achievement unlocked: ${ldef.label}. ${ldef.description}`}
     >
       {extra}
       <div className="ach-toast-card" onClick={open} title="Open achievements">
@@ -285,7 +288,7 @@ export function AchievementToast({
           <span className="ach-mc-slot"><Icon size={22} strokeWidth={2.4} /></span>
           <span className="ach-mc-text">
             <span className="ach-mc-title">{title}</span>
-            <span className="ach-mc-name">{def.label}</span>
+            <span className="ach-mc-name">{ldef.label}</span>
           </span>
           {moreChip}
         </>,
@@ -301,8 +304,8 @@ export function AchievementToast({
           <div className="ach-bats-row">
             <AchievementMedal def={def} size={44} />
             <div>
-              <div className="ach-bats-name">{def.label}</div>
-              <div className="ach-bats-desc">{def.description}</div>
+              <div className="ach-bats-name">{ldef.label}</div>
+              <div className="ach-bats-desc">{ldef.description}</div>
               <div className="ach-bats-tier">{tier}</div>
             </div>
           </div>
@@ -329,8 +332,8 @@ export function AchievementToast({
           <div className="ach-owl-letter">
             <span className="ach-owl-seal"><Icon size={18} strokeWidth={2.4} /></span>
             <div>
-              <div className="ach-owl-name">{def.label}</div>
-              <div className="ach-owl-desc">{def.description}</div>
+              <div className="ach-owl-name">{ldef.label}</div>
+              <div className="ach-owl-desc">{ldef.description}</div>
               <div className="ach-owl-tier">— {tier} distinction —</div>
             </div>
           </div>
@@ -351,8 +354,8 @@ export function AchievementToast({
             <AchievementMedal def={def} size={40} />
             <div>
               <div className="ach-msn-head">You earned an achievement!</div>
-              <div className="ach-msn-name">{def.label}</div>
-              <div className="ach-msn-desc">{def.description}</div>
+              <div className="ach-msn-name">{ldef.label}</div>
+              <div className="ach-msn-desc">{ldef.description}</div>
             </div>
           </div>
           <div className="ach-msn-foot">{more > 0 ? `+${more} more · ` : ""}Click here to see all achievements</div>
@@ -367,8 +370,8 @@ export function AchievementToast({
             <AchievementMedal def={def} size={44} />
             <div>
               <div className="ach-zombie-kicker">Survived</div>
-              <div className="ach-zombie-name">{def.label}</div>
-              <div className="ach-zombie-desc">{def.description}</div>
+              <div className="ach-zombie-name">{ldef.label}</div>
+              <div className="ach-zombie-desc">{ldef.description}</div>
             </div>
           </div>
           <div className="ach-zombie-tape" />
@@ -385,8 +388,8 @@ export function AchievementToast({
           <div className="ach-cyber-row">
             <span className="ach-cyber-icon"><Icon size={22} strokeWidth={2.4} /></span>
             <div>
-              <div className="ach-cyber-name" data-text={def.label}>{def.label}</div>
-              <div className="ach-cyber-desc">{def.description}</div>
+              <div className="ach-cyber-name" data-text={ldef.label}>{ldef.label}</div>
+              <div className="ach-cyber-desc">{ldef.description}</div>
             </div>
           </div>
           {moreChip}
@@ -402,7 +405,7 @@ export function AchievementToast({
             <span className="ach-matrix-icon"><Icon size={20} /></span>
             <div>
               <div className="ach-matrix-name">{decoded}</div>
-              <div className="ach-matrix-desc">{def.description}</div>
+              <div className="ach-matrix-desc">{ldef.description}</div>
             </div>
           </div>
           <div className="ach-matrix-line ach-matrix-ok">[ OK ] {tier.toLowerCase()} · wake up, achiever…<span className="ach-matrix-caret" /></div>
@@ -418,8 +421,8 @@ export function AchievementToast({
           <div className="ach-sw-kicker">A long time ago, in a channel far, far away....</div>
           <div className="ach-sw-crawl">
             <div className="ach-sw-episode">Episode {EPISODES[def.tier]}</div>
-            <div className="ach-sw-name">{def.label}</div>
-            <div className="ach-sw-desc">{def.description}</div>
+            <div className="ach-sw-name">{ldef.label}</div>
+            <div className="ach-sw-desc">{ldef.description}</div>
           </div>
           {moreChip}
           {close}
@@ -433,8 +436,8 @@ export function AchievementToast({
             <span className="ach-camp-flame"><AchievementMedal def={def} size={46} /></span>
             <div>
               <div className="ach-camp-kicker">Told around the fire</div>
-              <div className="ach-camp-name">{def.label}</div>
-              <div className="ach-camp-desc">{def.description}</div>
+              <div className="ach-camp-name">{ldef.label}</div>
+              <div className="ach-camp-desc">{ldef.description}</div>
             </div>
           </div>
           {moreChip}
@@ -455,8 +458,8 @@ export function AchievementToast({
           <div className="ach-retro-body">
             <span className="ach-retro-icon"><Icon size={26} /></span>
             <div>
-              <div className="ach-retro-name">{def.label}</div>
-              <div className="ach-retro-desc">{def.description}</div>
+              <div className="ach-retro-name">{ldef.label}</div>
+              <div className="ach-retro-desc">{ldef.description}</div>
             </div>
           </div>
           <div className="ach-retro-buttons">
@@ -472,8 +475,8 @@ export function AchievementToast({
           <span className="ach-pop-medal"><AchievementMedal def={def} size={52} /></span>
           <span className="ach-pop-text">
             <span className="ach-pop-kicker">Achievement unlocked · {tier}</span>
-            <span className="ach-pop-name">{def.label}</span>
-            <span className="ach-pop-desc">{def.description}</span>
+            <span className="ach-pop-name">{ldef.label}</span>
+            <span className="ach-pop-desc">{ldef.description}</span>
           </span>
           {moreChip}
           {close}
