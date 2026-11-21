@@ -145,6 +145,41 @@
     return nil;
 }
 
+// Play together: the Hoffle game mods (game-mods/ in the repo) write
+// ~/.hoffle/play/<game>-host.json while you host; only that folder is read.
+static NSDictionary * _Nullable ReadPlayJson(NSString *name) {
+    NSString *path = [[NSHomeDirectory() stringByAppendingPathComponent:@".hoffle/play"] stringByAppendingPathComponent:name];
+    NSData *data = [NSData dataWithContentsOfFile:path];
+    if (!data) return nil;
+    id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    return [json isKindOfClass:[NSDictionary class]] ? json : nil;
+}
+
+static id StringOrNull(id value, NSUInteger max) {
+    if (![value isKindOfClass:[NSString class]]) return [NSNull null];
+    NSString *s = value;
+    return s.length > max ? [s substringToIndex:max] : s;
+}
+
+- (NSDictionary *)playState {
+    NSDictionary *host = ReadPlayJson(@"stardew-host.json");
+    double updatedAt = [host[@"updatedAt"] isKindOfClass:[NSNumber class]] ? [host[@"updatedAt"] doubleValue] : 0;
+    double now = [[NSDate date] timeIntervalSince1970] * 1000.0;
+    BOOL fresh = [host[@"hosting"] isEqual:@YES] && now - updatedAt < 30000;
+    id party = [NSNull null];
+    if (fresh) {
+        party = @{
+            @"inviteCode": StringOrNull(host[@"inviteCode"], 24),
+            @"steamLobby": StringOrNull(host[@"steamLobby"], 24),
+            @"steamId": StringOrNull(host[@"steamId"], 24),
+            @"farm": [host[@"farm"] isKindOfClass:[NSString class]] ? StringOrNull(host[@"farm"], 40) : @"",
+            @"players": [host[@"players"] isKindOfClass:[NSNumber class]] ? host[@"players"] : [NSNull null],
+            @"maxPlayers": [host[@"maxPlayers"] isKindOfClass:[NSNumber class]] ? host[@"maxPlayers"] : [NSNull null],
+        };
+    }
+    return @{ @"stardew": @{ @"mod": @(ReadPlayJson(@"stardew-mod.json") != nil), @"party": party } };
+}
+
 - (NSDictionary * _Nullable)scan {
     NSDictionary *activity = [self detectCurrentActivity];
     NSDictionary *music = [self detectSpotifyNowPlaying];
@@ -152,6 +187,7 @@
     NSMutableDictionary *result = [NSMutableDictionary dictionary];
     result[@"activity"] = activity ?: [NSNull null];
     result[@"music"] = music ?: [NSNull null];
+    result[@"play"] = [self playState];
     return result;
 }
 

@@ -79,6 +79,15 @@
       postNative({ type: "setPushToTalkKey", code: String(code || "") });
       return Promise.resolve(true);
     },
+    queueGameJoin: function (game, data) {
+      // Play together: the Stardew mod joins with this invite code.
+      postNative({
+        type: "queueGameJoin",
+        game: String(game || ""),
+        inviteCode: String((data && data.inviteCode) || ""),
+      });
+      return Promise.resolve(true);
+    },
     openGameLink: function (url) {
       // Play together: a steam:// join link; the app checks it against its list.
       postNative({ type: "openGameLink", url: String(url || "") });

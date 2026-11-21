@@ -28100,6 +28100,33 @@ a.link-preview-author:hover {
   font-weight: 600;
 }
 
+.play-code {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.play-code code {
+  padding: 4px 10px;
+  font: 600 14px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.04em;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  user-select: all;
+}
+
+a.play-button {
+  display: inline-block;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--on-accent, #fff);
+  background: var(--lavender);
+  border-radius: 8px;
+  text-decoration: none;
+}
+
 .play-error {
   margin: 6px 0 0;
   font-size: 12px;

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/client";
+import { rememberLocalPlay } from "../lib/game-links";
 import {
   ACTIVITY_HEARTBEAT_MS,
   type ProfileActivity,
@@ -18,6 +19,8 @@ interface UseActivityDetectorOptions {
 interface DesktopScan {
   activity: { name: string; kind: ProfileActivity["kind"] } | null;
   music: { song: string; artist: string; albumArt?: string; url?: string } | null;
+  /** Play together: per game, its Hoffle mod and what it reports while you host. */
+  play?: Record<string, { mod?: boolean; party?: unknown } | undefined>;
 }
 
 type DesktopShell = { scanActivity?: () => Promise<DesktopScan | null> };
@@ -236,6 +239,11 @@ export function useActivityDetector({
       try {
         const scan = desktopScanner();
         const desktop = scan ? await scan().catch(() => null) : null;
+        if (desktop?.play) {
+          // Play together: which game mods are here, and what a hosted game reports.
+          rememberLocalPlay(desktop.play);
+          window.dispatchEvent(new CustomEvent("hoffle:play-state", { detail: desktop.play }));
+        }
 
         if (spotifyEnabled && activitySharingEnabled()) {
           // The Spotify app itself beats a Last.fm account: it is instant and

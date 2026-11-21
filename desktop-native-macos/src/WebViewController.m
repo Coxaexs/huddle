@@ -423,6 +423,19 @@ static const NSTimeInterval kApplyAtLaunch = 60;
             NSURL *url = [NSURL URLWithString:link];
             if (url) [[NSWorkspace sharedWorkspace] openURL:url];
         }
+    } else if ([type isEqualToString:@"queueGameJoin"]) {
+        // Play together: hand an invite code to the Stardew mod, which joins
+        // from the title screen. Only a plain invite code, only this one file.
+        NSString *game = [body[@"game"] isKindOfClass:[NSString class]] ? body[@"game"] : @"";
+        NSString *code = [body[@"inviteCode"] isKindOfClass:[NSString class]] ? body[@"inviteCode"] : @"";
+        NSRegularExpression *valid = [NSRegularExpression regularExpressionWithPattern:@"^[SG][0-9A-Za-z]{1,16}$" options:0 error:nil];
+        if ([game isEqualToString:@"stardew"] && [valid numberOfMatchesInString:code options:0 range:NSMakeRange(0, code.length)] == 1) {
+            NSString *dir = [NSHomeDirectory() stringByAppendingPathComponent:@".hoffle/play"];
+            [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+            NSDictionary *join = @{ @"v": @1, @"inviteCode": code, @"at": @((long long)([[NSDate date] timeIntervalSince1970] * 1000)) };
+            NSData *data = [NSJSONSerialization dataWithJSONObject:join options:0 error:nil];
+            [data writeToFile:[dir stringByAppendingPathComponent:@"stardew-join.json"] atomically:YES];
+        }
     } else if ([type isEqualToString:@"scanActivity"]) {
         NSInteger callbackId = [body[@"callbackId"] integerValue];
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{

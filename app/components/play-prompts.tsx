@@ -6,7 +6,7 @@ import { apiFetch } from "../lib/client";
 import { opensGamesDirectly } from "../lib/game-links";
 import { useModuleOn } from "../lib/modules";
 import { playSound } from "../lib/msn-sounds";
-import { PLAY_GAMES, playGameForActivity, type PlayGameId } from "@/lib/play-together";
+import { PLAY_GAMES, PLAY_GAME_IDS, playGameForActivity, type PlayGameId } from "@/lib/play-together";
 import type { PlayEvent } from "@/lib/protocol";
 import type { ProfileActivity } from "@/lib/users";
 import { stripTextStyle } from "@/lib/text-style";
@@ -95,6 +95,33 @@ export function PlayPrompts({
     window.addEventListener("hoffle:play", onPlay);
     return () => window.removeEventListener("hoffle:play", onPlay);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // The host's game mod reports how to get in (invite code, Steam lobby). Pass
+  // it to the server when it changes, every 30 s while hosting, and once more
+  // (as null) when hosting stops. The server keeps it on this host's invites only.
+  useEffect(() => {
+    const sent = new Map<string, { key: string; at: number; stored: boolean }>();
+    const onState = (event: Event) => {
+      const play = (event as CustomEvent<Record<string, { party?: unknown } | undefined>>).detail || {};
+      for (const game of PLAY_GAME_IDS) {
+        const party = play[game]?.party ?? null;
+        const key = party ? JSON.stringify(party) : "";
+        const last = sent.get(game);
+        if (!party && !last?.key) continue;
+        // Unchanged and stored recently: nothing to do. "Not stored" means the
+        // host had no invite yet, so keep offering it until one exists.
+        if (last && last.key === key && last.stored && Date.now() - last.at < 30_000) continue;
+        sent.set(game, { key, at: Date.now(), stored: true });
+        apiFetch("/api/play", { method: "POST", body: JSON.stringify({ action: "party", game, party }) })
+          .then((value) => {
+            if (party && !(value as { invites?: number }).invites) sent.set(game, { key, at: Date.now(), stored: false });
+          })
+          .catch(() => sent.set(game, { key, at: 0, stored: false }));
+      }
+    };
+    window.addEventListener("hoffle:play-state", onState);
+    return () => window.removeEventListener("hoffle:play-state", onState);
   }, []);
 
   // The desktop app spotted a game we can invite to: offer once per game per session.

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "../lib/i18n-context";
 import { apiFetch } from "../lib/client";
-import { openGameLink, opensGamesDirectly } from "../lib/game-links";
+import { STARDEW_MOD_URL, openGameLink, opensGamesDirectly, queueGameJoin } from "../lib/game-links";
 import {
   PLAY_GAMES,
   requestOf,
@@ -20,16 +20,53 @@ export interface JoinResult {
   plan: JoinPlan;
   game: PlayGameId;
   host: string;
+  /** mod: this computer's Hoffle mod is joining by itself; link: Steam or by hand. */
+  via?: "mod" | "link";
 }
 
-/** Asks for the join details (only works once let in) and opens the game. */
+function copyText(text: string): void {
+  void navigator.clipboard?.writeText(text).catch(() => undefined);
+}
+
+/**
+ * Asks for the join details (only works once let in) and opens the game. With
+ * the Hoffle mod here, the mod joins with the host's invite code; otherwise
+ * Steam's lobby link does it, and the invite code is put on the clipboard.
+ */
 export async function joinPlayInvite(messageId: string): Promise<JoinResult> {
   const result = (await apiFetch("/api/play", {
     method: "POST",
     body: JSON.stringify({ action: "join", messageId }),
   })) as JoinResult;
-  openGameLink(result.plan.url);
-  return result;
+  const { plan } = result;
+  if (plan.inviteCode && (await queueGameJoin(result.game, plan.inviteCode))) {
+    openGameLink(plan.runUrl);
+    return { ...result, via: "mod" };
+  }
+  openGameLink(plan.url);
+  if (plan.inviteCode) copyText(plan.inviteCode);
+  return { ...result, via: "link" };
+}
+
+/** The host's invite code with a Copy button, for joining by hand. */
+function InviteCode({ code }: { code: string }) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="play-code">
+      <code>{code}</code>
+      <button
+        type="button"
+        onClick={() => {
+          copyText(code);
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        }}
+      >
+        {copied ? t("play.action.copied") : t("play.action.copy")}
+      </button>
+    </div>
+  );
 }
 
 /** Opens "Sign in through Steam" for linking (Settings → Activities has the same). */
@@ -48,21 +85,49 @@ export function JoinHelp({ result, onRetry }: { result: JoinResult; onRetry?: ()
   const { plan } = result;
   const host = stripTextStyle(result.host);
   const game = PLAY_GAMES[result.game].name;
+  const viaMod = result.via === "mod";
   return (
     <div className="play-help" role="status">
-      {plan.how === "lobby" ? (
-        <p>{t("play.help.joining", { host, game })}</p>
+      {viaMod ? (
+        <>
+          <p>{t("play.help.mod", { host, game })}</p>
+          <p className="play-help-why">{t("play.help.modInGame")}</p>
+        </>
+      ) : plan.how === "lobby" ? (
+        <>
+          <p>{t("play.help.joining", { host, game })}</p>
+          <p className="play-help-why">{t("play.help.friends", { host })}</p>
+          {plan.inviteCode && (
+            <>
+              <p className="play-help-why">{t("play.help.codeLobby", { host })}</p>
+              <InviteCode code={plan.inviteCode} />
+            </>
+          )}
+        </>
+      ) : plan.how === "code" && plan.inviteCode ? (
+        <>
+          <p>{t("play.help.opening", { game })}</p>
+          <p>{t("play.help.code")}</p>
+          <InviteCode code={plan.inviteCode} />
+        </>
       ) : (
         <>
           <p>{t("play.help.opening", { game })}</p>
           <p>{t(`play.help.steps.${result.game}` as "play.help.steps.stardew", { host })}</p>
-          <p className="play-help-why">{t(`play.reason.${plan.reason}` as "play.reason.no-lobby", { host })}</p>
+          <p className="play-help-why">{t(`play.reason.${plan.reason ?? "no-lobby"}` as "play.reason.no-lobby", { host })}</p>
+          <p className="play-help-why">{t("play.help.friends", { host })}</p>
         </>
       )}
-      <p className="play-help-why">{t("play.help.friends", { host })}</p>
+      {!viaMod && plan.how !== "manual" && result.game === "stardew" && (
+        <p className="play-help-why">
+          <a href={STARDEW_MOD_URL} target="_blank" rel="noreferrer">
+            {t("play.help.getMod")}
+          </a>
+        </p>
+      )}
       <div className="play-actions">
-        <button type="button" onClick={() => openGameLink(plan.url)}>
-          {plan.how === "lobby" ? t("play.action.joinAgain") : t("play.action.openGame", { game })}
+        <button type="button" onClick={() => openGameLink(viaMod ? plan.runUrl : plan.url)}>
+          {plan.how === "lobby" && !viaMod ? t("play.action.joinAgain") : t("play.action.openGame", { game })}
         </button>
         {plan.addFriendUrl && (
           <button type="button" onClick={() => openGameLink(plan.addFriendUrl as string)}>
@@ -199,9 +264,16 @@ export function PlayCard({
             <>
               <p>{t(`play.check.${check.reason}` as "play.check.no-lobby", { game: info.name })}</p>
               {check.reason === "host-not-linked" && (
-                <button type="button" onClick={() => void startSteamLink().catch((err) => setError(err instanceof Error ? err.message : t("play.error")))}>
-                  {t("play.action.linkSteam")}
-                </button>
+                <div className="play-actions">
+                  {play.game === "stardew" && (
+                    <a className="play-button" href={STARDEW_MOD_URL} target="_blank" rel="noreferrer">
+                      {t("play.action.getMod")}
+                    </a>
+                  )}
+                  <button type="button" onClick={() => void startSteamLink().catch((err) => setError(err instanceof Error ? err.message : t("play.error")))}>
+                    {t("play.action.linkSteam")}
+                  </button>
+                </div>
               )}
             </>
           )}
