@@ -64,7 +64,23 @@ describe("steamPresence", () => {
       "KEY",
       reply({ personaname: "kiwi", communityvisibilitystate: 3, gameid: "413150", lobbysteamid: "109775242243779373" }),
     );
-    expect(presence).toEqual({ personaName: "kiwi", visible: true, appId: 413150, lobbyId: "109775242243779373" });
+    expect(presence).toEqual({
+      personaName: "kiwi",
+      visible: true,
+      appId: 413150,
+      lobbyId: "109775242243779373",
+      serverIp: null,
+      gameName: null,
+    });
+  });
+
+  it("reads a public game server, not a private or empty one", async () => {
+    const at = (gameserverip: string) =>
+      steamPresence(ID, "KEY", reply({ personaname: "k", communityvisibilitystate: 3, gameid: "730", gameextrainfo: "Counter-Strike 2", gameserverip }));
+    expect(await at("203.0.113.7:27015")).toMatchObject({ appId: 730, serverIp: "203.0.113.7:27015", gameName: "Counter-Strike 2" });
+    expect(await at("0.0.0.0:0")).toMatchObject({ serverIp: null });
+    expect(await at("192.168.1.5:27015")).toMatchObject({ serverIp: null });
+    expect(await at("10.0.0.1:1")).toMatchObject({ serverIp: null });
   });
 
   it("copes with no game, no key and bad ids", async () => {
@@ -73,6 +89,8 @@ describe("steamPresence", () => {
       visible: false,
       appId: null,
       lobbyId: null,
+      serverIp: null,
+      gameName: null,
     });
     const never = vi.fn() as unknown as typeof fetch;
     expect(await steamPresence(ID, undefined, never)).toBeNull();
@@ -86,6 +104,8 @@ describe("isGameLink", () => {
     expect(isGameLink(`steam://joinlobby/413150/109775242243779373/${ID}`)).toBe(true);
     expect(isGameLink("steam://run/413150")).toBe(true);
     expect(isGameLink(`steam://friends/add/${ID}`)).toBe(true);
+    expect(isGameLink("steam://connect/203.0.113.7:27015")).toBe(true);
+    expect(isGameLink("steam://connect/evil.example:1")).toBe(false);
     expect(isGameLink("steam://install/413150")).toBe(false);
     expect(isGameLink("steam://run/413150//-evil")).toBe(false);
     expect(isGameLink("https://example.com")).toBe(false);

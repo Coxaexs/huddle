@@ -18,45 +18,122 @@
 import {
   isSteamId,
   steamAddFriendUrl,
+  steamConnectUrl,
   steamJoinLobbyUrl,
   steamRunUrl,
   type SteamPresence,
 } from "./steam";
 
-export type PlayGameId = "stardew";
+/**
+ * Which game an invite is for:
+ * - a featured game with its own support ("stardew": the Hoffle mod);
+ * - `steam:<app id>`: any Steam game (one click via Steam's lobby or server);
+ * - `app:<slug>`: anything else the desktop app spotted (no link: friends
+ *   join from inside the game).
+ */
+export type PlayGameId = string;
 
 export interface PlayGameInfo {
   name: string;
   emoji: string;
   /** Steam app id, for `steam://` links and for matching Steam's "now playing". */
-  steamAppId: number;
+  steamAppId: number | null;
   /** What the desktop app's detector reports for it (ProfileActivity.name). */
   activityNames: string[];
+  /** A Hoffle game mod reports how to get in (game-mods/). */
+  mod?: boolean;
 }
 
-export const PLAY_GAMES: Record<PlayGameId, PlayGameInfo> = {
+/** Games with their own support, shown in the Games menu. */
+export const PLAY_GAMES: Record<string, PlayGameInfo> = {
   stardew: {
     name: "Stardew Valley",
     emoji: "🌱",
     steamAppId: 413150,
     activityNames: ["Stardew Valley"],
+    mod: true,
   },
 };
 
-export const PLAY_GAME_IDS = Object.keys(PLAY_GAMES) as PlayGameId[];
+export const PLAY_GAME_IDS = Object.keys(PLAY_GAMES);
+/** Games whose Hoffle mod reports a party (play-prompts passes it on). */
+export const MOD_GAMES = PLAY_GAME_IDS.filter((id) => PLAY_GAMES[id].mod);
 
-export function isPlayGame(value: unknown): value is PlayGameId {
-  return typeof value === "string" && PLAY_GAME_IDS.includes(value as PlayGameId);
+/**
+ * Steam app ids of games the desktop apps can spot by name, so an invite can
+ * at least open the game (and join it, once Steam shares the host's lobby).
+ */
+export const KNOWN_STEAM_APPS: Record<string, number> = {
+  "terraria": 105600,
+  "factorio": 427520,
+  "rimworld": 294100,
+  "baldur's gate 3": 1086940,
+  "elden ring": 1245620,
+  "rocket league": 252950,
+  "dota 2": 570,
+  "counter-strike 2": 730,
+  "apex legends": 1172470,
+  "among us": 945360,
+  "valheim": 892970,
+  "lethal company": 1966720,
+  "don't starve together": 322330,
+  "deep rock galactic": 548430,
+  "it takes two": 1426210,
+  "phasmophobia": 739630,
+  "no man's sky": 275850,
+  "risk of rain 2": 632360,
+  "palworld": 1623730,
+  "hades": 1145360,
+  "grand theft auto v": 271590,
+  "cyberpunk 2077": 1091500,
+};
+
+function slug(name: string): string {
+  return name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 }
 
-/** The joinable game behind a detected activity name, if there is one. */
+export function isPlayGame(value: unknown): value is PlayGameId {
+  return (
+    typeof value === "string" &&
+    (Object.hasOwn(PLAY_GAMES, value) || /^steam:[1-9]\d{0,9}$/.test(value) || /^app:[a-z0-9][a-z0-9-]{0,39}$/.test(value))
+  );
+}
+
+/** The Steam app id behind a game key, if any. */
+export function steamAppOf(game: PlayGameId): number | null {
+  if (Object.hasOwn(PLAY_GAMES, game)) return PLAY_GAMES[game].steamAppId;
+  const match = /^steam:(\d+)$/.exec(game);
+  return match ? Number(match[1]) : null;
+}
+
+/** The key for a Steam game: the featured one when there is one (Stardew → "stardew"). */
+export function keyForSteamApp(appId: number): PlayGameId {
+  return PLAY_GAME_IDS.find((id) => PLAY_GAMES[id].steamAppId === appId) ?? `steam:${appId}`;
+}
+
+/** The game key for something the desktop app detected by name. */
+export function gameKeyForActivity(name: string | null | undefined): PlayGameId | null {
+  const clean = (name || "").trim();
+  if (!clean || clean.toLowerCase() === "a steam game") return null;
+  const lower = clean.toLowerCase();
+  const featured = PLAY_GAME_IDS.find((id) => PLAY_GAMES[id].activityNames.some((n) => n.toLowerCase() === lower));
+  if (featured) return featured;
+  const app = KNOWN_STEAM_APPS[lower];
+  if (app) return keyForSteamApp(app);
+  const s = slug(clean);
+  return s ? `app:${s}` : null;
+}
+
+/** The featured game behind a detected activity (gets the "invite people?" pop-up). */
 export function playGameForActivity(name: string | null | undefined): PlayGameId | null {
-  const clean = (name || "").trim().toLowerCase();
-  if (!clean) return null;
-  for (const id of PLAY_GAME_IDS) {
-    if (PLAY_GAMES[id].activityNames.some((n) => n.toLowerCase() === clean)) return id;
-  }
-  return null;
+  const key = gameKeyForActivity(name);
+  return key && Object.hasOwn(PLAY_GAMES, key) ? key : null;
+}
+
+/** Name, emoji and Steam app of an invite's game (featured, or as stored on the card). */
+export function playGameInfo(play: { game: PlayGameId; name?: string }): PlayGameInfo {
+  if (Object.hasOwn(PLAY_GAMES, play.game)) return PLAY_GAMES[play.game];
+  return { name: play.name || "a game", emoji: "🎮", steamAppId: steamAppOf(play.game), activityNames: [] };
 }
 
 export type PlayRequestStatus = "asked" | "accepted" | "declined";
@@ -71,6 +148,8 @@ export interface PlayRequest {
 
 export interface PlayInvite {
   game: PlayGameId;
+  /** The game's name, for games that aren't featured. */
+  name?: string;
   host: { id: string; name: string };
   status: "open" | "closed";
   /** true: the host answers each request. false: anyone here can join. */
@@ -93,8 +172,10 @@ export function newPlayInvite(
   host: { id: string; name: string },
   askFirst: boolean,
   now = Date.now(),
+  name?: string,
 ): PlayInvite {
-  return { game, host, status: "open", askFirst, requests: [], createdAt: now, version: 0 };
+  const clean = Object.hasOwn(PLAY_GAMES, game) ? "" : (name || "").replace(/\s+/g, " ").trim().slice(0, 60);
+  return { game, ...(clean ? { name: clean } : {}), host, status: "open", askFirst, requests: [], createdAt: now, version: 0 };
 }
 
 export function inviteExpired(state: PlayInvite, now = Date.now()): boolean {
@@ -178,7 +259,7 @@ export function mayJoin(state: PlayInvite, userId: string, now = Date.now()): bo
 
 /** The one-line text the message carries for search, previews and old clients. */
 export function playSummary(state: PlayInvite): string {
-  const game = PLAY_GAMES[state.game].name;
+  const game = playGameInfo(state).name;
   return state.status === "closed" ? `played ${game}.` : `is playing ${game}. Come join!`;
 }
 
@@ -189,6 +270,7 @@ export function parsePlayInvite(value: unknown): PlayInvite | null {
   if (!isPlayGame(v.game) || !v.host || typeof v.host.id !== "string") return null;
   return {
     game: v.game,
+    ...(typeof v.name === "string" && v.name.trim() ? { name: v.name.trim().slice(0, 60) } : {}),
     host: { id: v.host.id, name: String(v.host.name || "") },
     status: v.status === "closed" ? "closed" : "open",
     askFirst: v.askFirst !== false,
@@ -249,21 +331,22 @@ export function normalizeParty(value: unknown): GameParty | null {
 
 /**
  * Why a one-click join isn't possible, so the card can say what to do:
- * - host-not-linked: the host has neither the Hoffle mod running nor Steam linked.
+ * - host-not-linked: the host has neither a game mod running nor Steam linked.
  * - no-key: Steam is linked but this Hoffle has no Steam Web API key.
  * - hidden: Steam hides the host's game (private profile or game details).
  * - not-in-game: Steam says the host isn't in this game right now.
- * - no-lobby: they are in the game but not hosting co-op (or it is invite-only).
+ * - no-lobby: they are in the game but not hosting (or it is invite-only).
+ * - not-steam: not a Steam game, so Hoffle has no way in; join inside the game.
  */
-export type ManualReason = "host-not-linked" | "no-key" | "hidden" | "not-in-game" | "no-lobby";
+export type ManualReason = "host-not-linked" | "no-key" | "hidden" | "not-in-game" | "no-lobby" | "not-steam";
 
 export interface JoinPlan {
-  /** lobby: Steam drops you into the farm; code: join with the invite code; manual: open the game and find it. */
-  how: "lobby" | "code" | "manual";
-  /** What Join opens. */
-  url: string;
+  /** lobby/server: Steam drops you in; code: join with the invite code; manual: open the game and find it. */
+  how: "lobby" | "server" | "code" | "manual";
+  /** What Join opens; null when Hoffle can't open the game (not on Steam). */
+  url: string | null;
   /** Just starts the game (when the joiner's mod takes it from there). */
-  runUrl: string;
+  runUrl: string | null;
   /** The host's invite code, from their mod. */
   inviteCode: string | null;
   addFriendUrl: string | null;
@@ -288,22 +371,27 @@ export interface JoinSources {
  */
 export function planJoin(game: PlayGameId, sources: JoinSources): JoinPlan {
   const { hostSteamId, presence, hasKey, party } = sources;
-  const appId = PLAY_GAMES[game].steamAppId;
-  const runUrl = steamRunUrl(appId);
+  const appId = steamAppOf(game);
+  const runUrl = appId ? steamRunUrl(appId) : null;
   const friendId = party?.steamId ?? hostSteamId;
-  const addFriendUrl = friendId ? steamAddFriendUrl(friendId) : null;
+  const addFriendUrl = friendId && appId ? steamAddFriendUrl(friendId) : null;
   const manual = (reason: ManualReason): JoinPlan => ({ how: "manual", url: runUrl, runUrl, inviteCode: null, addFriendUrl, reason });
 
+  if (!appId) return manual("not-steam");
   if (party?.steamLobby && party.steamId) {
     return { how: "lobby", url: steamJoinLobbyUrl(appId, party.steamLobby, party.steamId), runUrl, inviteCode: party.inviteCode, addFriendUrl };
   }
   if (party?.inviteCode) return { how: "code", url: runUrl, runUrl, inviteCode: party.inviteCode, addFriendUrl };
   if (!hostSteamId) return manual("host-not-linked");
   if (!hasKey || !presence) return manual("no-key");
-  if (presence.lobbyId && (presence.appId === appId || presence.appId === null)) {
+  const inThisGame = presence.appId === appId;
+  if (presence.lobbyId && (inThisGame || presence.appId === null)) {
     return { how: "lobby", url: steamJoinLobbyUrl(appId, presence.lobbyId, hostSteamId), runUrl, inviteCode: null, addFriendUrl };
   }
+  if (presence.serverIp && inThisGame) {
+    return { how: "server", url: steamConnectUrl(presence.serverIp), runUrl, inviteCode: null, addFriendUrl };
+  }
   if (!presence.visible || presence.appId === null) return manual(presence.visible ? "not-in-game" : "hidden");
-  if (presence.appId !== appId) return manual("not-in-game");
+  if (!inThisGame) return manual("not-in-game");
   return manual("no-lobby");
 }

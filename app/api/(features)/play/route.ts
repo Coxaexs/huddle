@@ -3,13 +3,15 @@ import { channelAudience } from "@/lib/dms";
 import { publishMessage, publishMessageEvent, publishPlay } from "@/lib/hub-client";
 import {
   PARTY_FRESH_MS,
-  PLAY_GAMES,
+  MOD_GAMES,
   PLAY_INVITE_TTL_MS,
   answerRequest,
   askToJoin,
   closeInvite,
   inviteExpired,
   isPlayGame,
+  keyForSteamApp,
+  playGameInfo,
   mayJoin,
   newPlayInvite,
   normalizeParty,
@@ -42,6 +44,7 @@ async function steamIdOf(db: D1Database, userId: string): Promise<string | null>
 
 /** The newest fresh report from the host's game mod for this game, if any. */
 async function partyOf(db: D1Database, game: PlayGameId, hostId: string): Promise<GameParty | null> {
+  if (!MOD_GAMES.includes(game)) return null;
   const row = await db
     .prepare(
       `SELECT party FROM play_invites
@@ -171,12 +174,26 @@ export async function POST(request: Request) {
     userId?: string;
     accept?: boolean;
     party?: unknown;
+    /** The game's name, for games that aren't featured. */
+    name?: string;
   };
+
+  if (body.action === "detect") {
+    // What Steam says the host is playing right now (needs a linked Steam
+    // account and the Web API key): the composer's "Invite to …" button.
+    const limited = await limitUser(db, { action: "play-steam", limit: 30, windowSeconds: 60 }, user.id);
+    if (limited) return limited;
+    const key = bindings().STEAM_WEB_API_KEY?.trim();
+    const steamId = await steamIdOf(db, user.id);
+    const presence = steamId && key ? await steamPresence(steamId, key) : null;
+    const game = presence?.appId ? { key: keyForSteamApp(presence.appId), name: presence.gameName || "", steamAppId: presence.appId } : null;
+    return Response.json({ game, steamLinked: Boolean(steamId), keyConfigured: Boolean(key) });
+  }
 
   if (body.action === "party") {
     // The host's desktop app passing on what their game mod reports (or null
     // when they stop hosting). Kept on their open invites for this game only.
-    if (!isPlayGame(body.game)) return Response.json({ error: "Unknown game." }, { status: 400 });
+    if (!isPlayGame(body.game) || !MOD_GAMES.includes(body.game)) return Response.json({ error: "Unknown game." }, { status: 400 });
     const limited = await limitUser(db, { action: "play-party", limit: 20, windowSeconds: 60 }, user.id);
     if (limited) return limited;
     const party = normalizeParty(body.party);
@@ -205,7 +222,13 @@ export async function POST(request: Request) {
     if (channel instanceof Response) return channel;
     await closeOlderInvites(db, user.id, body.game);
 
-    const state = newPlayInvite(body.game, { id: user.id, name: user.display_name }, body.askFirst !== false);
+    const state = newPlayInvite(
+      body.game,
+      { id: user.id, name: user.display_name },
+      body.askFirst !== false,
+      Date.now(),
+      typeof body.name === "string" ? body.name : undefined,
+    );
     const stored: StoredMessage = {
       id: crypto.randomUUID(),
       channel: channel.name,
@@ -276,6 +299,7 @@ export async function POST(request: Request) {
     return Response.json({
       plan: await joinPlan(db, state.game, state.host.id),
       game: state.game,
+      name: playGameInfo(state).name,
       host: state.host.name,
     });
   }
@@ -292,7 +316,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Someone else answered first; try again." }, { status: 409 });
   }
 
-  const game = PLAY_GAMES[state.game].name;
+  const game = playGameInfo(state).name;
   if (body.action === "ask" && result.state !== state) {
     const mine = result.state.requests.find((r) => r.id === user.id);
     if (mine?.status === "asked") {

@@ -6,6 +6,7 @@ import { apiFetch } from "../lib/client";
 import { STARDEW_MOD_URL, openGameLink, opensGamesDirectly, queueGameJoin } from "../lib/game-links";
 import {
   PLAY_GAMES,
+  playGameInfo,
   requestOf,
   type JoinPlan,
   type ManualReason,
@@ -19,6 +20,8 @@ type HostCheck = { oneClick: true } | { oneClick: false; reason: ManualReason };
 export interface JoinResult {
   plan: JoinPlan;
   game: PlayGameId;
+  /** The game's name (for games that aren't featured). */
+  name?: string;
   host: string;
   /** mod: this computer's Hoffle mod is joining by itself; link: Steam or by hand. */
   via?: "mod" | "link";
@@ -39,11 +42,12 @@ export async function joinPlayInvite(messageId: string): Promise<JoinResult> {
     body: JSON.stringify({ action: "join", messageId }),
   })) as JoinResult;
   const { plan } = result;
-  if (plan.inviteCode && (await queueGameJoin(result.game, plan.inviteCode))) {
+  if (plan.inviteCode && plan.runUrl && (await queueGameJoin(result.game, plan.inviteCode))) {
     openGameLink(plan.runUrl);
     return { ...result, via: "mod" };
   }
-  openGameLink(plan.url);
+  // No link for games off Steam: the card explains how to join instead.
+  if (plan.url) openGameLink(plan.url);
   if (plan.inviteCode) copyText(plan.inviteCode);
   return { ...result, via: "link" };
 }
@@ -84,7 +88,8 @@ export function JoinHelp({ result, onRetry }: { result: JoinResult; onRetry?: ()
   const { t } = useI18n();
   const { plan } = result;
   const host = stripTextStyle(result.host);
-  const game = PLAY_GAMES[result.game].name;
+  const game = playGameInfo({ game: result.game, name: result.name }).name;
+  const featured = Object.hasOwn(PLAY_GAMES, result.game);
   const viaMod = result.via === "mod";
   return (
     <div className="play-help" role="status">
@@ -93,7 +98,7 @@ export function JoinHelp({ result, onRetry }: { result: JoinResult; onRetry?: ()
           <p>{t("play.help.mod", { host, game })}</p>
           <p className="play-help-why">{t("play.help.modInGame")}</p>
         </>
-      ) : plan.how === "lobby" ? (
+      ) : plan.how === "lobby" || plan.how === "server" ? (
         <>
           <p>{t("play.help.joining", { host, game })}</p>
           <p className="play-help-why">{t("play.help.friends", { host })}</p>
@@ -112,10 +117,14 @@ export function JoinHelp({ result, onRetry }: { result: JoinResult; onRetry?: ()
         </>
       ) : (
         <>
-          <p>{t("play.help.opening", { game })}</p>
-          <p>{t(`play.help.steps.${result.game}` as "play.help.steps.stardew", { host })}</p>
-          <p className="play-help-why">{t(`play.reason.${plan.reason ?? "no-lobby"}` as "play.reason.no-lobby", { host })}</p>
-          <p className="play-help-why">{t("play.help.friends", { host })}</p>
+          {plan.url && <p>{t("play.help.opening", { game })}</p>}
+          <p>
+            {featured
+              ? t(`play.help.steps.${result.game}` as "play.help.steps.stardew", { host })
+              : t("play.help.steps.any", { host, game })}
+          </p>
+          <p className="play-help-why">{t(`play.reason.${plan.reason ?? "no-lobby"}` as "play.reason.no-lobby", { host, game })}</p>
+          {plan.addFriendUrl && <p className="play-help-why">{t("play.help.friends", { host })}</p>}
         </>
       )}
       {!viaMod && plan.how !== "manual" && result.game === "stardew" && (
@@ -126,9 +135,11 @@ export function JoinHelp({ result, onRetry }: { result: JoinResult; onRetry?: ()
         </p>
       )}
       <div className="play-actions">
-        <button type="button" onClick={() => openGameLink(viaMod ? plan.runUrl : plan.url)}>
-          {plan.how === "lobby" && !viaMod ? t("play.action.joinAgain") : t("play.action.openGame", { game })}
-        </button>
+        {(viaMod ? plan.runUrl : plan.url) && (
+          <button type="button" onClick={() => openGameLink((viaMod ? plan.runUrl : plan.url) as string)}>
+            {(plan.how === "lobby" || plan.how === "server") && !viaMod ? t("play.action.joinAgain") : t("play.action.openGame", { game })}
+          </button>
+        )}
         {plan.addFriendUrl && !viaMod && (
           <button type="button" onClick={() => openGameLink(plan.addFriendUrl as string)}>
             {t("play.action.addFriend", { host })}
@@ -164,7 +175,8 @@ export function PlayCard({
   const [error, setError] = useState<string | null>(null);
   const [joined, setJoined] = useState<JoinResult | null>(null);
   const [check, setCheck] = useState<HostCheck | null>(null);
-  const info = PLAY_GAMES[play.game];
+  const info = playGameInfo(play);
+  const hasMod = Object.hasOwn(PLAY_GAMES, play.game) && Boolean(PLAY_GAMES[play.game].mod);
   const isHost = play.host.id === userId;
   const host = stripTextStyle(play.host.name);
   const mine = requestOf(play, userId);
@@ -224,7 +236,7 @@ export function PlayCard({
   else status = play.askFirst ? t("play.status.invited", { host, game: info.name }) : t("play.status.anyone", { host, game: info.name });
 
   return (
-    <div className={`play-card play-${play.game} ${open ? "" : "closed"}`}>
+    <div className={`play-card play-${play.game.replace(/[^a-z0-9-]/g, "-")} ${open ? "" : "closed"}`}>
       <header className="play-card-head">
         <span className="play-card-icon" aria-hidden="true">
           {info.emoji}
@@ -262,17 +274,26 @@ export function PlayCard({
             <p>{t("play.check.oneClick")}</p>
           ) : (
             <>
-              <p>{t(`play.check.${check.reason}` as "play.check.no-lobby", { game: info.name })}</p>
-              {check.reason === "host-not-linked" && (
+              <p>
+                {hasMod && (check.reason === "host-not-linked" || check.reason === "no-key")
+                  ? // The mod is the way in; its report just hasn't arrived yet.
+                    t("play.check.waitMod", { game: info.name })
+                  : hasMod
+                    ? t(`play.check.${check.reason}` as "play.check.no-lobby", { game: info.name })
+                    : t(`play.checkAny.${check.reason}` as "play.checkAny.no-lobby", { game: info.name })}
+              </p>
+              {(check.reason === "host-not-linked" || (hasMod && check.reason === "no-key")) && (
                 <div className="play-actions">
-                  {play.game === "stardew" && (
+                  {hasMod && (
                     <a className="play-button" href={STARDEW_MOD_URL} target="_blank" rel="noreferrer">
                       {t("play.action.getMod")}
                     </a>
                   )}
-                  <button type="button" onClick={() => void startSteamLink().catch((err) => setError(err instanceof Error ? err.message : t("play.error")))}>
-                    {t("play.action.linkSteam")}
-                  </button>
+                  {check.reason === "host-not-linked" && (
+                    <button type="button" onClick={() => void startSteamLink().catch((err) => setError(err instanceof Error ? err.message : t("play.error")))}>
+                      {t("play.action.linkSteam")}
+                    </button>
+                  )}
                 </div>
               )}
             </>

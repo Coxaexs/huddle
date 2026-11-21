@@ -6,7 +6,7 @@ import { apiFetch } from "../lib/client";
 import { opensGamesDirectly } from "../lib/game-links";
 import { useModuleOn } from "../lib/modules";
 import { playSound } from "../lib/msn-sounds";
-import { PLAY_GAMES, PLAY_GAME_IDS, playGameForActivity, type PlayGameId } from "@/lib/play-together";
+import { MOD_GAMES, PLAY_GAMES, playGameForActivity, type PlayGameId } from "@/lib/play-together";
 import type { PlayEvent } from "@/lib/protocol";
 import type { ProfileActivity } from "@/lib/users";
 import { stripTextStyle } from "@/lib/text-style";
@@ -112,7 +112,7 @@ export function PlayPrompts({
     const sent = new Map<string, { key: string; at: number; stored: boolean }>();
     const onState = (event: Event) => {
       const play = (event as CustomEvent<Record<string, { party?: unknown } | undefined>>).detail || {};
-      for (const game of PLAY_GAME_IDS) {
+      for (const game of MOD_GAMES) {
         const party = play[game]?.party ?? null;
         const key = party ? JSON.stringify(party) : "";
         const last = sent.get(game);

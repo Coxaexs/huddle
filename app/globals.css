@@ -28168,6 +28168,53 @@ a.play-button {
   font-size: 16px;
 }
 
+/* ---- "Invite to <game>" beside the composer's + (game-invite-button.tsx) ---- */
+.game-invite-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  height: 32px;
+  margin: 0 4px 0 2px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--on-accent, #fff);
+  background: var(--lavender);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  animation: game-invite-in 0.25s ease-out;
+}
+
+.game-invite-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.game-invite-button.done {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--mint, #4ade80) 30%, transparent);
+}
+
+.game-invite-button:disabled {
+  opacity: 0.7;
+}
+
+@keyframes game-invite-in {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (max-width: 600px) {
+  .game-invite-button span {
+    display: none;
+  }
+}
+
 /* ---- Listen along (listen-along.tsx) ---- */
 .listen-bar {
   position: fixed;

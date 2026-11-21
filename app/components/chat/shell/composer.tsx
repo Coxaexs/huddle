@@ -9,6 +9,7 @@ import { formatFileSize, getFileBadgeColor, getFileExtensionBadge } from "@/lib/
 import { MsnFormatToolbar, messageFontStyle } from "../../msn-chrome";
 import { TextStyleMenu } from "../../text-style-menu";
 import { GamesPicker } from "../../game-card";
+import { GameInviteButton } from "../../game-invite-button";
 import { apiFetch } from "../../../lib/client";
 import { showToast } from "../../toast";
 import { type GameKind } from "@/lib/games";
@@ -686,6 +687,7 @@ export function Composer({
                       hidden
                       onChange={chooseAttachment}
                     />
+                    <GameInviteButton channelId={activeChannelId} user={user} />
                     <DraftTextarea
                       ref={composerRef}
                       value={draft}

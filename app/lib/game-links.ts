@@ -1,6 +1,6 @@
 "use client";
 
-import { isGameLink } from "@/lib/steam";
+import { isConnectLink, isGameLink } from "@/lib/steam";
 
 type Shell = {
   openGameLink?: (url: string) => unknown;
@@ -65,7 +65,8 @@ export function opensGamesDirectly(): boolean {
 export function openGameLink(url: string): boolean {
   if (!isGameLink(url)) return false;
   const desktop = shell();
-  if (desktop?.openGameLink) {
+  // Desktop apps up to 2.2.0 only open lobby/run links themselves.
+  if (desktop?.openGameLink && !isConnectLink(url)) {
     void Promise.resolve(desktop.openGameLink(url)).catch(() => undefined);
     return true;
   }

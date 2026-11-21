@@ -79,6 +79,10 @@ export interface SteamPresence {
   appId: number | null;
   /** The lobby they sit in, if it is joinable and Steam shares it. */
   lobbyId: string | null;
+  /** The game server they play on ("1.2.3.4:27015"), for server-based games. */
+  serverIp: string | null;
+  /** The game's name as Steam shows it. */
+  gameName: string | null;
 }
 
 /** Reads one account's summary. null when the key is missing or Steam fails. */
@@ -101,11 +105,15 @@ export async function steamPresence(
     if (!player) return null;
     const appId = Number(player.gameid);
     const lobby = String(player.lobbysteamid ?? "");
+    const server = String(player.gameserverip ?? "");
+    const gameName = String(player.gameextrainfo ?? "").trim().slice(0, 60);
     return {
       personaName: String(player.personaname ?? "").slice(0, 64),
       visible: Number(player.communityvisibilitystate) === 3,
       appId: Number.isInteger(appId) && appId > 0 ? appId : null,
       lobbyId: /^\d{15,20}$/.test(lobby) && lobby !== "0" ? lobby : null,
+      serverIp: isPublicServer(server) ? server : null,
+      gameName: gameName || null,
     };
   } catch {
     return null;
@@ -114,6 +122,19 @@ export async function steamPresence(
 
 export function steamJoinLobbyUrl(appId: number, lobbyId: string, hostSteamId: string): string {
   return `steam://joinlobby/${appId}/${lobbyId}/${hostSteamId}`;
+}
+
+/** "a.b.c.d:port" for a real server, not 0.0.0.0 or a private address. */
+function isPublicServer(value: string): boolean {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}):(\d{1,5})$/.exec(value);
+  if (!match) return false;
+  const [a, b] = [Number(match[1]), Number(match[2])];
+  if (match.slice(1, 5).some((n) => Number(n) > 255) || Number(match[5]) < 1 || Number(match[5]) > 65535) return false;
+  return !(a === 0 || a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254));
+}
+
+export function steamConnectUrl(server: string): string {
+  return `steam://connect/${server}`;
 }
 
 export function steamRunUrl(appId: number): string {
@@ -130,7 +151,12 @@ export function steamAddFriendUrl(steamId: string): string {
  * /play/launch page check links against this same list.
  */
 export const GAME_LINK_PATTERN =
-  /^steam:\/\/(?:joinlobby\/\d{1,10}\/\d{15,20}\/7656119\d{10}|run\/\d{1,10}|rungameid\/\d{1,20}|friends\/add\/7656119\d{10})$/;
+  /^steam:\/\/(?:joinlobby\/\d{1,10}\/\d{15,20}\/7656119\d{10}|run\/\d{1,10}|rungameid\/\d{1,20}|friends\/add\/7656119\d{10}|connect\/(?:\d{1,3}\.){3}\d{1,3}:\d{1,5})$/;
+
+/** Server links: the desktop apps' own lists (2.2.0) don't have them, so they go through the browser. */
+export function isConnectLink(url: string): boolean {
+  return url.startsWith("steam://connect/");
+}
 
 export function isGameLink(url: unknown): url is string {
   return typeof url === "string" && GAME_LINK_PATTERN.test(url);

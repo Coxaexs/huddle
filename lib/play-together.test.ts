@@ -7,7 +7,10 @@ import {
   closeInvite,
   mayJoin,
   newPlayInvite,
+  gameKeyForActivity,
+  isPlayGame,
   normalizeParty,
+  playGameInfo,
   parsePlayInvite,
   planJoin,
   playGameForActivity,
@@ -107,7 +110,7 @@ describe("planJoin", () => {
   const steamId = "76561198000000001";
   const lobby = "109775242243779373";
   const run = "steam://run/413150";
-  const seen = { personaName: "kiwi", visible: true, appId: 413150, lobbyId: lobby };
+  const seen = { personaName: "kiwi", visible: true, appId: 413150, lobbyId: lobby, serverIp: null, gameName: "Stardew Valley" };
   const none = { hostSteamId: null, presence: null, hasKey: false, party: null };
   const party = { inviteCode: "S1A2B3C4D5", steamLobby: lobby, steamId, farm: "Kiwi Farm", players: 1, maxPlayers: 4 };
 
@@ -173,5 +176,56 @@ describe("normalizeParty", () => {
     expect(normalizeParty({ steamLobby: "109775242243779373", steamId: "76561198000000001" })).toMatchObject({ inviteCode: null });
     expect(normalizeParty({ inviteCode: "S1", players: 999 })).toMatchObject({ players: null });
     expect(normalizeParty(null)).toBeNull();
+  });
+});
+
+describe("any game", () => {
+  const steamId = "76561198000000001";
+  const lobby = "109775242243779373";
+  const none = { hostSteamId: null, presence: null, hasKey: false, party: null };
+
+  it("keys games the desktop app spots", () => {
+    expect(gameKeyForActivity("Stardew Valley")).toBe("stardew");
+    expect(gameKeyForActivity("Terraria")).toBe("steam:105600");
+    expect(gameKeyForActivity("Minecraft")).toBe("app:minecraft");
+    expect(gameKeyForActivity("a Steam game")).toBeNull();
+    expect(gameKeyForActivity("")).toBeNull();
+  });
+
+  it("accepts only real keys", () => {
+    for (const ok of ["stardew", "steam:730", "app:minecraft"]) expect(isPlayGame(ok)).toBe(true);
+    for (const bad of ["toString", "constructor", "steam:0", "steam:abc", "app:", "app:Bad Name", 5]) expect(isPlayGame(bad)).toBe(false);
+  });
+
+  it("names a game from the card", () => {
+    expect(playGameInfo({ game: "steam:730", name: "Counter-Strike 2" })).toMatchObject({ name: "Counter-Strike 2", emoji: "🎮", steamAppId: 730 });
+    expect(playGameInfo({ game: "stardew", name: "ignored" }).name).toBe("Stardew Valley");
+    expect(playGameInfo({ game: "app:minecraft" })).toMatchObject({ steamAppId: null });
+    expect(newPlayInvite("steam:730", { id: "h", name: "H" }, true, 1, "  Counter-Strike   2 ").name).toBe("Counter-Strike 2");
+    expect(newPlayInvite("stardew", { id: "h", name: "H" }, true, 1, "x").name).toBeUndefined();
+  });
+
+  it("joins any Steam game's lobby, or its server", () => {
+    const presence = { personaName: "k", visible: true, appId: 1086940, lobbyId: lobby, serverIp: null, gameName: "Baldur's Gate 3" };
+    expect(planJoin("steam:1086940", { ...none, hostSteamId: steamId, hasKey: true, presence })).toMatchObject({
+      how: "lobby",
+      url: `steam://joinlobby/1086940/${lobby}/${steamId}`,
+    });
+    expect(
+      planJoin("steam:730", { ...none, hostSteamId: steamId, hasKey: true, presence: { ...presence, appId: 730, lobbyId: null, serverIp: "203.0.113.7:27015" } }),
+    ).toMatchObject({ how: "server", url: "steam://connect/203.0.113.7:27015" });
+    // Without the key it still opens the game.
+    expect(planJoin("steam:730", { ...none, hostSteamId: steamId })).toMatchObject({ how: "manual", reason: "no-key", url: "steam://run/730" });
+  });
+
+  it("has no link for games off Steam", () => {
+    expect(planJoin("app:minecraft", { ...none, hostSteamId: steamId, hasKey: true })).toEqual({
+      how: "manual",
+      url: null,
+      runUrl: null,
+      inviteCode: null,
+      addFriendUrl: null,
+      reason: "not-steam",
+    });
   });
 });
