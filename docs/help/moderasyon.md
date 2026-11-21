@@ -19,7 +19,7 @@ Yasaklanan kişileri görmek ve yasağı kaldırmak için **Sunucu Ayarları →
 
 ## Mesaj silme ve toplu temizlik
 
-Bir mesajın üzerine gelince sağ üstte beliren çöp kutusu simgesi mesajı siler. Kendi mesajlarını her zaman silebilirsin; başkalarınınkini silmek için **Manage Messages** izni gerekir. Onay penceresini atlamak için silerken <kbd>Shift</kbd> tuşunu basılı tut.
+Bir mesajın üzerine gelince sağ üstte beliren çöp kutusu simgesi mesajı siler. Kendi mesajlarını her zaman silebilirsin; başkalarınınkini silmek için **Mesajları Yönet** izni gerekir. Onay penceresini atlamak için silerken <kbd>Shift</kbd> tuşunu basılı tut.
 
 Bir kanala çok sayıda spam geldiyse **Sunucu Ayarları → Güvenlik ve AutoMod** bölümündeki **Bulk Message Purge** ile son 10, 25, 50 ya da 100 mesajı bir kerede silebilirsin; istersen yalnızca bir kişinin mesajlarını seçebilirsin. Aynı işi kanalda `/purge 25 @kullanıcıadı` komutuyla da yapabilirsin.
 
@@ -44,21 +44,21 @@ AutoMod, sunucuya gönderilen her mesajı kurallarına göre denetler ve uymayan
 
 **Kural eklemek için:**
 
-1. **Sunucu Ayarları → AutoMod** bölümünü aç ve **Create Rule** düğmesine bas.
-2. **Rule type** listesinden kuralın türünü seç:
+1. **Sunucu Ayarları → AutoMod** bölümünü aç ve **Kural Oluştur** düğmesine bas.
+2. **Kural türü** listesinden kuralın türünü seç:
    - **Blocked words:** Listelediğin kelimeleri içeren mesajları engeller (büyük-küçük harf fark etmez).
    - **Mention limit:** Bir mesajda en fazla kaç kişinin etiketlenebileceği.
    - **Links:** İzin verilenler listesinde olmayan bağlantıları engeller.
    - **Caps:** Çoğu büyük harfle yazılmış mesajları engeller.
    - **Repeat:** Aynı mesajın aynı kanalda tekrar tekrar gönderilmesini engeller.
-3. **When it matches** listesinden kural çiğnenince ne olacağını seç: yalnızca mesajı engellemek ya da mesajı engelleyip gönderen kişiye zaman aşımı vermek.
-4. **Create Rule** düğmesine bas.
+3. **Eşleştiğinde** listesinden kural çiğnenince ne olacağını seç: yalnızca mesajı engellemek ya da mesajı engelleyip gönderen kişiye zaman aşımı vermek.
+4. **Kural Oluştur** düğmesine bas.
 
 ![Yeni AutoMod kuralı](/help-media/img/automod-kural.webp)
 
 ## Denetim kaydı
 
-**Sunucu Ayarları → Denetim Kaydı**, sunucuda yapılan yönetim işlemlerinin listesidir: kimin hangi kanalı açtığı ya da sildiği, rolleri kimin değiştirdiği, kimin atıldığı ya da yasaklandığı, davetlerin oluşturulup iptal edilmesi ve benzerleri. Bunu görmek için **View Audit Log** izni gerekir.
+**Sunucu Ayarları → Denetim Kaydı**, sunucuda yapılan yönetim işlemlerinin listesidir: kimin hangi kanalı açtığı ya da sildiği, rolleri kimin değiştirdiği, kimin atıldığı ya da yasaklandığı, davetlerin oluşturulup iptal edilmesi ve benzerleri. Bunu görmek için **Denetim Kaydını Görüntüle** izni gerekir.
 
 ![Denetim kaydı](/help-media/img/ayar-denetim.webp)
 

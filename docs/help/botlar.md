@@ -10,7 +10,7 @@ Sayfanın üstündeki kartlar:
 
 - **Feeds:** YouTube kanallarını, subreddit'leri, Bluesky hesaplarını, blogları ve GitHub sürümlerini bir kanala kendiliğinden düşürür.
 - **Webhooks:** Başka uygulamaların bir kanala mesaj göndermesi için gizli bir adres.
-- **D&D Companion:** D&D botu: zar, büyü ve canavar kartları ([D&D](/help/dnd)).
+- **D&D Companion:** D&D botu: zar, büyü ve canavar kartları ([D&D](/help/dnd)) ve karakter kâğıtlarıyla savaş haritası olan web uygulaması ([Tavern](/help/tavern)).
 - **Discord Bridge:** Discord sunucusuyla iki yönlü kanal aynası ([Discord'dan geçiş](/help/discord-gecis#discord-köprüsü-iki-tarafı-birlikte-kullanmak)).
 - **Your own bot:** Kendi botunu yazmak için Geliştirici Portalı.
 
@@ -42,7 +42,7 @@ GitHub, GitLab ya da Gitea/Forgejo için adresin sonuna sırasıyla `/github`, `
 
 Hoffle'da üç tür bot vardır:
 
-- **Hazır botlar:** [Müzik botu](/help/muzik) (müzik, DJ, Birlikte İzle) ve [D&D botu](/help/dnd). Bir davet bağlantısıyla ya da Entegrasyonlar sayfasından eklenir.
+- **Hazır botlar:** [Müzik botu](/help/muzik) (müzik, DJ, Birlikte İzle) ve [D&D botu](/help/dnd). Müzik botu bir davet bağlantısıyla, D&D botu Entegrasyonlar sayfasındaki **Add** düğmesiyle eklenir. D&D botunun web uygulaması [Tavern](/help/tavern) bölümünde anlatılıyor.
 - **Geliştirici Portalı'ndan yapılan botlar:** Herkes kendi botunu yapıp davet bağlantısıyla paylaşabilir. Bir bot yalnızca kendisini ekleyen sunuculara ulaşır ve yalnızca orada verilen izinleri kullanabilir. Hiçbir bot özel mesajlara erişemez, sunucunun sahibini atamaz ya da yasaklayamaz.
 - **Discord botları:** discord.js ya da discord.py ile yazılmış botlar, yalnızca bağlandıkları adres değiştirilerek çalışır ([Discord'dan geçiş](/help/discord-gecis#discord-botlarını-hoffleda-çalıştırma)).
 

@@ -82,10 +82,10 @@ Bunları elle de yazabilirsin: `[c=red]merhaba[/c]` kırmızı, `[c=pink]merhaba
 ## Anketler
 
 1. **^** (**Diğer seçenekler**) düğmesine bas ve **Anket Oluştur**'u seç.
-2. **Poll question** kutusuna soruyu yaz.
-3. Seçenekleri yaz; daha fazlası için **Add Option**'a bas (en az 2 seçenek).
-4. Kimin neye oy verdiğinin görünmesini istemiyorsan **Private mode** kutusunu işaretle.
-5. **Post Poll** ile gönder.
+2. **Anket Sorusu** kutusuna soruyu yaz.
+3. Seçenekleri yaz; daha fazlası için **Seçenek Ekle**'ye bas (en az 2 seçenek).
+4. Kimin neye oy verdiğinin görünmesini istemiyorsan **Gizli Mod** kutusunu işaretle.
+5. **Anketi Gönder** ile gönder.
 
 Herkes bir seçeneğe basarak oy verir; oyunu değiştirmek için başka bir seçeneğe basman yeterli. Sonuçlar herkesin ekranında anında güncellenir.
 

@@ -7,7 +7,7 @@ Oturma Odası, bir ses odasının 3D hâlidir. Odadaki herkes bir piyon olarak k
 Açmak için:
 
 1. Bir ses odasına gir.
-2. Odanın alt çubuğundaki koltuk simgesine (**Living room**) bas.
+2. Odanın alt çubuğundaki koltuk simgesine (**Oturma odası**) bas.
 
 Oda tarayıcıda çizilir; ilk açılış birkaç saniye sürebilir. Bilgisayarın zorlanıyorsa ayarlardan grafik kalitesini düşürebilirsin (aşağıda).
 
@@ -23,12 +23,12 @@ Odanın üstündeki çubukta şu düğmeler var:
 
 - **Mekânlar:** Living room (salon), cinema (sinema), tabletop (oyun masası), board hall (oyun salonu), meadow (çayır) ve club (kulüp). Birine basınca piyonun oraya geçer.
 - **Watch together:** Birlikte İzle'yi açar; video odadaki ekranda oynar.
-- **Overhead view** ve **First-person view:** Odaya yukarıdan ya da kendi gözünden bakarsın.
+- **Kuşbakışı görünüm** ve **Birinci şahıs görünüm:** Odaya yukarıdan ya da kendi gözünden bakarsın.
 - **Room sounds:** Odanın ortam sesleri. Bunları yalnızca sen duyarsın.
-- **Living Room settings:** Oda ayarları (aşağıda).
-- **Full screen** ve **Hide controls (H):** Odayı tam ekran açar ya da düğmeleri gizler.
+- **Oturma Odası ayarları:** Oda ayarları (aşağıda).
+- **Tam ekran** ve **Kontrolleri gizle (H):** Odayı tam ekran açar ya da düğmeleri gizler.
 
-Altta da hızlı tepkiler (👋 😂 ❤️ 🎉 🔥 👏 😮 🍿) ve **Stand up** (ayağa kalk) düğmesi bulunur. Tepkiler piyonunun üstünde kısa bir an belirir.
+Altta da hızlı tepkiler (👋 😂 ❤️ 🎉 🔥 👏 😮 🍿) ve **Ayağa kalk** düğmesi bulunur. Tepkiler piyonunun üstünde kısa bir an belirir.
 
 ![Kendi gözünden görünüm](/help-media/img/oda-gozunden.webp)
 
@@ -52,10 +52,10 @@ Altta da hızlı tepkiler (👋 😂 ❤️ 🎉 🔥 👏 😮 🍿) ve **Stand
 
 D&D ve masa oyunları için yuvarlak bir masa. On kişi masaya oturabilir, diğerleri çevresinde ayakta durabilir.
 
-- Alttaki **zar tepsisinden** (d4, d6, d8, d10, d12, d20, d100, **Adv** avantaj, **Dis** dezavantaj) zar at. Zarlar masadaki haritanın üstüne, herkesin gözü önünde atılır.
+- Alttaki **zar tepsisinden** (d4, d6, d8, d10, d12, d20, d100, **Avj** avantaj, **Dez** dezavantaj) zar at. Zarlar masadaki haritanın üstüne, herkesin gözü önünde atılır.
 - Zar kutusuna `2d6+3` gibi bir gösterim ya da `/spell fireball`, `/monster goblin` gibi komutlar da yazabilirsin.
 - Batı duvarındaki **minyatür dolabından** bir piyon alıp haritaya koyabilirsin.
-- **Make my character** ya da araç çubuğundaki **My character** düğmesi karakter kâğıdını açar: ad, sınıf, seviye, en yüksek can (Max HP), zırh sınıfı (AC), hız ve büyüler. **More** bölümünde portre, yetenek puanları, büyü yuvaları ve DM ekranı bulunur.
+- **Make my character** ya da araç çubuğundaki **Karakterim** düğmesi karakter kâğıdını açar: ad, sınıf, seviye, en yüksek can (Max HP), zırh sınıfı (AC), hız ve büyüler. **More** bölümünde portre, yetenek puanları, büyü yuvaları ve DM ekranı bulunur.
 - Oyun yöneticisi (DM) **GM'nin sandalyesine** oturup zarlarını ekranının arkasında atabilir; sonuçları yalnızca kendisi görür.
 
 ![Oyun masası, karakter kâğıdı ve oda ayarları](/help-media/img/oda-karakter.webp)
@@ -64,7 +64,7 @@ D&D ve masa oyunları için yuvarlak bir masa. On kişi masaya oturabilir, diğe
 
 ## Oyun salonu (board hall)
 
-Odadaki tahta oyunu yere gerçek boyutta serilir ve piyonlar oynadıkça üzerinde zıplar. **Start a game** ya da **Play** ile oyunu aç; tahtanın üstünde yürüyebilir ya da bir banka oturup izleyebilirsin.
+Odadaki tahta oyunu yere gerçek boyutta serilir ve piyonlar oynadıkça üzerinde zıplar. **Start a game** ya da **Oyna** ile oyunu aç; tahtanın üstünde yürüyebilir ya da bir banka oturup izleyebilirsin.
 
 ![Oyun salonu](/help-media/img/oda-oyun-salonu.webp)
 
@@ -87,7 +87,7 @@ Işıkların müzikle birlikte oynadığı bir gece kulübü. Pistte dans edebil
 
 ## Oda ayarları
 
-**Living Room settings** düğmesinde:
+**Oturma Odası ayarları** düğmesinde:
 
 - **Spatial voices:** Sesleri insanların odadaki yerinden duyarsın. Kapalıyken herkes normal görüşmedeki gibi duyulur.
 - **Room echo:** Odanın yankısı.

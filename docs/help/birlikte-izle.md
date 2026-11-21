@@ -9,9 +9,9 @@ Birlikte İzle, müzik botuyla çalışır. Sunucunda **Hoffle Music** botu yoks
 ## İzlemeye başlama
 
 1. Bir ses odasına gir.
-2. Alt çubuktaki oyun kolu düğmesine (**Aktiviteler**) bas ve **Watch Together**'ı seç.
-3. **Search or paste a link…** kutusuna bir YouTube bağlantısı yapıştır ya da aramak istediğin şeyi yaz ve <kbd>Enter</kbd>'a bas.
-4. Sonuçlardan istediğin videonun yanındaki **Play**'e bas.
+2. Alt çubuktaki oyun kolu düğmesine (**Aktiviteler**) bas ve **Birlikte İzle**'yi seç.
+3. **Search or paste a link…** kutusuna bir bağlantı yapıştırıp <kbd>Enter</kbd>'a bas. Bağlantı aramaya gerek kalmadan hemen oynamaya başlar (bir şey çalıyorsa sıraya eklenir).
+4. Bağlantın yoksa aramak istediğin şeyi yaz, <kbd>Enter</kbd>'a bas ve sonuçlardan istediğin videonun yanındaki **Play**'e bas.
 
 Video birkaç saniye içinde odadaki herkeste oynamaya başlar. Bot videoyu önce sunucuya indirdiği için uzun videolarda ilk açılış bir dakika kadar sürebilir.
 
@@ -27,7 +27,7 @@ Kısa yol: Bir yazı kanalına `/watch` ve ardından bağlantıyı ya da arama s
 - Bağlantın yavaşsa video kısa bir an geride kalabilir. O sırada çubukta **Catching up** (yetişiyor) yazar ve video kendiliğinden diğerlerine yetişir.
 - Sağdaki panelde üç sekme var:
   - **Up next:** Şu an oynayan video ve sıradakiler. **Add** ile sıraya video ekle, **×** ile çıkar.
-  - **Search:** YouTube'da ara; sonuçlardaki **Play** hemen oynatır.
+  - **Search:** YouTube'da ara; sonuçlardaki **Play** hemen oynatır. Arama kutusuna bir bağlantı yapıştırırsan video doğrudan sıraya girer.
   - **Room:** Odada kimlerin izlediği.
 
 Yavaş internet bağlantıları için `/watch` komutuna kalite ekleyebilirsin: `original` (asıl kalite), `8` (8 Mbps) ya da `4` (4 Mbps). Örnek: `/watch <bağlantı> 4`.
@@ -46,10 +46,10 @@ Birlikte İzle panelinin sağ üstünde:
 
 Birlikte Reels, kısa dikey videoları (YouTube Shorts) bir grup olarak kaydırmanızı sağlar. Herkes aynı videoyu aynı anda görür, biri kaydırınca grup da bir sonrakine geçer. Akış zamanla odanın neyi sevdiğini öğrenir.
 
-1. Bir ses odasında **Aktiviteler → Reels Together**'ı seç ya da bir yazı kanalına `/reels` yaz.
+1. Bir ses odasında **Aktiviteler → Birlikte Reels**'i seç ya da bir yazı kanalına `/reels` yaz.
 2. İstersen konu ekle: `/reels kediler yemek tarifleri`.
 3. Kaydırarak ya da oklarla sonraki videoya geç.
 
 Birlikte Reels de müzik botuyla çalışır.
 
-![Aktiviteler paneli: Watch Together ve Reels Together](/help-media/img/aktiviteler.webp)
+![Aktiviteler paneli: Birlikte İzle ve Birlikte Reels](/help-media/img/aktiviteler.webp)

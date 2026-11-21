@@ -54,7 +54,8 @@ describe.skipIf(!sqliteAvailable)("quick join as a guest", () => {
     expect(res.status).toBe(201);
     const body = (await res.json()) as { user: { displayName: string; isGuest?: boolean; username: string }; server: { id: string } };
     expect(body.user).toMatchObject({ displayName: "Kai", isGuest: true, uiMode: "simple" });
-    expect(body.user.username).toMatch(/^guest-[0-9a-f]{8}$/);
+    // Made from the name they typed (lib/guest-username.ts), not guest-<hex>.
+    expect(body.user.username).toMatch(/^kai-[0-9a-f]{4,8}$/);
     expect(body.server.id).toBe("s1");
     const member = await state.db!.prepare("SELECT 1 AS ok FROM server_members WHERE server_id = 's1'").first<{ ok: number }>();
     expect(member?.ok).toBe(1);

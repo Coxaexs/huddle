@@ -76,7 +76,7 @@ Bu ayarlar yalnızca senin duyduğunu değiştirir; diğerlerini etkilemez.
 ## Önemli konuşma ve öncelikli konuşmacı
 
 - **Önemli Konuşma** (megafon): Bir duyuru yapacaksan bas; odadakilere *önemli konuşuyor* diye görünürsün. Bitince **Finish**'e bas.
-- **Öncelikli Konuşmacı** (taç): Sen konuşurken diğerlerinin sesi otomatik olarak kısılır. Bunun için **Priority Speaker** izni gerekir.
+- **Öncelikli Konuşmacı** (taç): Sen konuşurken diğerlerinin sesi otomatik olarak kısılır. Bunun için **Öncelikli Konuşmacı** izni gerekir.
 
 ## Alt çubuktaki diğer düğmeler
 

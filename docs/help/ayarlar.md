@@ -10,14 +10,14 @@ Ayarlar penceresinin sol üstündeki **Ayarlarda ara…** kutusuna bir kelime ya
 
 ![Şifre ve Güvenlik](/help-media/img/ayar-guvenlik-hesap.webp)
 
-- **Username (kullanıcı adı):** Giriş yaparken kullandığın ad. **Change username** ile değiştirebilirsin.
-- **Email:** E-posta eklemek isteğe bağlıdır ve yalnızca şifreni unutursan sıfırlama bağlantısı için kullanılır. Adresini yazıp **Send code to add email**'e bas, gelen kodu gir.
-- **Password:** Şifreni değiştirmek için önce şimdiki şifreni yaz. Şifre değişince diğer bütün cihazlardaki oturumların kapanır.
+- **Kullanıcı adı:** Giriş yaparken kullandığın ad. **Kullanıcı adını değiştir** ile değiştirebilirsin.
+- **E-posta:** E-posta eklemek isteğe bağlıdır ve yalnızca şifreni unutursan sıfırlama bağlantısı için kullanılır. Adresini yazıp **E-posta eklemek için kod gönder**'e bas, gelen kodu gir.
+- **Şifre:** Şifreni değiştirmek için önce şimdiki şifreni yaz. Şifre değişince diğer bütün cihazlardaki oturumların kapanır.
 - **Giriş yaptığın yerler:** Hesabının açık olduğu cihazlar. Tanımadığın bir cihaz görürsen oturumunu kapat ve şifreni değiştir.
 - **İki adımlı giriş:** Açarsan Hoffle şifrenden sonra bir doğrulama uygulamasından (Google Authenticator, Aegis, 1Password, Authy…) bir kod da ister. Şifreni öğrenen biri yine de giremez.
 - **Geçiş anahtarları:** Şifre yerine parmak izi, yüz tanıma ya da cihaz PIN'iyle giriş. **Geçiş anahtarı ekle**'ye bas ve cihazının talimatlarını izle. İki adımlı giriş açıkken geçiş anahtarı ikinci adım olarak da kullanılabilir.
 - **Verilerin:** **Verilerimi indir** ile profilini, mesajlarını, tepkilerini, arkadaşlarını, sunucularını ve ayarlarını bir dosya olarak indirirsin (saatte en fazla üç kez).
-- **Delete account:** Hesabını siler. Mesajların, sen ayrıca silmedikçe konuşmalarda "Silinmiş kullanıcı" adıyla kalır.
+- **Hesabı sil:** Hesabını siler. Mesajların, sen ayrıca silmedikçe konuşmalarda "Silinmiş kullanıcı" adıyla kalır.
 
 ## Gizlilik ve Güvenlik
 
@@ -47,9 +47,9 @@ Bir kanalın ya da sunucunun bildirimlerini ayrı ayrı ayarlamak için kanala y
 
 ## Metin okuma (TTS) ve canlı altyazı
 
-- **Read /tts messages aloud on this device:** Kanallara `/tts` ile gönderilen mesajları bu cihazda sesli okur.
-- **Your voice:** Kendi `/tts` mesajlarının okunacağı ses. Türkçe için birden fazla kadın ve erkek ses var (Nisa, Selin, Lina, Melisa, Nil, Öncel, Emre, Fikri, Sezgin…); **Tempo**, **Pitch** (ses inceliği) ve **Effect** (doğal ya da robot) ayarlanabilir. **Preview** ile dinle.
-- **Live captions:** Bir görüşmede konuşmanı yazıya döken tanıyıcı. **Duyu**, sunucunun Türkçe konuşma tanıyıcısıdır; **Browser** seçeneği tarayıcının kendi tanıyıcısını kullanır (Chrome, Edge ve Safari).
+- **Bu cihazda /tts mesajlarını sesli oku:** Kanallara `/tts` ile gönderilen mesajları bu cihazda sesli okur.
+- **Senin sesin:** Kendi `/tts` mesajlarının okunacağı ses. Türkçe için birden fazla kadın ve erkek ses var (Nisa, Selin, Lina, Melisa, Nil, Öncel, Emre, Fikri, Sezgin…); **Hız**, **Ton** (ses inceliği) ve **Efekt** (doğal ya da robot) ayarlanabilir. **Önizleme** ile dinle.
+- **Canlı altyazı:** Bir görüşmede konuşmanı yazıya döken tanıyıcı. **Duyu**, sunucunun Türkçe konuşma tanıyıcısıdır; **Tarayıcı** seçeneği tarayıcının kendi tanıyıcısını kullanır (Chrome, Edge ve Safari).
 
 ![Metin okuma ayarları](/help-media/img/ayar-tts.webp)
 

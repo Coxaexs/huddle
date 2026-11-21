@@ -119,10 +119,10 @@ Kanal listesinin en üstündeki sunucu adına tıkla. Menüde şunlar bulunur:
 Yeni gelenlerin sohbete girmeden önce sunucunun kurallarını görmesini istersen:
 
 1. **Sunucu Ayarları → Karşılama Ekranı** bölümünü aç.
-2. **Show the welcome screen to new members** kutusunu işaretle.
-3. **Rules** kutusuna kuralları her satıra bir tane gelecek şekilde yaz.
-4. İstersen **Intro form** bölümünden yeni gelenlere birkaç soru ekle (**Add question**) ya da hazır *ad, doğum tarihi ve kısa tanıtım* formunu seç.
-5. **Save Changes** düğmesine bas.
+2. **Yeni üyelere hoş geldin ekranını göster** kutusunu işaretle.
+3. **Kurallar** kutusuna kuralları her satıra bir tane gelecek şekilde yaz.
+4. İstersen **Intro form** bölümünden yeni gelenlere birkaç soru ekle (**Soru ekle**) ya da hazır *ad, doğum tarihi ve kısa tanıtım* formunu seç.
+5. **Değişiklikleri Kaydet** düğmesine bas.
 
 Karşılama ekranı yalnızca bu ayarı açtıktan sonra katılan kişilere gösterilir.
 

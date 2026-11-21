@@ -11,6 +11,8 @@ Sunucunda D&D araçlarını hiç istemiyorsan **Sunucu Ayarları → Erişim** b
 
 ![Entegrasyonlar sayfası](/help-media/img/ayar-entegrasyonlar.webp)
 
+Karakter kâğıtları, savaş haritası, dünya haritası ve yapay zekâ DM yardımcısı D&D botunun web uygulaması **Tavern**'dedir; ayrı bir bölümde anlatılıyor: [D&D Companion (Tavern)](/help/tavern).
+
 ## Zar atma
 
 Herhangi bir kanala `/roll` ve zar gösterimini yaz:
@@ -24,7 +26,7 @@ Herhangi bir kanala `/roll` ve zar gösterimini yaz:
 | `/roll d20 dis` | **Dezavantajlı** atış: iki d20 atar, düşük olanı alır. |
 | `/roll 2d6+3 kılıç crit` | **Kritik** vuruş: hasar zarlarını iki kat atar (eklenen sayı katlanmaz). |
 
-Zarlar kanaldaki herkesin ekranında 3D olarak yuvarlanır, sonuç da bir kart olarak kanala düşer. Karttaki **Roll again** düğmesi aynı atışı tekrarlar.
+Zarlar kanaldaki herkesin ekranında 3D olarak yuvarlanır, sonuç da bir kart olarak kanala düşer. Karttaki **Tekrar at** düğmesi aynı atışı tekrarlar.
 
 ::video zar-at | Saldırı ve avantajlı gizlilik zarı atmak
 
@@ -75,7 +77,7 @@ Savaş haritası bir ses odasında açılır ve odadaki herkes aynı haritayı g
 1. Oyun için bir ses odasına gir (örneğin **Zindan**).
 2. Odanın üst çubuğunda **harita**'ya bas.
 3. Haritaya bir ad ver ve **Next**'e bas.
-4. Arka planı seç: **Blank Grid** (boş kareli zemin) ya da **Upload Image** (kendi harita görselin).
+4. Arka planı seç: **Blank Grid** (boş kareli zemin) ya da **Görsel Yükle** (kendi harita görselin).
 
 Harita açılınca üstte bir araç çubuğu belirir:
 
@@ -86,7 +88,7 @@ Harita açılınca üstte bir araç çubuğu belirir:
 - **Grid snap:** Jetonların kareye (ya da altıgene) oturmasını açıp kapatır.
 - **Initiative & Encounter Tracker:** İnisiyatif takibi (aşağıda).
 - **Put my character on the map:** Kendi karakter jetonunu koyar.
-- **Add a monster or fixture:** Goblin, ork, iskelet, ejderha gibi canavarlar ya da sandık, kapı, meşale gibi nesneler ekler.
+- **Add a monster or fixture:** Goblin, ork, iskelet, ejderha gibi canavarlar ya da sandık, kapı, meşale gibi nesneler ekler. Her yeni jeton haritanın ortasına en yakın boş kareye konur, üst üste binmez. Palet <kbd>Esc</kbd> ile ya da dışına tıklayınca kapanır.
 - **Clear paint:** Çizimleri siler.
 - **Close the map for everyone** (×): Haritayı herkes için kapatır.
 
@@ -123,4 +125,4 @@ Odanın **masa** görünümünde herkes yuvarlak bir masanın etrafında oturur.
 
 ## Oturum kaydı
 
-**Record D&D Sessions** izni olan biri, ses odasındaki bir D&D oturumunu kaydetmeye başlatabilir. Kayıt yalnızca odadakilerin **onayıyla** başlar ve herkese kayıt yapıldığı açıkça gösterilir. Bu izni yalnızca oyunu yöneten kişiye vermen önerilir.
+**D&D Oturumlarını Kaydet** izni olan biri, ses odasındaki bir D&D oturumunu kaydetmeye başlatabilir. Kayıt yalnızca odadakilerin **onayıyla** başlar ve herkese kayıt yapıldığı açıkça gösterilir. Bu izni yalnızca oyunu yöneten kişiye vermen önerilir.

@@ -6,7 +6,7 @@ Rol, üyelere verdiğin bir etikettir. Bir rolün **rengi** üyenin adını o re
 
 Örnek sunucumuzda üç rol var: **Moderatör** (yeşil), **Zindan Efendisi** (kırmızı, D&D oyununu yöneten kişi) ve **Oyuncu** (turuncu).
 
-Rolleri yönetmek için **Sunucu Ayarları → Roller** bölümünü aç. Bunu yalnızca sunucu sahibi ve **Manage Roles** izni olanlar görebilir.
+Rolleri yönetmek için **Sunucu Ayarları → Roller** bölümünü aç. Bunu yalnızca sunucu sahibi ve **Rolleri Yönet** izni olanlar görebilir.
 
 ![Roller listesi](/help-media/img/rol-listesi.webp)
 
@@ -14,11 +14,11 @@ Rolleri yönetmek için **Sunucu Ayarları → Roller** bölümünü aç. Bunu y
 
 1. Kanal listesinin üstündeki sunucu adına tıkla ve **Sunucu Ayarları**'nı aç.
 2. Soldan **Roller** bölümünü seç.
-3. **Create Role** düğmesine bas, rolün adını yaz ve onayla.
-4. Listede yeni rolün yanındaki kalem simgesine bas. Altta rolün düzenleme alanı açılır.
+3. **Rol Oluştur** düğmesine bas, rolün adını yaz ve onayla. Yeni rol listenin en altına eklenir ve kendiliğinden seçilir.
+4. Altta rolün düzenleme alanı açılır. Başka bir rolü düzenlemek için listede onun yanındaki kalem simgesine bas.
 5. Ad kutusunun solundaki renkli kareye basıp bir **renk** seç.
 6. İstersen **Rol Simgesi** bölümünde bir emoji yazıp **Emojiyi kullan** düğmesine bas ya da **Görsel yükle** ile küçük bir resim seç.
-7. Renk, ad ve simge için **Save changes** düğmesine bas.
+Değişiklikler kendiliğinden kaydedilir: renk, seçiciyi bıraktıktan kısa süre sonra; ad, kutudan çıkınca ya da <kbd>Enter</kbd>'a basınca. Kaydedilirken adın yanında kısa bir "Kaydediliyor…" yazısı görünür. Ad kutusunda <kbd>Esc</kbd>'e basarsan yazdığın ad geri alınır.
 
 ::video rol-olustur | Rol oluşturmak, renk ve simge vermek, izin açmak ve rolü üyelere vermek
 
@@ -26,42 +26,42 @@ Rolleri yönetmek için **Sunucu Ayarları → Roller** bölümünü aç. Bunu y
 
 ## İzinler
 
-Rolün düzenleme alanında, **Edit Permissions for …** başlığının altında izinlerin listesi var. Bir izni açmak ya da kapatmak için satırın sağındaki kutuya bas. **İzinler hemen kaydedilir**, ayrıca bir düğmeye basman gerekmez.
+Rolün düzenleme alanında, **… için İzinleri Düzenle** başlığının altında izinlerin listesi var. Bir izni açmak ya da kapatmak için satırın sağındaki kutuya bas. **İzinler hemen kaydedilir**, ayrıca bir düğmeye basman gerekmez.
 
 En sık kullanılanlar:
 
 | İzin | Ne sağlar |
 | --- | --- |
-| **Administrator** | Her izni verir ve kanal kısıtlamalarını aşar. Yalnızca çok güvendiğin kişilere ver. |
-| **Manage Server** | Sunucunun adını, simgesini, afişini ve genel ayarlarını değiştirme. |
-| **Manage Roles** | Kendi en yüksek rolünün altındaki rolleri oluşturma, düzenleme ve verme. |
-| **Manage Channels** | Kanal ve kategori açma, düzenleme, silme. |
-| **View Audit Log** | Denetim kaydını görme. |
-| **Manage Emojis & Stickers** | Sunucu emojisi ve çıkartması yükleme. |
-| **Create Invites** | Davet bağlantısı oluşturma. |
-| **Change Nickname** / **Manage Nicknames** | Kendi takma adını ya da başkalarınınkini değiştirme. |
-| **Kick Members** / **Ban Members** | Üyeleri sunucudan atma ya da yasaklama. |
-| **Send Messages** | Yazı kanallarına mesaj yazma. |
-| **Attach Files** | Resim ve dosya yükleme. |
-| **Mention @everyone & @here** | Herkesi etiketleme. |
-| **Manage Messages** | Başkalarının mesajlarını silme ve mesaj sabitleme. |
-| **Connect** / **Speak** | Ses odalarına girme ve konuşma. |
-| **Video & Screen Share** | Kamera açma ve ekran paylaşma. |
-| **Mute Members** / **Deafen Members** / **Move Members** | Ses odalarında başkalarını susturma, sağırlaştırma ve odalar arasında taşıma. |
-| **Priority Speaker** | Konuşurken diğerlerinin sesini kısan öncelikli konuşmacı modu. |
-| **Record D&D Sessions** | Herkesin onayıyla D&D oturumu kaydı başlatma ve yönetme. |
+| **Yönetici** | Her izni verir ve kanal kısıtlamalarını aşar. Yalnızca çok güvendiğin kişilere ver. |
+| **Sunucuyu Yönet** | Sunucunun adını, simgesini, afişini ve genel ayarlarını değiştirme. |
+| **Rolleri Yönet** | Kendi en yüksek rolünün altındaki rolleri oluşturma, düzenleme ve verme. |
+| **Kanalları Yönet** | Kanal ve kategori açma, düzenleme, silme. |
+| **Denetim Kaydını Görüntüle** | Denetim kaydını görme. |
+| **Emoji ve Çıkartmaları Yönet** | Sunucu emojisi ve çıkartması yükleme. |
+| **Davet Oluştur** | Davet bağlantısı oluşturma. |
+| **Takma Ad Değiştir** / **Takma Adları Yönet** | Kendi takma adını ya da başkalarınınkini değiştirme. |
+| **Üyeleri At** / **Üyeleri Yasakla** | Üyeleri sunucudan atma ya da yasaklama. |
+| **Mesaj Gönder** | Yazı kanallarına mesaj yazma. |
+| **Dosya Ekle** | Resim ve dosya yükleme. |
+| **@everyone ve @here Etiketle** | Herkesi etiketleme. |
+| **Mesajları Yönet** | Başkalarının mesajlarını silme ve mesaj sabitleme. |
+| **Bağlan** / **Konuş** | Ses odalarına girme ve konuşma. |
+| **Görüntü ve Ekran Paylaşımı** | Kamera açma ve ekran paylaşma. |
+| **Üyeleri Sustur** / **Üyeleri Sağırlaştır** / **Üyeleri Taşı** | Ses odalarında başkalarını susturma, sağırlaştırma ve odalar arasında taşıma. |
+| **Öncelikli Konuşmacı** | Konuşurken diğerlerinin sesini kısan öncelikli konuşmacı modu. |
+| **D&D Oturumlarını Kaydet** | Herkesin onayıyla D&D oturumu kaydı başlatma ve yönetme. |
 
 ![İzinler listesi](/help-media/img/rol-izinleri.webp)
 
 ## Herkes için varsayılan izinler
 
-Rol listesinin üstündeki **Default Permissions** (*@everyone*) satırı, sunucudaki **herkesin** sahip olduğu izinlerdir. Örneğin herkesin davet oluşturabilmesini istiyorsan **Create Invites** iznini burada aç; yalnızca belirli kişilerin yapabilmesini istiyorsan burada kapatıp o kişilere ait bir rolde aç.
+Rol listesinin üstündeki **Varsayılan İzinler** (*@everyone*) satırı, sunucudaki **herkesin** sahip olduğu izinlerdir. Örneğin herkesin davet oluşturabilmesini istiyorsan **Davet Oluştur** iznini burada aç; yalnızca belirli kişilerin yapabilmesini istiyorsan burada kapatıp o kişilere ait bir rolde aç.
 
 ![@everyone için varsayılan izinler](/help-media/img/varsayilan-izinler.webp)
 
 ## Rol verme ve geri alma
 
-**Roller sayfasından:** Rol düzenleme alanının en altındaki **Assign roles** bölümünde her üyenin altında sunucunun rolleri sıralanır. Bir role basınca o rol üyeye verilir ve rolün rengiyle çerçevelenir; yeniden basınca geri alınır.
+**Roller sayfasından:** Rol düzenleme alanının en altındaki **Rol ata** bölümünde her üyenin altında sunucunun rolleri sıralanır. Bir role basınca o rol üyeye verilir ve rolün rengiyle çerçevelenir; yeniden basınca geri alınır.
 
 ![Rol verme](/help-media/img/rol-ver.webp)
 
@@ -74,7 +74,9 @@ Rol listesinin üstündeki **Default Permissions** (*@everyone*) satırı, sunuc
 Listede üstte duran rol daha yüksektir. Bunun iki sonucu var:
 
 - Bir üyenin adı, **en yüksek renkli rolünün** rengiyle görünür.
-- **Manage Roles** izni olan biri yalnızca **kendi en yüksek rolünün altındaki** rolleri düzenleyip verebilir. Böylece kimse kendine ya da bir arkadaşına kendisinden güçlü bir rol veremez.
+- **Rolleri Yönet** izni olan biri yalnızca **kendi en yüksek rolünün altındaki** rolleri düzenleyip verebilir. Böylece kimse kendine ya da bir arkadaşına kendisinden güçlü bir rol veremez.
+
+Sırayı değiştirmek için rolü adının solundaki tutamaçtan (⋮⋮) tutup listede yukarı ya da aşağı sürükle. Bırakacağın yer ince bir çizgiyle gösterilir. Klavyeyle de olur: tutamaca <kbd>Tab</kbd> ile gel ve <kbd>↑</kbd> / <kbd>↓</kbd> tuşlarıyla rolü bir basamak taşı. Sıra hemen kaydedilir. Sürükleme, arama kutusu boşken çalışır. Sunucu sahibi olmayan biri yalnızca kendi en yüksek rolünün altındaki rollerin yerini değiştirebilir.
 
 ## Özel kanallar ve kanal izinleri
 

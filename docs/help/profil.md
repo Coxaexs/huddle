@@ -31,7 +31,7 @@ Süslemeler ve efektler başkalarına da görünür. Başkalarının efektlerini
 
 ## Hakkında (About), Bağlantılar ve Müzik
 
-- **About:** **About Me** kutusuna en fazla 500 karakterlik bir tanıtım yaz. İstersen en fazla 4 **Pride rozeti** ekleyebilirsin; bunlar herkese açıktır, yalnızca paylaşmak istediğini seç.
+- **About:** **Hakkımda** kutusuna en fazla 500 karakterlik bir tanıtım yaz. İstersen en fazla 4 **Pride rozeti** ekleyebilirsin; bunlar herkese açıktır, yalnızca paylaşmak istediğini seç.
 - **Connections:** Discord köprüsü olan bir sunucudaysan Discord hesabını bağla. Böylece Discord'da yazdıkların burada senin adınla, Hoffle'da yazdıkların Discord'da senin Discord adınla görünür.
 - **Music:** Profiline bir şarkı iliştir; kartında "Listening to" olarak görünür. Spotify'ı canlı göstermek için [Ayarlar → Aktiviteler](/help/ayarlar#aktiviteler) bölümüne bak.
 - **CSS:** Profil kartına kendi CSS kurallarını ekle.

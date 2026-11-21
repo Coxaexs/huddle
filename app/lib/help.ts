@@ -16,6 +16,8 @@ import profil from "../../docs/help/profil.md?raw";
 import temalar from "../../docs/help/temalar.md?raw";
 import oyunlar from "../../docs/help/oyunlar.md?raw";
 import botlar from "../../docs/help/botlar.md?raw";
+import tavern from "../../docs/help/tavern.md?raw";
+import ikinciEkran from "../../docs/help/ikinci-ekran.md?raw";
 
 /**
  * The user manual at hoffle.online/help, in Turkish first.
@@ -99,6 +101,13 @@ export const HELP_CHAPTERS: HelpChapter[] = [
     source: dnd,
   },
   {
+    slug: "tavern",
+    title: "D&D Companion (Tavern)",
+    description: "Karakter oluşturma ve kâğıdı, savaş haritası, dünya haritası, Compendium, Bard, Oracle yapay zekâ DM yardımcısı, iPad ve ortak ekran.",
+    icon: "🏰",
+    source: tavern,
+  },
+  {
     slug: "muzik",
     title: "Müzik botu ve DJ modu",
     description: "Müzik botunu ekleme, /play ile şarkı açma, tam ekran oynatıcı, senkron sözler, DJ seti, AutoMix ve müzik komutları.",
@@ -118,6 +127,13 @@ export const HELP_CHAPTERS: HelpChapter[] = [
     description: "Ses odasında herkesle aynı anda video izleme, sıra ve arama, kalite seçimi; Shorts'ları grupça kaydırma.",
     icon: "🎬",
     source: birlikteIzle,
+  },
+  {
+    slug: "ikinci-ekran",
+    title: "İkinci ekran",
+    description: "Ekran paylaşımını, sohbeti, savaş haritasını ya da Tavern'i ikinci monitöre, iPad'e veya televizyona göndermek; bölünmüş düzen ve eşleştirme.",
+    icon: "🖥️",
+    source: ikinciEkran,
   },
   {
     slug: "ayarlar",

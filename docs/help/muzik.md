@@ -53,10 +53,10 @@ Oynatıcının **DJ** sekmesinde bot, odanın müziğini bir DJ gibi karıştır
 1. Tarzı seç:
    - **Real DJ:** Sırayı kendisi seçer, kendi remikslerini yapar.
    - **Auto DJ:** Senin sırandaki şarkıları sırayla, aralarına geçiş koyarak karıştırır.
-2. **Vibe** (hava) seç: **Chill**, **Club** ya da **Hype**.
-3. **Start the set**'e bas. Sıra kısaysa DJ, sete uygun şarkıları kendisi ekler.
+2. **Atmosfer** seç: **Sakin**, **Kulüp** ya da **Coşkulu**.
+3. **Seti başlat**'a bas. Sıra kısaysa DJ, sete uygun şarkıları kendisi ekler.
 
-Daha fazla kontrol istersen **Full DJ booth** düğmesi tam DJ kabinini açar: iki deste (deck), mikser, efektler, ton kilidi (key lock) ve geçiş düzenleyici (mix editor). Aynı kabini `/dj` komutu da açar.
+Daha fazla kontrol istersen **Tam DJ kabini** düğmesi tam DJ kabinini açar: iki deste (deck), mikser, efektler, ton kilidi (key lock) ve geçiş düzenleyici (mix editor). Aynı kabini `/dj` komutu da açar.
 
 ![DJ sekmesi](/help-media/img/oynatici-dj.webp)
 
