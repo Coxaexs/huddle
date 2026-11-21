@@ -328,8 +328,8 @@ function createOverlay(deps) {
         kind: "hint",
         title: "Hoffle overlay is on",
         body: boundAccelerator
-          ? `Press ${label} to open Hoffle over your game. Turn it off in Settings → Voice & Video.`
-          : "Turn it off in Settings → Voice & Video.",
+          ? `Press ${label} to open Hoffle over your game. Turn it off in Settings → Activities.`
+          : "Turn it off in Settings → Activities.",
       });
       return;
     }

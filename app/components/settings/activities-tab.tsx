@@ -12,6 +12,7 @@ import {
 import { apiFetch } from "../../lib/client";
 import { Tab } from "./types";
 import { SteamLinkSection } from "./steam-link";
+import { OverlaySettings } from "./overlay-settings";
 
 export function ActivitiesTab({
   tab,
@@ -140,6 +141,8 @@ export function ActivitiesTab({
               </div>
 
               <SteamLinkSection />
+
+              <OverlaySettings />
 
               {spotifyShare && (
                 <div className="bg-green-950/20 border border-green-500/30 p-3 rounded-lg space-y-3 mt-2">

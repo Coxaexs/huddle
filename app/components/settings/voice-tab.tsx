@@ -8,7 +8,6 @@ import { saveDevice, type DeviceLists } from "../../lib/devices";
 import { type MicSettings, type MicTelemetry } from "../../lib/mic-chain";
 import { VoiceInput } from "./voice-input";
 import { VoiceSounds } from "./voice-sounds";
-import { OverlaySettings } from "./overlay-settings";
 import { ComboButton } from "./roles-tab";
 import { Tab } from "./types";
 
@@ -166,8 +165,6 @@ export function VoiceTab({
           </section>
 
           <VoiceSounds />
-
-          <OverlaySettings />
 
           <details className="vs-more" data-settings-anchor="keybinds" data-settings-label="Keybinds">
             <summary>Keybinds</summary>

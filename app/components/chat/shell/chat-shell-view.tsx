@@ -172,7 +172,7 @@ export function renderChatShell(s: ChatShellViewState) {
             }
           }}
           onOpenSettings={() => {
-            requestSettingsTab("voice");
+            requestSettingsTab("activities");
             setSettingsOpen(true);
           }}
         />

@@ -6,7 +6,7 @@ import { mainOverlayBridge, type OverlaySettings as Settings } from "../../lib/d
 import { ComboButton } from "./roles-tab";
 
 /**
- * Voice & Video → Game overlay. Only in the desktop app, which keeps these
+ * Activities → Game overlay. Only in the desktop app, which keeps these
  * settings itself (they are per computer, and the shortcut must work before
  * any page has loaded).
  */
