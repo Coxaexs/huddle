@@ -13,7 +13,27 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { stopSharedConversion } from "./jellyfin-proxy";
-import { applyArea, applyPawn, applyQueue, continueWatch, sanitizeShared, type AreaOp, type Initiative, type PawnOp, type QueueOp, type TableArea, type TableMap, type TablePawn, type WatchQueue, type WatchState } from "./lounge-shared";
+import {
+  applyArea,
+  applyPawn,
+  applyQueue,
+  continueWatch,
+  sanitizeAreaOp,
+  sanitizeShared,
+  type AreaOp,
+  type Initiative,
+  type PawnOp,
+  type QueueOp,
+  type TableArea,
+  type TableCharacter,
+  type TableFog,
+  type TableMap,
+  type TableMood,
+  type TablePawn,
+  type TablePing,
+  type WatchQueue,
+  type WatchState,
+} from "./lounge-shared";
 import { SYNTH_HUB_BUDGET, cleanSynthPlay } from "./gesture-synth";
 import { CLUB_CHEERS, CLUB_CROWD_KINDS, cleanClubBatch, type ClubCrowdKind } from "./club-feed";
 import { CLUB_DECKS_SEAT, DEFAULT_DESK, cleanClubDesk, cleanClubFx, type ClubDesk } from "./club-desk";
@@ -52,7 +72,7 @@ import { isBlockedBetween } from "./friends";
 import { MAX_WHISPER_TARGETS } from "./whisper";
 import { DEFAULT_SERVER_ID, DM_SERVER_ID } from "./schema";
 import { bridgedVoiceRooms } from "./discord-bridge";
-import { companionInitiative, layCompanionPawns, notifyDndTable, placeCompanionPawn, tableInitiative, tableView, type DndTableOp } from "./dnd-table";
+import { companionInitiative, layCompanionPawns, notifyDndTable, placeCompanionPawn, tableInitiative, tableView, type CompanionInitiative, type CompanionPawn, type DndTableOp } from "./dnd-table";
 import { issueResumeTicket, resumedJoinedAt, verifyResumeTicket } from "./resume-ticket";
 import { liveKitClients, liveKitRooms, removeFromLiveKit, silenceInLiveKit } from "./livekit-admin";
 import {
@@ -63,6 +83,12 @@ import {
   splitIdentity,
   type LiveKitSweepState,
 } from "./livekit-sweep";
+import {
+  DEFAULT_SECOND_SCREEN_STATE,
+  mergeSecondScreenState,
+  SECOND_SCREEN_PAIR_TTL_MS,
+  type SecondScreenState,
+} from "./second-screen";
 import {
   emptyPlayer,
   LIVE_OWNED_ACTIONS,
@@ -600,6 +626,57 @@ export class HuddleHub extends DurableObject {
     if (url.pathname === "/dnd-table" && request.method === "POST") {
       return Response.json(await this.applyDndTable((await request.json()) as DndTableOp));
     }
+    if (url.pathname === "/second-screen" && request.method === "GET") {
+      const userId = url.searchParams.get("userId") || "";
+      if (!userId) return Response.json({ state: DEFAULT_SECOND_SCREEN_STATE });
+      const stored = await this.ctx.storage.get<SecondScreenState>(`secondScreen:${userId}`);
+      return Response.json({ state: { ...DEFAULT_SECOND_SCREEN_STATE, ...(stored || {}) } });
+    }
+    if (url.pathname === "/second-screen" && request.method === "POST") {
+      const body = (await request.json().catch(() => ({}))) as { userId?: string; patch?: unknown };
+      if (!body.userId) return new Response("Missing userId", { status: 400 });
+      const key = `secondScreen:${body.userId}`;
+      const current = await this.ctx.storage.get<SecondScreenState>(key);
+      const next = mergeSecondScreenState(current, body.patch, Date.now());
+      await this.ctx.storage.put(key, next);
+      this.broadcast(
+        { t: "second-screen", state: next, serverNow: Date.now() },
+        { audience: [body.userId] },
+      );
+      return Response.json({ state: next });
+    }
+    if (url.pathname === "/second-screen-pair" && request.method === "POST") {
+      const body = (await request.json().catch(() => ({}))) as {
+        action?: "get" | "rotate" | "resolve" | "revoke";
+        userId?: string;
+        token?: string;
+      };
+      const now = Date.now();
+      if (body.action === "resolve") {
+        const tok = (body.token || "").trim();
+        if (!tok) return Response.json({ userId: null });
+        const rec = await this.ctx.storage.get<{ userId: string; expiresAt: number }>(`secondScreenPair:${tok}`);
+        if (!rec || rec.expiresAt <= now) return Response.json({ userId: null });
+        return Response.json({ userId: rec.userId, expiresAt: rec.expiresAt });
+      }
+      if (!body.userId) return new Response("Missing userId", { status: 400 });
+      const userKey = `secondScreenUserPair:${body.userId}`;
+      const existing = await this.ctx.storage.get<{ token: string; expiresAt: number }>(userKey);
+      if (body.action === "revoke") {
+        if (existing?.token) await this.ctx.storage.delete(`secondScreenPair:${existing.token}`);
+        await this.ctx.storage.delete(userKey);
+        return Response.json({ ok: true });
+      }
+      if (body.action === "get" && existing && existing.expiresAt > now) {
+        return Response.json(existing);
+      }
+      if (existing?.token) await this.ctx.storage.delete(`secondScreenPair:${existing.token}`);
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, "0")).join("");
+      const expiresAt = now + SECOND_SCREEN_PAIR_TTL_MS;
+      await this.ctx.storage.put(userKey, { token, expiresAt });
+      await this.ctx.storage.put(`secondScreenPair:${token}`, { userId: body.userId, expiresAt });
+      return Response.json({ token, expiresAt });
+    }
     if (url.pathname === "/state") {
       return Response.json({
         online: this.onlineUserIds(),
@@ -1110,7 +1187,12 @@ export class HuddleHub extends DurableObject {
         const room = attachment.voiceChannelId;
         if (!room) return;
         const key = event.key;
-        if (key !== "watch" && key !== "queue" && key !== "initiative" && key !== "gm" && key !== "card" && key !== "character" && key !== "hiddenroll" && key !== "house" && key !== "tablemap" && key !== "pawn" && key !== "area" && key !== "grid" && key !== "spellfx" && key !== "lounge" && key !== "loungefx") return;
+        if (
+          key !== "watch" && key !== "queue" && key !== "initiative" && key !== "gm" && key !== "card" &&
+          key !== "character" && key !== "hiddenroll" && key !== "house" && key !== "tablemap" &&
+          key !== "pawn" && key !== "area" && key !== "grid" && key !== "fog" && key !== "ping" &&
+          key !== "spellfx" && key !== "lounge" && key !== "loungefx"
+        ) return;
         const now = Date.now();
         // Each piece on its own clock: casting sends the area and the spent slot together.
         const clock = `${attachment.connectionId}|${key}`;
@@ -1119,7 +1201,14 @@ export class HuddleHub extends DurableObject {
         const by = attachment.displayName || attachment.username || "Someone";
         const clean = event.value === null ? null : sanitizeShared(key, event.value, by, now);
         if (event.value !== null && clean === null) return;
-        const send = (name: "watch" | "queue" | "initiative" | "gm" | "card" | "characters" | "hiddenroll" | "house" | "tablemap" | "pawns" | "areas" | "grid" | "spellfx" | "lounge" | "loungefx", value: unknown, includeSender: boolean) => {
+        const send = (
+          name:
+            | "watch" | "queue" | "initiative" | "gm" | "card" | "characters" | "hiddenroll"
+            | "house" | "tablemap" | "pawns" | "areas" | "grid" | "fog" | "ping"
+            | "spellfx" | "lounge" | "loungefx",
+          value: unknown,
+          includeSender: boolean,
+        ) => {
           const payload = JSON.stringify({ t: "lounge-shared", channelId: room, key: name, value, serverNow: now } satisfies ServerEvent);
           for (const { socket: other, attachment: peer } of this.sockets()) {
             if (peer.voiceChannelId !== room) continue;
@@ -1129,7 +1218,23 @@ export class HuddleHub extends DurableObject {
         };
         if (key === "spellfx") {
           // A moment, like a hidden roll: everyone else sees it once; the caster drew it already.
-          if (clean) send("spellfx", { ...(clean as object), by: attachment.connectionId }, false);
+          if (clean) {
+            const payload = { ...(clean as object), by: attachment.connectionId };
+            send("spellfx", payload, false);
+            this.tellCompanion(attachment.userId, { type: "spellfx", room, people: this.seatedPeople(room), value: payload });
+          }
+          return;
+        }
+        if (key === "ping") {
+          if (clean) {
+            send("ping", clean, true);
+            this.tellCompanion(attachment.userId, {
+              type: "ping",
+              room,
+              people: this.seatedPeople(room),
+              ...(clean as TablePing),
+            });
+          }
           return;
         }
         if (key === "loungefx") {
@@ -1148,8 +1253,8 @@ export class HuddleHub extends DurableObject {
         const watchBefore = bag.watch as WatchState | undefined;
         const gm = (bag.gm as { connectionId?: string } | undefined)?.connectionId;
         const gmHere = Boolean(gm && this.sockets().some(({ attachment: peer }) => peer.connectionId === gm && peer.voiceChannelId === room));
-        if (key === "tablemap" || key === "grid") {
-          // The game master's table: while one is in the room, only they change the map and its scale.
+        if (key === "tablemap" || key === "grid" || key === "fog") {
+          // The game master's table: while one is in the room, only they change the map, scale, and fog.
           if (gmHere && gm !== attachment.connectionId) return;
         }
         if (key === "lounge" && clean && gmHere && gm !== attachment.connectionId) {
@@ -1165,35 +1270,27 @@ export class HuddleHub extends DurableObject {
           await this.saveLoungeShared();
           send("pawns", next, true);
           // The companion's battle map follows the table (it ignores tables none of its players sit at).
-          if (typeof this.ctx?.waitUntil === "function") {
-            this.ctx.waitUntil(
-              notifyDndTable(attachment.userId, {
-                type: "pawns",
-                room,
-                people: this.seatedPeople(room),
-                pawns: Object.values(next),
-                map: tableView(bag.tablemap as TableMap | undefined),
-              }),
-            );
-          }
+          this.tellCompanion(attachment.userId, {
+            type: "pawns",
+            room,
+            people: this.seatedPeople(room),
+            pawns: Object.values(next),
+            map: tableView(bag.tablemap as TableMap | undefined),
+          });
           return;
         }
         if (key === "initiative") {
           if (clean) bag.initiative = clean; else delete bag.initiative;
           await this.saveLoungeShared();
           send("initiative", clean, true);
-          if (typeof this.ctx?.waitUntil === "function") {
-            const ownerOf = (connectionId: string) =>
-              this.sockets().find(({ attachment: peer }) => peer.connectionId === connectionId && !peer.bot)?.attachment.userId;
-            this.ctx.waitUntil(
-              notifyDndTable(attachment.userId, {
-                type: "initiative",
-                room,
-                people: this.seatedPeople(room),
-                value: companionInitiative(clean as Initiative | null, ownerOf),
-              }),
-            );
-          }
+          const ownerOf = (connectionId: string) =>
+            this.sockets().find(({ attachment: peer }) => peer.connectionId === connectionId && !peer.bot)?.attachment.userId;
+          this.tellCompanion(attachment.userId, {
+            type: "initiative",
+            room,
+            people: this.seatedPeople(room),
+            value: companionInitiative(clean as Initiative | null, ownerOf),
+          });
           return;
         }
         if (key === "area") {
@@ -1204,6 +1301,12 @@ export class HuddleHub extends DurableObject {
           if (Object.keys(next).length) bag.areas = next; else delete bag.areas;
           await this.saveLoungeShared();
           send("areas", next, true);
+          this.tellCompanion(attachment.userId, {
+            type: "areas",
+            room,
+            people: this.seatedPeople(room),
+            areas: Object.values(next),
+          });
           return;
         }
         if (key === "queue") {
@@ -1242,8 +1345,8 @@ export class HuddleHub extends DurableObject {
           await this.saveLoungeShared();
           send("characters", characters, true);
           // Hit points and spent slots changed at the table reach the companion's sheet.
-          if (clean && typeof this.ctx?.waitUntil === "function") {
-            this.ctx.waitUntil(notifyDndTable(attachment.userId, { type: "character", value: clean as Record<string, unknown> }));
+          if (clean) {
+            this.tellCompanion(attachment.userId, { type: "character", value: clean as Record<string, unknown> });
           }
           return;
         }
@@ -1259,6 +1362,38 @@ export class HuddleHub extends DurableObject {
         if (clean) bag[key] = clean; else delete bag[key];
         await this.saveLoungeShared();
         send(key, clean, true);
+        if (key === "tablemap") {
+          this.tellCompanion(attachment.userId, {
+            type: "tablemap",
+            room,
+            people: this.seatedPeople(room),
+            value: clean ? { url: (clean as TableMap).url, turns: (clean as TableMap).turns, zoom: (clean as TableMap).zoom } : null,
+          });
+        } else if (key === "grid" && clean) {
+          this.tellCompanion(attachment.userId, {
+            type: "grid",
+            room,
+            people: this.seatedPeople(room),
+            squares: (clean as { squares: number }).squares,
+          });
+        } else if (key === "fog") {
+          this.tellCompanion(attachment.userId, {
+            type: "fog",
+            room,
+            people: this.seatedPeople(room),
+            value: (clean as TableFog | null) ?? null,
+          });
+        } else if (key === "lounge" && clean) {
+          const l = clean as { mood: TableMood; curtains: boolean; off: string[] };
+          this.tellCompanion(attachment.userId, {
+            type: "mood",
+            room,
+            people: this.seatedPeople(room),
+            mood: l.mood,
+            curtains: l.curtains,
+            off: l.off,
+          });
+        }
         return;
       }
 
@@ -2263,23 +2398,43 @@ export class HuddleHub extends DurableObject {
     });
   }
 
+  private tellCompanion(userId: string, event: Parameters<typeof notifyDndTable>[1]): void {
+    if (typeof this.ctx?.waitUntil === "function") {
+      this.ctx.waitUntil(notifyDndTable(userId, event));
+    }
+  }
+
   /**
    * The D&D companion acting at the table for one person (lib/dnd-table.ts).
    * It goes through the same cleaning as a tab's lounge-set, into every voice
    * room that person sits in; with nobody seated there is nothing to do.
    */
-  private async applyDndTable(body: DndTableOp): Promise<{ ok: boolean; rooms: string[]; ids?: Record<string, string> }> {
-    // The board ops (pawns, initiative) reach the rooms of the whole party; the rest act for one person.
+  private async applyDndTable(
+    body: DndTableOp,
+  ): Promise<{ ok: boolean; rooms: string[]; ids?: Record<string, string>; character?: TableCharacter | null }> {
     const people = new Set([body.userId, ...("also" in body && Array.isArray(body.also) ? body.also : [])]);
     const seats = this.sockets().filter(
       ({ attachment }) => people.has(attachment.userId) && attachment.voiceChannelId && !attachment.bot && !attachment.replaced,
     );
-    const rooms = [...new Set(seats.map(({ attachment }) => attachment.voiceChannelId as string))];
+    const rooms =
+      body.op === "battlemap-sync"
+        ? (this.sockets().some(({ attachment }) => attachment.voiceChannelId === body.channelId && !attachment.bot && !attachment.replaced)
+            ? [body.channelId]
+            : [])
+        : [...new Set(seats.map(({ attachment }) => attachment.voiceChannelId as string))];
     if (body.op === "where" || !rooms.length) return { ok: true, rooms };
 
-    const now = Date.now();
-    const name = seats[0].attachment.displayName || seats[0].attachment.username || "Someone";
     const all = await this.loadLoungeShared();
+    if (body.op === "character-get") {
+      const myRoom = seats.find(({ attachment }) => attachment.userId === body.userId)?.attachment.voiceChannelId;
+      const character = myRoom
+        ? ((all[myRoom]?.characters as Record<string, TableCharacter> | undefined)?.[body.userId] ?? null)
+        : null;
+      return { ok: true, rooms, character };
+    }
+
+    const now = Date.now();
+    const name = seats[0]?.attachment.displayName || seats[0]?.attachment.username || "Someone";
     const send = (room: string, key: string, value: unknown) => {
       const payload = JSON.stringify({ t: "lounge-shared", channelId: room, key, value, serverNow: now });
       for (const { socket, attachment: peer } of this.sockets()) {
@@ -2295,7 +2450,60 @@ export class HuddleHub extends DurableObject {
     const ids: Record<string, string> = {};
     for (const room of rooms) {
       const bag = (all[room] ??= {});
-      const seat = seats.find(({ attachment }) => attachment.voiceChannelId === room)!.attachment;
+      const seat = seats.find(({ attachment }) => attachment.voiceChannelId === room)?.attachment;
+      if (body.op === "battlemap-sync") {
+        const val = body.value;
+        if ("map" in val) {
+          const rawMap = val.map as Record<string, unknown> | null;
+          if (rawMap === null) {
+            delete bag.tablemap;
+            send(room, "tablemap", null);
+          } else {
+            const clean = sanitizeShared("tablemap", rawMap, name, now);
+            if (clean) {
+              bag.tablemap = clean;
+              send(room, "tablemap", clean);
+            }
+          }
+        }
+        if ("fog" in val) {
+          const clean = val.fog === null ? null : sanitizeShared("fog", val.fog, name, now);
+          if (clean) bag.fog = clean; else delete bag.fog;
+          send(room, "fog", clean);
+        }
+        if (typeof val.removePawnId === "string") {
+          const pawns = (bag.pawns as Record<string, TablePawn> | undefined) ?? {};
+          if (pawns[val.removePawnId]) {
+            const { [val.removePawnId]: _gone, ...rest } = pawns;
+            if (Object.keys(rest).length) bag.pawns = rest; else delete bag.pawns;
+            send(room, "pawns", rest);
+          }
+        }
+        if (Array.isArray(val.pawns)) {
+          const pawns = (bag.pawns as Record<string, TablePawn> | undefined) ?? {};
+          const laid = layCompanionPawns(pawns, val.pawns as CompanionPawn[], now);
+          if (Object.keys(laid.pawns).length) bag.pawns = laid.pawns; else delete bag.pawns;
+          send(room, "pawns", laid.pawns);
+        } else if (val.pawn && typeof val.pawn === "object") {
+          const pawns = (bag.pawns as Record<string, TablePawn> | undefined) ?? {};
+          const placed = placeCompanionPawn(pawns, val.pawn as CompanionPawn, now);
+          if (placed.id) {
+            bag.pawns = placed.pawns;
+            send(room, "pawns", placed.pawns);
+          }
+        }
+        if ("initiative" in val) {
+          const seatOf = (owner: string) =>
+            this.sockets().find(({ attachment: peer }) => peer.userId === owner && peer.voiceChannelId === room && !peer.bot && !peer.replaced)
+              ?.attachment.connectionId;
+          const clean = val.initiative
+            ? sanitizeShared("initiative", tableInitiative(val.initiative as CompanionInitiative, seatOf), name, now)
+            : null;
+          if (clean) bag.initiative = clean; else delete bag.initiative;
+          send(room, "initiative", clean);
+        }
+        continue;
+      }
       if (body.op === "pawn" || body.op === "pawns") {
         // The companion's battle map: its own checks already decided who may move what.
         const pawns = (bag.pawns as Record<string, TablePawn> | undefined) ?? {};
@@ -2339,6 +2547,7 @@ export class HuddleHub extends DurableObject {
         bag.characters = characters;
         send(room, "characters", characters);
       } else if (body.op === "gm") {
+        if (!seat) continue;
         // The companion's game master runs the table while they are in the room.
         const before = bag.gm as { connectionId?: string; panels?: number; folded?: boolean } | undefined;
         if (before?.connectionId === seat.connectionId) continue;
@@ -2347,6 +2556,7 @@ export class HuddleHub extends DurableObject {
         bag.gm = clean;
         send(room, "gm", clean);
       } else if (body.op === "tablemap") {
+        if (!seat) continue;
         // The same rule as at the table: while a game master is here, only they change the map.
         const gm = (bag.gm as { connectionId?: string } | undefined)?.connectionId;
         const gmHere = Boolean(gm && this.sockets().some(({ attachment: peer }) => peer.connectionId === gm && peer.voiceChannelId === room));
@@ -2355,7 +2565,44 @@ export class HuddleHub extends DurableObject {
         if (!clean) continue;
         bag.tablemap = clean;
         send(room, "tablemap", clean);
+      } else if (body.op === "grid") {
+        const clean = body.value === null ? null : sanitizeShared("grid", body.value, name, now);
+        if (body.value !== null && !clean) continue;
+        if (clean) bag.grid = clean; else delete bag.grid;
+        send(room, "grid", clean);
+      } else if (body.op === "fog") {
+        const clean = body.value === null ? null : sanitizeShared("fog", body.value, name, now);
+        if (body.value !== null && !clean) continue;
+        if (clean) bag.fog = clean; else delete bag.fog;
+        send(room, "fog", clean);
+      } else if (body.op === "areas") {
+        const list = Array.isArray(body.value) ? body.value.slice(0, 8) : [];
+        let areas: Record<string, TableArea> = {};
+        for (const item of list) {
+          const op = sanitizeAreaOp({ ...(item as unknown as Record<string, unknown>), op: "put" });
+          if (op) {
+            const next = applyArea(areas, op, { userId: body.userId, name, isGm: true }, now);
+            if (next) areas = next;
+          }
+        }
+        if (Object.keys(areas).length) bag.areas = areas; else delete bag.areas;
+        send(room, "areas", areas);
+      } else if (body.op === "ping") {
+        const clean = sanitizeShared("ping", body.value, name, now);
+        if (clean) send(room, "ping", clean);
+      } else if (body.op === "card") {
+        const clean = body.value === null ? null : sanitizeShared("card", body.value, name, now);
+        if (body.value !== null && !clean) continue;
+        if (clean) bag.card = clean; else delete bag.card;
+        send(room, "card", clean);
+      } else if (body.op === "mood") {
+        const merged = { ...((bag.lounge as object | undefined) ?? {}), ...(body.value ?? {}) };
+        const clean = sanitizeShared("lounge", merged, name, now);
+        if (!clean) continue;
+        bag.lounge = clean;
+        send(room, "lounge", clean);
       } else if (body.op === "spellfx") {
+        if (!seat) continue;
         // From their hero's pawn toward the nearest other pawn, or the middle of the table.
         const pawns = Object.values((bag.pawns as Record<string, TablePawn> | undefined) ?? {});
         const mine = pawns.find((p) => p.owner === body.userId && p.hero) ?? pawns.find((p) => p.owner === body.userId);

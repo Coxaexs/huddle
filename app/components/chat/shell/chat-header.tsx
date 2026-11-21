@@ -21,6 +21,7 @@ import type { Member } from "@/lib/users";
 import { HeaderFaces } from "./simple-parts";
 import { useToolbar } from "../../widgets/toolbar";
 import { useDismiss } from "../../../hooks/use-dismiss";
+import { SecondScreenTrigger } from "../../second-screen/second-screen-launcher";
 
 export function ChatHeader({
   setMobileNav,
@@ -292,6 +293,15 @@ export function ChatHeader({
                         })()
                       )}
 
+                      <SecondScreenTrigger
+                        activeChannelId={activeChannelId}
+                        activeChannelName={stageChannel.name}
+                        voiceChannelId={stageChannel.id}
+                        voiceChannelName={stageChannel.name}
+                        hasActiveScreenShare={Boolean(activeScreenShare)}
+                        hasBattlemap={Boolean(battlemap)}
+                        stageQuickCast
+                      />
                       <button
                         type="button"
                         className="voice-stage-topbar-btn"
@@ -457,6 +467,14 @@ export function ChatHeader({
                 </span>
               )}
 
+              <SecondScreenTrigger
+                activeChannelId={activeChannelId}
+                activeChannelName={stageChannel ? stageChannel.name : channelTitle}
+                voiceChannelId={stageChannel?.id || voice.channelId || null}
+                voiceChannelName={stageChannel?.name || (voice.channelId ? "Active voice call" : null)}
+                hasActiveScreenShare={Boolean(activeScreenShare)}
+                hasBattlemap={Boolean(battlemap)}
+              />
               {(!simpleTools || unreadMentionTotal > 0) && (
                 <Icon
                   label={t("header.mentions")}

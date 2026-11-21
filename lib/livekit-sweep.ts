@@ -13,6 +13,7 @@
  */
 
 import type { VoiceParticipant } from "./protocol";
+import { isSecondScreenConnectionId } from "./second-screen";
 
 /** How long a token from /api/voice/token lasts. LiveKit refreshes it for connected seats. */
 export const LIVEKIT_TOKEN_TTL_MS = 10 * 60_000;
@@ -81,6 +82,9 @@ function isService(userId: string): boolean {
 
 function seatFor(seats: VoiceParticipant[] | undefined, identity: string): VoiceParticipant | undefined {
   const { userId, connectionId } = splitIdentity(identity);
+  if (isSecondScreenConnectionId(connectionId)) {
+    return (seats || []).find((seat) => !seat.bot && seat.id === userId);
+  }
   return (seats || []).find(
     (seat) => !seat.bot && seat.id === userId && (connectionId === null || seat.connectionId === connectionId),
   );
@@ -109,7 +113,13 @@ export function planSweep(
       if (isService(userId)) continue;
       const seat = seatFor(seats[room.name], participant.identity);
       if (seat) {
-        if (participant.canPublish && (seat.speakAllowed === false || seat.serverMuted === true)) {
+        const { connectionId } = splitIdentity(participant.identity);
+        if (
+          participant.canPublish &&
+          (isSecondScreenConnectionId(connectionId) ||
+            seat.speakAllowed === false ||
+            seat.serverMuted === true)
+        ) {
           silence.push({ room: room.name, identity: participant.identity });
         }
         continue;

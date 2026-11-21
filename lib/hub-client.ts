@@ -6,6 +6,7 @@ import type {
   VoiceParticipant,
 } from "./protocol";
 import { bindings } from "./storage";
+import { DEFAULT_SECOND_SCREEN_STATE, type SecondScreenState } from "./second-screen";
 
 /**
  * There is a single hub instance for this Huddle. The friend group is small
@@ -339,7 +340,69 @@ export async function playerState(
 }
 
 /** The D&D companion acting at the table for one person (lib/dnd-table.ts). */
-export async function dndTable(op: import("./dnd-table").DndTableOp): Promise<{ ok: boolean; rooms: string[]; ids?: Record<string, string> }> {
+export async function getSecondScreenState(userId: string): Promise<SecondScreenState> {
+  const stub = hub();
+  if (!stub || !userId) return { ...DEFAULT_SECOND_SCREEN_STATE };
+  try {
+    const response = await stub.fetch(
+      `${INTERNAL}/second-screen?userId=${encodeURIComponent(userId)}`,
+    );
+    if (!response.ok) return { ...DEFAULT_SECOND_SCREEN_STATE };
+    const data = (await response.json()) as { state?: SecondScreenState };
+    return data.state ?? { ...DEFAULT_SECOND_SCREEN_STATE };
+  } catch {
+    return { ...DEFAULT_SECOND_SCREEN_STATE };
+  }
+}
+
+export async function updateSecondScreenState(
+  userId: string,
+  patch: Partial<SecondScreenState> | Record<string, unknown>,
+): Promise<SecondScreenState> {
+  const stub = hub();
+  if (!stub) return { ...DEFAULT_SECOND_SCREEN_STATE };
+  try {
+    const response = await stub.fetch(`${INTERNAL}/second-screen`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, patch }),
+    });
+    if (!response.ok) return { ...DEFAULT_SECOND_SCREEN_STATE };
+    const data = (await response.json()) as { state?: SecondScreenState };
+    return data.state ?? { ...DEFAULT_SECOND_SCREEN_STATE };
+  } catch {
+    return { ...DEFAULT_SECOND_SCREEN_STATE };
+  }
+}
+
+export async function manageSecondScreenPair(input: {
+  action: "get" | "rotate" | "resolve" | "revoke";
+  userId?: string;
+  token?: string;
+}): Promise<{ token?: string; expiresAt?: number; userId?: string | null; ok?: boolean } | null> {
+  const stub = hub();
+  if (!stub) return null;
+  try {
+    const response = await stub.fetch(`${INTERNAL}/second-screen-pair`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as {
+      token?: string;
+      expiresAt?: number;
+      userId?: string | null;
+      ok?: boolean;
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function dndTable(
+  op: import("./dnd-table").DndTableOp,
+): Promise<{ ok: boolean; rooms: string[]; ids?: Record<string, string>; character?: import("./lounge-shared").TableCharacter | null }> {
   const stub = hub();
   if (!stub) return { ok: false, rooms: [] };
   try {
@@ -349,7 +412,12 @@ export async function dndTable(op: import("./dnd-table").DndTableOp): Promise<{ 
       body: JSON.stringify(op),
     });
     if (!response.ok) return { ok: false, rooms: [] };
-    return (await response.json()) as { ok: boolean; rooms: string[]; ids?: Record<string, string> };
+    return (await response.json()) as {
+      ok: boolean;
+      rooms: string[];
+      ids?: Record<string, string>;
+      character?: import("./lounge-shared").TableCharacter | null;
+    };
   } catch {
     return { ok: false, rooms: [] };
   }

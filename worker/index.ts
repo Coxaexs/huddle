@@ -120,7 +120,7 @@ async function handleRequest(
         .split(",")
         .map((d) => d.trim().toLowerCase())
         .filter(Boolean);
-      const appPage = url.pathname.match(/^(?:\/hangout|)\/(oauth2\/|developers(?:\/|$))/);
+      const appPage = url.pathname.match(/^(?:\/hangout|)\/(oauth2\/|developers(?:\/|$)|screen(?:\/|$)|dnd-login(?:\/|$))/);
       if (landingDomains.includes(landingHost) && appPage && request.method === "GET") {
         const apex = landingHost.replace(/^www\./, "");
         const path = url.pathname.startsWith(`${effectiveBasePath}/`) ? url.pathname : `${effectiveBasePath}${url.pathname}`;

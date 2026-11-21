@@ -4,6 +4,7 @@ import type { ClubBatch, ClubCrowdKind } from "./club-feed";
 import type { ClubDesk, ClubFx } from "./club-desk";
 import type { SynthPlay } from "./gesture-synth";
 import type { SessionNotesState } from "./session-notes";
+import type { SecondScreenState } from "./second-screen";
 
 /** Which room a lounge pose is in; absent means the living room, as before venues existed. */
 export type LoungeVenue = "lounge" | "cinema" | "tabletop" | "boardhall" | "meadow" | "club";
@@ -161,6 +162,8 @@ export interface DiceRollEvent {
   modifier: number;
   /** A V5 roll's is its successes. */
   total: number;
+  /** Optional check/save label (e.g. "Stealth", "Initiative", "Dexterity Save"). */
+  label?: string;
   /** Shown in place of "TOTAL n" when set: a V5 roll's "3 SUCCESSES · MESSY CRITICAL". */
   summary?: string;
   roller: { id: string; displayName: string };
@@ -478,7 +481,7 @@ export type ClientEvent =
   | { t: "watching"; screens: string[]; party: boolean }
   /** Ask for a streamer's latest preview frame; answered to this socket only. */
   | { t: "stream-preview-get"; connectionId: string }
-  | { t: "lounge-set"; key: "watch" | "queue" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid" | "spellfx" | "lounge" | "loungefx"; value: unknown }
+  | { t: "lounge-set"; key: "watch" | "queue" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid" | "fog" | "ping" | "spellfx" | "lounge" | "loungefx"; value: unknown }
   | {
       t: "dm-call";
       channelId: string;
@@ -559,7 +562,7 @@ export type ServerEvent =
       /** Living room: one piece of shared state changed (null: cleared). */
       t: "lounge-shared";
       channelId: string;
-      key: "watch" | "queue" | "initiative" | "gm" | "card" | "characters" | "hiddenroll" | "house" | "tablemap" | "pawns" | "areas" | "grid" | "spellfx" | "lounge" | "loungefx";
+      key: "watch" | "queue" | "initiative" | "gm" | "card" | "characters" | "hiddenroll" | "house" | "tablemap" | "pawns" | "areas" | "grid" | "fog" | "ping" | "spellfx" | "lounge" | "loungefx";
       value: unknown;
       serverNow: number;
     }
@@ -792,7 +795,7 @@ export type ServerEvent =
       /** Shared battlemap: opened, closed, a token moved, paint added. */
       t: "battlemap";
       channelId: string;
-      action: "open" | "close" | "token" | "tokens" | "stroke" | "cleared" | "encounter";
+      action: "open" | "close" | "token" | "tokens" | "fog" | "stroke" | "cleared" | "encounter";
       encounter?: "combat" | "exploration";
       map?: unknown;
       token?: unknown;
@@ -851,6 +854,7 @@ export type ServerEvent =
       isVideo?: boolean;
       serverNow: number;
     }
+  | { t: "second-screen"; state: SecondScreenState; serverNow: number }
   | { t: "pong"; serverNow: number };
 
 /**

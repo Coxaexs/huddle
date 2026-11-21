@@ -1,12 +1,14 @@
-import { currentUser, unauthorized } from "@/lib/auth";
+import { currentUser, unauthorized, userColumns, type User } from "@/lib/auth";
 import { bindings } from "@/lib/storage";
 import { findChannel, isServerMember } from "@/lib/servers";
 import { isDmMember } from "@/lib/dms";
 import { DM_SERVER_ID } from "@/lib/schema";
 import { AccessToken, TrackSource } from "livekit-server-sdk";
 import { timeoutInChannel } from "@/lib/timeouts";
-import { hubState, watchLiveKit } from "@/lib/hub-client";
+import { getSecondScreenState, hubState, manageSecondScreenPair, watchLiveKit } from "@/lib/hub-client";
+import { SECOND_SCREEN_PREFIX } from "@/lib/second-screen";
 import { LIVEKIT_TOKEN_TTL_MS } from "@/lib/livekit-sweep";
+import { liveKitClients, permitInLiveKit } from "@/lib/livekit-admin";
 import { can, hasPermission, Permission } from "@/lib/permissions";
 import { channelOverwritePermissions, mayView } from "@/lib/channel-permissions";
 import { authenticateBot, isBridgeBot } from "@/lib/bot-auth";
@@ -34,12 +36,45 @@ export async function GET(request: Request) {
     });
   }
 
-  const user = await currentUser(request);
+  let user = await currentUser(request);
   const recorder = Boolean(
     b.RECORDER_SERVICE_TOKEN &&
       request.headers.get("authorization") ===
         `Bearer ${b.RECORDER_SERVICE_TOKEN}`,
   );
+
+  const { searchParams } = new URL(request.url);
+  const watchOnly = searchParams.get("watchOnly") === "1";
+  const pairToken = searchParams.get("pair")?.trim() || "";
+  const channelId = searchParams.get("channelId")?.trim();
+
+  if (!user && !recorder && watchOnly && pairToken) {
+    if (!channelId) {
+      return Response.json({ error: "Missing channelId parameter" }, { status: 400 });
+    }
+    const resolved = await manageSecondScreenPair({ action: "resolve", token: pairToken });
+    if (!resolved?.userId) return unauthorized();
+    const [s2State, hub] = await Promise.all([
+      getSecondScreenState(resolved.userId),
+      hubState().catch(() => null),
+    ]);
+    const seated = (hub?.voice[channelId] || []).some(
+      (seat) => !seat.bot && seat.id === resolved.userId,
+    );
+    if (!seated || s2State.voiceChannelId !== channelId) {
+      return Response.json(
+        { error: "Owner is not currently sharing that voice room to 2nd Screen." },
+        { status: 403 },
+      );
+    }
+    const owner = b.DB
+      ? await b.DB.prepare(`SELECT ${userColumns()} FROM users WHERE id = ? LIMIT 1`)
+          .bind(resolved.userId)
+          .first<User>()
+      : null;
+    if (!owner || owner.suspended_at) return unauthorized();
+    user = owner;
+  }
 
   if (!user && !recorder) {
     // The Discord bridge, for one of its Discord people's seats.
@@ -47,9 +82,6 @@ export async function GET(request: Request) {
     if (!isBridgeBot(bot)) return unauthorized();
     return bridgeSeatToken(request, { livekitUrlNl, livekitUrlDe, apiKey, apiSecret });
   }
-
-  const { searchParams } = new URL(request.url);
-  const channelId = searchParams.get("channelId")?.trim();
   if (!channelId) {
     return Response.json(
       { error: "Missing channelId parameter" },
@@ -146,7 +178,10 @@ export async function GET(request: Request) {
   const silenced = db && user ? await mayNotBeHeard(db, channelId, user.id, connectionId) : false;
 
   const base = user ? user.id : "recorder";
-  const identity = connectionId ? `${base}|${connectionId}` : base;
+  const effectiveConnectionId = watchOnly
+    ? `${SECOND_SCREEN_PREFIX}${(connectionId || crypto.randomUUID().slice(0, 12)).replace(/^screen_/, "").slice(0, 48)}`
+    : connectionId;
+  const identity = effectiveConnectionId ? `${base}|${effectiveConnectionId}` : base;
   const name = user ? user.display_name || user.username : "Session Recorder";
 
   // Short-lived: LiveKit checks the token only on connect (and refreshes it
@@ -161,17 +196,32 @@ export async function GET(request: Request) {
   // Channel permissions: no SPEAK is a listen-only seat; no VIDEO keeps it to the microphone.
   const mayNotSpeak = here !== null && !hasPermission(here, Permission.SPEAK);
   const mayNotShowVideo = here !== null && !hasPermission(here, Permission.VIDEO);
+  const canPublish = watchOnly ? false : (!timedOut && !silenced && !mayNotSpeak);
+  const canPublishSources = mayNotShowVideo ? [TrackSource.MICROPHONE] : [];
   at.addGrant({
     roomJoin: true,
     room: channelId,
-    canPublish: !timedOut && !silenced && !mayNotSpeak,
-    ...(mayNotShowVideo ? { canPublishSources: [TrackSource.MICROPHONE] } : {}),
+    canPublish,
+    ...(canPublish && canPublishSources.length ? { canPublishSources } : {}),
     canSubscribe: true,
-    canPublishData: !timedOut,
+    canPublishData: watchOnly ? false : !timedOut,
   });
 
   const token = await at.toJwt();
   if (!recorder) await watchLiveKit();
+
+  // Brought on stage or server-unmuted while connected: hand the connection
+  // it already has exactly what this token grants, so it need not reconnect.
+  // Nothing is granted here that the token would not grant on a reconnect.
+  const restored =
+    !watchOnly && searchParams.get("restore") === "1" && user && connectionId && canPublish
+      ? await permitInLiveKit(liveKitClients(b), channelId, identity, {
+          canPublish: true,
+          canPublishSources,
+          canSubscribe: true,
+          canPublishData: true,
+        })
+      : false;
 
   return Response.json({
     enabled: true,
@@ -180,6 +230,7 @@ export async function GET(request: Request) {
     token,
     identity,
     room: channelId,
+    ...(restored ? { restored: true } : {}),
   });
 }
 
