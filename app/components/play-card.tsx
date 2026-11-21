@@ -129,7 +129,7 @@ export function JoinHelp({ result, onRetry }: { result: JoinResult; onRetry?: ()
         <button type="button" onClick={() => openGameLink(viaMod ? plan.runUrl : plan.url)}>
           {plan.how === "lobby" && !viaMod ? t("play.action.joinAgain") : t("play.action.openGame", { game })}
         </button>
-        {plan.addFriendUrl && (
+        {plan.addFriendUrl && !viaMod && (
           <button type="button" onClick={() => openGameLink(plan.addFriendUrl as string)}>
             {t("play.action.addFriend", { host })}
           </button>

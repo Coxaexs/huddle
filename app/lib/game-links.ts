@@ -19,6 +19,13 @@ export function rememberLocalPlay(play: Record<string, { mod?: boolean } | undef
   for (const [game, state] of Object.entries(play)) localMods.set(game, Boolean(state?.mod));
 }
 
+// Every desktop scan announces this (app/hooks/use-activity-detector.ts).
+if (typeof window !== "undefined") {
+  window.addEventListener("hoffle:play-state", (event) =>
+    rememberLocalPlay((event as CustomEvent<Record<string, { mod?: boolean } | undefined>>).detail),
+  );
+}
+
 /** The Hoffle mod for this game is installed on this computer (it has run once). */
 export function hasGameMod(game: string): boolean {
   return localMods.get(game) === true;

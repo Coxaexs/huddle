@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/client";
-import { rememberLocalPlay } from "../lib/game-links";
 import {
   ACTIVITY_HEARTBEAT_MS,
   type ProfileActivity,
@@ -240,8 +239,8 @@ export function useActivityDetector({
         const scan = desktopScanner();
         const desktop = scan ? await scan().catch(() => null) : null;
         if (desktop?.play) {
-          // Play together: which game mods are here, and what a hosted game reports.
-          rememberLocalPlay(desktop.play);
+          // Play together: which game mods are here, and what a hosted game
+          // reports (app/lib/game-links.ts and play-prompts.tsx listen).
           window.dispatchEvent(new CustomEvent("hoffle:play-state", { detail: desktop.play }));
         }
 
