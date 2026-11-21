@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useI18n } from "../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 import { playSound } from "../lib/msn-sounds";
 import { apiFetch } from "../lib/client";
 import {
@@ -53,7 +55,8 @@ export function GameCard({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const info = GAME_INFO[game.kind];
+  const { t } = useI18n();
+  const info = { ...GAME_INFO[game.kind], name: t(`games.kind.${game.kind}.name` as MessageKey) };
   const [host, guest] = game.players;
   const seat = host.id === userId ? 0 : guest?.id === userId ? 1 : null;
   const myTurn = game.status === "playing" && seat !== null && (game.kind === "rps" || game.turn === seat);
@@ -89,7 +92,7 @@ export function GameCard({
         body: JSON.stringify({ action, messageId, move }),
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "That didn't work.");
+      setError(err instanceof Error ? err.message : t("games.error"));
     } finally {
       setBusy(false);
     }
@@ -101,28 +104,28 @@ export function GameCard({
   if (game.status === "waiting") {
     status =
       seat === 0
-        ? "Waiting for someone to accept…"
-        : `${nameOf(0)} has invited you to play ${info.name}.`;
+        ? t("games.status.waitingHost")
+        : t("games.status.invited", { name: nameOf(0), game: info.name });
   } else if (game.status === "declined") {
-    status = "The invitation was declined.";
+    status = t("games.status.declined");
   } else if (game.status === "cancelled") {
-    status = game.solo ? `${nameOf(0)} gave up.` : `${nameOf(0)} cancelled the invitation.`;
+    status = game.solo ? t("games.status.gaveUp", { name: nameOf(0) }) : t("games.status.cancelled", { name: nameOf(0) });
   } else if (game.status === "draw") {
-    status = game.solo ? "Out of guesses!" : "It's a draw!";
+    status = game.solo ? t("games.status.outOfGuesses") : t("games.status.draw");
   } else if (game.status === "won") {
-    status = game.winner === seat ? "You won! 🎉" : `${nameOf(game.winner ?? 0)} won!`;
+    status = game.winner === seat ? t("games.status.youWon") : t("games.status.won", { name: nameOf(game.winner ?? 0) });
   } else if (game.solo) {
-    status = seat === 0 ? "Name a country." : `${nameOf(0)} is playing solo.`;
+    status = seat === 0 ? t("games.status.nameCountry") : t("games.status.playingSolo", { name: nameOf(0) });
   } else if (game.kind === "rps") {
     const thrown = game.rps?.thrown ?? [false, false];
     status =
       seat !== null && thrown[seat]
-        ? `Waiting for ${nameOf(seat === 0 ? 1 : 0)} to throw…`
+        ? t("games.status.waitingThrow", { name: nameOf(seat === 0 ? 1 : 0) })
         : seat !== null
-          ? `Round ${game.rps?.round ?? 1}: pick your throw.`
-          : `Round ${game.rps?.round ?? 1}`;
+          ? t("games.status.pickThrow", { round: game.rps?.round ?? 1 })
+          : t("games.status.round", { round: game.rps?.round ?? 1 });
   } else {
-    status = myTurn ? "Your turn." : `${nameOf(game.turn)}'s turn.`;
+    status = myTurn ? t("games.status.yourTurn") : t("games.status.turnOf", { name: nameOf(game.turn) });
   }
 
   const winLine =
@@ -135,7 +138,7 @@ export function GameCard({
     >
       {game.status === "won" && (
         <div className="game-banner" role="status">
-          🏆 {game.winner === seat ? "You win!" : `${nameOf(game.winner ?? 0)} wins!`}
+          🏆 {game.winner === seat ? t("games.banner.youWin") : t("games.banner.wins", { name: nameOf(game.winner ?? 0) })}
         </div>
       )}
       <header className="game-card-head">
@@ -155,7 +158,7 @@ export function GameCard({
             className={`game-player seat-${i} ${game.status === "playing" && game.kind !== "rps" && game.turn === i ? "to-move" : ""} ${over && game.winner === i ? "winner" : ""}`}
           >
             {PIECES[game.kind][i] && <span className="game-piece">{PIECES[game.kind][i]}</span>}
-            {i === 1 && !guest ? <em>Open seat</em> : <StyledText text={i === 0 ? host.name : guest?.name} />}
+            {i === 1 && !guest ? <em>{t("games.openSeat")}</em> : <StyledText text={i === 0 ? host.name : guest?.name} />}
             {(game.kind === "mines" || game.kind === "rps" || game.kind === "rota") && <b>{game.scores[i]}</b>}
           </span>
         ))}
@@ -240,7 +243,7 @@ export function GameCard({
                     className={`mines-cell ${cell === "." ? "covered" : cell === "A" || cell === "B" ? `flag flag-${cell}` : `open n${cell}`} ${game.last === i ? "last" : ""}`}
                     disabled={!myTurn || cell !== "." || busy}
                     onClick={() => void act("move", i)}
-                    aria-label={`Row ${Math.floor(i / MINES_SIZE) + 1}, column ${(i % MINES_SIZE) + 1}`}
+                    aria-label={t("games.cell", { row: Math.floor(i / MINES_SIZE) + 1, col: (i % MINES_SIZE) + 1 })}
                   >
                     {cell === "A" || cell === "B" ? <span className="mines-flag">🚩</span> : cell !== "." && cell !== "0" ? cell : ""}
                   </button>
@@ -255,26 +258,26 @@ export function GameCard({
         {game.status === "waiting" && seat === null && (
           <>
             <button type="button" className="primary" disabled={busy} onClick={() => void act("join")}>
-              Accept
+              {t("games.accept")}
             </button>
             <button type="button" disabled={busy} onClick={() => void act("decline")}>
-              Decline
+              {t("games.decline")}
             </button>
           </>
         )}
         {game.status === "waiting" && seat === 0 && (
           <button type="button" disabled={busy} onClick={() => void act("decline")}>
-            Cancel
+            {t("games.cancel")}
           </button>
         )}
         {game.status === "playing" && seat !== null && (
           <button type="button" disabled={busy} onClick={() => void act("resign")}>
-            Give up
+            {t("games.giveUp")}
           </button>
         )}
         {(over || game.status === "declined" || (game.solo && game.status === "cancelled")) && (
           <button type="button" className="primary" onClick={() => onPlayAgain(game.kind, game.solo)}>
-            Play again
+            {t("games.playAgain")}
           </button>
         )}
       </div>
@@ -298,28 +301,29 @@ export function GamesPicker({
   inVoice: boolean;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   return (
-    <div className="games-picker" role="dialog" aria-label="Games">
+    <div className="games-picker" role="dialog" aria-label={t("games.picker.title")}>
       <header>
-        <strong>Games</strong>
-        <button type="button" onClick={onClose} aria-label="Close">
+        <strong>{t("games.picker.title")}</strong>
+        <button type="button" onClick={onClose} aria-label={t("games.picker.close")}>
           ×
         </button>
       </header>
-      <p>Invite everyone in this conversation to play:</p>
+      <p>{t("games.picker.invite")}</p>
       <div className="games-picker-list">
         {GAME_KINDS.map((kind) => (
           <div key={kind} className="games-row">
             <button type="button" onClick={() => onStart(kind)}>
               <span aria-hidden="true">{GAME_INFO[kind].emoji}</span>
               <span>
-                <strong>{GAME_INFO[kind].name}</strong>
-                <small>{GAME_INFO[kind].blurb}</small>
+                <strong>{t(`games.kind.${kind}.name` as MessageKey)}</strong>
+                <small>{t(`games.kind.${kind}.blurb` as MessageKey)}</small>
               </span>
             </button>
             {SOLO_GAMES.includes(kind) && (
               <button type="button" className="games-solo" onClick={() => onStart(kind, true)}>
-                Play alone
+                {t("games.picker.solo")}
               </button>
             )}
           </div>
@@ -327,8 +331,8 @@ export function GamesPicker({
       </div>
       <button type="button" className="games-picker-more" onClick={onActivities}>
         {inVoice
-          ? "Voice activities: Whiteboard, Draw & Guess, DeepPixel…"
-          : "Join a voice room for Whiteboard, Draw & Guess and more"}
+          ? t("games.picker.moreInVoice")
+          : t("games.picker.moreJoin")}
       </button>
     </div>
   );

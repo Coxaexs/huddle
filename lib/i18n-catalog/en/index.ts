@@ -29,6 +29,7 @@ import { channelPerms } from "./channelPerms";
 import { discordMove } from "./discordMove";
 import { easy } from "./easy";
 import { layout } from "./layout";
+import { extras } from "./extras";
 
 export const EN_APP = {
   ...auth,
@@ -56,4 +57,5 @@ export const EN_APP = {
   ...discordMove,
   ...easy,
   ...layout,
+  ...extras,
 } as const;

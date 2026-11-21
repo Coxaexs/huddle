@@ -2,6 +2,8 @@
 
 import { Fragment, type ReactNode } from "react";
 import { type Message } from "./types";
+import { createTranslator } from "@/lib/i18n";
+import { currentLocale } from "../i18n-context";
 
 /** "18:04", or "Tue 18:04" / "3 Oct 18:04" for older unread. */
 export function unreadSinceLabel(iso: string): string {
@@ -19,8 +21,8 @@ export function withUnreadLine(show: boolean, id: string | number, node: ReactNo
   if (!show) return node;
   return (
     <Fragment key={id}>
-      <div className="unread-divider" role="separator" aria-label="New messages">
-        <span>New</span>
+      <div className="unread-divider" role="separator" aria-label={createTranslator(currentLocale())("chatExtra.unreadNewAria")}>
+        <span>{createTranslator(currentLocale())("chatExtra.unreadNew")}</span>
       </div>
       {node}
     </Fragment>

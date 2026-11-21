@@ -25,6 +25,7 @@ import { channelPerms } from "./channelPerms";
 import { discordMove } from "./discordMove";
 import { easy } from "./easy";
 import { layout } from "./layout";
+import { extras } from "./extras";
 
 export const TR = {
   ...core,
@@ -53,4 +54,5 @@ export const TR = {
   ...discordMove,
   ...easy,
   ...layout,
+  ...extras,
 };

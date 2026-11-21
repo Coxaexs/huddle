@@ -29,6 +29,11 @@
    it comes back when the tour closes. */
 body:has(.tutorial-backdrop) .guest-bar { display: none; }
 
+/* The channel name in the top bar keeps its width (up to half the bar) and the
+   buttons beside it give way; it used to shrink with them to "g...". */
+.chat-header > .channel-heading { flex: 0 0 auto; max-width: 50%; min-width: 0; }
+.chat-header > .header-actions { flex: 1 1 0; min-width: 0; justify-content: flex-end; }
+
 /* The notification offer (app/components/notify-prompt.tsx) is one of Hoffy's
    tips; while it is up, the tip of the moment waits its turn. */
 .notify-tip + .simple-tip { display: none; }

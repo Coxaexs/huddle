@@ -187,7 +187,7 @@ export function ChatHeader({
               )}
             </span>
             <div className="channel-heading min-w-0 flex items-center gap-2">
-              <strong className="truncate flex-shrink-0 max-w-[60%]">{stageChannel ? stageChannel.name : channelTitle}</strong>
+              <strong className="truncate flex-shrink-0 max-w-full">{stageChannel ? stageChannel.name : channelTitle}</strong>
               {stageChannel && activeScreenShare && (
                 <>
                   <span className="voice-stage-topbar-divider text-[var(--muted)]/40 font-light select-none">/</span>
@@ -526,8 +526,8 @@ export function ChatHeader({
                     value={searchQuery}
                     placeholder={
                       inDmHome
-                        ? `Search ${channelTitle}`
-                        : `Search ${activeServerName || channelTitle}`
+                        ? t("chatExtra.searchIn", { name: channelTitle })
+                        : t("chatExtra.searchIn", { name: activeServerName || channelTitle })
                     }
                     aria-label={t("header.searchMessages")}
                     onFocus={() => {
