@@ -12,6 +12,7 @@
 #include <atomic>
 #include <memory>
 #include <thread>
+#include <regex>
 
 #include "WebView2.h"
 #include "ConfigManager.h"
@@ -491,6 +492,21 @@ void HandleWebMessage(const std::wstring& msg) {
         PostMessageW(g_hWnd, WM_CLOSE, 0, 0);
         return;
     }
+    if (msg.find(L"\"type\":\"openGameLink\"") != std::wstring::npos) {
+        // Play together: start or join a game through Steam. Only the links
+        // lib/steam.ts GAME_LINK_PATTERN allows; anything else is ignored.
+        static const std::wregex gameLink(
+            L"^steam://(?:joinlobby/[0-9]{1,10}/[0-9]{15,20}/7656119[0-9]{10}|run/[0-9]{1,10}|rungameid/[0-9]{1,20}|friends/add/7656119[0-9]{10})$");
+        std::wstring url;
+        size_t at = msg.find(L"\"url\":\"");
+        if (at != std::wstring::npos) {
+            for (size_t i = at + 7; i < msg.size() && msg[i] != L'"' && msg[i] != L'\\'; i++) url += msg[i];
+        }
+        if (!url.empty() && std::regex_match(url, gameLink)) {
+            ShellExecuteW(NULL, L"open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+        }
+        return;
+    }
     if (msg.find(L"\"scanActivity\"") != std::wstring::npos) {
         size_t idPos = msg.find(L"\"callbackId\":");
         int cbId = 0;
@@ -618,6 +634,11 @@ static std::wstring BridgeScript() {
       active = false;
     }
   });
+  var replies = new Map();
+  window.__hoffleNativeReply = function (id, data) {
+    var resolve = replies.get(id);
+    if (resolve) { replies.delete(id); resolve(data); }
+  };
   var updateState = null;
   var updateListeners = new Set();
   window.__hoffleUpdate = function (state) {
@@ -627,6 +648,15 @@ static std::wstring BridgeScript() {
   window.huddle = {
     desktop: true, native: true, platform: "win32", arch: "x64",
     setInCall: function (on) { post({ type: "setInCall", inCall: Boolean(on) }); },
+    scanActivity: function () {
+      return new Promise(function (resolve) {
+        var id = nextId++;
+        replies.set(id, resolve);
+        post({ type: "scanActivity", callbackId: id });
+        setTimeout(function () { if (replies.delete(id)) resolve(null); }, 3000);
+      });
+    },
+    openGameLink: function (url) { post({ type: "openGameLink", url: String(url || "") }); return Promise.resolve(true); },
     updates: {
       state: function () { return Promise.resolve(updateState); },
       onChange: function (cb) { updateListeners.add(cb); return function () { updateListeners.delete(cb); }; },

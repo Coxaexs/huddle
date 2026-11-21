@@ -9,6 +9,8 @@ import { publishMemberUpdate } from "@/lib/hub-client";
 import { bindings } from "@/lib/storage";
 import { normalizeDisabledModules } from "@/lib/features";
 import { normalizeProfileImage } from "@/lib/profile-media";
+import { spotifyTrackId } from "@/lib/listen-along";
+import { findSpotifyTrack } from "@/lib/spotify-search";
 import { checkProfileCss } from "@/lib/themes";
 import { normalizePrideBadges, normalizeLastfmUsername, normalizeProfileActivity, normalizeProfileStyle, normalizeSocialLinks } from "@/lib/users";
 
@@ -38,7 +40,16 @@ export async function PATCH(request: Request) {
     tagline?: string;
     customStatus?: string | null;
     prideBadges?: unknown;
-    spotifyActivity?: { song: string; artist: string; albumArt?: string; isPlaying?: boolean; url?: string } | null;
+    spotifyActivity?: {
+      song: string;
+      artist: string;
+      albumArt?: string;
+      isPlaying?: boolean;
+      url?: string;
+      trackId?: string;
+      positionMs?: number;
+      durationMs?: number;
+    } | null;
     activity?: unknown;
     lastfmUsername?: string | null;
     socialLinks?: unknown;
@@ -145,9 +156,25 @@ export async function PATCH(request: Request) {
     } else {
       const art = await normalizeProfileImage(db, activity.albumArt, "Album art");
       if (!art.ok) return Response.json({ error: art.error }, { status: 400 });
+      // Listen along: the track id from the host's Spotify app, or found by
+      // name when the app can't say (Windows), plus where they are in it.
+      const song = activity.song.slice(0, 200);
+      const artist = activity.artist.slice(0, 200);
+      const env = bindings();
+      const trackId =
+        spotifyTrackId(activity.trackId) ??
+        spotifyTrackId(activity.url) ??
+        (await findSpotifyTrack(db, song, artist, { id: env.SPOTIFY_CLIENT_ID, secret: env.SPOTIFY_CLIENT_SECRET }).catch(() => null));
+      const positionMs = Number(activity.positionMs);
+      const durationMs = Number(activity.durationMs);
       spotifyActivity = JSON.stringify({
-        song: activity.song.slice(0, 200),
-        artist: activity.artist.slice(0, 200),
+        song,
+        artist,
+        ...(trackId ? { trackId } : {}),
+        ...(Number.isFinite(positionMs) && positionMs >= 0 && positionMs < 86_400_000
+          ? { positionMs: Math.round(positionMs), positionAt: Date.now() }
+          : {}),
+        ...(Number.isFinite(durationMs) && durationMs > 0 && durationMs < 86_400_000 ? { durationMs: Math.round(durationMs) } : {}),
         ...(art.url ? { albumArt: art.url } : {}),
         ...(typeof activity.isPlaying === "boolean" ? { isPlaying: activity.isPlaying } : {}),
         ...(typeof activity.url === "string" && /^https:\/\//i.test(activity.url)

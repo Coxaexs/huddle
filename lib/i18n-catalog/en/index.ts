@@ -30,6 +30,7 @@ import { discordMove } from "./discordMove";
 import { easy } from "./easy";
 import { layout } from "./layout";
 import { extras } from "./extras";
+import { play } from "./play";
 
 export const EN_APP = {
   ...auth,
@@ -58,4 +59,5 @@ export const EN_APP = {
   ...easy,
   ...layout,
   ...extras,
+  ...play,
 } as const;

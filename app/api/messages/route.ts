@@ -1115,7 +1115,7 @@ function botName(raw: string | undefined): string {
  */
 function refusedPost(body: PostBody): string | null {
   const kind = body.kind?.trim() || "";
-  if (kind === "game" || kind === "poll" || kind === "ai" || kind.startsWith("system")) {
+  if (kind === "game" || kind === "play" || kind === "poll" || kind === "ai" || kind.startsWith("system")) {
     return "That kind of message can't be posted directly.";
   }
   return null;

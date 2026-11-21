@@ -11,6 +11,7 @@ import {
 } from "../../hooks/use-activity-detector";
 import { apiFetch } from "../../lib/client";
 import { Tab } from "./types";
+import { SteamLinkSection } from "./steam-link";
 
 export function ActivitiesTab({
   tab,
@@ -137,6 +138,8 @@ export function ActivitiesTab({
                   </button>
                 </div>
               </div>
+
+              <SteamLinkSection />
 
               {spotifyShare && (
                 <div className="bg-green-950/20 border border-green-500/30 p-3 rounded-lg space-y-3 mt-2">

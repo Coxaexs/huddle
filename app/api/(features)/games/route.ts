@@ -1,6 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { channelKindInfo, textChannelKindsSql } from "@/lib/channel-kinds";
-import { channelAudience, isDmMember } from "@/lib/dms";
+import { channelAudience } from "@/lib/dms";
 import {
   GAME_INFO,
   SOLO_GAMES,
@@ -15,58 +14,14 @@ import {
   type GameState,
 } from "@/lib/games";
 import { publishMessage, publishMessageEvent } from "@/lib/hub-client";
-import { can, Permission } from "@/lib/permissions";
+import { playableChannel } from "@/lib/playable-channel";
 import { WRITE_RATE_LIMITS, limitUser } from "@/lib/rate-limit";
 import { ensureSchema } from "@/lib/schema";
-import { isServerMember } from "@/lib/servers";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { stripTextStyle } from "@/lib/text-style";
-import { blockIfTimedOut } from "@/lib/timeouts";
 import { publicMessage } from "@/app/api/messages/route";
 
 export const dynamic = "force-dynamic";
-
-interface Channel {
-  id: string;
-  name: string;
-  kind: string;
-  server_id: string;
-}
-
-/**
- * The same gates as sending a message there: DM membership, server
- * membership, bans, timeouts and read-only announcement channels. Returns the
- * channel, or the response refusing it.
- */
-async function playableChannel(
-  db: D1Database,
-  channelId: string,
-  userId: string,
-): Promise<Channel | Response> {
-  const channel = await db
-    .prepare(`SELECT id, name, kind, server_id FROM channels WHERE id = ? AND kind IN (${textChannelKindsSql()})`)
-    .bind(channelId)
-    .first<Channel>();
-  if (!channel) return Response.json({ error: "That conversation is gone." }, { status: 404 });
-  if (channel.kind === "dm") {
-    return (await isDmMember(db, channelId, userId)) ? channel : unauthorized();
-  }
-  if (!(await isServerMember(db, channel.server_id, userId))) return unauthorized();
-  const banned = await db
-    .prepare("SELECT user_id FROM bans WHERE server_id = ? AND user_id = ?")
-    .bind(channel.server_id, userId)
-    .first();
-  if (banned) return Response.json({ error: "You are banned from this server." }, { status: 403 });
-  const timedOut = await blockIfTimedOut(db, channelId, userId);
-  if (timedOut) return timedOut;
-  if (
-    channelKindInfo(channel.kind).moderatorOnlyPosting &&
-    !(await can(db, userId, channel.server_id, Permission.MANAGE_MESSAGES))
-  ) {
-    return Response.json({ error: "Only moderators can post here." }, { status: 403 });
-  }
-  return channel;
-}
 
 /** The one-line text a game message carries for search, previews and old clients. */
 function summary(state: GameState): string {

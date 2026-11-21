@@ -79,6 +79,41 @@
       postNative({ type: "setPushToTalkKey", code: String(code || "") });
       return Promise.resolve(true);
     },
+    spotifyControl: function (command) {
+      // Listen along: play / seek / pause this Mac's Spotify, or ask what it plays.
+      return new Promise(function (resolve) {
+        const id = nextCallbackId++;
+        pendingCallbacks.set(id, resolve);
+        const c = command || {};
+        postNative({
+          type: "spotifyControl",
+          callbackId: id,
+          action: String(c.action || ""),
+          trackId: String(c.trackId || ""),
+          positionMs: Number(c.positionMs) || 0,
+        });
+        setTimeout(function () {
+          if (pendingCallbacks.has(id)) {
+            pendingCallbacks.delete(id);
+            resolve(null);
+          }
+        }, 5000);
+      });
+    },
+    queueGameJoin: function (game, data) {
+      // Play together: the Stardew mod joins with this invite code.
+      postNative({
+        type: "queueGameJoin",
+        game: String(game || ""),
+        inviteCode: String((data && data.inviteCode) || ""),
+      });
+      return Promise.resolve(true);
+    },
+    openGameLink: function (url) {
+      // Play together: a steam:// join link; the app checks it against its list.
+      postNative({ type: "openGameLink", url: String(url || "") });
+      return Promise.resolve(true);
+    },
     scanActivity: function () {
       return new Promise(function (resolve) {
         const id = nextCallbackId++;

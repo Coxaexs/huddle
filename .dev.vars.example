@@ -37,6 +37,13 @@ MUSICWATCH_BOT_KEY=
 # [OPTIONAL] Tenor API key for animated GIF search in the chat composer
 # Get a free key at: https://developers.google.com/tenor/guides/quickstart
 TENOR_API_KEY=
+# Play together: one-click joining of friends' Steam games (Stardew Valley).
+# Free key from https://steamcommunity.com/dev/apikey (domain: your Hoffle host).
+# STEAM_WEB_API_KEY=
+# Listen along: lets Windows hosts be followed (their Spotify app shows only names).
+# App credentials from https://developer.spotify.com/dashboard (no user sign-in is used).
+# SPOTIFY_CLIENT_ID=
+# SPOTIFY_CLIENT_SECRET=
 
 # [RECOMMENDED FOR VOIP] STUN/TURN server configuration for voice NAT traversal.
 # Default uses Cloudflare's public STUN server. For friends behind restrictive

@@ -829,6 +829,8 @@ export type ServerEvent =
   | { t: "notice"; text: string; serverNow: number }
   /** This account just unlocked these achievements (ids from achievement-defs). */
   | { t: "achievement"; ids: string[]; serverNow: number }
+  /** Play together (lib/play-together.ts), for one person only. */
+  | ({ t: "play"; serverNow: number } & PlayEvent)
   /** A bot widget in one of your servers changed or went away (lib/bot-widgets.ts). */
   | {
       t: "bot-widget";
@@ -850,3 +852,13 @@ export type ServerEvent =
       serverNow: number;
     }
   | { t: "pong"; serverNow: number };
+
+/**
+ * Play together events. "ask" goes to the host when someone asks to join;
+ * "answer" goes to that person when the host lets them in or turns them down.
+ */
+export type PlayEvent =
+  | { kind: "ask"; messageId: string; channelId: string; game: string; from: { id: string; name: string } }
+  | { kind: "answer"; messageId: string; channelId: string; game: string; host: string; accepted: boolean }
+  /** Listen along: someone started or stopped following your Spotify. */
+  | { kind: "listen"; from: { id: string; name: string }; on: boolean };

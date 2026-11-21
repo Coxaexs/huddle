@@ -1,0 +1,11 @@
+{
+  "Name": "Hoffle Play Together",
+  "Author": "Hoffle",
+  "Version": "1.0.0",
+  "Description": "Friends you let in on Hoffle join your farm in one click, and you join theirs.",
+  "UniqueId": "Hoffle.PlayTogether",
+  "EntryDll": "HofflePlayTogether.dll",
+  "MinimumApiVersion": "4.0.0",
+  "MinimumGameVersion": "1.6.0",
+  "UpdateKeys": []
+}

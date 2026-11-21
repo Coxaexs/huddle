@@ -18,6 +18,7 @@ import {
   type Throw,
 } from "@/lib/games";
 import { stripTextStyle } from "@/lib/text-style";
+import { PLAY_GAMES, PLAY_GAME_IDS, type PlayGameId } from "@/lib/play-together";
 import { StyledText } from "./message-body";
 import { RotaBoard } from "./rota-board";
 
@@ -292,11 +293,14 @@ export function GameCard({
  */
 export function GamesPicker({
   onStart,
+  onStartPlay,
   onActivities,
   inVoice,
   onClose,
 }: {
   onStart: (kind: GameKind, solo?: boolean) => void;
+  /** Invites the conversation into a real game you're playing (lib/play-together.ts). */
+  onStartPlay?: (game: PlayGameId) => void;
   onActivities: () => void;
   inVoice: boolean;
   onClose: () => void;
@@ -329,6 +333,24 @@ export function GamesPicker({
           </div>
         ))}
       </div>
+      {onStartPlay && (
+        <>
+          <p>{t("play.picker.title")}</p>
+          <div className="games-picker-list">
+            {PLAY_GAME_IDS.map((game) => (
+              <div key={game} className="games-row">
+                <button type="button" onClick={() => onStartPlay(game)}>
+                  <span aria-hidden="true">{PLAY_GAMES[game].emoji}</span>
+                  <span>
+                    <strong>{PLAY_GAMES[game].name}</strong>
+                    <small>{t("play.picker.blurb")}</small>
+                  </span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       <button type="button" className="games-picker-more" onClick={onActivities}>
         {inVoice
           ? t("games.picker.moreInVoice")

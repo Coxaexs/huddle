@@ -408,6 +408,83 @@ static const NSTimeInterval kApplyAtLaunch = 60;
         dispatch_async(dispatch_get_main_queue(), ^{
             [self.view.window performClose:nil];
         });
+    } else if ([type isEqualToString:@"openGameLink"]) {
+        // Play together: start or join a game through Steam. Only the links
+        // lib/steam.ts GAME_LINK_PATTERN allows; anything else is ignored.
+        NSString *link = [body[@"url"] isKindOfClass:[NSString class]] ? body[@"url"] : @"";
+        static NSRegularExpression *gameLink;
+        static dispatch_once_t once;
+        dispatch_once(&once, ^{
+            gameLink = [NSRegularExpression regularExpressionWithPattern:
+                @"^steam://(?:joinlobby/[0-9]{1,10}/[0-9]{15,20}/7656119[0-9]{10}|run/[0-9]{1,10}|rungameid/[0-9]{1,20}|friends/add/7656119[0-9]{10})$"
+                options:0 error:nil];
+        });
+        if ([gameLink numberOfMatchesInString:link options:0 range:NSMakeRange(0, link.length)] == 1) {
+            NSURL *url = [NSURL URLWithString:link];
+            if (url) [[NSWorkspace sharedWorkspace] openURL:url];
+        }
+    } else if ([type isEqualToString:@"spotifyControl"]) {
+        // Listen along: play / seek / pause this Mac's Spotify, or report what
+        // it plays. Only these actions and a well-formed track id.
+        NSInteger callbackId = [body[@"callbackId"] integerValue];
+        NSString *action = [body[@"action"] isKindOfClass:[NSString class]] ? body[@"action"] : @"";
+        NSString *trackId = [body[@"trackId"] isKindOfClass:[NSString class]] ? body[@"trackId"] : @"";
+        double position = MAX(0, MIN([body[@"positionMs"] doubleValue], 86400000)) / 1000.0;
+        NSRegularExpression *validId = [NSRegularExpression regularExpressionWithPattern:@"^[0-9A-Za-z]{22}$" options:0 error:nil];
+        BOOL idOk = [validId numberOfMatchesInString:trackId options:0 range:NSMakeRange(0, trackId.length)] == 1;
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            BOOL running = [NSRunningApplication runningApplicationsWithBundleIdentifier:@"com.spotify.client"].count > 0;
+            NSString *command = nil;
+            if ([action isEqualToString:@"play"] && idOk) {
+                command = [NSString stringWithFormat:@"tell application \"Spotify\" to play track \"spotify:track:%@\"", trackId];
+            } else if ([action isEqualToString:@"seek"] && running) {
+                command = [NSString stringWithFormat:@"tell application \"Spotify\" to set player position to %.1f", position];
+            } else if ([action isEqualToString:@"pause"] && running) {
+                command = @"tell application \"Spotify\" to pause";
+            }
+            if (command) [[[NSAppleScript alloc] initWithSource:command] executeAndReturnError:nil];
+            if ([action isEqualToString:@"play"] && idOk) {
+                [NSThread sleepForTimeInterval:0.6];
+                NSString *seek = [NSString stringWithFormat:@"tell application \"Spotify\" to set player position to %.1f", position];
+                [[[NSAppleScript alloc] initWithSource:seek] executeAndReturnError:nil];
+            }
+            NSString *json = @"null";
+            if ([NSRunningApplication runningApplicationsWithBundleIdentifier:@"com.spotify.client"].count > 0) {
+                NSAppleEventDescriptor *res = [[[NSAppleScript alloc] initWithSource:
+                    @"tell application \"Spotify\" to return (player state as text) & (character id 1) & (id of current track) & (character id 1) & (player position as text)"]
+                    executeAndReturnError:nil];
+                NSArray *parts = [[res stringValue] ?: @"" componentsSeparatedByString:[NSString stringWithFormat:@"%C", (unichar)1]];
+                if (parts.count >= 3) {
+                    NSString *uri = parts[1];
+                    NSString *track = [uri hasPrefix:@"spotify:track:"] ? [uri substringFromIndex:14] : nil;
+                    double pos = [[parts[2] stringByReplacingOccurrencesOfString:@"," withString:@"."] doubleValue];
+                    NSDictionary *state = @{
+                        @"trackId": track ?: [NSNull null],
+                        @"positionMs": @((long long)(pos * 1000)),
+                        @"playing": @([parts[0] isEqualToString:@"playing"]),
+                    };
+                    NSData *data = [NSJSONSerialization dataWithJSONObject:state options:0 error:nil];
+                    if (data) json = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+                }
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                NSString *js = [NSString stringWithFormat:@"window.__hoffleNativeReply(%ld, %@);", (long)callbackId, json];
+                [self.webView evaluateJavaScript:js completionHandler:nil];
+            });
+        });
+    } else if ([type isEqualToString:@"queueGameJoin"]) {
+        // Play together: hand an invite code to the Stardew mod, which joins
+        // from the title screen. Only a plain invite code, only this one file.
+        NSString *game = [body[@"game"] isKindOfClass:[NSString class]] ? body[@"game"] : @"";
+        NSString *code = [body[@"inviteCode"] isKindOfClass:[NSString class]] ? body[@"inviteCode"] : @"";
+        NSRegularExpression *valid = [NSRegularExpression regularExpressionWithPattern:@"^[SG][0-9A-Za-z]{1,16}$" options:0 error:nil];
+        if ([game isEqualToString:@"stardew"] && [valid numberOfMatchesInString:code options:0 range:NSMakeRange(0, code.length)] == 1) {
+            NSString *dir = [NSHomeDirectory() stringByAppendingPathComponent:@".hoffle/play"];
+            [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+            NSDictionary *join = @{ @"v": @1, @"inviteCode": code, @"at": @((long long)([[NSDate date] timeIntervalSince1970] * 1000)) };
+            NSData *data = [NSJSONSerialization dataWithJSONObject:join options:0 error:nil];
+            [data writeToFile:[dir stringByAppendingPathComponent:@"stardew-join.json"] atomically:YES];
+        }
     } else if ([type isEqualToString:@"scanActivity"]) {
         NSInteger callbackId = [body[@"callbackId"] integerValue];
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{

@@ -27949,6 +27949,293 @@ a.link-preview-author:hover {
   color: var(--coral);
 }
 
+/* ---- Play together: invites into real games (play-card.tsx, play-prompts.tsx) ---- */
+.play-card {
+  width: min(420px, 100%);
+  margin-top: 8px;
+  padding: 12px 14px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 92%, var(--mint, var(--lavender)));
+  border: 1px solid color-mix(in srgb, var(--line) 70%, var(--mint, var(--lavender)));
+  border-radius: 14px;
+}
+
+.play-card.closed {
+  opacity: 0.7;
+}
+
+.play-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.play-card-head>span:last-child {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.play-card-head strong {
+  font-size: 14px;
+}
+
+.play-card-head small,
+.play-card p.play-inside,
+.play-card p.play-help-why,
+.play-prompt p.play-help-why {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.play-card-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mint, var(--lavender)) 20%, transparent);
+}
+
+.play-card p.play-status {
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+
+.play-card p,
+.play-prompt p {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.play-inside {
+  margin: 4px 0 0;
+}
+
+.play-requests {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.play-requests li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.play-requests li>span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.play-check {
+  margin-top: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--amber, #f1cf65) 14%, transparent);
+}
+
+.play-check.ok {
+  background: color-mix(in srgb, var(--mint, #65d6a6) 16%, transparent);
+}
+
+.play-check p,
+.play-help p {
+  margin: 0 0 6px;
+}
+
+.play-check p:last-child,
+.play-help p:last-child {
+  margin-bottom: 0;
+}
+
+.play-help {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.play-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.play-actions:empty {
+  display: none;
+}
+
+.play-card button,
+.play-prompt button {
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.play-card button.primary,
+.play-prompt button.primary {
+  color: var(--on-accent, #fff);
+  background: var(--lavender);
+}
+
+.play-prompt button.play-link {
+  background: none;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.play-code {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.play-code code {
+  padding: 4px 10px;
+  font: 600 14px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.04em;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  user-select: all;
+}
+
+a.play-button {
+  display: inline-block;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--on-accent, #fff);
+  background: var(--lavender);
+  border-radius: 8px;
+  text-decoration: none;
+}
+
+.play-error {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--coral);
+}
+
+.play-prompts {
+  position: fixed;
+  right: 16px;
+  bottom: 96px;
+  z-index: 1200;
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100vw - 32px));
+}
+
+.play-prompt {
+  position: relative;
+  padding: 12px 34px 12px 14px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 28%);
+  font-size: 13px;
+}
+
+.play-prompt>p {
+  margin: 0;
+}
+
+.play-prompt .play-prompt-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 8px;
+  background: none;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+/* ---- Listen along (listen-along.tsx) ---- */
+.listen-bar {
+  position: fixed;
+  left: 16px;
+  bottom: 96px;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 12px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid color-mix(in srgb, var(--mint, #4ade80) 45%, var(--line));
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 28%);
+  font-size: 13px;
+}
+
+.listen-bar>svg {
+  flex: none;
+  color: var(--mint, #4ade80);
+}
+
+.listen-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.listen-text small {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--muted);
+  text-overflow: ellipsis;
+}
+
+.listen-bar button,
+.listen-bar a.listen-open {
+  flex: none;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.listen-along-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 6px;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0b2e17;
+  background: var(--mint, #4ade80);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
 /* ---- The MSN Games menu ---- */
 .msn-games {
   width: 320px;

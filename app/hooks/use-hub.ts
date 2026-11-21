@@ -594,6 +594,10 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
           case "achievement":
             handlersRef.current.onAchievement?.(payload.ids);
             break;
+          case "play":
+            // Play together prompts listen for this (app/components/play-prompts.tsx).
+            window.dispatchEvent(new CustomEvent("hoffle:play", { detail: payload }));
+            break;
           case "bot-widget":
             receiveBotWidget(payload);
             break;

@@ -1,12 +1,13 @@
 "use client";
 
+import { startListenAlong } from "./listen-along";
 import { useModuleOn } from "@/app/lib/modules";
 import { getAchievement } from "@/lib/achievement-defs";
 import { openAchievements } from "../lib/achievement-client";
 import { AchievementMedal } from "./achievement-medal";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useI18n } from "@/app/lib/i18n-context";
-import {
+import { Headphones,
   MessageSquare,
   AtSign,
   ShieldAlert,
@@ -172,6 +173,7 @@ export function UserProfileCard({
   onToggleRole,
 }: UserProfileCardProps) {
   const cosmeticsOn = useModuleOn("cosmetics");
+  const musicOn = useModuleOn("music");
   const achievementsOn = useModuleOn("achievements");
   const { t } = useI18n();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -542,12 +544,29 @@ export function UserProfileCard({
             </>
           );
           const cls = "bg-green-950/40 border border-green-500/30 rounded-lg p-2.5 flex items-center gap-3 my-1";
-          return song.url ? (
+          const card = song.url ? (
             <a href={song.url} target="_blank" rel="noopener noreferrer" className={`${cls} no-underline`}>
               {body}
             </a>
           ) : (
             <div className={cls}>{body}</div>
+          );
+          // Listen along: follow this song in your own Spotify (needs its track id).
+          if (isSelf || !song.trackId || !musicOn) return card;
+          return (
+            <>
+              {card}
+              <button
+                type="button"
+                className="listen-along-button"
+                onClick={() => {
+                  startListenAlong(member.id, member.displayName || member.username);
+                  onClose?.();
+                }}
+              >
+                <Headphones size={14} aria-hidden="true" /> {t("listen.button")}
+              </button>
+            </>
           );
         })()}
 

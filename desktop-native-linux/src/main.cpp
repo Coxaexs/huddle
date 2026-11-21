@@ -106,6 +106,11 @@ static const char* kEmbeddedBridgeJs = R"JS(
       postNative({ type: "setPushToTalkKey", code: String(code || "") });
       return Promise.resolve(true);
     },
+    openGameLink: function (url) {
+      // Play together: a steam:// join link; the app checks it against its list.
+      postNative({ type: "openGameLink", url: String(url || "") });
+      return Promise.resolve(true);
+    },
     scanActivity: function () {
       return new Promise(function (resolve) {
         const id = nextCallbackId++;
@@ -371,6 +376,19 @@ static void on_script_message_received(WebKitUserContentManager* manager,
         if (body) g_free(body);
         if (titleVal) g_object_unref(titleVal);
         if (bodyVal) g_object_unref(bodyVal);
+    }
+    else if (type == "openGameLink") {
+        // Play together: start or join a game through Steam. Only the links
+        // lib/steam.ts GAME_LINK_PATTERN allows; anything else is ignored.
+        JSCValue* urlVal = jsc_value_object_get_property(value, "url");
+        char* url = urlVal ? jsc_value_to_string(urlVal) : nullptr;
+        if (url && g_regex_match_simple(
+                "^steam://(?:joinlobby/[0-9]{1,10}/[0-9]{15,20}/7656119[0-9]{10}|run/[0-9]{1,10}|rungameid/[0-9]{1,20}|friends/add/7656119[0-9]{10})$",
+                url, (GRegexCompileFlags)0, (GRegexMatchFlags)0)) {
+            g_app_info_launch_default_for_uri(url, nullptr, nullptr);
+        }
+        if (url) g_free(url);
+        if (urlVal) g_object_unref(urlVal);
     }
     else if (type == "scanActivity") {
         JSCValue* cbVal = jsc_value_object_get_property(value, "callbackId");

@@ -9,6 +9,8 @@ import { formatFileSize, getFileBadgeColor, getFileExtensionBadge } from "@/lib/
 import { MsnFormatToolbar, messageFontStyle } from "../../msn-chrome";
 import { TextStyleMenu } from "../../text-style-menu";
 import { GamesPicker } from "../../game-card";
+import { apiFetch } from "../../../lib/client";
+import { showToast } from "../../toast";
 import { type GameKind } from "@/lib/games";
 import { saveMessageFont, type MessageFont } from "@/lib/text-style";
 import { type Member, type PublicUser } from "@/lib/users";
@@ -410,6 +412,14 @@ export function Composer({
                     onStart={(kind, solo) => {
                       setGamesOpen(false);
                       void startGame(kind, solo);
+                    }}
+                    onStartPlay={(game) => {
+                      setGamesOpen(false);
+                      if (!activeChannelId) return;
+                      void apiFetch("/api/play", {
+                        method: "POST",
+                        body: JSON.stringify({ action: "start", channelId: activeChannelId, game }),
+                      }).catch((err) => showToast(err instanceof Error ? err.message : String(err), "error"));
                     }}
                     onActivities={() => {
                       setGamesOpen(false);

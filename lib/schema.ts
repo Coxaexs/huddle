@@ -498,6 +498,44 @@ async function migrate(db: D1Database): Promise<void> {
         message_id TEXT PRIMARY KEY,
         secret TEXT NOT NULL DEFAULT '{}'
       )`),
+    // Play together (lib/play-together.ts): invite cards for real games.
+    db.prepare(`CREATE TABLE IF NOT EXISTS play_invites (
+        message_id TEXT PRIMARY KEY,
+        host_id TEXT NOT NULL,
+        game TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        -- What the host's game mod last reported (GameParty JSON), and when (ms).
+        -- Secret: only handed out, as a join plan, to people the host let in.
+        party TEXT,
+        party_at INTEGER
+      )`),
+    // A linked Steam account (lib/steam.ts). Private: never sent to others,
+    // except as part of a join link the host allowed.
+    db.prepare(`CREATE TABLE IF NOT EXISTS steam_links (
+        user_id TEXT PRIMARY KEY,
+        steam_id TEXT NOT NULL UNIQUE,
+        persona TEXT NOT NULL DEFAULT '',
+        linked_at TEXT NOT NULL
+      )`),
+    // One-time "Sign in through Steam" tickets, so linking works even when the
+    // Steam page opens in a browser that isn't signed in to Hoffle.
+    // Listen along (lib/listen-along.ts): who follows whose Spotify.
+    db.prepare(`CREATE TABLE IF NOT EXISTS listen_along (
+        listener_id TEXT PRIMARY KEY,
+        host_id TEXT NOT NULL,
+        since TEXT NOT NULL
+      )`),
+    // Spotify track ids found by name (lib/spotify-search.ts); null = not found.
+    db.prepare(`CREATE TABLE IF NOT EXISTS spotify_track_cache (
+        query TEXT PRIMARY KEY,
+        track_id TEXT,
+        at INTEGER NOT NULL
+      )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS steam_link_states (
+        nonce TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        expires_at INTEGER NOT NULL
+      )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS room_activities (
         channel_id TEXT PRIMARY KEY,
         kind TEXT NOT NULL,

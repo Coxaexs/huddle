@@ -661,6 +661,28 @@ if (!app.requestSingleInstanceLock()) {
         return null;
       }
     });
+    // Play together: start or join a game through Steam. Only links on the
+    // same list as lib/steam.ts GAME_LINK_PATTERN, and only from the Hoffle window.
+    ipcMain.handle("game-link:open", async (event, url) => {
+      if (!mainWindow || event.sender !== mainWindow.webContents) return false;
+      if (!require("./activity-scan").isGameLink(url)) return false;
+      await shell.openExternal(url);
+      return true;
+    });
+    // Listen along: play, seek or pause this computer's Spotify, or ask what it plays.
+    ipcMain.handle("spotify:control", async (event, command) => {
+      if (!mainWindow || event.sender !== mainWindow.webContents) return null;
+      try {
+        return await require("./activity-scan").spotifyControl(command, (url) => shell.openExternal(url));
+      } catch {
+        return null;
+      }
+    });
+    // Play together: hand an invite code to the game's mod (a file it watches).
+    ipcMain.handle("game-join:queue", async (event, game, data) => {
+      if (!mainWindow || event.sender !== mainWindow.webContents) return false;
+      return require("./activity-scan").queueGameJoin(String(game || ""), data);
+    });
     ipcMain.on("desktop-notification", (_event, { title, body }) => {
       if (Notification.isSupported()) {
         const iconPath = path.join(__dirname, "../build/icon.png");

@@ -122,6 +122,9 @@ function spotifyActivity(value: string | null | undefined): SpotifyActivity | nu
     ...(typeof parsed.isPlaying === "boolean" ? { isPlaying: parsed.isPlaying } : {}),
     ...(typeof parsed.url === "string" && /^https:\/\//i.test(parsed.url) ? { url: parsed.url } : {}),
     ...(typeof parsed.updatedAt === "number" ? { updatedAt: parsed.updatedAt } : {}),
+    // Listen along needs to know the song can be followed; the position is
+    // read by /api/listen when someone actually follows.
+    ...(typeof parsed.trackId === "string" && /^[0-9A-Za-z]{22}$/.test(parsed.trackId) ? { trackId: parsed.trackId } : {}),
   };
 }
 

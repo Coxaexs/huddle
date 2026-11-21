@@ -51,6 +51,11 @@ export interface HuddleBindings {
   AI_DAILY_LIMIT?: string;
   /** Last.fm API key for live scrobbler integration. */
   LASTFM_API_KEY?: string;
+  /** Steam Web API key for Play together: reads a linked host's lobby (lib/steam.ts). */
+  STEAM_WEB_API_KEY?: string;
+  /** Optional: finds Spotify track ids by name for listen along (lib/spotify-search.ts). */
+  SPOTIFY_CLIENT_ID?: string;
+  SPOTIFY_CLIENT_SECRET?: string;
   LASTFM_SECRET?: string;
   /** LiveKit SFU server WebSocket URL (e.g. wss://host/livekit or ws://host:7880) */
   LIVEKIT_URL?: string;

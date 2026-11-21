@@ -14,6 +14,12 @@ export interface SpotifyActivity {
   isPlaying?: boolean;
   /** Link to the track, when the source knows it. */
   url?: string;
+  /** Listen along (lib/listen-along.ts): the Spotify track id, when known. */
+  trackId?: string;
+  /** Where the host was in the song, stamped by the server at positionAt. */
+  positionMs?: number;
+  positionAt?: number;
+  durationMs?: number;
   /** ms epoch of the last time the sender confirmed this song is still on. */
   updatedAt?: number;
 }

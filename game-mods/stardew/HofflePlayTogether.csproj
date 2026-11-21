@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Hoffle Play Together, a SMAPI mod. Build:
+      dotnet build -c Release -p:GamePath="<folder with Stardew Valley.dll and StardewModdingAPI.dll>"
+    Mac (Steam): ~/Library/Application Support/Steam/steamapps/common/Stardew Valley/Contents/MacOS
+    Windows (Steam): C:\Program Files (x86)\Steam\steamapps\common\Stardew Valley
+    Then copy bin/Release/net6.0/HofflePlayTogether.dll and manifest.json into Mods/HofflePlayTogether.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>HofflePlayTogether</AssemblyName>
+    <RootNamespace>HofflePlayTogether</RootNamespace>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ModEntry.cs" />
+    <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Stardew Valley"><HintPath>$(GamePath)/Stardew Valley.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="StardewModdingAPI"><HintPath>$(GamePath)/StardewModdingAPI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="SMAPI.Toolkit.CoreInterfaces"><HintPath>$(GamePath)/smapi-internal/SMAPI.Toolkit.CoreInterfaces.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="MonoGame.Framework"><HintPath>$(GamePath)/MonoGame.Framework.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

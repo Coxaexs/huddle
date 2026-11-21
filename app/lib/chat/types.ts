@@ -92,6 +92,8 @@ export interface Message {
     wink?: string;
     /** A conversation game (lib/games.ts), played inside this message. */
     game?: GameState;
+    /** A Play together invite into a real game (lib/play-together.ts). */
+    play?: import("@/lib/play-together").PlayInvite;
     /** Sent automatically while its author was away (MSN auto-message). */
     autoReply?: boolean;
     /** Poll cards. */
