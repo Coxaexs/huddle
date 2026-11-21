@@ -45,4 +45,11 @@ export const extras = {
   "chatExtra.unreadNew": "New",
   "chatExtra.unreadNewAria": "New messages",
   "chatExtra.searchIn": "Search {name}",
+  "dndExtra.diceRoll": "Dice roll",
+  "dndExtra.secretRoll": "Secret roll",
+  "dndExtra.rollAgain": "Roll again",
+  "dndExtra.rollAgainTitle": "Roll the same thing yourself",
+  "dndExtra.rollPoolTitle": "Roll the same pool yourself",
+  "dndExtra.showLess": "Show less",
+  "dndExtra.showFull": "Show the full entry",
 };

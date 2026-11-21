@@ -46,4 +46,11 @@ export const extras: Record<keyof typeof en, string> = {
   "chatExtra.unreadNew": "Yeni",
   "chatExtra.unreadNewAria": "Yeni mesajlar",
   "chatExtra.searchIn": "{name} içinde ara",
+  "dndExtra.diceRoll": "Zar atışı",
+  "dndExtra.secretRoll": "Gizli atış",
+  "dndExtra.rollAgain": "Tekrar at",
+  "dndExtra.rollAgainTitle": "Aynı atışı sen de yap",
+  "dndExtra.rollPoolTitle": "Aynı zar havuzunu sen de at",
+  "dndExtra.showLess": "Daha az göster",
+  "dndExtra.showFull": "Tamamını göster",
 };

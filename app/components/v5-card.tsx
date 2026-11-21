@@ -4,6 +4,8 @@ import type { DiceRollEvent } from "@/lib/protocol";
 import { defaultWillpowerPicks, V5_WILLPOWER_DICE } from "@/lib/v5-dice";
 import type { RouseCard as RouseCardData, V5Card as V5CardData } from "@/lib/v5-roll";
 import { apiFetch } from "../lib/client";
+import { createTranslator } from "@/lib/i18n";
+import { currentLocale } from "../lib/i18n-context";
 
 interface CardContext {
   /** The posted card's message, for a Willpower reroll. */
@@ -144,8 +146,8 @@ export function V5RollCard({ messageId, viewerId, voiceChannelId, rollCommand = 
         {error && <span className="v5-note v5-error" role="alert">{error}</span>}
       </div>
       {onCommand && (
-        <button type="button" className="dnd-roll-again" title="Roll the same pool yourself" onClick={() => onCommand(again)}>
-          Roll again
+        <button type="button" className="dnd-roll-again" title={createTranslator(currentLocale())("dndExtra.rollPoolTitle")} onClick={() => onCommand(again)}>
+          {createTranslator(currentLocale())("dndExtra.rollAgain")}
         </button>
       )}
     </section>

@@ -4,6 +4,8 @@ import { BookOpen, Dices, EyeOff, Search, Sparkles, Swords } from "lucide-react"
 import { onSecretRoll, recallSecretRoll } from "@/lib/secret-roll";
 import type { RouseCard, V5Card } from "@/lib/v5-roll";
 import { RouseCheckCard, V5RollCard } from "./v5-card";
+import { createTranslator, type MessageKey } from "@/lib/i18n";
+import { currentLocale } from "../lib/i18n-context";
 
 export interface DndRollDie {
   sides: number;
@@ -68,6 +70,9 @@ const context = ({ messageId, viewerId, voiceChannelId, rollCommand, onCommand }
   rollCommand,
   onCommand,
 });
+
+/** Card chrome in the app's language; the 5e entries themselves stay English. */
+const tx = (key: MessageKey) => createTranslator(currentLocale())(key);
 
 export function DndCard(props: DndCardProps) {
   if (props.type === "v5") return <V5RollCard {...(props as unknown as V5Card)} {...context(props)} />;
@@ -180,10 +185,10 @@ function EntryCard({
           onClick={() => setExpanded((value) => !value)}
         >
           {expanded
-            ? "Show less"
+            ? tx("dndExtra.showLess")
             : hiddenTitles.length
               ? `Show ${hiddenTitles.join(", ").toLowerCase()}`
-              : "Show the full entry"}
+              : tx("dndExtra.showFull")}
         </button>
       )}
 
@@ -262,7 +267,7 @@ function SecretRollCard({ rollSeed, label, roller, onCommand }: DndCardProps) {
       </div>
       <div className="dnd-roll-body">
         <span className="dnd-card-kicker">
-          {label || "Secret roll"}
+          {label || tx("dndExtra.secretRoll")}
           {roller ? ` · ${roller}` : ""}
         </span>
         <span className="dnd-roll-expression">Rolled behind the DM screen</span>
@@ -301,7 +306,7 @@ function RollCard({
       </div>
       <div className="dnd-roll-body">
         <span className="dnd-card-kicker">
-          {label || "Dice roll"}
+          {label || tx("dndExtra.diceRoll")}
           {roller ? ` · ${roller}` : ""}
         </span>
         <span className="dnd-roll-expression">
@@ -349,10 +354,10 @@ function RollCard({
         <button
           type="button"
           className="dnd-roll-again"
-          title="Roll the same thing yourself"
+          title={tx("dndExtra.rollAgainTitle")}
           onClick={() => onCommand(`/${rollCommand} ${rollCommandFor(expression, mode)}${label ? ` ${label}` : ""}`)}
         >
-          Roll again
+          {tx("dndExtra.rollAgain")}
         </button>
       )}
     </section>

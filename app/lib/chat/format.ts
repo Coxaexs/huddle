@@ -2,6 +2,8 @@
 
 import { mentionMatchScore } from "@/lib/mention-handles";
 import type { Message } from "./types";
+import { createTranslator } from "@/lib/i18n";
+import { currentLocale } from "../i18n-context";
 
 /**
  * The argument hint the slash menu shows for a bot command: subcommands as
@@ -110,8 +112,9 @@ export function dayDividerLabel(
   if (!prev && day.toDateString() === now.toDateString()) return null;
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
-  if (day.toDateString() === now.toDateString()) return "Today";
-  if (day.toDateString() === yesterday.toDateString()) return "Yesterday";
+  const t = createTranslator(currentLocale());
+  if (day.toDateString() === now.toDateString()) return t("message.today");
+  if (day.toDateString() === yesterday.toDateString()) return t("message.yesterday");
   return day.toLocaleDateString(undefined, {
     weekday: "long",
     day: "numeric",
