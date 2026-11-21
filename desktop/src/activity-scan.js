@@ -20,7 +20,7 @@ const KNOWN = [
   [/^rocketleague/i, "Rocket League", "playing"],
   [/^apexlegends|^r5apex/i, "Apex Legends", "playing"],
   [/^terraria/i, "Terraria", "playing"],
-  [/^stardewvalley/i, "Stardew Valley", "playing"],
+  [/^stardew ?valley|^stardewmoddingapi/i, "Stardew Valley", "playing"],
   [/^eldenring/i, "Elden Ring", "playing"],
   [/^baldur'?s ?gate3?|^bg3/i, "Baldur's Gate 3", "playing"],
   [/^roblox(?:player|beta)/i, "Roblox", "playing"],
@@ -152,4 +152,13 @@ async function scan() {
   return { activity: classify(names), music };
 }
 
-module.exports = { scan, classify };
+// Same list as lib/steam.ts GAME_LINK_PATTERN: the only non-web links the
+// page may ask the shell to open (Play together).
+const GAME_LINK =
+  /^steam:\/\/(?:joinlobby\/\d{1,10}\/\d{15,20}\/7656119\d{10}|run\/\d{1,10}|rungameid\/\d{1,20}|friends\/add\/7656119\d{10})$/;
+
+function isGameLink(url) {
+  return typeof url === "string" && GAME_LINK.test(url);
+}
+
+module.exports = { scan, classify, isGameLink };

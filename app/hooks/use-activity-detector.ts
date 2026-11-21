@@ -214,7 +214,11 @@ export function useActivityDetector({
             updatedAt: Date.now(),
           }
         : null;
-      if (key !== previous) onActivityRef.current?.(payload);
+      if (key !== previous) {
+        onActivityRef.current?.(payload);
+        // Play together offers to invite people when it's a game we can join.
+        window.dispatchEvent(new CustomEvent("hoffle:activity-detected", { detail: payload }));
+      }
       try {
         await apiFetch("/api/settings/profile", {
           method: "PATCH",

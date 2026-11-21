@@ -6,6 +6,7 @@ import type { PlayerState } from "@/lib/protocol";
 import { MessageAttachmentFiles } from "../../message-file-card";
 import { MsnFileTransfer, fileNameFromUrl, findWink, playWink } from "../../msn-chrome";
 import { GameCard } from "../../game-card";
+import { PlayCard } from "../../play-card";
 import { type GameKind } from "@/lib/games";
 import { stripTextStyle } from "@/lib/text-style";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
@@ -756,6 +757,8 @@ function MessageRowImpl({
                             userId={user.id}
                             onPlayAgain={(kind, solo) => void startGame(kind, solo)}
                           />
+                        ) : message.kind === "play" && message.payload?.play ? (
+                          <PlayCard messageId={String(message.id)} play={message.payload.play} userId={user.id} />
                         ) : message.kind === "poll" && message.payload?.pollId ? (
                           <PollCard
                             pollId={message.payload.pollId}

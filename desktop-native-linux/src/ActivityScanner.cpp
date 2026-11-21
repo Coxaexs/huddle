@@ -91,7 +91,8 @@ std::string ActivityScanner::ScanRunningActivitiesJson() {
                     if (lowerComm.find(kv.first) != std::string::npos) {
                         closedir(procDir);
                         std::ostringstream ss;
-                        ss << "[{\"name\":\"" << kv.second << "\",\"type\":\"game\",\"details\":\"Playing " << kv.second << "\"}]";
+                        // The shape app/hooks/use-activity-detector.ts reads (DesktopScan).
+                        ss << "{\"activity\":{\"name\":\"" << kv.second << "\",\"kind\":\"playing\"},\"music\":null}";
                         return ss.str();
                     }
                 }

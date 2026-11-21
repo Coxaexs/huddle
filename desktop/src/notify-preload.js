@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld("huddle", {
   setInCall: (on) => ipcRenderer.send("set-in-call", Boolean(on)),
   /** What is running here: { activity: {name, kind}|null, music: {song, artist, albumArt}|null }. */
   scanActivity: () => ipcRenderer.invoke("activity:scan"),
+  /** Play together: opens a steam:// join link (the shell checks it against its list). */
+  openGameLink: (url) => ipcRenderer.invoke("game-link:open", String(url || "")),
   /**
    * Windows and macOS: the screen share's audio, captured per app by the
    * shell instead of the whole output device (so not the room's own voices).

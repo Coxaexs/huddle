@@ -17,6 +17,10 @@ static const GameDef kKnownGames[] = {
     { L"overwatch.exe", "Overwatch 2" },
     { L"r5apex.exe", "Apex Legends" },
     { L"fortniteclient-win64-shipping.exe", "Fortnite" },
+    { L"stardew valley.exe", "Stardew Valley" },
+    { L"stardewvalley.exe", "Stardew Valley" },
+    { L"stardewmoddingapi.exe", "Stardew Valley" },
+    { L"among us.exe", "Among Us" },
     { L"minecraft.exe", "Minecraft" },
     { L"javaw.exe", "Minecraft" },
     { L"robloxplayerbeta.exe", "Roblox" },
@@ -70,6 +74,7 @@ std::string ActivityScanner::ScanRunningActivitiesJson() {
     }
 
     std::ostringstream ss;
-    ss << "{\"name\":\"" << detectedGame << "\",\"type\":\"playing\"}";
+    // The shape app/hooks/use-activity-detector.ts reads (DesktopScan).
+    ss << "{\"activity\":{\"name\":\"" << detectedGame << "\",\"kind\":\"playing\"},\"music\":null}";
     return ss.str();
 }

@@ -26,6 +26,7 @@ import { discordMove } from "./discordMove";
 import { easy } from "./easy";
 import { layout } from "./layout";
 import { extras } from "./extras";
+import { play } from "./play";
 
 export const TR = {
   ...core,
@@ -55,4 +56,5 @@ export const TR = {
   ...easy,
   ...layout,
   ...extras,
+  ...play,
 };

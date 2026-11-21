@@ -68,6 +68,11 @@
       postNative({ type: "setPushToTalkKey", code: String(code || "") });
       return Promise.resolve(true);
     },
+    openGameLink: function (url) {
+      // Play together: a steam:// join link; the app checks it against its list.
+      postNative({ type: "openGameLink", url: String(url || "") });
+      return Promise.resolve(true);
+    },
     scanActivity: function () {
       return new Promise(function (resolve) {
         const id = nextCallbackId++;

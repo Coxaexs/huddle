@@ -31,6 +31,7 @@ import { UserMenuLayer, RailMenuLayer, FolderMenuLayer, ChannelMenuLayer } from 
 import { StreamPreviewPopover } from "../stream-preview-popover";
 import type { ShellRenderState } from "./chat-shell-renderers";
 import { deferred } from "./deferred";
+import { PlayPrompts } from "../../play-prompts";
 import { ChannelPermissionsDialog } from "../../channel-permissions-dialog";
 import { DiscordMoveDialog } from "../../discord-move-dialog";
 
@@ -686,6 +687,12 @@ export function renderChatOverlays(v: ShellRenderState) {
       <BuddyLayer onRollCommand={(command) => void runCommand(command)} />
       <ToastContainer />
       <AchievementLayer userId={user?.id ?? null} />
+      {user && (
+        <PlayPrompts
+          channelId={activeChannelId}
+          channelLabel={v.activeChannel?.name ? `#${v.activeChannel.name}` : ""}
+        />
+      )}
       <DeviceSwitchPrompt
         inCall={Boolean(voice.channelId)}
         activeMicrophone={voice.activeMicrophone}

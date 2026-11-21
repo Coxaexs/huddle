@@ -661,6 +661,14 @@ if (!app.requestSingleInstanceLock()) {
         return null;
       }
     });
+    // Play together: start or join a game through Steam. Only links on the
+    // same list as lib/steam.ts GAME_LINK_PATTERN, and only from the Hoffle window.
+    ipcMain.handle("game-link:open", async (event, url) => {
+      if (!mainWindow || event.sender !== mainWindow.webContents) return false;
+      if (!require("./activity-scan").isGameLink(url)) return false;
+      await shell.openExternal(url);
+      return true;
+    });
     ipcMain.on("desktop-notification", (_event, { title, body }) => {
       if (Notification.isSupported()) {
         const iconPath = path.join(__dirname, "../build/icon.png");

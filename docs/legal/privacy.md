@@ -1,6 +1,6 @@
 # Privacy Policy
 
-_Last updated: 5 November 2026_
+_Last updated: 21 November 2026_
 
 This policy explains what Hoffle at **chat.hoffle.online** and the Hoffle apps collect, why, and what you can do about it. Hoffle is run by Abdullah Türk, who is responsible for your data (the "controller"). Contact: [info@hoffle.online](mailto:info@hoffle.online).
 
@@ -18,6 +18,7 @@ This policy explains what Hoffle at **chat.hoffle.online** and the Hoffle apps c
 | **Reports and moderation:** reports you send or that are made about your messages, including direct messages | To keep Hoffle safe |
 | **Music bot and Watch Together:** in servers that added the music bot, what you played (your name, the song and its link, when and for how long), your playlists, favourites and dislikes, and what you like in Reels Together | To run the queue, show stats and Wrapped, and pick what comes next |
 | **Activity status (desktop app):** the game or app you are using and what Spotify is playing | To show it on your profile. You can turn this off in Settings |
+| **Steam account (Play together):** if you link Steam, your Steam ID and Steam name, and who asked to join your game invites | So friends you let in can join the game you are playing. Others only get your Steam ID inside the join link, and only after you let them in. Unlink it in Settings → Activities |
 | **Your age answer:** the time you told us you are 18 or older, if you use an AI feature | AI features are for people 18 and over |
 | **Bots you make:** their name, description and settings, and a scrambled copy of their token | To run the Developer Portal |
 | **Technical:** IP address, device and browser type, and server logs | Security, preventing spam and abuse, and fixing errors. A hashed IP address is kept with new accounts to limit fake sign-ups |
@@ -47,6 +48,7 @@ We share only what each one needs:
 - **Discord:** only in servers that set up the Discord bridge. Messages, names, profile pictures, files and reactions in the paired channels are copied to Discord and back, and voice is carried between paired voice rooms. Discord handles what it receives under its own privacy policy.
 - **Music and video sources:** when the music bot or Watch Together plays something, our server sends the search or link to YouTube or the site it comes from, and the song title to lrclib and Musixmatch (through RapidAPI) for lyrics. Those sites see our server, not you.
 - **Last.fm:** only if you add a Last.fm username to your profile. We ask Last.fm what you are listening to.
+- **Steam (Valve):** only if you link a Steam account. You sign in on Steam's own page; we receive only your Steam ID. While you have a game invite open, we ask Steam which game and lobby you are in. Opening a game from Hoffle hands the link to the Steam app on your computer.
 - **Google Fonts:** only when you use the Winamp theme. Your browser loads its fonts from Google, which sees your IP address.
 - **ntfy:** only if you add an ntfy address for phone notifications. Your notifications are sent there.
 - **Bots made by other people:** a bot added to a server is run by whoever made it, not by us. It can see what that server allowed it to see, for example the messages in channels it can read. What it does with that is up to its maker. It can't see your direct messages. If you open a bot's activity, the bot learns your name and picture, and its page loads from its own server. Audio a bot plays also comes from its server. Those servers see your IP address.

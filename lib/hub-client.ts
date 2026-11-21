@@ -186,6 +186,19 @@ export async function publishAchievements(userId: string, ids: string[]): Promis
     .catch(() => undefined);
 }
 
+/** Play together: tells one person's open tabs about a join request or answer. */
+export async function publishPlay(userId: string, event: import("./protocol").PlayEvent): Promise<void> {
+  const stub = hub();
+  if (!stub) return;
+  await stub
+    .fetch(`${INTERNAL}/play`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, event }),
+    })
+    .catch(() => undefined);
+}
+
 /** Asks the hub to (re)schedule event reminders after an event changed. */
 export async function publishEventsChanged(): Promise<void> {
   const stub = hub();

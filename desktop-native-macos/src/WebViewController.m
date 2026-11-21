@@ -408,6 +408,21 @@ static const NSTimeInterval kApplyAtLaunch = 60;
         dispatch_async(dispatch_get_main_queue(), ^{
             [self.view.window performClose:nil];
         });
+    } else if ([type isEqualToString:@"openGameLink"]) {
+        // Play together: start or join a game through Steam. Only the links
+        // lib/steam.ts GAME_LINK_PATTERN allows; anything else is ignored.
+        NSString *link = [body[@"url"] isKindOfClass:[NSString class]] ? body[@"url"] : @"";
+        static NSRegularExpression *gameLink;
+        static dispatch_once_t once;
+        dispatch_once(&once, ^{
+            gameLink = [NSRegularExpression regularExpressionWithPattern:
+                @"^steam://(?:joinlobby/[0-9]{1,10}/[0-9]{15,20}/7656119[0-9]{10}|run/[0-9]{1,10}|rungameid/[0-9]{1,20}|friends/add/7656119[0-9]{10})$"
+                options:0 error:nil];
+        });
+        if ([gameLink numberOfMatchesInString:link options:0 range:NSMakeRange(0, link.length)] == 1) {
+            NSURL *url = [NSURL URLWithString:link];
+            if (url) [[NSWorkspace sharedWorkspace] openURL:url];
+        }
     } else if ([type isEqualToString:@"scanActivity"]) {
         NSInteger callbackId = [body[@"callbackId"] integerValue];
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{

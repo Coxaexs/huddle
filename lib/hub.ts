@@ -81,6 +81,7 @@ import {
   type ServerEvent,
   type Track,
   type VoiceParticipant,
+  type PlayEvent,
 } from "./protocol";
 
 export interface Attachment {
@@ -547,6 +548,14 @@ export class HuddleHub extends DurableObject {
       const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === "string").slice(0, 50) : [];
       if (body.userId && ids.length) {
         this.broadcast({ t: "achievement", ids, serverNow: Date.now() }, { audience: [body.userId] });
+      }
+      return Response.json({ ok: true });
+    }
+    if (url.pathname === "/play" && request.method === "POST") {
+      // Play together: "X asks to join" for the host, "you're in" for them.
+      const body = (await request.json()) as { userId?: string; event?: PlayEvent };
+      if (body.userId && body.event) {
+        this.broadcast({ ...body.event, t: "play", serverNow: Date.now() }, { audience: [body.userId] });
       }
       return Response.json({ ok: true });
     }
