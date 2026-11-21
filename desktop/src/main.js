@@ -17,6 +17,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const { spawn } = require("node:child_process");
 const { startUpdater, downloadPage } = require("./updater");
+const { createOverlay } = require("./overlay");
 
 /** Global hotkey that toggles your mic even when Hoffle isn't focused. */
 const MUTE_HOTKEY = "CommandOrControl+Shift+M";
@@ -103,6 +104,34 @@ let isQuitting = false;
 let inCall = false;
 /** The app's own updates (updater.js); null until started, and where there are none. */
 let updater = null;
+/** The game overlay (overlay.js); null until the app is ready. */
+let overlay = null;
+
+/**
+ * Whether a global shortcut is safe to grab system-wide: it needs a modifier
+ * and a real key, and never plain Ctrl+C / Ctrl+V and friends.
+ */
+function isSafeAccelerator(accelerator) {
+  const value = String(accelerator || "");
+  if (!value) return false;
+  const parts = value.split("+");
+  const modifiers = parts.filter((part) =>
+    /^(CommandOrControl|CmdOrCtrl|Command|Cmd|Control|Ctrl|Alt|Option|AltGr|Shift|Super|Meta)$/i.test(part),
+  );
+  if (modifiers.length < 1 || modifiers.length === parts.length) return false;
+  return !/^(CommandOrControl|CmdOrCtrl|Control|Ctrl|Command|Cmd)\+[CVXAZ]$/i.test(value);
+}
+
+/** Brings the main window forward, creating it if it was never opened. */
+function showMainWindow() {
+  if (!mainWindow) {
+    createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
 
 function loadBounds() {
   try {
@@ -187,6 +216,7 @@ function refreshTrayMenu() {
         mainWindow?.webContents.send("hotkey", "toggle-mute");
       },
     },
+    ...(overlay && overlay.menuLabel() ? [{ label: overlay.menuLabel(), click: () => overlay.show() }] : []),
     { type: "separator" },
     ...updateMenuItem(),
     {
@@ -296,7 +326,11 @@ function createWindow() {
   });
   // A reload drops the share, so the capture behind it goes too.
   mainWindow.webContents.on("did-start-navigation", (details) => {
-    if (details.isMainFrame && !details.isSameDocument) stopAppAudio();
+    if (details.isMainFrame && !details.isSameDocument) {
+      stopAppAudio();
+      // The call ended with the page; the overlay forgets it until told again.
+      overlay?.mainReloaded();
+    }
   });
 
   // Target=_blank and external links open in the system browser, not in-app.
@@ -318,6 +352,8 @@ function createWindow() {
 // the app is ready.
 if (process.platform === "linux") {
   app.commandLine.appendSwitch("enable-features", "WebRTCPipeWireCapturer");
+  // The game overlay is a see-through window.
+  app.commandLine.appendSwitch("enable-transparent-visuals");
 }
 
 function supportsLoopbackAudio() {
@@ -494,6 +530,7 @@ function openServerDialog() {
 function switchServer(url) {
   APP_URL = url;
   saveConfig({ serverUrl: url === DEFAULT_URL ? "" : url });
+  overlay?.reset();
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(APP_URL);
   else createWindow();
 }
@@ -648,6 +685,22 @@ if (!app.requestSingleInstanceLock()) {
     } else {
       createWindow();
     }
+    overlay = createOverlay({
+      appUrl: () => APP_URL,
+      isAppUrl,
+      mainWindow: () => mainWindow,
+      showMain: showMainWindow,
+      loadConfig,
+      saveConfig,
+      isSafeAccelerator,
+      // HOFFLE_OVERLAY_FAKE_GAME pretends a game runs, for trying the overlay
+      // without one (development builds only).
+      runningGame:
+        !app.isPackaged && process.env.HOFFLE_OVERLAY_FAKE_GAME
+          ? async () => process.env.HOFFLE_OVERLAY_FAKE_GAME
+          : () => require("./activity-scan").runningGame(),
+      onChange: () => refreshTrayMenu(),
+    });
     createTray();
 
     // Native OS push notification handler
@@ -684,6 +737,8 @@ if (!app.requestSingleInstanceLock()) {
       return require("./activity-scan").queueGameJoin(String(game || ""), data);
     });
     ipcMain.on("desktop-notification", (_event, { title, body }) => {
+      // In a game the overlay pops it up instead, where it can be seen.
+      if (overlay?.toast({ title, body })) return;
       if (Notification.isSupported()) {
         const iconPath = path.join(__dirname, "../build/icon.png");
         const notification = new Notification({
@@ -771,12 +826,7 @@ if (!app.requestSingleInstanceLock()) {
       // A global shortcut works system-wide, so the page may only bind combos
       // with a modifier: never a bare key, nor plain Ctrl+C / Ctrl+V.
       const value = String(accelerator || "");
-      const parts = value.split("+");
-      const modifiers = parts.filter((part) =>
-        /^(CommandOrControl|CmdOrCtrl|Command|Cmd|Control|Ctrl|Alt|Option|AltGr|Shift|Super|Meta)$/i.test(part),
-      );
-      if (value && (modifiers.length < 1 || modifiers.length === parts.length)) return;
-      if (/^(CommandOrControl|CmdOrCtrl|Control|Ctrl|Command|Cmd)\+[CVXAZ]$/i.test(value)) return;
+      if (value && !isSafeAccelerator(value)) return;
       accelerator = value;
       if (accelerator === muteHotkey) return;
       if (muteHotkey) globalShortcut.unregister(muteHotkey);
@@ -856,7 +906,8 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      // The overlay is a window too, so ask for the main one by name.
+      if (!mainWindow && !splashWindow) createWindow();
     });
   });
 
@@ -865,6 +916,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on("will-quit", () => {
+    overlay?.stop();
     globalShortcut.unregisterAll();
     stopAppAudio();
   });

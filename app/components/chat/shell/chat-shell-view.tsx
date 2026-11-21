@@ -15,6 +15,16 @@ import { WidgetHostProvider, type WidgetHostValue } from "../../widgets/widget-h
 import { CustomizeBar } from "../../widgets/customize-bar";
 import { WebViewSheet } from "../../widgets/web-view";
 import { MusicPlayerLayer } from "../../music-player-layer";
+import { deferred } from "./deferred";
+import { mainOverlayBridge } from "../../../lib/desktop-overlay";
+import { DM_HOME } from "../../../lib/chat/constants";
+import { channelKindInfo } from "@/lib/channel-kinds";
+import { requestSettingsTab } from "@/lib/settings-request";
+
+// Desktop app only, and only fetched there: feeds the game overlay.
+const DesktopOverlayBridge = deferred(() =>
+  import("../desktop-overlay-bridge").then((m) => m.DesktopOverlayBridge),
+);
 import { openDndCompanion } from "../../../lib/dnd-sso";
 import { addInitiative } from "@/lib/lounge-shared";
 
@@ -125,6 +135,48 @@ export function renderChatShell(s: ChatShellViewState) {
     >
       <ConnectionBanner connected={hub.connected} />
       <UpdateBanner connected={hub.connected} inCall={Boolean(currentVoiceChannel)} />
+      {mainOverlayBridge() && (
+        <DesktopOverlayBridge
+          servers={servers}
+          dms={visibleDms}
+          unread={unread}
+          voiceRooms={voiceRooms}
+          voice={voice}
+          voiceChannelName={voiceChannelName}
+          selfConnectionId={hub.connectionId}
+          activeServerId={inDmHome ? DM_HOME : activeServer?.id ?? null}
+          activeChannelId={activeChannelId}
+          onJoin={(channelId) => {
+            const channel = servers.flatMap((server) => server.channels).find((item) => item.id === channelId);
+            if (channel && channelKindInfo(channel.kind).appearsAsVoice) v.openVoiceChannel(channel);
+          }}
+          onLeave={() => {
+            if (stageChannelId === voice.channelId) setStageChannelId(null);
+            voice.leave();
+          }}
+          onOpenChannel={(channelId) => {
+            const server = servers.find((item) => item.channels.some((channel) => channel.id === channelId));
+            const channel = server?.channels.find((item) => item.id === channelId);
+            if (server && channel) {
+              if (channelKindInfo(channel.kind).appearsAsVoice) {
+                v.openVoiceChannel(channel);
+                return;
+              }
+              setActiveServerId(server.id);
+              setStageChannelId(null);
+              setActiveChannelId(channelId);
+            } else if (visibleDms.some((dm) => dm.channelId === channelId)) {
+              setActiveServerId(DM_HOME);
+              setStageChannelId(null);
+              setActiveChannelId(channelId);
+            }
+          }}
+          onOpenSettings={() => {
+            requestSettingsTab("voice");
+            setSettingsOpen(true);
+          }}
+        />
+      )}
       <RetroChrome
         serverName={inDmHome ? null : activeServer?.name ?? null}
         serverIconUrl={inDmHome ? null : activeServer?.iconUrl ?? null}

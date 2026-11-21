@@ -79,7 +79,8 @@ export function comboLabel(combo: string): string {
     parsed.code
       .replace(/^Key/, "")
       .replace(/^Digit/, "")
-      .replace(/^Numpad/, "Num "),
+      .replace(/^Numpad/, "Num ")
+      .replace(/^Backquote$/, "`"),
   );
   return parts.join(" + ");
 }

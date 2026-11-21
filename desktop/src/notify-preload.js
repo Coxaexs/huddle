@@ -6,7 +6,8 @@ const { contextBridge, ipcRenderer } = require("electron");
  * A deliberately tiny bridge injected into the Huddle web app. It exposes only:
  *  - `window.huddle.desktop` so the app can tell it's running in the shell,
  *  - `window.huddle.setBadge(n)` to reflect the unread count on the dock/taskbar,
- *  - `window.huddle.updates` to offer a restart once the app has updated itself.
+ *  - `window.huddle.updates` to offer a restart once the app has updated itself,
+ *  - `window.huddle.overlay` to feed the game overlay and take its buttons back.
  * The global hotkey arrives as an IPC message and is re-dispatched as a plain
  * DOM event the web app can listen for, so no privileged API is handed over.
  */
@@ -72,6 +73,32 @@ contextBridge.exposeInMainWorld("huddle", {
     /** Looks for a newer version now (it also looks every 30 minutes). */
     check: () => ipcRenderer.send("update:check"),
     download: () => ipcRenderer.send("update:download"),
+  },
+  /**
+   * The game overlay (overlay.js). The page describes the call and the channel
+   * list when `want` asks for them, and carries out the overlay's buttons.
+   */
+  overlay: {
+    /** { enabled, combo, defaultCombo, shortcut, hotkeyOk, game } */
+    settings: () => ipcRenderer.invoke("overlay:settings"),
+    /** { enabled?, combo?, accelerator? }; resolves to the new settings. */
+    setSettings: (patch) => ipcRenderer.invoke("overlay:set-settings", patch),
+    /** { voice, shell }: what the overlay can use right now. */
+    want: () => ipcRenderer.invoke("overlay:want"),
+    onWant: (callback) => {
+      const listener = (_event, want) => callback(want);
+      ipcRenderer.on("overlay:want", listener);
+      return () => ipcRenderer.removeListener("overlay:want", listener);
+    },
+    publishVoice: (voice) => ipcRenderer.send("overlay:voice", voice),
+    publishShell: (shell) => ipcRenderer.send("overlay:shell", shell),
+    publishMessage: (event) => ipcRenderer.send("overlay:message", event),
+    /** { type: "mute" | "deafen" | "leave" | "join" | "open-main" | "settings", channelId? } */
+    onAction: (callback) => {
+      const listener = (_event, action) => callback(action);
+      ipcRenderer.on("overlay:action", listener);
+      return () => ipcRenderer.removeListener("overlay:action", listener);
+    },
   },
   /** Trigger native OS push notification */
   notify: (title, body) =>

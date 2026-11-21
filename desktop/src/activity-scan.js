@@ -318,4 +318,13 @@ async function spotifyControl(command, openExternal) {
   return null;
 }
 
-module.exports = { scan, classify, isGameLink, queueGameJoin, playState, spotifyControl, spotifyState };
+/**
+ * The game running here, or null: what the overlay shows itself over. Only the
+ * process list (no Spotify), so it is cheap enough to ask every few seconds.
+ */
+async function runningGame() {
+  const best = classify(await processNames());
+  return best && best.kind === "playing" ? best.name : null;
+}
+
+module.exports = { scan, classify, isGameLink, queueGameJoin, playState, spotifyControl, spotifyState, runningGame };

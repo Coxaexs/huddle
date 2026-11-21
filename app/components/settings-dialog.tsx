@@ -39,6 +39,7 @@ import { Invite, Tab, PrideTheme, Density, Backdrop, type AppearanceSubtab } fro
 import { ProfileTab } from "./settings/profile-tab";
 import { ProfileEditorShell } from "./settings/profile-editor-shell";
 import { takeProfileEditorRequest } from "@/lib/profile-editor-request";
+import { takeSettingsTabRequest } from "@/lib/settings-request";
 import { VoiceTab } from "./settings/voice-tab";
 import { PasswordTab } from "./settings/password-tab";
 import { isNativeApp } from "../lib/native-app";
@@ -192,7 +193,9 @@ export function SettingsDialog({
   );
   const simpleUi = useUiMode() === "simple";
   // The simple interface opens on its page of tiles instead of the first tab.
-  const [tab, setTab] = useState<Tab>(() => (uiMode() === "simple" ? "home" : "password"));
+  const [tab, setTab] = useState<Tab>(
+    () => (takeSettingsTabRequest() as Tab | null) || (uiMode() === "simple" ? "home" : "password"),
+  );
   useEffect(() => {
     if (!simpleUi && tab === "home") setTab("password");
   }, [simpleUi, tab]);

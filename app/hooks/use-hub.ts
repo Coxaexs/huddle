@@ -19,6 +19,7 @@ import { pruneStreamPreviews } from "../lib/stream-preview";
 import { ROSTER_GRACE_MS, withRosterGrace } from "../lib/roster-grace";
 import { shardEventAllowed, shardRetryMs } from "../lib/room-shard";
 import { receiveBotWidget } from "../lib/widget-store";
+import { relayToOverlay } from "../lib/desktop-overlay";
 
 export interface HubState {
   connected: boolean;
@@ -455,6 +456,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
             break;
           case "message":
             handlersRef.current.onMessage?.(payload.channelId, payload.message);
+            relayToOverlay(payload);
             break;
           case "signal":
             handlersRef.current.onSignal?.(payload.from, payload.data);
@@ -473,6 +475,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
             break;
           case "message-deleted":
             handlersRef.current.onMessageDeleted?.(payload.channelId, payload.id);
+            relayToOverlay(payload);
             break;
           case "message-pinned":
             handlersRef.current.onMessagePinned?.(
@@ -482,6 +485,7 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
             );
             break;
           case "message-edited":
+            relayToOverlay(payload);
             handlersRef.current.onMessageEdited?.(
               payload.channelId,
               payload.id,
