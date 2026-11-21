@@ -97,7 +97,8 @@ type Draft = {
   channelId: string;
 };
 
-const RSVP_LABELS: Record<RsvpStatus, string> = { going: "Going", maybe: "Maybe", no: "Can't" };
+/** Catalog keys for the answers ("Going", "Maybe", "Can't"). */
+const RSVP_KEYS = { going: "events.rsvp.going", maybe: "events.rsvp.maybe", no: "events.rsvp.no" } as const satisfies Record<RsvpStatus, string>;
 
 /** The subscription link, as calendar apps want it (webcal://) and as plain https. */
 function calendarLinks(token: string) {
@@ -494,7 +495,7 @@ export function EventsPanel({
                         <span
                           key={person.id}
                           className={`events-attendee ${person.status}`}
-                          title={`${person.displayName} · ${RSVP_LABELS[person.status]}`}
+                          title={`${person.displayName} · ${t(RSVP_KEYS[person.status])}`}
                         >
                           <Avatar
                             avatar={person.avatar}
@@ -527,7 +528,7 @@ export function EventsPanel({
                         ) : (
                           <X size={13} />
                         )}
-                        {RSVP_LABELS[status]}
+                        {t(RSVP_KEYS[status])}
                       </button>
                     ))}
                     {open && event.channelId && channelName.has(event.channelId) && (

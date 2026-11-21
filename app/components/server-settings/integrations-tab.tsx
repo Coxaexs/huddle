@@ -9,6 +9,8 @@ import { FeedsPanel } from "./feeds-settings";
 import { GameServerSettingsPanel } from "./game-server-settings";
 import { WebhooksPanel } from "./webhooks-settings";
 import { DiscordBridgePanel } from "./discord-bridge-settings";
+import { useI18n } from "../../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 
 /** Jumps to a panel further down and puts the cursor in its first box. */
 function goTo(id: string) {
@@ -49,6 +51,8 @@ export function ServerIntegrationsTab({
   toggleBot: (bot: ServerBot) => Promise<void>;
   removeBot: (bot: ServerBot) => Promise<void>;
 }) {
+  const { t } = useI18n();
+  const tk = (key: string, vars?: Record<string, string | number>) => t(key as MessageKey, vars);
   if (tab !== "integrations") return null;
 
   const has = (kind: string) => bots.some((bot) => bot.kind === kind);
@@ -60,11 +64,11 @@ export function ServerIntegrationsTab({
     added?: boolean;
     onClick: () => void;
   }> = [
-    { icon: "📰", name: "Feeds", blurb: "YouTube channels, subreddits, Bluesky, blogs and GitHub releases, posted as they come out.", action: "Follow a feed", onClick: () => goTo("integration-feeds") },
-    { icon: "🪝", name: "Webhooks", blurb: "GitHub, GitLab, CI, uptime monitors, Home Assistant: anything that posts to Discord.", action: "Make a webhook", onClick: () => goTo("integration-webhooks") },
-    { icon: "⚔️", name: "D&D Companion", blurb: "5e spells, monsters and items in chat, and fair dice for the table.", action: "Add", added: has("dnd"), onClick: () => void addBot("D&D Companion", "dnd", "⚔️", "5e compendium and dice roller") },
-    { icon: "🌉", name: "Discord Bridge", blurb: "Mirror channels with a Discord server both ways: names, pictures, replies, edits, reactions, files and threads.", action: "Set up", onClick: () => goTo("integration-discord-bridge") },
-    { icon: "🤖", name: "Your own bot", blurb: "Make a bot in the Developer Portal and share its invite link. discord.py and discord.js bots run here.", action: "Open", onClick: () => window.open(`${basePath}/developers`, "_blank", "noopener") },
+    { icon: "📰", name: tk("intg.app.feeds"), blurb: tk("intg.app.feeds.blurb"), action: tk("intg.app.feeds.action"), onClick: () => goTo("integration-feeds") },
+    { icon: "🪝", name: tk("intg.app.hooks"), blurb: tk("intg.app.hooks.blurb"), action: tk("intg.app.hooks.action"), onClick: () => goTo("integration-webhooks") },
+    { icon: "⚔️", name: tk("intg.app.dnd"), blurb: tk("intg.app.dnd.blurb"), action: tk("intg.app.add"), added: has("dnd"), onClick: () => void addBot("D&D Companion", "dnd", "⚔️", "5e compendium and dice roller") },
+    { icon: "🌉", name: tk("intg.app.bridge"), blurb: tk("intg.app.bridge.blurb"), action: tk("intg.app.bridge.action"), onClick: () => goTo("integration-discord-bridge") },
+    { icon: "🤖", name: tk("intg.app.ownBot"), blurb: tk("intg.app.ownBot.blurb"), action: tk("intg.open"), onClick: () => window.open(`${basePath}/developers`, "_blank", "noopener") },
   ];
 
   const origin = typeof window !== "undefined" ? window.location.origin : "https://hoffle.online";
@@ -72,8 +76,8 @@ export function ServerIntegrationsTab({
   return (
     <div className="tab-pane integrations-pane">
       <header>
-        <h1 className="pane-title">Integrations</h1>
-        <p className="pane-subtitle">Bring the apps and sites {server.name} already uses into its channels.</p>
+        <h1 className="pane-title">{tk("intg.title")}</h1>
+        <p className="pane-subtitle">{tk("intg.subtitle", { server: server.name })}</p>
       </header>
 
       <div className="integration-apps">
@@ -94,7 +98,7 @@ export function ServerIntegrationsTab({
             >
               {app.added ? (
                 <>
-                  <Check size={14} /> Added
+                  <Check size={14} /> {tk("intg.added")}
                 </>
               ) : (
                 app.action
@@ -111,14 +115,14 @@ export function ServerIntegrationsTab({
       <section className="integration-section" id="integration-bots">
         <header className="integration-section-head">
           <h2>
-            Bots <span className="integration-count">{bots.length}</span>
+            {tk("intg.bots.title")} <span className="integration-count">{bots.length}</span>
           </h2>
-          <p>Bots added to {server.name}. A token is a password for the bot: keep it secret.</p>
+          <p>{tk("intg.bots.desc", { server: server.name })}</p>
         </header>
         {loadingBots ? (
-          <p className="integration-empty">Loading bots…</p>
+          <p className="integration-empty">{tk("intg.bots.loading")}</p>
         ) : !bots.length ? (
-          <p className="integration-empty">No bots yet. Add one with its invite link.</p>
+          <p className="integration-empty">{tk("intg.bots.none")}</p>
         ) : (
           <ul className="integration-list">
             {bots.map((bot) => (
@@ -129,18 +133,18 @@ export function ServerIntegrationsTab({
                 <div className="integration-row-main">
                   <strong>
                     {bot.name}{" "}
-                    <span className={`integration-badge ${bot.enabled ? "on" : "off"}`}>{bot.enabled ? "On" : "Off"}</span>
+                    <span className={`integration-badge ${bot.enabled ? "on" : "off"}`}>{bot.enabled ? tk("intg.bots.on") : tk("intg.bots.off")}</span>
                   </strong>
                   {bot.applicationId ? (
-                    <p className="integration-token">Added with an invite link</p>
+                    <p className="integration-token">{tk("intg.bots.viaInvite")}</p>
                   ) : (
                   <p className="integration-token">
                     <code>{revealedTokens[bot.id] ? bot.token : `${bot.token.slice(0, 10)}••••••••••••`}</code>
                     <button
                       type="button"
                       className="integration-icon-btn"
-                      aria-label={revealedTokens[bot.id] ? "Hide token" : "Show token"}
-                      title={revealedTokens[bot.id] ? "Hide token" : "Show token"}
+                      aria-label={revealedTokens[bot.id] ? tk("intg.bots.hideToken") : tk("intg.bots.showToken")}
+                      title={revealedTokens[bot.id] ? tk("intg.bots.hideToken") : tk("intg.bots.showToken")}
                       onClick={() => setRevealedTokens((prev) => ({ ...prev, [bot.id]: !prev[bot.id] }))}
                     >
                       {revealedTokens[bot.id] ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -148,10 +152,10 @@ export function ServerIntegrationsTab({
                     <button
                       type="button"
                       className="integration-icon-btn"
-                      aria-label={`Copy the token for ${bot.name}`}
-                      title="Copy token"
+                      aria-label={tk("intg.bots.copyTokenFor", { name: bot.name })}
+                      title={tk("intg.bots.copyToken")}
                       onClick={() => {
-                        void navigator.clipboard?.writeText(bot.token).then(() => setNotice(`Copied the token for ${bot.name}.`));
+                        void navigator.clipboard?.writeText(bot.token).then(() => setNotice(tk("intg.bots.copiedToken", { name: bot.name })));
                       }}
                     >
                       <Copy size={14} />
@@ -161,13 +165,13 @@ export function ServerIntegrationsTab({
                 </div>
                 <div className="integration-row-actions">
                   <button type="button" className="discord-btn secondary-gray" onClick={() => void toggleBot(bot)}>
-                    <Power size={14} /> {bot.enabled ? "Turn off" : "Turn on"}
+                    <Power size={14} /> {bot.enabled ? tk("intg.bots.turnOff") : tk("intg.bots.turnOn")}
                   </button>
                   <button
                     type="button"
                     className="discord-btn danger-btn"
-                    aria-label={`Remove ${bot.name}`}
-                    title="Remove"
+                    aria-label={tk("intg.bots.removeNamed", { name: bot.name })}
+                    title={tk("intg.remove")}
                     onClick={() => void removeBot(bot)}
                   >
                     <Trash2 size={14} />
@@ -184,15 +188,15 @@ export function ServerIntegrationsTab({
 
       <details className="integration-dev">
         <summary>
-          <Terminal size={16} /> For developers: the Discord-compatible API
+          <Terminal size={16} /> {tk("intg.dev.summary")}
         </summary>
-        <p>Bots and scripts talk to Hoffle the way they talk to Discord. Send a message:</p>
+        <p>{tk("intg.dev.send")}</p>
         <pre>{`curl -X POST "${origin}/hangout/api/v10/channels/<CHANNEL_ID>/messages" \\
   -H "Authorization: Bot <YOUR_BOT_TOKEN>" \\
   -H "Content-Type: application/json" \\
   -d '{"content": "Hello from my bot!"}'`}</pre>
         <p>
-          Live events come over the gateway at <code>/hangout/api/gateway</code>, the same as on Discord.
+          {tk("intg.dev.gatewayA")} <code>/hangout/api/gateway</code>{tk("intg.dev.gatewayB")}
         </p>
       </details>
     </div>

@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import type { FeedKind, PublicFeed } from "@/lib/feeds";
 import { apiFetch } from "../../lib/client";
+import { useI18n, currentLocale } from "../../lib/i18n-context";
+import { createTranslator, type MessageKey } from "@/lib/i18n";
+
+const tx = (key: string, vars?: Record<string, string | number>) => createTranslator(currentLocale())(key as MessageKey, vars);
 
 interface ListResponse {
   feeds: PublicFeed[];
@@ -22,19 +26,19 @@ const KIND_ICON: Record<FeedKind, string> = {
 
 /** Ideas under the box, each one a working example. */
 const EXAMPLES = [
-  { label: "A YouTube channel", value: "https://www.youtube.com/@veritasium" },
-  { label: "A subreddit", value: "https://www.reddit.com/r/boardgames" },
-  { label: "A Bluesky account", value: "https://bsky.app/profile/bsky.app" },
-  { label: "GitHub releases", value: "https://github.com/godotengine/godot" },
-  { label: "Any blog or news site", value: "https://www.theverge.com" },
+  { label: "intg.feeds.exYoutube", value: "https://www.youtube.com/@veritasium" },
+  { label: "intg.feeds.exSubreddit", value: "https://www.reddit.com/r/boardgames" },
+  { label: "intg.feeds.exBluesky", value: "https://bsky.app/profile/bsky.app" },
+  { label: "intg.feeds.exGithub", value: "https://github.com/godotengine/godot" },
+  { label: "intg.feeds.exBlog", value: "https://www.theverge.com" },
 ];
 
 function ago(iso: string | null): string {
-  if (!iso) return "nothing yet";
+  if (!iso) return tx("intg.ago.never");
   const minutes = Math.round((Date.now() - Date.parse(iso)) / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (minutes < 48 * 60) return `${Math.round(minutes / 60)}h ago`;
+  if (minutes < 1) return tx("intg.ago.now");
+  if (minutes < 60) return tx("intg.ago.minutes", { n: minutes });
+  if (minutes < 48 * 60) return tx("intg.ago.hours", { n: Math.round(minutes / 60) });
   return new Date(iso).toLocaleDateString();
 }
 
@@ -52,6 +56,8 @@ export function FeedsPanel({
   onNotice: (text: string) => void;
   onRequestConfirm: (options: { title: string; message?: string; isDanger?: boolean; confirmText?: string; onConfirm: () => void }) => void;
 }) {
+  const { t } = useI18n();
+  const tk = (key: string, vars?: Record<string, string | number>) => t(key as MessageKey, vars);
   const [data, setData] = useState<ListResponse | null>(null);
   const [url, setUrl] = useState("");
   const [channelId, setChannelId] = useState("");
@@ -73,7 +79,7 @@ export function FeedsPanel({
   }, [serverId]);
 
   if (!data) return null;
-  const channelName = (id: string) => data.channels.find((c) => c.id === id)?.name ?? "deleted channel";
+  const channelName = (id: string) => data.channels.find((c) => c.id === id)?.name ?? tk("intg.feeds.deletedChannel");
   const full = data.feeds.length >= data.max;
 
   async function follow() {
@@ -86,9 +92,9 @@ export function FeedsPanel({
       });
       setData((current) => (current ? { ...current, feeds: [...current.feeds, result.feed] } : current));
       setUrl("");
-      onNotice(`#${channelName(channelId)} now follows ${result.feed.title}.`);
+      onNotice(tk("intg.feeds.followed", { channel: channelName(channelId), title: result.feed.title }));
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not follow that.");
+      setError(failure instanceof Error ? failure.message : tk("intg.feeds.followFailed"));
     } finally {
       setBusy(false);
     }
@@ -103,9 +109,9 @@ export function FeedsPanel({
       setData((current) =>
         current ? { ...current, feeds: current.feeds.map((f) => (f.id === feed.id ? result.feed : f)) } : current,
       );
-      onNotice(`${feed.title} now posts to #${channelName(nextChannel)}.`);
+      onNotice(tk("intg.feeds.moved", { title: feed.title, channel: channelName(nextChannel) }));
     } catch (failure) {
-      onNotice(failure instanceof Error ? failure.message : "Could not move the feed.");
+      onNotice(failure instanceof Error ? failure.message : tk("intg.feeds.moveFailed"));
     }
   }
 
@@ -113,9 +119,9 @@ export function FeedsPanel({
     try {
       await apiFetch(`/api/feeds?id=${encodeURIComponent(feed.id)}`, { method: "DELETE" });
       setData((current) => (current ? { ...current, feeds: current.feeds.filter((f) => f.id !== feed.id) } : current));
-      onNotice(`Stopped following ${feed.title}.`);
+      onNotice(tk("intg.feeds.stopped", { title: feed.title }));
     } catch (failure) {
-      onNotice(failure instanceof Error ? failure.message : "Could not remove the feed.");
+      onNotice(failure instanceof Error ? failure.message : tk("intg.feeds.removeFailed"));
     }
   }
 
@@ -123,9 +129,9 @@ export function FeedsPanel({
     <section className="integration-section" id="integration-feeds">
       <header className="integration-section-head">
         <h2>
-          Feeds <span className="integration-count">{data.feeds.length}/{data.max}</span>
+          {tk("intg.feeds.title")} <span className="integration-count">{data.feeds.length}/{data.max}</span>
         </h2>
-        <p>New videos, posts and articles show up in a channel by themselves, checked every 15 minutes.</p>
+        <p>{tk("intg.feeds.desc")}</p>
       </header>
       {data.channels.length ? (
         <form
@@ -138,11 +144,11 @@ export function FeedsPanel({
           <input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="Paste a link: YouTube channel, subreddit, blog, Bluesky…"
-            aria-label="Link to follow"
+            placeholder={tk("intg.feeds.placeholder")}
+            aria-label={tk("intg.feeds.linkAria")}
             inputMode="url"
           />
-          <select value={channelId} onChange={(e) => setChannelId(e.target.value)} aria-label="Post into">
+          <select value={channelId} onChange={(e) => setChannelId(e.target.value)} aria-label={tk("intg.feeds.postInto")}>
             {data.channels.map((c) => (
               <option key={c.id} value={c.id}>
                 #{c.name}
@@ -150,11 +156,11 @@ export function FeedsPanel({
             ))}
           </select>
           <button type="submit" className="discord-btn primary-indigo" disabled={busy || !url.trim() || !channelId || full}>
-            {busy ? "Looking…" : "Follow"}
+            {busy ? tk("intg.feeds.looking") : tk("intg.feeds.follow")}
           </button>
         </form>
       ) : (
-        <p className="integration-empty">This server has no text channel to post into yet.</p>
+        <p className="integration-empty">{tk("intg.feeds.noChannel")}</p>
       )}
       {error && (
         <p className="integration-error" role="alert">
@@ -163,10 +169,10 @@ export function FeedsPanel({
       )}
       {!data.feeds.length && (
         <div className="integration-examples">
-          <span>Try</span>
+          <span>{tk("intg.feeds.try")}</span>
           {EXAMPLES.map((example) => (
             <button key={example.value} type="button" onClick={() => setUrl(example.value)}>
-              {example.label}
+              {tk(example.label)}
             </button>
           ))}
         </div>
@@ -181,13 +187,13 @@ export function FeedsPanel({
               <div className="integration-row-main">
                 <strong>{feed.title}</strong>
                 <p>
-                  Posts to{" "}
+                  {tk("intg.feeds.postsTo")}{" "}
                   <select
                     value={data.channels.some((c) => c.id === feed.channelId) ? feed.channelId : ""}
                     onChange={(e) => void move(feed, e.target.value)}
-                    aria-label={`Channel for ${feed.title}`}
+                    aria-label={tk("intg.feeds.channelFor", { title: feed.title })}
                   >
-                    {!data.channels.some((c) => c.id === feed.channelId) && <option value="">deleted channel</option>}
+                    {!data.channels.some((c) => c.id === feed.channelId) && <option value="">{tk("intg.feeds.deletedChannel")}</option>}
                     {data.channels.map((c) => (
                       <option key={c.id} value={c.id}>
                         #{c.name}
@@ -200,25 +206,25 @@ export function FeedsPanel({
                       <AlertTriangle size={12} /> {feed.lastError}
                     </span>
                   ) : (
-                    <>last post {ago(feed.lastPostAt)}</>
+                    <>{tk("intg.feeds.lastPost", { when: ago(feed.lastPostAt) })}</>
                   )}
                 </p>
               </div>
               <div className="integration-row-actions">
                 <a className="discord-btn secondary-gray" href={feed.sourceUrl} target="_blank" rel="noreferrer">
-                  Open
+                  {tk("intg.open")}
                 </a>
                 <button
                   type="button"
                   className="discord-btn danger-btn"
-                  aria-label={`Stop following ${feed.title}`}
-                  title="Stop following"
+                  aria-label={tk("intg.feeds.stopFollowingNamed", { title: feed.title })}
+                  title={tk("intg.feeds.stopFollowing")}
                   onClick={() =>
                     onRequestConfirm({
-                      title: `Stop following ${feed.title}?`,
-                      message: "Nothing new will be posted. What it already posted stays.",
+                      title: tk("intg.feeds.stopConfirmTitle", { title: feed.title }),
+                      message: tk("intg.feeds.stopConfirmBody"),
                       isDanger: true,
-                      confirmText: "Stop following",
+                      confirmText: tk("intg.feeds.stopFollowing"),
                       onConfirm: () => void remove(feed),
                     })
                   }

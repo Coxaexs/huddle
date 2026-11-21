@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Copy, RefreshCw, Trash2 } from "lucide-react";
 import { apiFetch } from "../../lib/client";
+import { useI18n } from "../../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 
 interface Webhook {
   id: string;
@@ -42,6 +44,8 @@ export function WebhooksPanel({
   onNotice: (text: string) => void;
   onRequestConfirm: (options: { title: string; message?: string; isDanger?: boolean; confirmText?: string; onConfirm: () => void }) => void;
 }) {
+  const { t } = useI18n();
+  const tk = (key: string, vars?: Record<string, string | number>) => t(key as MessageKey, vars);
   const [data, setData] = useState<ListResponse | null>(null);
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState("🪝");
@@ -65,7 +69,7 @@ export function WebhooksPanel({
 
   if (!data) return null;
 
-  const channelName = (id: string) => data.channels.find((c) => c.id === id)?.name ?? "deleted channel";
+  const channelName = (id: string) => data.channels.find((c) => c.id === id)?.name ?? tk("intg.feeds.deletedChannel");
 
   function replace(hook: Webhook) {
     setData((current) =>
@@ -82,9 +86,9 @@ export function WebhooksPanel({
       });
       setData((current) => (current ? { ...current, webhooks: [...current.webhooks, result.webhook] } : current));
       setName("");
-      await copy(result.webhook, "Webhook created and its URL copied.");
+      await copy(result.webhook, tk("intg.hooks.created"));
     } catch (error) {
-      onNotice(error instanceof Error ? error.message : "Could not create the webhook.");
+      onNotice(error instanceof Error ? error.message : tk("intg.hooks.createFailed"));
     } finally {
       setBusy(false);
     }
@@ -99,7 +103,7 @@ export function WebhooksPanel({
       replace(result.webhook);
       if (notice) onNotice(notice);
     } catch (error) {
-      onNotice(error instanceof Error ? error.message : "Could not save the webhook.");
+      onNotice(error instanceof Error ? error.message : tk("intg.hooks.saveFailed"));
     }
   }
 
@@ -107,13 +111,13 @@ export function WebhooksPanel({
     try {
       await apiFetch(`/api/webhooks?id=${encodeURIComponent(hook.id)}`, { method: "DELETE" });
       setData((current) => (current ? { ...current, webhooks: current.webhooks.filter((w) => w.id !== hook.id) } : current));
-      onNotice(`Deleted ${hook.name}. Its URL no longer works.`);
+      onNotice(tk("intg.hooks.deleted", { name: hook.name }));
     } catch (error) {
-      onNotice(error instanceof Error ? error.message : "Could not delete the webhook.");
+      onNotice(error instanceof Error ? error.message : tk("intg.hooks.deleteFailed"));
     }
   }
 
-  async function copy(hook: Webhook, notice = "Webhook URL copied.") {
+  async function copy(hook: Webhook, notice = tk("intg.hooks.copied")) {
     try {
       await navigator.clipboard.writeText(fullUrl(hook.path));
       onNotice(notice);
@@ -126,12 +130,11 @@ export function WebhooksPanel({
     <section className="integration-section webhooks-settings" id="integration-webhooks">
       <header className="integration-section-head">
         <h2>
-          Webhooks <span className="integration-count">{data.webhooks.filter((hook) => !hook.source).length}/{data.max}</span>
+          {tk("intg.hooks.title")} <span className="integration-count">{data.webhooks.filter((hook) => !hook.source).length}/{data.max}</span>
         </h2>
         <p>
-          A secret URL that posts into one channel. Anything that can post to a Discord webhook works here too: CI,
-          uptime monitors, Home Assistant, scripts. For GitHub, GitLab or Gitea/Forgejo add <code>/github</code>,{" "}
-          <code>/gitlab</code> or <code>/gitea</code> to the URL; <code>/slack</code> takes Slack-style posts.
+          {tk("intg.hooks.descA")} <code>/github</code>, <code>/gitlab</code> {tk("intg.hooks.descOr")}{" "}
+          <code>/gitea</code> {tk("intg.hooks.descB")} <code>/slack</code> {tk("intg.hooks.descC")}
         </p>
       </header>
       {data.channels.length ? (
@@ -146,11 +149,11 @@ export function WebhooksPanel({
             className="webhook-avatar-input"
             value={avatar}
             onChange={(e) => setAvatar(e.target.value)}
-            aria-label="Webhook emoji"
+            aria-label={tk("intg.hooks.emoji")}
             maxLength={8}
           />
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name it, e.g. GitHub" maxLength={40} aria-label="Webhook name" />
-          <select value={channelId} onChange={(e) => setChannelId(e.target.value)} aria-label="Channel">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tk("intg.hooks.namePlaceholder")} maxLength={40} aria-label={tk("intg.hooks.name")} />
+          <select value={channelId} onChange={(e) => setChannelId(e.target.value)} aria-label={tk("intg.hooks.channel")}>
             {data.channels.map((c) => (
               <option key={c.id} value={c.id}>
                 #{c.name}
@@ -162,11 +165,11 @@ export function WebhooksPanel({
             className="discord-btn primary-indigo"
             disabled={busy || !name.trim() || !channelId || data.webhooks.filter((hook) => !hook.source).length >= data.max}
           >
-            New webhook
+            {tk("intg.hooks.new")}
           </button>
         </form>
       ) : (
-        <p className="integration-empty">This server has no text channel to post into yet.</p>
+        <p className="integration-empty">{tk("intg.feeds.noChannel")}</p>
       )}
       {data.webhooks.length > 0 && <ul className="integration-list">
       {data.webhooks.map((hook) => (
@@ -177,13 +180,13 @@ export function WebhooksPanel({
           <div className="integration-row-main">
             <strong>{hook.name}</strong>
             <p>
-              Posts to{" "}
+              {tk("intg.feeds.postsTo")}{" "}
               <select
                 value={data.channels.some((c) => c.id === hook.channelId) ? hook.channelId : ""}
-                onChange={(e) => void update(hook, { channelId: e.target.value }, `${hook.name} now posts to #${channelName(e.target.value)}.`)}
-                aria-label={`Channel for ${hook.name}`}
+                onChange={(e) => void update(hook, { channelId: e.target.value }, tk("intg.hooks.movedTo", { name: hook.name, channel: channelName(e.target.value) }))}
+                aria-label={tk("intg.hooks.channelFor", { name: hook.name })}
               >
-                {!data.channels.some((c) => c.id === hook.channelId) && <option value="">deleted channel</option>}
+                {!data.channels.some((c) => c.id === hook.channelId) && <option value="">{tk("intg.feeds.deletedChannel")}</option>}
                 {data.channels.map((c) => (
                   <option key={c.id} value={c.id}>
                     #{c.name}
@@ -191,24 +194,28 @@ export function WebhooksPanel({
                 ))}
               </select>
               {" · "}
-              {hook.uses ? `${hook.uses} post${hook.uses === 1 ? "" : "s"}, last ${new Date(hook.lastUsedAt || hook.createdAt).toLocaleString()}` : "not used yet"}
+              {hook.uses
+                ? hook.uses === 1
+                  ? tk("intg.hooks.usesOne", { when: new Date(hook.lastUsedAt || hook.createdAt).toLocaleString() })
+                  : tk("intg.hooks.uses", { count: hook.uses, when: new Date(hook.lastUsedAt || hook.createdAt).toLocaleString() })
+                : tk("intg.hooks.unused")}
             </p>
           </div>
           <div className="integration-row-actions">
-            <button type="button" className="discord-btn secondary-gray" onClick={() => void copy(hook)} title="Copy URL">
-              <Copy size={14} /> Copy URL
+            <button type="button" className="discord-btn secondary-gray" onClick={() => void copy(hook)} title={tk("intg.hooks.copyUrl")}>
+              <Copy size={14} /> {tk("intg.hooks.copyUrl")}
             </button>
             <button
               type="button"
               className="discord-btn secondary-gray"
-              title="New URL"
-              aria-label={`Give ${hook.name} a new URL`}
+              title={tk("intg.hooks.newUrl")}
+              aria-label={tk("intg.hooks.newUrlNamed", { name: hook.name })}
               onClick={() =>
                 onRequestConfirm({
-                  title: "Give this webhook a new URL?",
-                  message: "The old URL stops working right away. Anything using it has to be given the new one.",
-                  confirmText: "New URL",
-                  onConfirm: () => void update(hook, { rotate: true }, "New URL issued. Copy it again to use it."),
+                  title: tk("intg.hooks.newUrlTitle"),
+                  message: tk("intg.hooks.newUrlBody"),
+                  confirmText: tk("intg.hooks.newUrl"),
+                  onConfirm: () => void update(hook, { rotate: true }, tk("intg.hooks.newUrlDone")),
                 })
               }
             >
@@ -217,14 +224,14 @@ export function WebhooksPanel({
             <button
               type="button"
               className="discord-btn danger-btn"
-              title="Delete"
-              aria-label={`Delete ${hook.name}`}
+              title={tk("intg.delete")}
+              aria-label={tk("intg.deleteNamed", { name: hook.name })}
               onClick={() =>
                 onRequestConfirm({
-                  title: `Delete ${hook.name}?`,
-                  message: "Its URL stops working. Messages it already posted stay.",
+                  title: tk("intg.hooks.deleteTitle", { name: hook.name }),
+                  message: tk("intg.hooks.deleteBody"),
                   isDanger: true,
-                  confirmText: "Delete",
+                  confirmText: tk("intg.delete"),
                   onConfirm: () => void remove(hook),
                 })
               }

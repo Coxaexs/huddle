@@ -5,6 +5,7 @@ import { LicensesTab } from "./licenses-tab";
 import { LanguageTab } from "./settings/language-tab";
 import { PrivacyTab } from "./settings/privacy-tab";
 import { useI18n } from "../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 import { TtsSettings } from "./chat/tts-settings";
 import { RequestsTab } from "./requests-tab";
 import { KOFI_URL, GITHUB_SPONSORS_URL, SITE } from "./site-chrome";
@@ -1094,10 +1095,10 @@ export function SettingsDialog({
   const subItems: Array<{ id: string; label: string; active: boolean; open: () => void }> =
     tab === "appearance"
       ? ([
-          ["installed", "Themes"],
-          ["community", "Community"],
-          ["look", "Customize"],
-          ["extras", "Extras"],
+          ["installed", t("appearance.tab.installed" as MessageKey)],
+          ["community", t("appearance.tab.community" as MessageKey)],
+          ["look", t("appearance.tab.look" as MessageKey)],
+          ["extras", t("appearance.tab.extras" as MessageKey)],
         ] as const).map(([id, label]) => ({
           id,
           label,

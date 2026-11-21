@@ -5,6 +5,10 @@ import { Sparkles, Fish, Plus, Download, Share2, Trash2, Edit3, Globe, Copy, Lay
 import { FEATURE_MODULES, FEATURE_MODULE_KEYS, type FeatureModuleKey } from "@/lib/features";
 import { setUserModuleSwitches, userModulesOff } from "../../lib/modules";
 import { apiFetch } from "../../lib/client";
+import { currentLocale } from "../../lib/i18n-context";
+import { createTranslator, type MessageKey } from "@/lib/i18n";
+
+const tx = (key: string) => createTranslator(currentLocale())(key as MessageKey);
 import { BUILTIN_THEMES, type Theme, getStoredThemes, saveCustomTheme } from "@/lib/themes";
 import { setRetroSoundThemeEnabled, playRetroSound } from "../../lib/msn-sounds";
 import { isParticlesEnabled, setParticlesEnabled, setThemeFxEnabled } from "../../lib/theme-fx";
@@ -131,10 +135,10 @@ export function AppearanceTab({
               <LayoutPicker />
               <div className="appearance-choice-row vs-mode-row appearance-sections" role="tablist" aria-label="Appearance sections">
                 {([
-                  ["installed", "Themes"],
-                  ["community", "Community"],
-                  ["look", "Customize"],
-                  ["extras", "Extras"],
+                  ["installed", tx("appearance.tab.installed")],
+                  ["community", tx("appearance.tab.community")],
+                  ["look", tx("appearance.tab.look")],
+                  ["extras", tx("appearance.tab.extras")],
                 ] as const).map(([id, label]) => (
                   <button
                     type="button"
@@ -159,7 +163,7 @@ export function AppearanceTab({
               {appearanceSubtab === "installed" && (
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <p className="modal-hint" style={{ margin: 0 }}>
-                    Pick a theme. Fine-tune it under Customize.
+                    {tx("appearance.pickHint")}
                   </p>
                   <div className="flex items-center gap-2">
                     <button
@@ -167,7 +171,7 @@ export function AppearanceTab({
                       className="discord-btn primary-indigo text-xs py-1 px-2.5 flex items-center gap-1.5"
                       onClick={() => handleOpenCreateTheme()}
                     >
-                      <Plus size={14} /> Create
+                      <Plus size={14} /> {tx("appearance.create")}
                     </button>
                     <button
                       type="button"
@@ -179,7 +183,7 @@ export function AppearanceTab({
                         setIsImportingTheme(true);
                       }}
                     >
-                      <Download size={14} /> Import
+                      <Download size={14} /> {tx("appearance.import")}
                     </button>
                   </div>
                 </div>

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../lib/client";
+import { useI18n } from "../../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 import type { DndSettings } from "@/lib/dnd-rules";
 import { GAME_SYSTEM_EVENT } from "../../lib/game-system";
 
@@ -26,6 +28,8 @@ export function DndSettingsPanel({
     onConfirm: (value?: string) => void;
   }) => void;
 }) {
+  const { t } = useI18n();
+  const tk = (key: string, vars?: Record<string, string | number>) => t(key as MessageKey, vars);
   const [settings, setSettings] = useState<DndSettings | null>(null);
   const [combatMusic, setCombatMusic] = useState("");
   const [exploreMusic, setExploreMusic] = useState("");
@@ -58,13 +62,15 @@ export function DndSettingsPanel({
       window.dispatchEvent(new CustomEvent(GAME_SYSTEM_EVENT, { detail: { serverId, system: data.system } }));
       onNotice(
         data.imported
-          ? `Imported ${data.imported.added} homebrew ${data.imported.added === 1 ? "entry" : "entries"}${
-              data.imported.skipped ? ` (${data.imported.skipped} without a name or kind skipped)` : ""
-            }.`
+          ? data.imported.skipped
+            ? tk("intg.dnd.importedSkipped", { added: data.imported.added, skipped: data.imported.skipped })
+            : data.imported.added === 1
+              ? tk("intg.dnd.importedOne")
+              : tk("intg.dnd.imported", { added: data.imported.added })
           : done,
       );
     } catch (error) {
-      onNotice(error instanceof Error ? error.message : "Could not save the D&D settings.");
+      onNotice(error instanceof Error ? error.message : tk("intg.dnd.saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -72,21 +78,20 @@ export function DndSettingsPanel({
 
   function importHomebrew() {
     onRequestPrompt({
-      title: "Import homebrew",
-      message:
-        'Paste a JSON list. Each entry needs "name", "kind" (spell, monster, condition, item, feat, race or class) and "description"; "level", "school", "type" and "source" are optional. /spell <name> then finds it.',
+      title: tk("intg.dnd.importTitle"),
+      message: tk("intg.dnd.importBody"),
       placeholder: '[{ "name": "Sunfire Blade", "kind": "spell", "level": 2, "description": "…" }]',
-      confirmText: "Import",
+      confirmText: tk("intg.dnd.import"),
       onConfirm: (value) => {
         if (!value?.trim()) return;
         let parsed: unknown;
         try {
           parsed = JSON.parse(value);
         } catch {
-          onNotice("That is not valid JSON.");
+          onNotice(tk("intg.dnd.badJson"));
           return;
         }
-        void save({ homebrew: Array.isArray(parsed) ? parsed : [parsed] }, "Homebrew imported.");
+        void save({ homebrew: Array.isArray(parsed) ? parsed : [parsed] }, tk("intg.dnd.importDone"));
       },
     });
   }
@@ -95,17 +100,14 @@ export function DndSettingsPanel({
   const musicChanged = combatMusic !== settings.combatMusic || exploreMusic !== settings.exploreMusic;
   return (
     <section className="dnd-settings">
-      <h2>Tabletop</h2>
+      <h2>{tk("intg.dnd.title")}</h2>
 
       <div className="dnd-settings-row">
         <div>
-          <strong>Game system</strong>
-          <p>
-            Which sheet &quot;My character&quot; opens, what the screens show, and who answers rolls (the D&amp;D Bot or
-            the Storyteller). /v and /rouse work either way.
-          </p>
+          <strong>{tk("intg.dnd.system")}</strong>
+          <p>{tk("intg.dnd.systemDesc")}</p>
         </div>
-        <div className="dnd-settings-toggle" role="group" aria-label="Game system">
+        <div className="dnd-settings-toggle" role="group" aria-label={tk("intg.dnd.system")}>
           {(["dnd5e", "vtm5"] as const).map((system) => (
             <button
               key={system}
@@ -113,7 +115,7 @@ export function DndSettingsPanel({
               className={`discord-btn ${settings.system === system ? "primary-indigo" : "secondary"}`}
               aria-pressed={settings.system === system}
               disabled={saving}
-              onClick={() => void save({ system }, system === "vtm5" ? "The table now plays Vampire: The Masquerade (V5)." : "The table now plays D&D 5e.")}
+              onClick={() => void save({ system }, system === "vtm5" ? tk("intg.dnd.nowVtm") : tk("intg.dnd.nowDnd"))}
             >
               {system === "dnd5e" ? "D&D 5e" : "Vampire V5"}
             </button>
@@ -123,10 +125,10 @@ export function DndSettingsPanel({
 
       <div className="dnd-settings-row">
         <div>
-          <strong>Rules for lookups</strong>
-          <p>What /spell and /monster show by default. Adding 2014 or 2024 to a lookup still picks one.</p>
+          <strong>{tk("intg.dnd.rules")}</strong>
+          <p>{tk("intg.dnd.rulesDesc")}</p>
         </div>
-        <div className="dnd-settings-toggle" role="group" aria-label="Rules edition">
+        <div className="dnd-settings-toggle" role="group" aria-label={tk("intg.dnd.rulesEdition")}>
           {(["2014", "2024"] as const).map((edition) => (
             <button
               key={edition}
@@ -134,9 +136,9 @@ export function DndSettingsPanel({
               className={`discord-btn ${settings.edition === edition ? "primary-indigo" : "secondary"}`}
               aria-pressed={settings.edition === edition}
               disabled={saving}
-              onClick={() => void save({ edition }, `Lookups now use the ${edition} rules.`)}
+              onClick={() => void save({ edition }, tk("intg.dnd.rulesNow", { edition }))}
             >
-              {edition === "2014" ? "2014 SRD" : "2024 rules"}
+              {edition === "2014" ? tk("intg.dnd.srd2014") : tk("intg.dnd.rules2024")}
             </button>
           ))}
         </div>
@@ -144,51 +146,50 @@ export function DndSettingsPanel({
 
       <div className="dnd-settings-row stacked">
         <div>
-          <strong>Combat music</strong>
-          <p>
-            When the GM starts combat on a battlemap (or takes the first turn), the call&apos;s music switches to this, and
-            back when combat ends. A playlist link or a search; leave empty to keep the music as it is.
-          </p>
+          <strong>{tk("intg.dnd.music")}</strong>
+          <p>{tk("intg.dnd.musicDesc")}</p>
         </div>
         <label>
-          <span>Combat</span>
-          <input value={combatMusic} onChange={(e) => setCombatMusic(e.target.value)} placeholder="e.g. epic battle music" maxLength={300} />
+          <span>{tk("intg.dnd.combat")}</span>
+          <input value={combatMusic} onChange={(e) => setCombatMusic(e.target.value)} placeholder={tk("intg.dnd.combatPh")} maxLength={300} />
         </label>
         <label>
-          <span>Exploration</span>
-          <input value={exploreMusic} onChange={(e) => setExploreMusic(e.target.value)} placeholder="e.g. tavern ambience" maxLength={300} />
+          <span>{tk("intg.dnd.explore")}</span>
+          <input value={exploreMusic} onChange={(e) => setExploreMusic(e.target.value)} placeholder={tk("intg.dnd.explorePh")} maxLength={300} />
         </label>
         <button
           type="button"
           className="discord-btn primary-indigo"
           disabled={saving || !musicChanged}
-          onClick={() => void save({ combatMusic, exploreMusic }, "Combat music saved.")}
+          onClick={() => void save({ combatMusic, exploreMusic }, tk("intg.dnd.musicSaved"))}
         >
-          Save music
+          {tk("intg.dnd.saveMusic")}
         </button>
       </div>
 
       <div className="dnd-settings-row">
         <div>
-          <strong>Homebrew</strong>
+          <strong>{tk("intg.dnd.homebrew")}</strong>
           <p>
             {settings.homebrew.length
-              ? `${settings.homebrew.length} ${settings.homebrew.length === 1 ? "entry" : "entries"}; lookups find them before the books.`
-              : "Your own spells, monsters and items, found by the same lookups."}
+              ? settings.homebrew.length === 1
+                ? tk("intg.dnd.homebrewOne")
+                : tk("intg.dnd.homebrewCount", { count: settings.homebrew.length })
+              : tk("intg.dnd.homebrewEmpty")}
           </p>
         </div>
         <div className="dnd-settings-toggle">
           <button type="button" className="discord-btn secondary" disabled={saving} onClick={importHomebrew}>
-            Import JSON
+            {tk("intg.dnd.importJson")}
           </button>
           {settings.homebrew.length > 0 && (
             <button
               type="button"
               className="discord-btn secondary"
               disabled={saving}
-              onClick={() => void save({ clearHomebrew: true }, "Homebrew cleared.")}
+              onClick={() => void save({ clearHomebrew: true }, tk("intg.dnd.cleared"))}
             >
-              Clear
+              {tk("intg.clear")}
             </button>
           )}
         </div>

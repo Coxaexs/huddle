@@ -4,6 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Copy, ExternalLink, Lock, RefreshCw, Unlink, Wand2 } from "lucide-react";
 import { apiFetch } from "../../lib/client";
 import { proxiedImage } from "../../lib/image-proxy";
+import { useI18n, currentLocale } from "../../lib/i18n-context";
+import { createTranslator, type MessageKey } from "@/lib/i18n";
+
+const tx = (key: string, vars?: Record<string, string | number>) => createTranslator(currentLocale())(key as MessageKey, vars);
 
 interface BridgeSettings {
   reactions: boolean;
@@ -59,48 +63,25 @@ interface Snapshot {
   };
 }
 
-const OPTIONS: Array<{ key: keyof BridgeSettings; label: string; hint: string }> = [
-  { key: "reactions", label: "Reactions", hint: "Each Discord person's reaction shows here under their name; Hoffle reactions show on Discord." },
-  { key: "edits", label: "Edits and deletes", hint: "Changing or deleting a message changes it on the other side too." },
-  { key: "files", label: "Files and pictures", hint: "Copied across, so they still work after Discord's links expire." },
-  { key: "threads", label: "Threads", hint: "A thread on one side opens the same thread on the other." },
-  { key: "typing", label: "Typing", hint: "\"Someone is typing…\" crosses over." },
-  {
-    key: "mirrorDeletes",
-    label: "Deletes go both ways",
-    hint: "Deleting the copy of a message on either side deletes the original too. On Discord the bot needs Manage Messages.",
-  },
-  {
-    key: "voice",
-    label: "Voice chat",
-    hint: "A voice room paired with a Discord voice channel carries the call: each Discord person shows here as their own seat, and everyone here is heard on Discord through the bot (or each as their own voice, with voice helpers).",
-  },
-];
+/** What crosses over; labels and hints are catalog keys (intg.br.opt.<key>[.hint]). */
+const OPTIONS: Array<keyof BridgeSettings> = ["reactions", "edits", "files", "threads", "typing", "mirrorDeletes", "voice"];
 
 /** Discord's permission names, in words. */
-const PERMISSION_WORDS: Record<string, string> = {
-  ViewChannel: "see the channel",
-  SendMessages: "send messages",
-  ReadMessageHistory: "read message history",
-  ManageWebhooks: "manage webhooks",
-  AddReactions: "add reactions",
-  AttachFiles: "attach files",
-  EmbedLinks: "embed links",
-  ManageMessages: "manage messages",
-  CreatePublicThreads: "create threads",
-  SendMessagesInThreads: "send in threads",
-  Connect: "join the voice channel",
-  Speak: "speak in the voice channel",
-};
+const PERMISSION_KEYS = new Set([
+  "ViewChannel", "SendMessages", "ReadMessageHistory", "ManageWebhooks", "AddReactions", "AttachFiles",
+  "EmbedLinks", "ManageMessages", "CreatePublicThreads", "SendMessagesInThreads", "Connect", "Speak",
+]);
+const permissionWords = (missing: string[]) =>
+  missing.map((m) => (PERMISSION_KEYS.has(m) ? tx(`intg.br.perm.${m}`) : m)).join(", ");
 
 function ago(iso: string | null | undefined): string {
-  if (!iso) return "never";
+  if (!iso) return tx("intg.br.never");
   const seconds = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
-  if (seconds < 60) return "just now";
+  if (seconds < 60) return tx("intg.ago.now");
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60) return tx("intg.br.minAgo", { n: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} h ago`;
+  if (hours < 48) return tx("intg.br.hAgo", { n: hours });
   return new Date(iso).toLocaleDateString();
 }
 
@@ -125,6 +106,8 @@ export function DiscordBridgePanel({
   onNotice: (text: string) => void;
   onRequestConfirm: (options: { title: string; message?: string; isDanger?: boolean; confirmText?: string; onConfirm: () => void }) => void;
 }) {
+  const { t } = useI18n();
+  const tk = (key: string, vars?: Record<string, string | number>) => t(key as MessageKey, vars);
   const [data, setData] = useState<Snapshot | null>(null);
   const [forbidden, setForbidden] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -163,7 +146,7 @@ export function DiscordBridgePanel({
         setData(await apiFetch<Snapshot>(path, init));
         if (notice) onNotice(notice);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "That didn't save.");
+        setError(err instanceof Error ? err.message : tx("intg.br.saveFailed"));
       } finally {
         setBusy(false);
       }
@@ -208,26 +191,26 @@ export function DiscordBridgePanel({
       }
     }
     if (!added) {
-      onNotice("No more channels with the same name on both sides.");
+      onNotice(tk("intg.br.noSameNames"));
       return;
     }
     void send(
       { method: "PATCH", body: JSON.stringify({ pairs: [...next].map(([c, d]) => ({ channelId: c, discordChannelId: d })) }) },
-      `Paired ${added} channel${added === 1 ? "" : "s"} by name.`,
+      added === 1 ? tk("intg.br.pairedByNameOne") : tk("intg.br.pairedByName", { n: added }),
     );
   };
 
   const light = !service.online
-    ? { tone: "off", text: service.lastSeen ? `Bridge service offline since ${ago(service.lastSeen)}` : "Bridge service not running" }
+    ? { tone: "off", text: service.lastSeen ? tk("intg.br.offlineSince", { when: ago(service.lastSeen) }) : tk("intg.br.notRunning") }
     : !service.discordConnected
-      ? { tone: "bad", text: service.error ? `Can't reach Discord: ${service.error}` : "Reconnecting to Discord…" }
+      ? { tone: "bad", text: service.error ? tk("intg.br.cantReach", { error: service.error }) : tk("intg.br.reconnectingDiscord") }
       : !service.hoffleConnected
-        ? { tone: "bad", text: "Reconnecting to Hoffle…" }
+        ? { tone: "bad", text: tk("intg.br.reconnectingHoffle") }
         : bridge?.linked && discord && !discord.present
-          ? { tone: "bad", text: "The bot isn't in that Discord server any more" }
+          ? { tone: "bad", text: tk("intg.br.botGone") }
           : bridge?.linked && (discord?.missing.length || discord?.channels.some((c) => data.pairs.some((p) => p.discordChannelId === c.id) && c.missing?.length))
-            ? { tone: "warn", text: "Running, but missing some permissions on Discord" }
-            : { tone: "ok", text: bridge?.linked ? "Running" : "Ready" };
+            ? { tone: "warn", text: tk("intg.br.missingPerms") }
+            : { tone: "ok", text: bridge?.linked ? tk("intg.br.running") : tk("intg.br.ready") };
 
   const pairedMissing = (discord?.channels || []).filter(
     (c) => data.pairs.some((p) => p.discordChannelId === c.id) && c.missing?.length,
@@ -239,28 +222,24 @@ export function DiscordBridgePanel({
     <section className="integration-section discord-bridge" id="integration-discord-bridge">
       <header className="integration-section-head">
         <h2>
-          Discord Bridge
-          {bridge?.linked && <span className="integration-count">{data.pairs.length} paired</span>}
+          {tk("intg.br.title")}
+          {bridge?.linked && <span className="integration-count">{tk("intg.br.paired", { n: data.pairs.length })}</span>}
         </h2>
-        <p>
-          Mirror channels with a Discord server, both ways: messages with each person&apos;s name and picture, replies,
-          edits, deletes, reactions, files and threads. Handy while people move over, or to keep both going.
-        </p>
+        <p>{tk("intg.br.desc")}</p>
       </header>
 
       <p className={`bridge-status bridge-status-${light.tone}`} role="status">
         <span className="bridge-light" aria-hidden />
         {light.text}
         {service.online && bridge?.linked && service.activity?.lastRelayAt && (
-          <span className="bridge-status-sub"> · last message {ago(service.activity.lastRelayAt)}</span>
+          <span className="bridge-status-sub"> · {tk("intg.br.lastMessage", { when: ago(service.activity.lastRelayAt) })}</span>
         )}
         {service.activity?.lastError && <span className="bridge-status-sub"> · {service.activity.lastError}</span>}
       </p>
 
       {!service.online && (
         <p className="integration-empty">
-          The bridge runs as its own small service next to Hoffle. Whoever runs this Hoffle starts it once (see{" "}
-          <code>docs/self-hosting.md</code> → Discord bridge); after that every server sets itself up here.
+          {tk("intg.br.serviceA")} <code>docs/self-hosting.md</code> {tk("intg.br.serviceB")}
         </p>
       )}
 
@@ -272,7 +251,7 @@ export function DiscordBridgePanel({
             disabled={busy}
             onClick={() => void send({ method: "POST" })}
           >
-            Set up the bridge
+            {tk("intg.br.setUp")}
           </button>
         </div>
       )}
@@ -280,18 +259,18 @@ export function DiscordBridgePanel({
       {bridge && !bridge.linked && (
         <ol className="bridge-steps">
           <li>
-            <strong>Add the bot to your Discord server.</strong>
-            <span>You need Manage Server there.</span>
+            <strong>{tk("intg.br.step1")}</strong>
+            <span>{tk("intg.br.step1Need")}</span>
             {service.inviteUrl ? (
               <a className="discord-btn primary-indigo" href={service.inviteUrl} target="_blank" rel="noreferrer noopener">
-                <ExternalLink size={14} /> Add {service.app?.name || "the bot"} to Discord
+                <ExternalLink size={14} /> {tk("intg.br.addBotTo", { name: service.app?.name || tk("intg.br.theBot") })}
               </a>
             ) : (
-              <span className="integration-warn">Waiting for the bridge service to start…</span>
+              <span className="integration-warn">{tk("intg.br.waitingService")}</span>
             )}
           </li>
           <li>
-            <strong>In any channel of that Discord server, type:</strong>
+            <strong>{tk("intg.br.step2")}</strong>
             {bridge.code ? (
               <span className="bridge-code-row">
                 <code className="bridge-code">/hoffle link {bridge.code}</code>
@@ -301,28 +280,28 @@ export function DiscordBridgePanel({
                   onClick={() => {
                     void navigator.clipboard
                       ?.writeText(`/hoffle link ${bridge.code}`)
-                      .then(() => onNotice("Copied. Paste it into Discord."))
+                      .then(() => onNotice(tk("intg.br.copiedPaste")))
                       .catch(() => onNotice(`/hoffle link ${bridge.code}`));
                   }}
                 >
-                  <Copy size={14} /> Copy
+                  <Copy size={14} /> {tk("intg.br.copy")}
                 </button>
               </span>
             ) : (
-              <span className="integration-warn">That code expired.</span>
+              <span className="integration-warn">{tk("intg.br.codeExpired")}</span>
             )}
             <span>
               {bridge.code && bridge.codeExpiresAt
-                ? `Works for ${Math.max(1, Math.round((Date.parse(bridge.codeExpiresAt) - Date.now()) / 60000))} more minutes. `
+                ? `${tk("intg.br.worksFor", { n: Math.max(1, Math.round((Date.parse(bridge.codeExpiresAt) - Date.now()) / 60000)) })} `
                 : ""}
               <button type="button" className="bridge-link-btn" disabled={busy} onClick={() => void send({ method: "POST" })}>
-                <RefreshCw size={12} /> New code
+                <RefreshCw size={12} /> {tk("intg.br.newCode")}
               </button>
             </span>
           </li>
           <li>
-            <strong>Pick the channels to mirror.</strong>
-            <span>This page updates by itself once Discord answers.</span>
+            <strong>{tk("intg.br.step3")}</strong>
+            <span>{tk("intg.br.step3Hint")}</span>
           </li>
         </ol>
       )}
@@ -342,35 +321,35 @@ export function DiscordBridgePanel({
                 {serverName} <span aria-hidden>⇄</span> {bridge.guild?.name}
               </strong>
               <span>
-                Linked {bridge.linkedBy ? `by ${bridge.linkedBy} ` : ""}
-                {ago(bridge.linkedAt)}
+                {bridge.linkedBy
+                  ? tk("intg.br.linkedBy", { name: bridge.linkedBy, when: ago(bridge.linkedAt) })
+                  : tk("intg.br.linked", { when: ago(bridge.linkedAt) })}
               </span>
             </div>
           </div>
 
           {discord?.missing.length ? (
             <p className="integration-warn">
-              On Discord the bot can&apos;t {discord.missing.map((m) => PERMISSION_WORDS[m] || m).join(", ")}. Give its role those
-              permissions, or add it again with the button below.
+              {tk("intg.br.botCant", { perms: permissionWords(discord.missing) })}
             </p>
           ) : null}
           {pairedMissing.map((channel) => (
             <p key={channel.id} className="integration-warn">
-              In #{channel.name} the bot can&apos;t {(channel.missing || []).map((m) => PERMISSION_WORDS[m] || m).join(", ")}.
+              {tk("intg.br.botCantIn", { channel: channel.name, perms: permissionWords(channel.missing || []) })}
             </p>
           ))}
 
           <div className="bridge-pairs-head">
-            <h3>Channels</h3>
+            <h3>{tk("intg.br.channels")}</h3>
             <button type="button" className="discord-btn secondary-gray" disabled={busy || !discord?.channels.length} onClick={matchByName}>
-              <Wand2 size={14} /> Pair same names
+              <Wand2 size={14} /> {tk("intg.br.pairSame")}
             </button>
           </div>
           {discord && !discord.channels.length ? (
             <p className="integration-empty">
               {discord.present
-                ? "The bot can't see any text channel there yet. Check its role can view the channels you want to mirror."
-                : "The bot isn't in that Discord server. Add it again, then link once more."}
+                ? tk("intg.br.cantSee")
+                : tk("intg.br.notInServer")}
             </p>
           ) : (
             <ul className="integration-list bridge-pairs">
@@ -383,13 +362,13 @@ export function DiscordBridgePanel({
                         {channel.kind === "voice" || channel.kind === "stage" ? "🔊 " : "#"}
                         {channel.name}
                         {channel.private && (
-                          <span className="integration-badge off" title="Private channel">
-                            <Lock size={10} /> private
+                          <span className="integration-badge off" title={tk("intg.br.privateChannel")}>
+                            <Lock size={10} /> {tk("intg.br.private")}
                           </span>
                         )}
                       </strong>
                       {paired && channel.private && (
-                        <p className="integration-warn">Everyone in the Discord channel will read this private channel.</p>
+                        <p className="integration-warn">{tk("intg.br.privateWarn")}</p>
                       )}
                     </div>
                     <span className="bridge-arrow" aria-hidden>
@@ -398,11 +377,11 @@ export function DiscordBridgePanel({
                     <select
                       value={paired}
                       disabled={busy}
-                      aria-label={`Discord channel for #${channel.name}`}
+                      aria-label={tk("intg.br.discordFor", { channel: channel.name })}
                       onChange={(e) => setPair(channel.id, e.target.value)}
                     >
-                      <option value="">Not mirrored</option>
-                      {paired && !discord?.channels.some((d) => d.id === paired) && <option value={paired}>(channel gone)</option>}
+                      <option value="">{tk("intg.br.notMirrored")}</option>
+                      {paired && !discord?.channels.some((d) => d.id === paired) && <option value={paired}>{tk("intg.br.channelGone")}</option>}
                       {(discord?.channels || [])
                         .filter((d) => fits(channel.kind, d.type))
                         .map((d) => (
@@ -410,7 +389,7 @@ export function DiscordBridgePanel({
                             {DISCORD_VOICE.has(d.type) ? "🔊 " : "#"}
                             {d.name}
                             {d.parent ? ` · ${d.parent}` : ""}
-                            {DISCORD_VOICE.has(d.type) ? " (call + chat)" : ""}
+                            {DISCORD_VOICE.has(d.type) ? tk("intg.br.callChat") : ""}
                           </option>
                         ))}
                     </select>
@@ -420,9 +399,9 @@ export function DiscordBridgePanel({
             </ul>
           )}
 
-          <h3 className="bridge-subhead">What crosses over</h3>
+          <h3 className="bridge-subhead">{tk("intg.br.crosses")}</h3>
           <ul className="bridge-options">
-            {OPTIONS.map((option) => (
+            {OPTIONS.map((key) => ({ key, label: tk(`intg.br.opt.${key}`), hint: tk(`intg.br.opt.${key}.hint`) })).map((option) => (
               <li key={option.key}>
                 <label>
                   <input
@@ -444,14 +423,13 @@ export function DiscordBridgePanel({
 
           {bridge.settings.voice && helpers.length > 0 && (
             <>
-              <h3 className="bridge-subhead">Voices on Discord</h3>
+              <h3 className="bridge-subhead">{tk("intg.br.voices")}</h3>
               <p className="integration-empty">
-                Each person in a voice room here can show up on Discord on their own, with their name and picture, through a
-                voice helper bot. {helpersIn} of {helpers.length} helper{helpers.length === 1 ? " is" : "s are"} in{" "}
-                {bridge.guild?.name || "the Discord server"}
+                {tk("intg.br.helpersIntro")}{" "}
+                {tk("intg.br.helpersInGuild", { in: helpersIn, total: helpers.length, guild: bridge.guild?.name || tk("intg.br.theServer") })}{" "}
                 {helpersIn
-                  ? `, so up to ${helpersIn} ${helpersIn === 1 ? "person shows" : "people show"} up one by one; anyone beyond that is heard through ${service.app?.name || "the bot"}.`
-                  : `; until one is added, everyone here is heard through ${service.app?.name || "the bot"}.`}
+                  ? tk("intg.br.helpersSome", { n: helpersIn, bot: service.app?.name || tk("intg.br.theBot") })
+                  : tk("intg.br.helpersNone", { bot: service.app?.name || tk("intg.br.theBot") })}
               </p>
               {helpers.some((helper) => !helper.inServer) && (
                 <div className="integration-form bridge-actions">
@@ -459,7 +437,7 @@ export function DiscordBridgePanel({
                     .filter((helper) => !helper.inServer)
                     .map((helper) => (
                       <a key={helper.id} className="discord-btn secondary-gray" href={helper.inviteUrl} target="_blank" rel="noreferrer noopener">
-                        <ExternalLink size={14} /> Add {helper.name}
+                        <ExternalLink size={14} /> {tk("intg.br.addNamed", { name: helper.name })}
                       </a>
                     ))}
                 </div>
@@ -470,16 +448,16 @@ export function DiscordBridgePanel({
           <div className="integration-form bridge-actions">
             {service.inviteUrl && (
               <a className="discord-btn secondary-gray" href={service.inviteUrl} target="_blank" rel="noreferrer noopener">
-                <ExternalLink size={14} /> Add the bot again (fixes permissions)
+                <ExternalLink size={14} /> {tk("intg.br.addAgain")}
               </a>
             )}
             <button
               type="button"
               className="discord-btn secondary-gray"
               disabled={busy}
-              onClick={() => void send({ method: "POST" }, "New link code made. Run /hoffle link in the other Discord server.")}
+              onClick={() => void send({ method: "POST" }, tk("intg.br.newLink"))}
             >
-              <RefreshCw size={14} /> Link a different Discord server
+              <RefreshCw size={14} /> {tk("intg.br.linkOther")}
             </button>
             <button
               type="button"
@@ -487,15 +465,15 @@ export function DiscordBridgePanel({
               disabled={busy}
               onClick={() =>
                 onRequestConfirm({
-                  title: "Turn off the Discord bridge?",
-                  message: `Messages stop crossing between ${serverName} and ${bridge.guild?.name || "Discord"}. Nothing already sent is deleted on either side.`,
+                  title: tk("intg.br.offTitle"),
+                  message: tk("intg.br.offBody", { a: serverName, b: bridge.guild?.name || "Discord" }),
                   isDanger: true,
-                  confirmText: "Turn off",
-                  onConfirm: () => void send({ method: "DELETE" }, "The Discord bridge is off."),
+                  confirmText: tk("intg.br.turnOff"),
+                  onConfirm: () => void send({ method: "DELETE" }, tk("intg.br.off")),
                 })
               }
             >
-              <Unlink size={14} /> Turn off
+              <Unlink size={14} /> {tk("intg.br.turnOff")}
             </button>
           </div>
         </>
@@ -507,9 +485,9 @@ export function DiscordBridgePanel({
             type="button"
             className="bridge-link-btn"
             disabled={busy}
-            onClick={() => void send({ method: "DELETE" }, "Cancelled.")}
+            onClick={() => void send({ method: "DELETE" }, tk("intg.br.cancelled"))}
           >
-            Cancel setup
+            {tk("intg.br.cancelSetup")}
           </button>
         </div>
       )}
@@ -521,7 +499,7 @@ export function DiscordBridgePanel({
       )}
       {busy && (
         <p className="bridge-saving" aria-live="polite">
-          Saving…
+          {tk("intg.br.saving")}
         </p>
       )}
     </section>
