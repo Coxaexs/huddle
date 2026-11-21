@@ -13,5 +13,9 @@
     <true/>
     <key>com.apple.security.device.audio-input</key>
     <true/>
+    <!-- Asking Spotify what plays (profile) and playing songs in it (listen
+         along) are Apple events; needed if the hardened runtime is turned on. -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
   </dict>
 </plist>

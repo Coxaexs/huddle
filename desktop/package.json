@@ -1,6 +1,6 @@
 {
   "name": "huddle-desktop",
-  "version": "2.1.5",
+  "version": "2.2.0",
   "private": true,
   "description": "Hoffle desktop app (Electron shell around chat.hoffle.online)",
   "author": "coxaexs",
@@ -64,7 +64,8 @@
         "NSCameraUsageDescription": "Hoffle uses your camera for video calls.",
         "NSMicrophoneUsageDescription": "Hoffle uses your microphone for voice chat.",
         "NSScreenCaptureUsageDescription": "Hoffle needs screen recording to share your screen.",
-        "NSAudioCaptureUsageDescription": "Hoffle captures the audio of the apps you share, so it goes out with your screen share."
+        "NSAudioCaptureUsageDescription": "Hoffle captures the audio of the apps you share, so it goes out with your screen share.",
+        "NSAppleEventsUsageDescription": "Hoffle asks Spotify what you are playing to show it on your profile, and plays songs in Spotify when you listen along with a friend."
       },
       "extraResources": [
         {
