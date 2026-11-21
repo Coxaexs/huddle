@@ -31,7 +31,7 @@ Tavern yeni bir sekmede açılır ve seni Hoffle hesabınla kendiliğinden tanı
 
 Hoffle'daki savaş haritasında ve 3D Oturma Odası'nın masa görünümündeki **Open Tavern** (↗) düğmesi de seni Tavern'e götürür.
 
-Hoffle'da bir sunucuda kanalları yönetebilen kişiler Tavern'e **oyun yöneticisi (DM)** olarak girer. DM, sol menüde fazladan bir **Game Master → Party** bölümü, harita ve dünya için de ek araçlar görür. Diğer herkes oyuncu olarak girer.
+Herkes Tavern'e **oyuncu** olarak girer. Kimin **oyun yöneticisi (DM)** olacağını Hoffle yöneticileri seçer (aşağıda, [DM'leri seçmek](#dmleri-seçmek)). Sunucu sahibi ya da kanal yönetebilen biri olmak tek başına DM yapmaz. DM, sol menüde fazladan bir **Game Master → Party** bölümü, harita ve dünya için de ek araçlar görür.
 
 ## Karakter oluşturma
 
@@ -303,3 +303,12 @@ Sol alttaki dişli düğmesi Tavern'in ayarlarını açar:
 - **Music bot:** Müzik botuna şarkı gönderme.
 
 Aynı yerden çıkış yapabilir, hangi hesapla ve DM mi oyuncu mu olarak girdiğini görebilirsin.
+
+## DM'leri seçmek
+
+Bu bölüm yalnızca **Hoffle yöneticilerine** görünür. Sol alttaki dişli düğmesine bas ve **Settings → Game masters** sekmesini aç:
+
+- **Your GM mode:** Kendi DM modun. **GM** seçiliyken bütün karakter kâğıtlarını, DM araçlarını ve sırları görürsün; **Player** seçiliyken herkes gibi oynarsın. Bir yöneticinin ilk girişi DM modunda başlar.
+- **Who else is a game master:** Tavern'i Hoffle'dan en az bir kez açmış herkes, karakterleriyle birlikte listelenir. Bir kişinin yanındaki **GM** kutusunu işaretlersen o kişi DM olur; işareti kaldırırsan yeniden oyuncu olur.
+
+Değişiklik hemen geçerli olur. Kişinin açık sayfası kendiliğinden yenilenir, yeniden giriş yapması gerekmez. Discord botunun özel bağlantısıyla girenler bu listeye girmez; onların DM'liği Discord tarafında belirlenir.
