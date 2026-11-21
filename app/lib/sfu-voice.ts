@@ -55,6 +55,8 @@ export type SfuPublishKind = "mic" | "camera" | "screen" | "screen-audio" | "tts
 /** Track name that marks a published track as text-to-speech. */
 const TTS_TRACK_NAME = "tts";
 const KARAOKE_TRACK_NAME = "karaoke";
+/** Longest a leave waits for the room to disconnect before giving up on it. */
+const SFU_LEAVE_TIMEOUT_MS = 3000;
 
 /** The token route's identity: `<userId>|<connectionId>`, user half server-set. */
 export function parseSfuIdentity(identity: string): { userId: string; connectionId: string } | null {
@@ -256,6 +258,28 @@ export class SfuVoice {
     }
   }
 
+  /**
+   * Resolves true once LiveKit lets this connection publish, false if it still
+   * may not after `timeoutMs`. Permission restored by the server arrives over
+   * the signal channel, a moment after the request that asked for it returns.
+   */
+  whenMayPublish(timeoutMs: number): Promise<boolean> {
+    const allowed = () => this.room.localParticipant.permissions?.canPublish === true;
+    if (allowed()) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const done = (result: boolean) => {
+        clearTimeout(timer);
+        this.room.off(RoomEvent.ParticipantPermissionsChanged, check);
+        resolve(result);
+      };
+      const check = () => {
+        if (allowed()) done(true);
+      };
+      const timer = setTimeout(() => done(allowed()), timeoutMs);
+      this.room.on(RoomEvent.ParticipantPermissionsChanged, check);
+    });
+  }
+
   /** Swaps a published track in place, the way RTCRtpSender.replaceTrack does. */
   async replace(from: MediaStreamTrack, to: MediaStreamTrack): Promise<void> {
     const publication = this.published(from);
@@ -273,8 +297,11 @@ export class SfuVoice {
    */
   async setMicMuted(muted: boolean): Promise<void> {
     const track = this.room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
-    if (!track || track.isMuted === muted) return;
+    if (!track) return;
+    track.mediaStreamTrack.enabled = !muted;
+    if (track.isMuted === muted) return;
     await (muted ? track.mute() : track.unmute()).catch(() => undefined);
+    track.mediaStreamTrack.enabled = !muted;
   }
 
   /**
@@ -374,7 +401,16 @@ export class SfuVoice {
 
   async leave(): Promise<void> {
     this.leaving = true;
-    await this.room.disconnect(false).catch(() => undefined);
+    // Bounded: a rejoin waits for this, and a disconnect that never settles
+    // (dead socket, stalled server) must not keep the new connection from starting.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      this.room.disconnect(false).catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, SFU_LEAVE_TIMEOUT_MS);
+      }),
+    ]);
+    clearTimeout(timer);
   }
 
   private published(track: MediaStreamTrack): LocalTrackPublication | undefined {

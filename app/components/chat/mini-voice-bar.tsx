@@ -46,6 +46,12 @@ export function MiniVoiceBar({
   const { t } = useI18n();
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const simpleUi = useUiMode() === "simple";
+  // The same three steps the stage shows, so a bad link is visible without
+  // opening the connection details.
+  const quality = voice.latency?.quality;
+  const signalTone =
+    quality === "poor" ? "text-rose-400" : quality === "good" ? "text-amber-400" : "text-emerald-400";
+  const signalNote = quality === "poor" ? " — poor connection" : quality === "good" ? " — fair connection" : "";
 
   return (
     <div className="mini-voice-bar relative">
@@ -53,10 +59,10 @@ export function MiniVoiceBar({
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <button
             type="button"
-            className="mini-voice-signal-btn group relative flex items-center justify-center p-1 rounded hover:bg-white/10 text-emerald-400 cursor-pointer transition-colors"
+            className={`mini-voice-signal-btn group relative flex items-center justify-center p-1 rounded hover:bg-white/10 ${signalTone} cursor-pointer transition-colors`}
             onClick={() => setConnectionModalOpen((prev) => !prev)}
-            title={t("voiceStage.voiceConnection")}
-            aria-label={t("voiceStage.voiceConnection")}
+            title={`${t("voiceStage.voiceConnection")}${signalNote}`}
+            aria-label={`${t("voiceStage.voiceConnection")}${signalNote}`}
           >
             <Radio size={16} />
             <div className={`mini-voice-ping-bubble ${connectionModalOpen ? "visible" : ""}`}>

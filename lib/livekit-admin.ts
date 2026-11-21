@@ -5,7 +5,7 @@
  * skipped, and the next sweep tries again.
  */
 
-import { RoomServiceClient } from "livekit-server-sdk";
+import { RoomServiceClient, type ParticipantPermission } from "livekit-server-sdk";
 import type { LiveKitRoomView } from "./livekit-sweep";
 
 type LiveKitEnv = {
@@ -67,9 +67,32 @@ export async function removeFromLiveKit(client: RoomServiceClient, room: string,
   await client.removeParticipant(room, identity).catch(() => undefined);
 }
 
-/** Keeps them listening; a seat later allowed to speak fetches a new token and reconnects. */
+/** Keeps them listening; a seat later allowed to speak is given it back by `permitInLiveKit`. */
 export async function silenceInLiveKit(client: RoomServiceClient, room: string, identity: string): Promise<void> {
   await client
     .updateParticipant(room, identity, { permission: { canPublish: false, canSubscribe: true, canPublishData: true } })
     .catch(() => undefined);
+}
+
+/**
+ * Gives a connected participant these permissions in place, so a seat brought
+ * on stage or server-unmuted can publish without reconnecting. True once the
+ * region it sits on took the change; false when it is connected nowhere (the
+ * caller then falls back to a fresh token and a reconnect).
+ */
+export async function permitInLiveKit(
+  clients: RoomServiceClient[],
+  room: string,
+  identity: string,
+  permission: Partial<ParticipantPermission>,
+): Promise<boolean> {
+  const taken = await Promise.all(
+    clients.map((client) =>
+      client.updateParticipant(room, identity, { permission }).then(
+        () => true,
+        () => false,
+      ),
+    ),
+  );
+  return taken.includes(true);
 }

@@ -27,7 +27,7 @@ import { SFU_SCREEN_AUDIO_BITRATE, screenAudioBitrate, sfuMicPlan, voiceBitrate 
 import { shapeOpusSend, tuneAudioSender, tuneOpusSdp } from "../lib/opus-tuning";
 import { SELF_SPEAKER, VoiceQosMonitor, readSample, type QosSdpShape } from "../lib/voice-qos";
 import { HIFI_POLL_MS, HifiLossWatch } from "../lib/voice-hifi";
-import { readSelfDeafen, readSelfMute, saveSelfDeafen, saveSelfMute } from "../lib/self-mute";
+import { micOpen, mutedAfterForcedMute, readSelfDeafen, readSelfMute, saveSelfDeafen, saveSelfMute } from "../lib/self-mute";
 import {
   isMusicBot,
   gainedPublish,
@@ -240,7 +240,9 @@ async function sfuGrant(
   channelId: string,
   connectionId: string,
   regionOverride?: "nl" | "de",
-): Promise<{ url: string; token: string; region?: "nl" | "de" } | null> {
+  /** Ask the server to give the live connection its publish rights back in place. */
+  restore?: boolean,
+): Promise<{ url: string; token: string; region?: "nl" | "de"; restored?: boolean } | null> {
   void loadSfu().catch(() => undefined);
   try {
     const params = new URLSearchParams({
@@ -248,17 +250,21 @@ async function sfuGrant(
       connectionId,
     });
     if (regionOverride) params.set("region", regionOverride);
-    const data = await apiFetch<{ enabled?: boolean; url?: string; token?: string; region?: "nl" | "de" }>(
+    if (restore) params.set("restore", "1");
+    const data = await apiFetch<{ enabled?: boolean; url?: string; token?: string; region?: "nl" | "de"; restored?: boolean }>(
       `/api/voice/token?${params.toString()}`,
     );
     return data.enabled && data.url && data.token
-      ? { url: data.url, token: data.token, region: data.region }
+      ? { url: data.url, token: data.token, region: data.region, restored: data.restored === true }
       : null;
   } catch {
     return null;
   }
 }
 
+
+/** How long a restored publish permission may take to reach this connection. */
+const SFU_RESTORE_WAIT_MS = 4_000;
 
 /** Signals held for a seat the roster has not shown yet; older ones are dropped. */
 const EARLY_SIGNAL_LIMIT = 50;
@@ -835,7 +841,7 @@ export function useVoice({
   useEffect(() => {
     // A confirmed whisper opens the mic whatever mute or push-to-talk says;
     // a server mute still wins.
-    const on = !forcedMute && (whisperRouted !== null || (pushToTalk ? pttHeld : !muted));
+    const on = micOpen({ forcedMute, whispering: whisperRouted !== null, pushToTalk, pttHeld, muted });
     micGateRef.current = on;
     micTracks().forEach((track) => (track.enabled = on));
     void sfuRef.current?.setMicMuted(!on);
@@ -2099,6 +2105,38 @@ export function useVoice({
     ttsOutRef.current = null;
   }, []);
 
+  /**
+   * Publishes everything this tab is sending into a LiveKit room. Tracks that
+   * are already published are left as they are, so this is safe to repeat.
+   */
+  const publishLocal = useCallback(async (sfu: SfuVoice) => {
+    // A timed-out member may listen but not publish, so one refusal is not
+    // a reason to give up on the room.
+    const publish = (
+      track: MediaStreamTrack,
+      kind: SfuPublishKind,
+      options?: Parameters<SfuVoice["publish"]>[2],
+    ) =>
+      sfu.publish(track, kind, options).catch((publishError) => {
+        console.warn("Huddle voice: LiveKit would not take a track.", publishError);
+      });
+    const mic = backgroundMicRef.current ?? localStreamRef.current?.getAudioTracks()[0];
+    if (mic) {
+      const plan = micPlanRef.current;
+      await publish(mic, "mic", { bitrate: plan.bitrate, red: plan.redundant });
+      micRedundantRef.current = plan.redundant;
+      await sfu.setMicMuted(!micGateRef.current);
+    }
+    for (const track of screenStreamRef.current?.getTracks() || []) {
+      await (track.kind === "video"
+        ? publish(track, "screen", { screen: screenQualityRef.current, film: screenFilmRef.current })
+        : publish(track, "screen-audio", { bitrate: SFU_SCREEN_AUDIO_BITRATE }));
+    }
+    for (const track of cameraStreamRef.current?.getVideoTracks() || []) {
+      await publish(track, "camera");
+    }
+  }, []);
+
   /** Joins the LiveKit room and puts everything this tab is sending into it. */
   const connectSfu = useCallback(
     async (grant: { url: string; token: string; region?: "nl" | "de" }) => {
@@ -2118,7 +2156,7 @@ export function useVoice({
       }
       // Left (or moved) while the client was loading.
       if (channelIdRef.current !== room) return;
-      void sfuRef.current?.leave();
+      const prevSfu = sfuRef.current;
       const sfu = new SfuVoiceClass({
         onStreams: (streams) => {
           if (sfuRef.current === sfu) setSfuStreams(streams);
@@ -2140,6 +2178,10 @@ export function useVoice({
         isDev: isDevRef.current,
       });
       sfuRef.current = sfu;
+      if (prevSfu) {
+        await prevSfu.leave();
+        if (channelIdRef.current !== room || sfuRef.current !== sfu) return;
+      }
       try {
         await sfu.connect(grant.url, grant.token, iceServersRef.current);
       } catch {
@@ -2152,41 +2194,20 @@ export function useVoice({
         void sfu.leave();
         return;
       }
-      // A timed-out member may listen but not publish, so one refusal is not
-      // a reason to give up on the room.
-      const publish = (
-        track: MediaStreamTrack,
-        kind: SfuPublishKind,
-        options?: Parameters<SfuVoice["publish"]>[2],
-      ) =>
-        sfu.publish(track, kind, options).catch((publishError) => {
-          console.warn("Huddle voice: LiveKit would not take a track.", publishError);
-        });
-      const mic = backgroundMicRef.current ?? localStreamRef.current?.getAudioTracks()[0];
-      if (mic) {
-        const plan = micPlanRef.current;
-        await publish(mic, "mic", { bitrate: plan.bitrate, red: plan.redundant });
-        micRedundantRef.current = plan.redundant;
-        await sfu.setMicMuted(!micGateRef.current);
-      }
-      for (const track of screenStreamRef.current?.getTracks() || []) {
-        await (track.kind === "video"
-          ? publish(track, "screen", { screen: screenQualityRef.current, film: screenFilmRef.current })
-          : publish(track, "screen-audio", { bitrate: SFU_SCREEN_AUDIO_BITRATE }));
-      }
-      for (const track of cameraStreamRef.current?.getVideoTracks() || []) {
-        await publish(track, "camera");
-      }
+      await publishLocal(sfu);
     },
-    [dropToMesh, watchLevel],
+    [dropToMesh, publishLocal, watchLevel],
   );
 
   // One more go at LiveKit for a seat that lost it in a room too big to mesh.
   // A refusal goes back through dropToMesh, which schedules the next attempt,
   // or meshes after all if the room has shrunk meanwhile.
   // LiveKit only lets a seat publish when it may be heard (see the token
-  // route). Brought on stage, or a server mute lifted: fetch a token that
-  // allows it and reconnect, so the new speaker's microphone goes through.
+  // route). Brought on stage, or a server mute lifted: the token route gives
+  // the live connection its publish rights back, and the tracks LiveKit
+  // dropped are published again with nobody's audio interrupted. Only when
+  // that does not take (not connected yet, or the region did not answer) does
+  // it fall back to a fresh token and a reconnect.
   const mayPublishRef = useRef<boolean | null>(null);
   useEffect(() => {
     const mine = channelId
@@ -2198,10 +2219,17 @@ export function useVoice({
     if (!gainedPublish(before, mayPublish)) return;
     if (!channelId || !connectionId || !sfuModeRef.current) return;
     const room = channelId;
-    void sfuGrant(room, connectionId).then((grant) => {
-      if (grant && channelIdRef.current === room && sfuModeRef.current) void connectSfu(grant);
+    void sfuGrant(room, connectionId, undefined, true).then(async (grant) => {
+      const current = () => channelIdRef.current === room && sfuModeRef.current;
+      if (!grant || !current()) return;
+      const sfu = sfuRef.current;
+      if (grant.restored && sfu && (await sfu.whenMayPublish(SFU_RESTORE_WAIT_MS))) {
+        if (sfuRef.current === sfu && current()) await publishLocal(sfu);
+        return;
+      }
+      if (current()) void connectSfu(grant);
     });
-  }, [rooms, channelId, connectionId, connectSfu]);
+  }, [rooms, channelId, connectionId, connectSfu, publishLocal]);
 
   retrySfuRef.current = () => {
     const room = channelIdRef.current;
@@ -2276,7 +2304,7 @@ export function useVoice({
       channelId,
       sfu: sfuModeRef.current || undefined,
       since: mine?.joinedAt,
-      muted: wasAnnounced ? mutedRef.current : undefined,
+      muted: wasAnnounced ? selfMutedRef.current || deafenedRef.current : undefined,
       deafened: wasAnnounced ? deafenedRef.current : undefined,
     });
     if (!joined) return;
@@ -3032,7 +3060,8 @@ export function useVoice({
         // state, so setting it here is what actually keeps the microphone closed
         // rather than merely showing a muted icon.
         const startDeafened = selfDeafenedRef.current;
-        const startMuted = options?.startMuted === true || selfMutedRef.current || startDeafened;
+        const selfOrStageMuted = options?.startMuted === true || selfMutedRef.current || startDeafened;
+        const startMuted = selfOrStageMuted || forcedMuteRef.current;
         setMuted(startMuted);
         setDeafened(startDeafened);
         // Undeafening gives the mic back only if deafening is all that closed it.
@@ -3054,8 +3083,10 @@ export function useVoice({
           sfuRetryTimerRef.current = window.setTimeout(() => retrySfuRef.current(), SFU_RETRY_MS);
         }
         // Tell the room about the opening mute, or it would list this seat as
-        // "on stage" until the user touched a control.
-        if (startMuted) send({ t: "voice-state", muted: true, ...(startDeafened ? { deafened: true } : {}) });
+        // "on stage" until the user touched a control. A server mute alone is
+        // not announced: the hub already lists a server-muted seat as muted,
+        // and announcing it would leave the seat muted once the mute is lifted.
+        if (selfOrStageMuted) send({ t: "voice-state", muted: true, ...(startDeafened ? { deafened: true } : {}) });
         playUserJoinSound();
       } catch {
         setError(
@@ -3082,16 +3113,33 @@ export function useVoice({
     [connectionId, connectSfu],
   );
 
-  /** Applied when someone server-mutes you: the microphone actually stops. */
+  /** Applied when someone server-mutes or unmutes you: stops or restores the microphone. */
   const setForcedMute = useCallback((next: boolean) => {
+    forcedMuteRef.current = next;
     setForcedMuteState(next);
-    if (next) {
-      micTracks().forEach((track) => {
-        track.enabled = false;
-      });
-      setMuted(true);
+    const mine = channelIdRef.current
+      ? (roomsRef.current[channelIdRef.current] || []).find(
+          (person) => person.connectionId === connectionId,
+        )
+      : undefined;
+    const nextMuted = mutedAfterForcedMute({
+      forcedMute: next,
+      selfMuted: selfMutedRef.current,
+      deafened: deafenedRef.current,
+      speakAllowed: mine?.speakAllowed,
+    });
+    mutedRef.current = nextMuted;
+    setMuted(nextMuted);
+    const on = micOpen({ forcedMute: next, whispering: whisperRouted !== null, pushToTalk, pttHeld, muted: nextMuted });
+    micGateRef.current = on;
+    micTracks().forEach((track) => {
+      track.enabled = on;
+    });
+    void sfuRef.current?.setMicMuted(!on);
+    if (!next && channelIdRef.current) {
+      send({ t: "voice-state", muted: nextMuted });
     }
-  }, [micTracks]);
+  }, [connectionId, micTracks, pttHeld, pushToTalk, send, whisperRouted]);
 
   const toggleMute = useCallback(() => {
     if (forcedMute) return;

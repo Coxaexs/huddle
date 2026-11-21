@@ -16,6 +16,7 @@ import { apiFetch } from "../lib/client";
 import type { Message } from "../lib/chat/types";
 import type { Member } from "@/lib/users";
 import { Avatar } from "./avatar";
+import { DndCard, type DndCardProps } from "./dnd-card";
 import { MessageBody, StyledText, proxiedImage } from "./message-body";
 
 export type VoiceChatEvent =
@@ -283,11 +284,21 @@ export function VoiceChatPanel({
               {at && <time dateTime={message.createdAt} title={fullStampLabel(at)}>{stampLabel(at)}</time>}
             </div>
           )}
-          {message.text && (
-            <div className="voice-chat-text">
-              <MessageBody text={message.text} selfHandle={selfHandle} emojis={emojis} onImage={onImage} />
-              {message.editedAt && <span className="voice-chat-edited">(edited)</span>}
-            </div>
+          {message.kind === "dnd" && message.payload ? (
+            <DndCard
+              {...(message.payload as DndCardProps)}
+              messageId={String(message.id)}
+              viewerId={userId}
+              voiceChannelId={channelId}
+              onCommand={(cmd) => onCommand?.(cmd)}
+            />
+          ) : (
+            message.text && (
+              <div className="voice-chat-text">
+                <MessageBody text={message.text} selfHandle={selfHandle} emojis={emojis} onImage={onImage} />
+                {message.editedAt && <span className="voice-chat-edited">(edited)</span>}
+              </div>
+            )
           )}
           {images.map((url) => (
             <img
