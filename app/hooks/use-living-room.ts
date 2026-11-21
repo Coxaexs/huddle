@@ -2,7 +2,27 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ClientEvent, VoiceParticipant } from "@/lib/protocol";
-import type { GameMaster, HiddenRoll, LoungeFx, LoungeSwitches, SpellFxEvent, HouseLights, Initiative, TableCard, TableCharacter, TableArea, TableGrid, TableMap, TablePawn, WatchQueue, WatchState } from "@/lib/lounge-shared";
+import type {
+  GameMaster,
+  HiddenRoll,
+  HouseLights,
+  Initiative,
+  LoungeFx,
+  LoungeSharedKey,
+  LoungeSwitches,
+  SpellFxEvent,
+  TableArea,
+  TableCard,
+  TableCharacter,
+  TableFog,
+  TableGrid,
+  TableMap,
+  TablePawn,
+  TablePing,
+  WatchQueue,
+  WatchState,
+} from "@/lib/lounge-shared";
+export type { LoungeSharedKey } from "@/lib/lounge-shared";
 import type { ClubDesk, ClubFx } from "@/lib/club-desk";
 import type { ClubCrowdKind } from "@/lib/club-feed";
 import {
@@ -122,12 +142,12 @@ export interface LoungeShared {
   areas: Record<string, TableArea>;
   /** The map's scale; null: DEFAULT_SQUARES. */
   grid: TableGrid | null;
+  /** Fog of war rects in map percentage coordinates (0..100); null: no fog. */
+  fog: TableFog | null;
   /** The living room's lamps, fire and curtains; null: all on, curtains open. */
   lounge: LoungeSwitches | null;
 }
-const NO_SHARED: LoungeShared = { watch: null, queue: null, initiative: null, gm: null, card: null, characters: {}, house: null, tablemap: null, pawns: {}, areas: {}, grid: null, lounge: null };
-
-export type LoungeSharedKey = "watch" | "queue" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid" | "spellfx" | "lounge" | "loungefx";
+const NO_SHARED: LoungeShared = { watch: null, queue: null, initiative: null, gm: null, card: null, characters: {}, house: null, tablemap: null, pawns: {}, areas: {}, grid: null, fog: null, lounge: null };
 
 export interface LivingRoom {
   open: boolean;
@@ -150,6 +170,8 @@ export interface LivingRoom {
   spellFx: (SpellFxEvent & { id: number }) | null;
   /** The latest thing someone else touched in the living room (the cat, the guitar), to play. */
   loungeFx: (LoungeFx & { id: number }) | null;
+  /** The latest map ping on the tabletop, to pulse briefly. */
+  ping: (TablePing & { seq: number }) | null;
   /** Which room this tab is hanging out in. */
   venue: VenueId;
   setVenue: (venue: VenueId) => void;
@@ -235,6 +257,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   const [hiddenRoll, setHiddenRoll] = useState<(HiddenRoll & { id: number }) | null>(null);
   const [spellFx, setSpellFx] = useState<(SpellFxEvent & { id: number }) | null>(null);
   const [loungeFx, setLoungeFx] = useState<(LoungeFx & { id: number }) | null>(null);
+  const [ping, setPing] = useState<(TablePing & { seq: number }) | null>(null);
   const setShared = useCallback((key: LoungeSharedKey, value: unknown) => {
     sendRef.current({ t: "lounge-set", key, value });
   }, []);
@@ -260,6 +283,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
     setHiddenRoll(null);
     setSpellFx(null);
     setLoungeFx(null);
+    setPing(null);
     setEmotes([]);
     if (roomId) sendRef.current({ t: "lounge-sync" });
   }, [roomId]);
@@ -285,6 +309,8 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
           if (detail.value && typeof detail.value === "object") setSpellFx({ ...(detail.value as SpellFxEvent), id: ++emoteId.current });
         } else if (detail.key === "hiddenroll") {
           if (detail.value && typeof detail.value === "object") setHiddenRoll({ ...(detail.value as HiddenRoll), id: ++emoteId.current });
+        } else if (detail.key === "ping") {
+          if (detail.value && typeof detail.value === "object") setPing({ ...(detail.value as TablePing), seq: ++emoteId.current });
         } else {
           setSharedState((current) => ({ ...current, [detail.key]: detail.value ?? (detail.key === "characters" || detail.key === "pawns" || detail.key === "areas" ? {} : null) }));
         }
@@ -463,7 +489,7 @@ export function useLivingRoom({ roomId, connectionId, participants, send }: {
   );
 
   return {
-    open: live, roomId, clubWatch, clubDesk, clubFx, clubCrowd, setOpen, shared, setShared, hiddenRoll, spellFx, loungeFx, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, setEar, heard, tv,
+    open: live, roomId, clubWatch, clubDesk, clubFx, clubCrowd, setOpen, shared, setShared, hiddenRoll, spellFx, loungeFx, ping, venue: venueId, setVenue, poses, self, emotes, move, sit, toggleFloor, emote, setEar, heard, tv,
     spatialOff: live && !settings.spatial, theme, settings, setSettings,
   };
 }

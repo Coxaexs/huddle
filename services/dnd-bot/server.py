@@ -2,17 +2,17 @@
 """
 Hoffle D&D Companion & SRD 5e Bot Service
 Provides 5e SRD compendium lookup and search for spells, monsters, conditions,
-items, feats, races, and classes, plus health checks and docs. Lookups take
-?edition=2014 (the default) or ?edition=2024; an entry the 2024 books did not
-change answers for both.
+items, feats, races, classes, and subclasses, plus health checks and docs.
+Lookups take ?edition=2014 (the default) or ?edition=2024; an entry the 2024
+books did not change answers for both.
 Runs standalone on port 8732.
 """
 
 import http.server
 import json
+import re
 import socketserver
 import urllib.parse
-import re
 
 PORT = 8732
 
@@ -25,6 +25,10 @@ SPELLS = [
         "range": "150 feet",
         "components": "V, S, M (a tiny ball of bat guano and sulfur)",
         "duration": "Instantaneous",
+        "save": "Dexterity",
+        "damage_type": "Fire",
+        "dice": "8d6",
+        "higher_levels": "When you cast this spell using a spell slot of 4th level or higher, the damage increases by 1d6 for each slot level above 3rd.",
         "description": "A bright streak flashes from your pointing finger to a point you choose within range and then blossoms with a low roar into an explosion of flame. Each creature in a 20-foot-radius sphere centered on that point must make a Dexterity saving throw. A target takes 8d6 fire damage on a failed save, or half as much damage on a successful one.",
         "source": "SRD 5.1",
         "source_url": "https://5e.tools/spells.html#fireball_phb",
@@ -37,6 +41,9 @@ SPELLS = [
         "range": "120 feet",
         "components": "V, S",
         "duration": "Instantaneous",
+        "damage_type": "Force",
+        "dice": "1d4+1",
+        "higher_levels": "When you cast this spell using a spell slot of 2nd level or higher, the spell creates one more dart for each slot level above 1st.",
         "description": "You create three glowing darts of magical force. Each dart hits a creature of your choice that you can see within range. A dart deals 1d4 + 1 force damage to its target. The darts all strike simultaneously.",
         "source": "SRD 5.1",
         "source_url": "https://5e.tools/spells.html#magic%20missile_phb",
@@ -49,6 +56,8 @@ SPELLS = [
         "range": "Touch",
         "components": "V, S",
         "duration": "Instantaneous",
+        "dice": "1d8",
+        "higher_levels": "When you cast this spell using a spell slot of 2nd level or higher, the healing increases by 1d8 for each slot level above 1st.",
         "description": "A creature you touch regains a number of hit points equal to 1d8 + your spellcasting ability modifier. This spell has no effect on undead or constructs.",
         "source": "SRD 5.1",
         "source_url": "https://5e.tools/spells.html#cure%20wounds_phb",
@@ -61,6 +70,8 @@ SPELLS = [
         "range": "60 feet",
         "components": "V",
         "duration": "Instantaneous",
+        "dice": "1d4",
+        "higher_levels": "When you cast this spell using a spell slot of 2nd level or higher, the healing increases by 1d4 for each slot level above 1st.",
         "description": "A creature of your choice that you can see within range regains hit points equal to 1d4 + your spellcasting ability modifier. This spell has no effect on undead or constructs.",
         "source": "SRD 5.1",
         "source_url": "https://5e.tools/spells.html#healing%20word_phb",
@@ -73,9 +84,52 @@ SPELLS = [
         "range": "120 feet",
         "components": "V, S",
         "duration": "Instantaneous",
-        "description": "A beam of crackling energy streaks toward a creature within range. Make a ranged spell attack against the target. On a hit, the target takes 1d10 force damage.",
+        "damage_type": "Force",
+        "dice": "1d10",
+        "description": "A beam of crackling energy streaks toward a creature within range. Make a ranged spell attack against the target. On a hit, the target takes 1d10 force damage. The spell creates more than one beam when you reach higher levels: two beams at 5th level, three beams at 11th level, and four beams at 17th level.",
         "source": "SRD 5.1",
         "source_url": "https://5e.tools/spells.html#eldritch%20blast_phb",
+    },
+    {
+        "name": "Fire Bolt",
+        "level": 0,
+        "school": "evocation",
+        "casting_time": "1 action",
+        "range": "120 feet",
+        "components": "V, S",
+        "duration": "Instantaneous",
+        "damage_type": "Fire",
+        "dice": "1d10",
+        "description": "You hurl a mote of fire at a creature or object within range. Make a ranged spell attack against the target. On a hit, the target takes 1d10 fire damage. This spell's damage increases by 1d10 when you reach 5th level (2d10), 11th level (3d10), and 17th level (4d10).",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/spells.html#fire%20bolt_phb",
+    },
+    {
+        "name": "Sacred Flame",
+        "level": 0,
+        "school": "evocation",
+        "casting_time": "1 action",
+        "range": "60 feet",
+        "components": "V, S",
+        "duration": "Instantaneous",
+        "save": "Dexterity",
+        "damage_type": "Radiant",
+        "dice": "1d8",
+        "description": "Flame-like radiance descends on a creature that you can see within range. The target must succeed on a Dexterity saving throw or take 1d8 radiant damage. The target gains no benefit from cover for this saving throw. The spell's damage increases by 1d8 when you reach 5th level (2d8), 11th level (3d8), and 17th level (4d8).",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/spells.html#sacred%20flame_phb",
+    },
+    {
+        "name": "Mage Hand",
+        "level": 0,
+        "school": "conjuration",
+        "casting_time": "1 action",
+        "range": "30 feet",
+        "components": "V, S",
+        "duration": "1 minute",
+        "description": "A spectral, floating hand appears at a point you choose within range. The hand lasts for the duration or until you dismiss it as an action.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/spells.html#mage%20hand_phb",
     },
     {
         "name": "Shield",
@@ -88,6 +142,166 @@ SPELLS = [
         "description": "An invisible barrier of magical force appears and protects you. Until the start of your next turn, you have a +5 bonus to AC, including against the triggering attack, and you take no damage from magic missile.",
         "source": "SRD 5.1",
         "source_url": "https://5e.tools/spells.html#shield_phb",
+    },
+    {
+        "name": "Guiding Bolt",
+        "level": 1,
+        "school": "evocation",
+        "casting_time": "1 action",
+        "range": "120 feet",
+        "components": "V, S",
+        "duration": "1 round",
+        "damage_type": "Radiant",
+        "dice": "4d6",
+        "higher_levels": "When you cast this spell using a spell slot of 2nd level or higher, the damage increases by 1d6 for each slot level above 1st.",
+        "description": "A flash of light streaks toward a creature of your choice within range. Make a ranged spell attack against the target. On a hit, the target takes 4d6 radiant damage, and the next attack roll made against this target before the end of your next turn has advantage.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/spells.html#guiding%20bolt_phb",
+    },
+    {
+        "name": "Burning Hands",
+        "level": 1,
+        "school": "evocation",
+        "casting_time": "1 action",
+        "range": "Self (15-foot cone)",
+        "components": "V, S",
+        "duration": "Instantaneous",
+        "save": "Dexterity",
+        "damage_type": "Fire",
+        "dice": "3d6",
+        "higher_levels": "When you cast this spell using a spell slot of 2nd level or higher, the damage increases by 1d6 for each slot level above 1st.",
+        "description": "As you hold your hands with thumbs touching and fingers spread, a thin sheet of flames shoots forth from your outstretched fingertips. Each creature in a 15-foot cone must make a Dexterity saving throw. A creature takes 3d6 fire damage on a failed save, or half as much damage on a successful one.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/spells.html#burning%20hands_phb",
+    },
+    {
+        "name": "Thunderwave",
+        "level": 1,
+        "school": "evocation",
+        "casting_time": "1 action",
+        "range": "Self (15-foot cube)",
+        "components": "V, S",
+        "duration": "Instantaneous",
+        "save": "Constitution",
+        "damage_type": "Thunder",
+        "dice": "2d8",
+        "higher_levels": "When you cast this spell using a spell slot of 2nd level or higher, the damage increases by 1d8 for each slot level above 1st.",
+        "description": "A wave of thunderous force sweeps out from you. Each creature in a 15-foot cube originating from you must make a Constitution saving throw. On a failed save, a creature takes 2d8 thunder damage and is pushed 10 feet away from you.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/spells.html#thunderwave_phb",
+    },
+    {
+        "name": "Bless",
+        "level": 1,
+        "school": "enchantment",
+        "concentration": True,
+        "casting_time": "1 action",
+        "range": "30 feet",
+        "components": "V, S, M (a sprinkling of holy water)",
+        "duration": "Concentration, up to 1 minute",
+        "description": "You bless up to three creatures of your choice within range. Whenever a target makes an attack roll or a saving throw before the spell ends, the target can roll a d4 and add the number rolled to the attack roll or saving throw.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/spells.html#bless_phb",
+    },
+    {
+        "name": "Sleep",
+        "level": 1,
+        "school": "enchantment",
+        "casting_time": "1 action",
+        "range": "90 feet",
+        "components": "V, S, M",
+        "duration": "1 minute",
+        "dice": "5d8",
+        "higher_levels": "When you cast this spell using a spell slot of 2nd level or higher, roll an additional 2d8 for each slot level above 1st.",
+        "description": "This spell sends creatures into a magical slumber. Roll 5d8; the total is how many hit points of creatures this spell can affect. Creatures within 20 feet of a point you choose within range are affected in ascending order of their current hit points (a 20-foot-radius sphere).",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/spells.html#sleep_phb",
+    },
+    {
+        "name": "Misty Step",
+        "level": 2,
+        "school": "conjuration",
+        "casting_time": "1 bonus action",
+        "range": "Self",
+        "components": "V",
+        "duration": "Instantaneous",
+        "description": "Briefly surrounded by silvery mist, you teleport up to 30 feet to an unoccupied space that you can see.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/spells.html#misty%20step_phb",
+    },
+    {
+        "name": "Hold Person",
+        "level": 2,
+        "school": "enchantment",
+        "concentration": True,
+        "casting_time": "1 action",
+        "range": "60 feet",
+        "components": "V, S, M",
+        "duration": "Concentration, up to 1 minute",
+        "save": "Wisdom",
+        "description": "Choose a humanoid that you can see within range. The target must succeed on a Wisdom saving throw or be paralyzed for the duration.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/spells.html#hold%20person_phb",
+    },
+    {
+        "name": "Shatter",
+        "level": 2,
+        "school": "evocation",
+        "casting_time": "1 action",
+        "range": "60 feet",
+        "components": "V, S, M",
+        "duration": "Instantaneous",
+        "save": "Constitution",
+        "damage_type": "Thunder",
+        "dice": "3d8",
+        "higher_levels": "When you cast this spell using a spell slot of 3rd level or higher, the damage increases by 1d8 for each slot level above 2nd.",
+        "description": "A sudden loud ringing noise, painfully intense, erupts from a point of your choice within range. Each creature in a 10-foot-radius sphere centered on that point must make a Constitution saving throw. A creature takes 3d8 thunder damage on a failed save, or half as much damage on a successful one.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/spells.html#shatter_phb",
+    },
+    {
+        "name": "Web",
+        "level": 2,
+        "school": "conjuration",
+        "concentration": True,
+        "casting_time": "1 action",
+        "range": "60 feet",
+        "components": "V, S, M",
+        "duration": "Concentration, up to 1 hour",
+        "save": "Dexterity",
+        "description": "You conjure a mass of thick, sticky webbing at a point of your choice within range. The webs fill a 20-foot cube from that point for the duration.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/spells.html#web_phb",
+    },
+    {
+        "name": "Hunter's Mark",
+        "level": 1,
+        "school": "divination",
+        "concentration": True,
+        "casting_time": "1 bonus action",
+        "range": "90 feet",
+        "components": "V",
+        "duration": "Concentration, up to 1 hour",
+        "dice": "1d6",
+        "description": "You choose a creature you can see within range and mystically mark it as your quarry. Until the spell ends, you deal an extra 1d6 damage to the target whenever you hit it with a weapon attack.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/spells.html#hunter's%20mark_phb",
+    },
+    {
+        "name": "Lightning Bolt",
+        "level": 3,
+        "school": "evocation",
+        "casting_time": "1 action",
+        "range": "Self (100-foot line)",
+        "components": "V, S, M",
+        "duration": "Instantaneous",
+        "save": "Dexterity",
+        "damage_type": "Lightning",
+        "dice": "8d6",
+        "higher_levels": "When you cast this spell using a spell slot of 4th level or higher, the damage increases by 1d6 for each slot level above 3rd.",
+        "description": "A stroke of lightning forming a line 100 feet long and 5 feet wide blasts out from you in a direction you choose. Each creature in the line must make a Dexterity saving throw. A creature takes 8d6 lightning damage on a failed save, or half as much damage on a successful one.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/spells.html#lightning%20bolt_phb",
     },
     {
         "name": "Counterspell",
@@ -163,9 +377,158 @@ MONSTERS = [
         "hit_points": "7 (2d6)",
         "speed": "30 ft.",
         "challenge_rating": "1/4",
-        "description": "Nimble Escape. The goblin can take the Disengage or Hide action as a bonus action on each of its turns. Attacks with Scimitar (+4 to hit, 1d6+2 slashing) or Shortbow (+4 to hit, 1d6+2 piercing).",
+        "scores": [8, 14, 10, 10, 8, 8],
+        "traits": "**Nimble Escape.** The goblin can take the Disengage or Hide action as a bonus action on each of its turns.",
+        "actions": "**Scimitar.** *Melee Weapon Attack:* +4 to hit, reach 5 ft., one target. *Hit:* 5 (1d6 + 2) slashing damage.\n**Shortbow.** *Ranged Weapon Attack:* +4 to hit, range 80/320 ft., one target. *Hit:* 5 (1d6 + 2) piercing damage.",
         "source": "SRD 5.1",
         "source_url": "https://5e.tools/bestiary.html#goblin_mm",
+    },
+    {
+        "name": "Orc",
+        "type": "humanoid (orc)",
+        "size": "Medium",
+        "alignment": "chaotic evil",
+        "armor_class": "13 (hide armor)",
+        "hit_points": "15 (2d8 + 6)",
+        "speed": "30 ft.",
+        "challenge_rating": "1/2",
+        "scores": [16, 12, 16, 7, 11, 10],
+        "traits": "**Aggressive.** As a bonus action, the orc can move up to its speed toward a hostile creature that it can see.",
+        "actions": "**Greataxe.** *Melee Weapon Attack:* +5 to hit, reach 5 ft., one target. *Hit:* 9 (1d12 + 3) slashing damage.\n**Javelin.** *Melee or Ranged Weapon Attack:* +5 to hit, reach 5 ft. or range 30/120 ft., one target. *Hit:* 6 (1d6 + 3) piercing damage.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/bestiary.html#orc_mm",
+    },
+    {
+        "name": "Kobold",
+        "type": "humanoid (kobold)",
+        "size": "Small",
+        "alignment": "lawful evil",
+        "armor_class": "12",
+        "hit_points": "5 (2d6 - 2)",
+        "speed": "30 ft.",
+        "challenge_rating": "1/8",
+        "scores": [7, 15, 9, 8, 7, 8],
+        "traits": "**Pack Tactics.** The kobold has advantage on an attack roll against a creature if at least one of the kobold's allies is within 5 feet of the creature.",
+        "actions": "**Dagger.** *Melee Weapon Attack:* +4 to hit, reach 5 ft., one target. *Hit:* 4 (1d4 + 2) piercing damage.\n**Sling.** *Ranged Weapon Attack:* +4 to hit, range 30/120 ft., one target. *Hit:* 4 (1d4 + 2) bludgeoning damage.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/bestiary.html#kobold_mm",
+    },
+    {
+        "name": "Skeleton",
+        "type": "undead",
+        "size": "Medium",
+        "alignment": "lawful evil",
+        "armor_class": "13 (armor scraps)",
+        "hit_points": "13 (2d8 + 4)",
+        "speed": "30 ft.",
+        "challenge_rating": "1/4",
+        "scores": [10, 14, 15, 6, 8, 5],
+        "actions": "**Shortsword.** *Melee Weapon Attack:* +4 to hit, reach 5 ft., one target. *Hit:* 5 (1d6 + 2) piercing damage.\n**Shortbow.** *Ranged Weapon Attack:* +4 to hit, range 80/320 ft., one target. *Hit:* 5 (1d6 + 2) piercing damage.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/bestiary.html#skeleton_mm",
+    },
+    {
+        "name": "Zombie",
+        "type": "undead",
+        "size": "Medium",
+        "alignment": "neutral evil",
+        "armor_class": "8",
+        "hit_points": "22 (3d8 + 9)",
+        "speed": "20 ft.",
+        "challenge_rating": "1/4",
+        "scores": [13, 6, 16, 3, 6, 5],
+        "traits": "**Undead Fortitude.** If damage reduces the zombie to 0 hit points, it must make a Constitution saving throw with a DC of 5 + the damage taken, unless the damage is radiant or from a critical hit. On a success, the zombie drops to 1 hit point instead.",
+        "actions": "**Slam.** *Melee Weapon Attack:* +3 to hit, reach 5 ft., one target. *Hit:* 4 (1d6 + 1) bludgeoning damage.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/bestiary.html#zombie_mm",
+    },
+    {
+        "name": "Bandit",
+        "type": "humanoid (any race)",
+        "size": "Medium",
+        "alignment": "any non-lawful alignment",
+        "armor_class": "12 (leather armor)",
+        "hit_points": "11 (2d8 + 2)",
+        "speed": "30 ft.",
+        "challenge_rating": "1/8",
+        "scores": [11, 12, 12, 10, 10, 10],
+        "actions": "**Scimitar.** *Melee Weapon Attack:* +3 to hit, reach 5 ft., one target. *Hit:* 4 (1d6 + 1) slashing damage.\n**Light Crossbow.** *Ranged Weapon Attack:* +3 to hit, range 80/320 ft., one target. *Hit:* 5 (1d8 + 1) piercing damage.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/bestiary.html#bandit_mm",
+    },
+    {
+        "name": "Wolf",
+        "type": "beast",
+        "size": "Medium",
+        "alignment": "unaligned",
+        "armor_class": "13 (natural armor)",
+        "hit_points": "11 (2d8 + 2)",
+        "speed": "40 ft.",
+        "challenge_rating": "1/4",
+        "scores": [12, 15, 12, 3, 12, 6],
+        "traits": "**Keen Hearing and Smell.** Advantage on Wisdom (Perception) checks that rely on hearing or smell.\n**Pack Tactics.** Advantage on an attack roll against a creature if at least one of the wolf's allies is within 5 feet.",
+        "actions": "**Bite.** *Melee Weapon Attack:* +4 to hit, reach 5 ft., one target. *Hit:* 7 (2d4 + 2) piercing damage.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/bestiary.html#wolf_mm",
+    },
+    {
+        "name": "Bugbear",
+        "type": "humanoid (goblinoid)",
+        "size": "Medium",
+        "alignment": "chaotic evil",
+        "armor_class": "16 (hide armor, shield)",
+        "hit_points": "27 (5d8 + 5)",
+        "speed": "30 ft.",
+        "challenge_rating": "1",
+        "scores": [15, 14, 13, 8, 11, 9],
+        "traits": "**Brute.** A melee weapon deals one extra die of its damage when the bugbear hits with it (included in the attack).",
+        "actions": "**Morningstar.** *Melee Weapon Attack:* +4 to hit, reach 5 ft., one target. *Hit:* 11 (2d8 + 2) piercing damage.\n**Javelin.** *Melee or Ranged Weapon Attack:* +4 to hit, reach 5 ft. or range 30/120 ft., one target. *Hit:* 9 (2d6 + 2) piercing damage.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/bestiary.html#bugbear_mm",
+    },
+    {
+        "name": "Ogre",
+        "type": "giant",
+        "size": "Large",
+        "alignment": "chaotic evil",
+        "armor_class": "11 (hide armor)",
+        "hit_points": "59 (7d10 + 21)",
+        "speed": "40 ft.",
+        "challenge_rating": "2",
+        "scores": [19, 8, 16, 5, 7, 7],
+        "actions": "**Greatclub.** *Melee Weapon Attack:* +6 to hit, reach 5 ft., one target. *Hit:* 13 (2d8 + 4) bludgeoning damage.\n**Javelin.** *Melee or Ranged Weapon Attack:* +6 to hit, reach 5 ft. or range 30/120 ft., one target. *Hit:* 11 (2d6 + 4) piercing damage.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/bestiary.html#ogre_mm",
+    },
+    {
+        "name": "Owlbear",
+        "type": "monstrosity",
+        "size": "Large",
+        "alignment": "unaligned",
+        "armor_class": "13 (natural armor)",
+        "hit_points": "59 (7d10 + 21)",
+        "speed": "40 ft.",
+        "challenge_rating": "3",
+        "scores": [20, 12, 17, 3, 12, 7],
+        "traits": "**Keen Sight and Smell.** The owlbear has advantage on Wisdom (Perception) checks that rely on sight or smell.",
+        "actions": "**Multiattack.** The owlbear makes two attacks: one with its beak and one with its claws.\n**Beak.** *Melee Weapon Attack:* +7 to hit, reach 5 ft., one creature. *Hit:* 10 (1d10 + 5) piercing damage.\n**Claws.** *Melee Weapon Attack:* +7 to hit, reach 5 ft., one target. *Hit:* 14 (2d8 + 5) slashing damage.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/bestiary.html#owlbear_mm",
+    },
+    {
+        "name": "Troll",
+        "type": "giant",
+        "size": "Large",
+        "alignment": "chaotic evil",
+        "armor_class": "15 (natural armor)",
+        "hit_points": "84 (8d10 + 40)",
+        "speed": "30 ft.",
+        "challenge_rating": "5",
+        "scores": [18, 13, 20, 7, 9, 7],
+        "traits": "**Regeneration.** The troll regains 10 hit points at the start of its turn unless it took acid or fire damage.",
+        "actions": "**Multiattack.** The troll makes three attacks: one with its bite and two with its claws.\n**Bite.** *Melee Weapon Attack:* +7 to hit, reach 5 ft., one target. *Hit:* 7 (1d6 + 4) piercing damage.\n**Claw.** *Melee Weapon Attack:* +7 to hit, reach 5 ft., one target. *Hit:* 11 (2d6 + 4) slashing damage.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/bestiary.html#troll_mm",
     },
     {
         "name": "Adult Red Dragon",
@@ -176,7 +539,9 @@ MONSTERS = [
         "hit_points": "256 (19d12 + 133)",
         "speed": "40 ft., climb 40 ft., fly 80 ft.",
         "challenge_rating": "17",
-        "description": "Legendary Resistance (3/Day). Fire Breath (Recharge 5-6): The dragon exhales fire in a 60-foot cone. Each creature in that area must make a DC 21 Dexterity saving throw, taking 63 (18d6) fire damage on a failed save, or half as much on a successful one.",
+        "scores": [27, 10, 25, 16, 13, 21],
+        "traits": "**Legendary Resistance (3/Day).** If the dragon fails a saving throw, it can choose to succeed instead.",
+        "actions": "**Multiattack.** The dragon makes three attacks: one with its bite and two with its claws.\n**Bite.** *Melee Weapon Attack:* +14 to hit, reach 10 ft., one target. *Hit:* 19 (2d10 + 8) piercing damage plus 7 (2d6) fire damage.\n**Fire Breath (Recharge 5-6).** The dragon exhales fire in a 60-foot cone. Each creature in that area must make a DC 21 Dexterity saving throw, taking 63 (18d6) fire damage on a failed save, or half as much on a successful one.",
         "source": "SRD 5.1",
         "source_url": "https://5e.tools/bestiary.html#adult%20red%20dragon_mm",
     },
@@ -189,7 +554,9 @@ MONSTERS = [
         "hit_points": "180 (19d10 + 76)",
         "speed": "0 ft., fly 20 ft. (hover)",
         "challenge_rating": "13",
-        "description": "Antimagic Cone. The beholder's central eye creates an area of antimagic, as in the antimagic field spell, in a 150-foot cone. Eye Rays: Shoots 3 random eye rays per turn at targets within 120 ft.",
+        "scores": [10, 14, 18, 17, 15, 17],
+        "traits": "**Antimagic Cone.** The beholder's central eye creates an area of antimagic, as in the antimagic field spell, in a 150-foot cone.",
+        "actions": "**Bite.** *Melee Weapon Attack:* +5 to hit, reach 5 ft., one target. *Hit:* 14 (4d6) piercing damage.\n**Eye Rays.** Shoots 3 random eye rays per turn at targets within 120 ft.",
         "source": "SRD 5.1",
         "source_url": "https://5e.tools/bestiary.html#beholder_mm",
     },
@@ -202,7 +569,9 @@ MONSTERS = [
         "hit_points": "58 (9d8 + 18)",
         "speed": "15 ft.",
         "challenge_rating": "2",
-        "description": "Shapechanger. The mimic can use its action to polymorph into an object or back into its true, amorphous form. Adhesive (Object Form Only): The mimic adheres to anything that touches it. False Appearance: While remaining motionless, it is indistinguishable from an ordinary object.",
+        "scores": [17, 12, 15, 5, 13, 8],
+        "traits": "**Shapechanger.** The mimic can use its action to polymorph into an object or back into its true, amorphous form.\n**False Appearance.** While remaining motionless, it is indistinguishable from an ordinary object.",
+        "actions": "**Pseudopod.** *Melee Weapon Attack:* +5 to hit, reach 5 ft., one target. *Hit:* 7 (1d8 + 3) bludgeoning damage.\n**Bite.** *Melee Weapon Attack:* +5 to hit, reach 5 ft., one target. *Hit:* 7 (1d8 + 3) piercing damage plus 4 (1d8) acid damage.",
         "source": "SRD 5.1",
         "source_url": "https://5e.tools/bestiary.html#mimic_mm",
     },
@@ -215,7 +584,9 @@ MONSTERS = [
         "hit_points": "84 (8d10 + 40)",
         "speed": "15 ft.",
         "challenge_rating": "2",
-        "description": "Ooze Cube. Transparent: Even when in plain sight, it takes a successful DC 15 Perception check to spot a motionless cube. Engulf: Moves up to its speed and engulfs creatures in its space, subjecting them to 3d6 acid damage and paralysis.",
+        "scores": [14, 3, 20, 1, 6, 1],
+        "traits": "**Transparent.** Even when in plain sight, it takes a successful DC 15 Perception check to spot a motionless cube.",
+        "actions": "**Pseudopod.** *Melee Weapon Attack:* +4 to hit, reach 5 ft., one target. *Hit:* 10 (3d6) acid damage.\n**Engulf.** Moves up to its speed and engulfs creatures in its space, subjecting them to 3d6 acid damage and paralysis.",
         "source": "SRD 5.1",
         "source_url": "https://5e.tools/bestiary.html#gelatinous%20cube_mm",
     },
@@ -232,7 +603,9 @@ SPELLS_2024 = [
         "range": "Touch",
         "components": "V, S",
         "duration": "Instantaneous",
-        "description": "A creature you touch regains Hit Points equal to 2d8 + your spellcasting ability modifier. (2024 Revised: healing doubled to 2d8 from 1d8!). At Higher Levels: Each slot level above 1st increases healing by 2d8.",
+        "dice": "2d8",
+        "higher_levels": "Each slot level above 1st increases healing by 2d8.",
+        "description": "A creature you touch regains Hit Points equal to 2d8 + your spellcasting ability modifier. (2024 Revised: healing doubled to 2d8 from 1d8!)",
         "source": "2024 Player's Handbook (5.5e)",
         "edition": "2024",
         "source_url": "https://5e.tools/spells.html#cure%20wounds_xphb",
@@ -245,7 +618,9 @@ SPELLS_2024 = [
         "range": "60 feet",
         "components": "V",
         "duration": "Instantaneous",
-        "description": "A creature of your choice within range regains Hit Points equal to 2d4 + your spellcasting ability modifier. (2024 Revised: healing increased to 2d4 from 1d4!). At Higher Levels: Each slot level above 1st increases healing by 2d4.",
+        "dice": "2d4",
+        "higher_levels": "Each slot level above 1st increases healing by 2d4.",
+        "description": "A creature of your choice within range regains Hit Points equal to 2d4 + your spellcasting ability modifier. (2024 Revised: healing increased to 2d4 from 1d4!)",
         "source": "2024 Player's Handbook (5.5e)",
         "edition": "2024",
         "source_url": "https://5e.tools/spells.html#healing%20word_xphb",
@@ -258,7 +633,10 @@ SPELLS_2024 = [
         "range": "Self",
         "components": "V",
         "duration": "Instantaneous",
-        "description": "As you strike, your weapon or unarmed strike bursts with holy radiance. The target takes an extra 2d8 Radiant damage, plus 1d8 for each slot level above 1st (up to 5d8 max). If the target is Fiend or Undead, damage increases by 1d8. (2024 Revised: now a spell cast with a Bonus Action!).",
+        "damage_type": "Radiant",
+        "dice": "2d8",
+        "higher_levels": "The damage increases by 1d8 for each spell slot level above 1st.",
+        "description": "As you strike, your weapon or unarmed strike bursts with holy radiance. The target takes an extra 2d8 Radiant damage, plus 1d8 for each slot level above 1st. If the target is Fiend or Undead, damage increases by 1d8.",
         "source": "2024 Player's Handbook (5.5e)",
         "edition": "2024",
         "source_url": "https://5e.tools/spells.html#divine%20smite_xphb",
@@ -271,7 +649,8 @@ SPELLS_2024 = [
         "range": "60 feet",
         "components": "S",
         "duration": "Instantaneous",
-        "description": "You attempt to interrupt a creature in the process of casting a spell. The target must make a Constitution saving throw against your spell save DC. On a failed save, the spell fails and is wasted. (2024 Revised: Target makes Constitution save instead of ability check contest!).",
+        "save": "Constitution",
+        "description": "You attempt to interrupt a creature in the process of casting a spell. The target must make a Constitution saving throw against your spell save DC. On a failed save, the spell fails and is wasted.",
         "source": "2024 Player's Handbook (5.5e)",
         "edition": "2024",
         "source_url": "https://5e.tools/spells.html#counterspell_xphb",
@@ -284,7 +663,9 @@ SPELLS_2024 = [
         "range": "Self",
         "components": "S, M (a weapon with which you have proficiency)",
         "duration": "Instantaneous",
-        "description": "Guided by a flash of magical insight, you make one attack with the weapon used in the casting. You can use your spellcasting ability instead of Strength or Dexterity for the attack and damage rolls, and the damage is Radiant damage instead of bludgeoning, piercing, or slashing. Increases by 1d6 at level 5, 11, and 17. (2024 Complete Rework!)",
+        "damage_type": "Radiant",
+        "dice": "1d6",
+        "description": "Guided by a flash of magical insight, you make one attack with the weapon used in the casting. You can use your spellcasting ability instead of Strength or Dexterity for the attack and damage rolls, and the damage is Radiant damage. Increases by 1d6 at level 5, 11, and 17.",
         "source": "2024 Player's Handbook (5.5e)",
         "edition": "2024",
         "source_url": "https://5e.tools/spells.html#true%20strike_xphb",
@@ -297,7 +678,11 @@ SPELLS_2024 = [
         "range": "150 feet",
         "components": "V, S, M (a tiny ball of bat guano and sulfur)",
         "duration": "Instantaneous",
-        "description": "A bright streak flashes from your pointing finger to a point you choose within range and blossoms into an explosion of flame. Each creature in a 20-foot-radius sphere must make a Dexterity saving throw, taking 8d6 Fire damage on a failed save, or half as much on a successful one. At Higher Levels: +1d6 per slot level above 3rd.",
+        "save": "Dexterity",
+        "damage_type": "Fire",
+        "dice": "8d6",
+        "higher_levels": "The damage increases by 1d6 for each spell slot level above 3rd.",
+        "description": "A bright streak flashes from your pointing finger to a point you choose within range and blossoms into an explosion of flame. Each creature in a 20-foot-radius sphere must make a Dexterity saving throw, taking 8d6 Fire damage on a failed save, or half as much on a successful one.",
         "source": "2024 Player's Handbook (5.5e)",
         "edition": "2024",
         "source_url": "https://5e.tools/spells.html#fireball_xphb",
@@ -314,7 +699,9 @@ MONSTERS_2024 = [
         "hit_points": "7 (2d6)",
         "speed": "30 ft.",
         "challenge_rating": "1/4",
-        "description": "Nimble Escape: Bonus Action to Disengage or Hide. Scimitar: +4 to hit, reach 5 ft., 5 (1d6 + 2) Slashing. Shortbow: +4 to hit, range 80/320 ft., 5 (1d6 + 2) Piercing damage. (2024 Monster Manual Revised)",
+        "scores": [8, 15, 10, 10, 8, 8],
+        "traits": "**Nimble Escape.** Bonus Action to Disengage or Hide.",
+        "actions": "**Scimitar.** +4 to hit, reach 5 ft., 5 (1d6 + 2) Slashing damage.\n**Shortbow.** +4 to hit, range 80/320 ft., 5 (1d6 + 2) Piercing damage.",
         "source": "2024 Monster Manual (5.5e)",
         "edition": "2024",
         "source_url": "https://5e.tools/bestiary.html#goblin%20warrior_xmm",
@@ -328,7 +715,9 @@ MONSTERS_2024 = [
         "hit_points": "256 (19d12 + 133)",
         "speed": "40 ft., climb 40 ft., fly 80 ft.",
         "challenge_rating": "17",
-        "description": "Legendary Resistance (3/Day). Multiattack. Fire Breath (Recharge 5-6): 60-foot cone, DC 21 Dex save, 63 (18d6) Fire damage. Legendary Actions: Wing Attack, Tail Strike. (2024 Monster Manual Revised)",
+        "scores": [27, 10, 25, 16, 13, 23],
+        "traits": "**Legendary Resistance (3/Day).** If the dragon fails a saving throw, it can choose to succeed instead.",
+        "actions": "**Multiattack.** Three Rend attacks.\n**Fire Breath (Recharge 5-6).** 60-foot cone, DC 21 Dex save, 63 (18d6) Fire damage.",
         "source": "2024 Monster Manual (5.5e)",
         "edition": "2024",
         "source_url": "https://5e.tools/bestiary.html#adult%20red%20dragon_xmm",
@@ -443,6 +832,15 @@ CONDITIONS_2024 = [
 
 ITEMS = [
     {
+        "name": "Longsword",
+        "type": "Weapon (martial, melee)",
+        "rarity": "Common",
+        "weight": "3 lbs.",
+        "description": "1d8 slashing damage (versatile 1d10). Proficiencies: Martial weapons.",
+        "source": "SRD 5.1",
+        "source_url": "https://5e.tools/items.html#longsword_phb",
+    },
+    {
         "name": "Bag of Holding",
         "type": "Wondrous item",
         "rarity": "Uncommon",
@@ -522,6 +920,24 @@ CLASSES = [
         "description": "A master of martial combat, skilled with a variety of weapons and armor. Features include Second Wind, Action Surge, and martial archetype specializations.",
         "source": "SRD 5.1",
     },
+    {
+        "name": "Paladin",
+        "type": "Class",
+        "hit_die": "d10",
+        "primary_ability": "Strength and Charisma",
+        "saving_throws": "Wisdom, Charisma",
+        "description": "A holy warrior bound to a sacred oath, combining martial prowess with divine magic and Divine Smite.",
+        "source": "SRD 5.1",
+    },
+]
+
+SUBCLASSES = [
+    {
+        "name": "Oath of Vengeance",
+        "type": "Paladin Subclass",
+        "description": "The Oath of Vengeance is a solemn commitment to punish those who have committed a grievous sin. Channel Divinity options include Abjure Enemy and Vow of Enmity.",
+        "source": "SRD 5.1",
+    },
 ]
 
 COLLECTIONS = {
@@ -532,6 +948,7 @@ COLLECTIONS = {
     "feats": FEATS,
     "races": RACES,
     "classes": CLASSES,
+    "subclasses": SUBCLASSES,
 }
 
 REVISED_2024 = {
@@ -539,6 +956,103 @@ REVISED_2024 = {
     "monsters": MONSTERS_2024,
     "conditions": CONDITIONS_2024,
 }
+
+
+def _ordinal(n: int) -> str:
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def _ability_entries(scores):
+    labels = ("STR", "DEX", "CON", "INT", "WIS", "CHA")
+    out = []
+    for label, score in zip(labels, scores):
+        mod = (int(score) - 10) // 2
+        out.append({"label": label, "score": int(score), "mod": f"{mod:+d}"})
+    return out
+
+
+def build_card(kind: str, item: dict) -> dict:
+    """Return a LookupCard-shaped payload alongside raw fields for Hoffle."""
+    name = item.get("name", "Unknown")
+    source = item.get("source", "SRD 5.1")
+    source_url = item.get("source_url")
+    card_kind = kind.rstrip("s") if kind != "classes" and kind != "subclasses" else ("class" if kind == "classes" else "subclass")
+    card = {
+        "kind": card_kind,
+        "name": name,
+        "subtitle": "",
+        "source": source,
+        "source_label": source,
+        "source_url": source_url,
+        "facts": [],
+        "tags": [],
+        "sections": [],
+        "abilities": [],
+    }
+
+    if kind == "spells":
+        level = int(item.get("level", 0) or 0)
+        school = str(item.get("school", "")).capitalize()
+        card["subtitle"] = f"{school} cantrip" if level == 0 else f"{_ordinal(level)}-level {school.lower()}"
+        for label, key in (
+            ("Casting time", "casting_time"),
+            ("Range", "range"),
+            ("Components", "components"),
+            ("Duration", "duration"),
+            ("Save", "save"),
+            ("Damage type", "damage_type"),
+        ):
+            if item.get(key):
+                card["facts"].append({"label": label, "value": str(item[key])})
+        if item.get("concentration"):
+            card["tags"].append("Concentration")
+        if item.get("description"):
+            card["sections"].append({"title": "", "body": item["description"]})
+        if item.get("higher_levels"):
+            card["sections"].append({"title": "At higher levels" if level else "Cantrip upgrade", "body": item["higher_levels"]})
+    elif kind == "monsters":
+        size = item.get("size", "")
+        mtype = item.get("type", "")
+        align = item.get("alignment", "")
+        card["subtitle"] = f"{size} {mtype}".strip() + (f", {align}" if align else "")
+        for label, key in (
+            ("Armor Class", "armor_class"),
+            ("Hit Points", "hit_points"),
+            ("Speed", "speed"),
+            ("Challenge", "challenge_rating"),
+        ):
+            if item.get(key):
+                card["facts"].append({"label": label, "value": str(item[key])})
+        if item.get("scores"):
+            card["abilities"] = _ability_entries(item["scores"])
+        if item.get("traits"):
+            card["sections"].append({"title": "Traits", "body": item["traits"]})
+        if item.get("actions"):
+            card["sections"].append({"title": "Actions", "body": item["actions"]})
+        if item.get("description") and not card["sections"]:
+            card["sections"].append({"title": "Actions", "body": item["description"]})
+    else:
+        card["subtitle"] = str(item.get("type", ""))
+        for label, key in (
+            ("Rarity", "rarity"),
+            ("Weight", "weight"),
+            ("Speed", "speed"),
+            ("Hit Die", "hit_die"),
+            ("Primary Ability", "primary_ability"),
+            ("Saving Throws", "saving_throws"),
+        ):
+            if item.get(key):
+                card["facts"].append({"label": label, "value": str(item[key])})
+        if item.get("traits"):
+            card["sections"].append({"title": "Traits", "body": item["traits"]})
+        if item.get("description"):
+            card["sections"].append({"title": "", "body": item["description"]})
+
+    return {**item, "card": card}
 
 
 def get_collection(kind, edition="2014"):
@@ -581,7 +1095,7 @@ class DndHandler(http.server.BaseHTTPRequestHandler):
         # Health / docs probe
         if path in ("docs", "health", ""):
             if "json" in parsed.query or path == "health":
-                return self.send_json({"status": "ok", "service": "hoffle-dnd-bot", "version": "1.1", "editions": ["2014", "2024"]})
+                return self.send_json({"status": "ok", "service": "hoffle-dnd-bot", "version": "1.2", "editions": ["2014", "2024"]})
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
@@ -611,12 +1125,12 @@ class DndHandler(http.server.BaseHTTPRequestHandler):
             # 1. Exact match
             for item in items:
                 if item["name"].lower() == query_raw:
-                    return self.send_json(item)
+                    return self.send_json(build_card(kind, item))
 
             # 2. Prefix / partial match
             for item in items:
                 if query_raw in item["name"].lower():
-                    return self.send_json(item)
+                    return self.send_json(build_card(kind, item))
 
             return self.send_json({"error": f"Nothing found in {kind} matching '{query_raw}'"}, status=404)
 

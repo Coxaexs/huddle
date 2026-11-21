@@ -4,6 +4,7 @@ import {
   type LoungePose,
 } from "../app/lib/living-room";
 import { CINEMA, GM_SEAT_ID, TABLETOP, LOUNGE, clampPose as clampIn } from "../app/lib/living-room";
+import { applyPawn, sanitizePawnOp, sanitizeShared } from "./lounge-shared";
 
 const at = (x: number, z: number, facing = 0, seat: string | null = null): LoungePose => ({ x, z, facing, seat });
 
@@ -212,5 +213,61 @@ describe("the cinema's projection booth", () => {
     }
     expect(inAnnex(allowed, CINEMA)).toBe(true);
     expect(inAnnex(denied, CINEMA)).toBe(false);
+  });
+});
+
+describe("lounge shared fog, ping, extended character & pawn meta", () => {
+  it("sanitizes fog rects and pings within bounds", () => {
+    const fog = sanitizeShared("fog", { enabled: true, rects: [{ id: "f1", x: 10, y: 20, w: 30, h: 40 }] }, "GM", 123);
+    expect(fog).toEqual({ enabled: true, rects: [{ id: "f1", x: 10, y: 20, w: 30, h: 40 }] });
+    const ping = sanitizeShared("ping", { id: "pg1", x: 5, y: 0, z: 0, colour: "#AABBCC" }, "Alice", 200) as { x: number; z: number; colour: string };
+    expect(Math.hypot(ping.x, ping.z)).toBeLessThanOrEqual(1.201);
+    expect(ping.colour).toBe("#aabbcc");
+  });
+
+  it("supports atomic put with hp/maxHp and meta updates on pawns", () => {
+    const put = sanitizePawnOp({
+      op: "put",
+      id: "mob1",
+      kind: "beast",
+      colour: "#9c3b30",
+      x: 0.2,
+      z: 0.3,
+      facing: 0,
+      label: "Owlbear",
+      hp: 59,
+      maxHp: 59,
+      size: 2,
+      elevation: 10,
+      conditions: ["frightened"],
+    });
+    expect(put).toMatchObject({ op: "put", id: "mob1", hp: 59, maxHp: 59, size: 2, elevation: 10 });
+    const board = applyPawn({}, put!, { userId: "gm1", name: "GM", isGm: true }, 10);
+    expect(board?.mob1?.hp).toBe(59);
+    const meta = sanitizePawnOp({ op: "meta", id: "mob1", elevation: 25, conditions: ["prone", "blinded"] });
+    const next = applyPawn(board!, meta!, { userId: "gm1", name: "GM", isGm: true }, 20);
+    expect(next?.mob1?.elevation).toBe(25);
+    expect(next?.mob1?.conditions).toEqual(["prone", "blinded"]);
+  });
+
+  it("preserves extended tabletop character sheet fields", () => {
+    const char = sanitizeShared("character", {
+      name: "Vex",
+      cls: "Ranger",
+      level: 5,
+      hp: 38,
+      maxHp: 44,
+      tempHp: 6,
+      initiativeBonus: 4,
+      conditions: ["hunters mark", "poisoned"],
+      deathSaves: { successes: 2, failures: 1 },
+      edition: "2024",
+      skills: { stealth: 9 },
+      actions: [{ name: "Longbow", damage: "1d8+4" }],
+    }, "Laura", 500) as Record<string, unknown>;
+    expect(char.tempHp).toBe(6);
+    expect(char.initiativeBonus).toBe(4);
+    expect(char.edition).toBe("2024");
+    expect(char.deathSaves).toEqual({ successes: 2, failures: 1 });
   });
 });

@@ -1,26 +1,6 @@
-import { bindings } from "@/lib/storage";
+import { dndBaseUrl, dndPublicUrl } from "@/lib/dnd-url";
 
 export const dynamic = "force-dynamic";
-
-function dndBaseUrl(): URL {
-  const configured =
-    bindings().DND_BASE_URL?.trim() || "http://127.0.0.1:8732";
-  const url = new URL(configured);
-  if (!["http:", "https:"].includes(url.protocol)) {
-    throw new Error("Unsupported D&D server URL.");
-  }
-  return url;
-}
-
-function dndPublicUrl(): URL {
-  const configured =
-    bindings().DND_PUBLIC_URL?.trim() || bindings().DND_BASE_URL?.trim() || "https://dnd.deeppixel.online";
-  const url = new URL(configured);
-  if (!["http:", "https:"].includes(url.protocol)) {
-    throw new Error("Unsupported public D&D URL.");
-  }
-  return url;
-}
 
 /** Health probe for the D&D companion app shown in the sidebar. */
 export async function GET() {
@@ -30,9 +10,10 @@ export async function GET() {
       signal: AbortSignal.timeout(3000),
     });
     if (primary.ok) {
+      const pub = dndPublicUrl("https://dnd.deeppixel.online")!;
       return Response.json({
         online: true,
-        appUrl: new URL("/", dndPublicUrl()).toString(),
+        appUrl: new URL("/", pub).toString(),
       });
     }
   } catch {

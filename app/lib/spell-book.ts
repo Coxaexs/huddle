@@ -9,11 +9,13 @@ import { apiFetch } from "./client";
 const known = new Map<string, Promise<SpellInfo | null>>();
 
 /** A spell's details; null when the companion does not know it or cannot be reached. */
-export function getSpell(name: string): Promise<SpellInfo | null> {
-  const key = name.trim().toLowerCase();
+export function getSpell(name: string, edition?: "2014" | "2024"): Promise<SpellInfo | null> {
+  const key = `${edition ?? "default"}:${name.trim().toLowerCase()}`;
   let found = known.get(key);
   if (!found) {
-    found = apiFetch<{ spell?: SpellInfo }>(`/api/integrations/dnd/spells?name=${encodeURIComponent(name.trim())}`)
+    const qs = new URLSearchParams({ name: name.trim() });
+    if (edition) qs.set("edition", edition);
+    found = apiFetch<{ spell?: SpellInfo }>(`/api/integrations/dnd/spells?${qs.toString()}`)
       .then((data) => data.spell ?? null)
       .catch(() => {
         // Try again next time: the companion may have been down.
@@ -26,10 +28,12 @@ export function getSpell(name: string): Promise<SpellInfo | null> {
 }
 
 /** Spell names that match what was typed (up to 8). */
-export async function searchSpells(query: string): Promise<string[]> {
+export async function searchSpells(query: string, edition?: "2014" | "2024"): Promise<string[]> {
   if (query.trim().length < 2) return [];
   try {
-    const data = await apiFetch<{ names?: string[] }>(`/api/integrations/dnd/spells?q=${encodeURIComponent(query.trim())}`);
+    const qs = new URLSearchParams({ q: query.trim() });
+    if (edition) qs.set("edition", edition);
+    const data = await apiFetch<{ names?: string[] }>(`/api/integrations/dnd/spells?${qs.toString()}`);
     return data.names ?? [];
   } catch {
     return [];

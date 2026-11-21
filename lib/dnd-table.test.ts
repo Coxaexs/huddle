@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { companionInitiative, companionRoll, layCompanionPawns, placeCompanionPawn, rollFaces, sanitizeCompanionPawn, tableInitiative } from "./dnd-table";
+import { companionInitiative, companionRoll, layCompanionPawns, mapFromTable, placeCompanionPawn, rollFaces, sanitizeCompanionPawn, tableFromMap, tableInitiative } from "./dnd-table";
 
 const roller = { id: "u1", displayName: "Thorin" };
 
@@ -105,5 +105,67 @@ describe("shared initiative", () => {
       round: 1,
     });
     expect(companionInitiative(null, () => undefined)).toBeNull();
+  });
+
+  it("preserves pawnId on initiative entries", () => {
+    const init = { entries: [{ id: "m1", name: "Goblin", value: 14, pawnId: "dnd-t9" }], turn: 0, round: 1 };
+    const tbl = tableInitiative(init, () => undefined);
+    expect(tbl).toEqual({ entries: [{ id: "m1", name: "Goblin", value: 14, pawnId: "dnd-t9" }], turn: 0, round: 1 });
+    expect(companionInitiative(tbl as never, () => undefined)).toEqual(init);
+  });
+});
+
+describe("map coordinates & extended table sync", () => {
+  it("roundtrips between 2D map % and 3D tabletop coordinates", () => {
+    const pt = tableFromMap(62.5, 38.0, 1.6, 0, 1);
+    const back = mapFromTable(pt.x, pt.z, 1.6, 0, 1);
+    expect(back.x).toBeCloseTo(62.5, 0);
+    expect(back.y).toBeCloseTo(38.0, 0);
+  });
+
+  it("supports multi-dice, label, and rollType on companionRoll", () => {
+    const roll = companionRoll(roller, {
+      expression: "2d20kh1+5",
+      dice: [
+        { sides: 20, rolls: [{ value: 19, kept: true }, { value: 4, kept: false }], sign: 1 },
+        { sides: 4, rolls: [{ value: 3, kept: true }], sign: 1 },
+      ],
+      modifier: 5,
+      total: 27,
+      label: "Stealth",
+      rollType: "advantage",
+    });
+    expect(roll?.label).toBe("Stealth");
+    expect(roll?.rollType).toBe("advantage");
+    expect(roll?.dice).toHaveLength(2);
+    expect(roll?.dice[0].rolls[1].kept).toBe(false);
+  });
+
+  it("preserves conditions, size, elevation, and portraitUrl on pawns", () => {
+    const raw = sanitizeCompanionPawn(
+      {
+        id: "dnd-t42",
+        kind: "beast",
+        x: 0.4,
+        z: -0.2,
+        label: "Owlbear",
+        maxHp: 59,
+        hp: 40,
+        conditions: ["Poisoned", "PRONE"],
+        size: 2,
+        elevation: 15,
+        portraitUrl: "/hangout/api/integrations/dnd/token?name=Owlbear",
+      },
+      "gm",
+      "GM",
+    );
+    expect(raw?.conditions).toEqual(["poisoned", "prone"]);
+    expect(raw?.size).toBe(2);
+    expect(raw?.elevation).toBe(15);
+    expect(raw?.portraitUrl).toContain("Owlbear");
+    const placed = placeCompanionPawn({}, raw!, 100);
+    expect(placed.pawns["dnd-t42"].conditions).toEqual(["poisoned", "prone"]);
+    expect(placed.pawns["dnd-t42"].elevation).toBe(15);
+    expect(placed.pawns["dnd-t42"].size).toBe(2);
   });
 });

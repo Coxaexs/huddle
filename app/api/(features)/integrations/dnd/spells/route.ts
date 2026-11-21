@@ -1,5 +1,5 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { bindings } from "@/lib/storage";
+import { dndBaseUrl } from "@/lib/dnd-url";
 import { spellArea, type SpellInfo } from "@/lib/dnd-spells";
 
 export const dynamic = "force-dynamic";
@@ -9,11 +9,6 @@ export const dynamic = "force-dynamic";
  * `?q=fire` finds names, `?name=Fireball` answers what the table needs to
  * cast it (see SpellInfo).
  */
-function dndBaseUrl(): URL {
-  const url = new URL(bindings().DND_BASE_URL?.trim() || "http://127.0.0.1:8732");
-  if (!["http:", "https:"].includes(url.protocol)) throw new Error("Unsupported D&D server URL.");
-  return url;
-}
 
 const clip = (value: unknown, max: number) => String(value ?? "").slice(0, max);
 

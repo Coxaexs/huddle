@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { BattlemapBoard } from "@/app/components/battlemap";
+import { apiFetch } from "@/app/lib/client";
 import type { Battlemap } from "@/lib/battlemap";
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
@@ -170,5 +171,78 @@ describe("BattlemapBoard Component & Upgrades", () => {
     // Third turn: wraps around to Fighter and increments to Round 2
     fireEvent.click(nextTurnBtn);
     expect(screen.getByText("Round 2")).toBeDefined();
+  });
+
+  it("syncs shared initiative turns via sharedInitiative and onSetInitiative", () => {
+    const map = mockMap();
+    const onSetInitiative = vi.fn();
+    render(
+      <BattlemapBoard
+        channelId="stage-1"
+        map={map}
+        gm={true}
+        userId="user-alice"
+        onClose={vi.fn()}
+        onLocalToken={vi.fn()}
+        onLocalStroke={vi.fn()}
+        onAddMyToken={vi.fn()}
+        sharedInitiative={{
+          entries: [
+            { id: "bm-tok-1", name: "Fighter", value: 17, pawnId: "bm-tok1" },
+            { id: "bm-tok-2", name: "Goblin", value: 12, pawnId: "bm-tok2" },
+          ],
+          turn: 0,
+          round: 3,
+        }}
+        onSetInitiative={onSetInitiative}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle("Initiative & Encounter Tracker"));
+    expect(screen.getByText("Round 3")).toBeDefined();
+    fireEvent.click(screen.getByText("Next Turn"));
+    expect(onSetInitiative).toHaveBeenCalledWith({
+      entries: [
+        { id: "bm-tok-1", name: "Fighter", value: 17, pawnId: "bm-tok1" },
+        { id: "bm-tok-2", name: "Goblin", value: 12, pawnId: "bm-tok2" },
+      ],
+      turn: 1,
+      round: 3,
+    });
+    fireEvent.click(screen.getByTitle("Reset encounter"));
+    expect(onSetInitiative).toHaveBeenCalledWith(null);
+  });
+
+  it("submits drawn fog rectangle on pointerup (fogDraftRef fix)", () => {
+    vi.mocked(apiFetch).mockClear();
+    const map = mockMap();
+    const { container } = render(
+      <BattlemapBoard
+        channelId="stage-1"
+        map={map}
+        gm={true}
+        userId="user-alice"
+        onClose={vi.fn()}
+        onLocalToken={vi.fn()}
+        onLocalStroke={vi.fn()}
+        onAddMyToken={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle("Fog of war (drag to hide an area)"));
+    const board = container.querySelector(".battlemap-board") as HTMLElement;
+    board.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 150, right: 200, bottom: 150, x: 0, y: 0, toJSON: () => ({}) });
+
+    fireEvent.pointerDown(board, { button: 0, clientX: 20, clientY: 15 });
+    fireEvent.pointerMove(window, { clientX: 80, clientY: 60 });
+    fireEvent.pointerUp(window);
+
+    expect(vi.mocked(apiFetch)).toHaveBeenCalledWith(
+      "/api/battlemap",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"action":"add-fog"'),
+      }),
+    );
   });
 });

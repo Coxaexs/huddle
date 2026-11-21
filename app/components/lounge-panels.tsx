@@ -2,10 +2,11 @@
 
 import { proxiedImage } from "@/app/lib/image-proxy";
 import { useRef, useState, useEffect } from "react";
-import { ChessPawn, Clapperboard, Crown, Film, Plus, RotateCw, SkipBack, SkipForward, ThumbsUp, Trash2, Upload, X, Search, Loader2, PlayCircle } from "lucide-react";
+import { ChessPawn, Clapperboard, Crown, ExternalLink, Film, Music, Pause, Play, Plus, Radio, RotateCw, SkipBack, SkipForward, ThumbsUp, Trash2, Upload, Volume2, X, Search, Loader2, PlayCircle } from "lucide-react";
+import { MONSTER_PALETTE, tokenImageUrl } from "@/lib/battlemap-tokens";
 import {
-  PAWNS_EACH, PAWNS_GM, PAWN_KINDS, QUEUE_MAX, addInitiative, cinemaSeatLabel, currentEntry, removeInitiative, skipVotesNeeded, stepTurn, watchPosition,
-  type GameMaster, type HouseLights, type Initiative, type PawnKind, type QueueOp, type TableCharacter, type TableMap, type TablePawn, type WatchQueue, type WatchState,
+  PAWNS_EACH, PAWNS_GM, PAWN_KINDS, QUEUE_MAX, TABLE_MOODS, addInitiative, cinemaSeatLabel, currentEntry, removeInitiative, skipVotesNeeded, stepTurn, watchPosition,
+  type GameMaster, type HouseLights, type Initiative, type PawnKind, type QueueOp, type TableCharacter, type TableFog, type TableMap, type TableMood, type TablePawn, type WatchQueue, type WatchState,
   WATCH_QUALITIES, type WatchQuality,
 } from "@/lib/lounge-shared";
 import { ABILITIES, SCREEN_SIZES, pagesFor, resizeChoice, type CharacterSheet, type ScreenPageId, type ScreenRole } from "../lib/gm-screen";
@@ -630,15 +631,15 @@ function fromLegacy(sheet: CharacterSheet | null): Partial<TableCharacter> {
 }
 
 /** Spells by name: type a few letters, pick one; each shows as a chip to take off again. */
-function SpellPicker({ spells, setSpells }: { spells: string[]; setSpells: (value: string[]) => void }) {
+function SpellPicker({ spells, setSpells, edition }: { spells: string[]; setSpells: (value: string[]) => void; edition?: "2014" | "2024" }) {
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<string[]>([]);
   useEffect(() => {
     if (query.trim().length < 2) { setFound([]); return; }
     let live = true;
-    const later = setTimeout(() => { void searchSpells(query).then((names) => { if (live) setFound(names.filter((n) => !spells.includes(n))); }); }, 250);
+    const later = setTimeout(() => { void searchSpells(query, edition).then((names) => { if (live) setFound(names.filter((n) => !spells.includes(n))); }); }, 250);
     return () => { live = false; clearTimeout(later); };
-  }, [query, spells]);
+  }, [query, spells, edition]);
   const add = (name: string) => { if (!spells.includes(name) && spells.length < 40) setSpells([...spells, name]); setQuery(""); setFound([]); };
   return (
     <div className="lr-field">
@@ -666,13 +667,15 @@ function SpellPicker({ spells, setSpells }: { spells: string[]; setSpells: (valu
  * spells. Slots come from the class and level by themselves. The portrait,
  * ability scores and my own screen fold away under "More".
  */
-export function CharacterPanel({ mine, fallbackName, setMine, legacy, screen, onClose }: {
+export function CharacterPanel({ mine, fallbackName, setMine, legacy, screen, edition, onOpenCompanion, onClose }: {
   mine: TableCharacter | null;
   fallbackName: string;
   setMine: (value: TableCharacter | null) => void;
   /** What this browser's old sheet held, to start from when there is no sheet yet. */
   legacy: CharacterSheet | null;
   screen: PlayerScreenSettings;
+  edition?: "2014" | "2024";
+  onOpenCompanion?: (path?: string) => void;
   onClose: () => void;
 }) {
   const start = { ...(mine?.maxHp === undefined && !mine?.cls ? fromLegacy(legacy) : {}), ...Object.fromEntries(Object.entries(mine ?? {}).filter(([, v]) => v !== undefined)) } as Partial<TableCharacter>;
@@ -699,6 +702,7 @@ export function CharacterPanel({ mine, fallbackName, setMine, legacy, screen, on
     // A new maximum heals by the difference; a lower one caps what is left.
     const hp = max === undefined ? undefined : mine?.hp === undefined ? max : Math.max(0, Math.min(max, mine.hp + (oldMax === undefined ? 0 : max - oldMax)));
     setMine({
+      ...(mine ?? {}),
       name: name.trim() || fallbackName,
       portraitUrl: portrait.trim() || null,
       ...(cls ? { cls } : {}),
@@ -710,6 +714,7 @@ export function CharacterPanel({ mine, fallbackName, setMine, legacy, screen, on
       slots,
       used: (mine?.used ?? Array(9).fill(0)).map((n, i) => Math.min(n, slots[i] ?? 0)),
       spells,
+      ...(edition ? { edition } : {}),
     });
   };
   const chooseFile = async (chosen: File | undefined) => {
@@ -741,10 +746,11 @@ export function CharacterPanel({ mine, fallbackName, setMine, legacy, screen, on
       {caster && !customSlots && (
         <p className="lr-note">Spell slots: {auto.map((n, i) => (n ? `${n}×${i + 1}${i === 0 ? "st" : i === 1 ? "nd" : i === 2 ? "rd" : "th"}` : "")).filter(Boolean).join(" · ")}</p>
       )}
-      <SpellPicker spells={spells} setSpells={setSpells} />
+      <SpellPicker spells={spells} setSpells={setSpells} edition={edition} />
       <div className="lr-row">
         <button type="button" className="primary" onClick={() => { save(); onClose(); }}>Save</button>
         {mine && <button type="button" onClick={() => { setMine(null); onClose(); }}>Clear</button>}
+        {onOpenCompanion && <button type="button" onClick={() => onOpenCompanion("/sheet")} title="Edit full sheet in Tavern Companion"><ExternalLink size={12} /> Tavern Sheet</button>}
       </div>
 
       <details className="lr-more">
@@ -798,7 +804,7 @@ export function CharacterPanel({ mine, fallbackName, setMine, legacy, screen, on
  * The tabletop's game master: who it is and their chair, the battle map on
  * the table, and what the inside of their screen shows.
  */
-export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myName, map, canEditMap, setMap, squares, setSquares, choice, setChoice, folded, setFolded, notes, setNotes, onClose, system = "dnd5e" }: {
+export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myName, map, canEditMap, setMap, squares, setSquares, fog, setFog, drawingFog, onToggleDrawFog, onOpenCompanion, choice, setChoice, folded, setFolded, notes, setNotes, onClose, system = "dnd5e" }: {
   gm: GameMaster | null;
   myId: string | null;
   myName: string;
@@ -811,6 +817,11 @@ export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myNam
   /** The map's width in 5-foot squares: the scale of pawns, rulers and spells. */
   squares: number;
   setSquares: (squares: number) => void;
+  fog?: TableFog | null;
+  setFog?: (fog: TableFog | null) => void;
+  drawingFog?: boolean;
+  onToggleDrawFog?: () => void;
+  onOpenCompanion?: (path?: string) => void;
   choice: ScreenPageId[];
   setChoice: (value: ScreenPageId[]) => void;
   /** The screen folded flat on the table, for everyone. */
@@ -877,6 +888,25 @@ export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myNam
             <small>Scale: {grid} squares across ({grid * 5} ft)</small>
             <input type="range" min={10} max={60} step={1} value={grid} onChange={(event) => setGrid(Number(event.target.value))} aria-label="Squares across the map" />
           </label>
+          {setFog && (
+            <>
+              <small className="lr-heading">Fog of war{fog?.enabled ? ` · ${fog.rects.length} zone${fog.rects.length === 1 ? "" : "s"}` : ""}</small>
+              <div className="lr-row">
+                {onToggleDrawFog && (
+                  <button type="button" className={drawingFog ? "active" : ""} onClick={onToggleDrawFog} title="Click two corners on the map to hide an area">
+                    {drawingFog ? "Finish fog tool" : "Draw fog area"}
+                  </button>
+                )}
+                <button type="button" onClick={() => setFog({ enabled: true, rects: [{ id: "fullmap", x: 0, y: 0, w: 100, h: 100 }] })}>Cover map</button>
+                {fog?.enabled && <button type="button" onClick={() => setFog(null)}>Clear fog</button>}
+              </div>
+            </>
+          )}
+          {onOpenCompanion && (
+            <div className="lr-row">
+              <button type="button" onClick={() => onOpenCompanion("/gm")}><ExternalLink size={12} /> Tavern GM Studio</button>
+            </div>
+          )}
           {problem && <p className="lr-note">{problem}</p>}
           <p className="lr-note">Everyone at the table sees it. The middle of the picture fills the round table. Match the scale to the map&apos;s grid: pawns, rulers and spells use it.</p>
         </>
@@ -928,12 +958,14 @@ export const PAWN_PAINTS = ["#3b4fa8", "#8a1c1c", "#2f6b3a", "#c9a45c", "#6a3d9a
  * like, then click it and click the map to move it. Players keep a few each;
  * the game master keeps the monsters, and can move anyone's.
  */
-export function PawnsPanel({ pawns, myUserId, isGm, held, onTake, onHold, onPutBack, onClear, onClose }: {
+export function PawnsPanel({ pawns, myUserId, isGm, held, channelId, onTake, onSpawnMonster, onHold, onPutBack, onClear, onClose }: {
   pawns: Record<string, TablePawn>;
   myUserId: string | null;
   isGm: boolean;
   held: string | null;
+  channelId?: string | null;
   onTake: (kind: PawnKind, colour: string, label: string) => void;
+  onSpawnMonster?: (spec: { name: string; hp: number; size: number; kind: PawnKind; colour: string; portraitUrl?: string }) => void;
   onHold: (id: string | null) => void;
   onPutBack: (id: string) => void;
   onClear: () => void;
@@ -941,11 +973,46 @@ export function PawnsPanel({ pawns, myUserId, isGm, held, onTake, onHold, onPutB
 }) {
   const [colour, setColour] = useState(PAWN_PAINTS[0]);
   const [label, setLabel] = useState("");
+  const [monsterQ, setMonsterQ] = useState("");
+  const [monsters, setMonsters] = useState<Array<{ name: string; hp: number; size: number; kind: PawnKind }>>([]);
+  const [searching, setSearching] = useState(false);
   const all = Object.values(pawns).sort((a, b) => a.ownerName.localeCompare(b.ownerName) || a.at - b.at);
   const mine = all.filter((pawn) => pawn.owner === myUserId);
   const limit = isGm ? PAWNS_GM : PAWNS_EACH;
   const shown = isGm ? all : mine;
   const full = mine.length >= limit;
+
+  useEffect(() => {
+    const q = monsterQ.trim();
+    if (!isGm || !onSpawnMonster || q.length < 2) {
+      setMonsters([]);
+      return;
+    }
+    let live = true;
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const qs = new URLSearchParams({ command: "monster", query: q });
+        if (channelId) qs.set("channelId", channelId);
+        const data = await apiFetch<{ payload?: { title?: string; subtitle?: string; facts?: Array<{ label: string; value: string }> } }>(`/api/integrations/dnd/lookup?${qs.toString()}`);
+        const p = data.payload;
+        const title = p?.title;
+        if (!live || !title) return;
+        const hpFact = p.facts?.find((f) => /hp|hit points/i.test(f.label))?.value ?? "";
+        const hp = Number(/(\d+)/.exec(hpFact)?.[1] || 15);
+        const sub = (p.subtitle ?? "").toLowerCase();
+        const size = sub.includes("gargantuan") || sub.includes("huge") ? 3 : sub.includes("large") ? 2 : 1;
+        const kind: PawnKind = /dragon|wyrm|drake|wyvern/i.test(title) ? "dragon" : size >= 2 ? "beast" : "fighter";
+        setMonsters([{ name: title, hp, size, kind }]);
+      } catch {
+        if (live) setMonsters([]);
+      } finally {
+        if (live) setSearching(false);
+      }
+    }, 280);
+    return () => { live = false; clearTimeout(timer); };
+  }, [monsterQ, isGm, onSpawnMonster, channelId]);
+
   return (
     <div className="living-room-panel" role="dialog" aria-label="Miniatures">
       <div className="living-room-panel-head"><strong><ChessPawn size={14} /> Miniatures</strong><button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button></div>
@@ -963,6 +1030,53 @@ export function PawnsPanel({ pawns, myUserId, isGm, held, onTake, onHold, onPutB
           </button>
         ))}
       </div>
+      {isGm && onSpawnMonster && (
+        <>
+          <small className="lr-heading">Quick monster spawner</small>
+          <div className="lr-chips">
+            {MONSTER_PALETTE.slice(0, 8).map((m) => (
+              <button
+                key={m.label}
+                type="button"
+                disabled={full || !myUserId}
+                onClick={() => onSpawnMonster({
+                  name: m.label,
+                  hp: m.hp ?? 15,
+                  size: m.size,
+                  kind: m.size >= 3 ? "dragon" : m.size >= 2 ? "beast" : "fighter",
+                  colour: m.color,
+                  portraitUrl: tokenImageUrl(m.label),
+                })}
+              >
+                + {m.label}
+              </button>
+            ))}
+          </div>
+          <div className="lr-row">
+            <input value={monsterQ} onChange={(e) => setMonsterQ(e.target.value)} placeholder="Search compendium monster (e.g. Owlbear)…" aria-label="Search compendium monster" />
+            {searching && <Loader2 size={14} className="spin" />}
+          </div>
+          {monsters.length > 0 && (
+            <div className="lr-chips">
+              {monsters.map((m) => (
+                <button
+                  key={m.name}
+                  type="button"
+                  className="primary"
+                  disabled={full || !myUserId}
+                  onClick={() => {
+                    onSpawnMonster({ ...m, colour: "#9c3b30", portraitUrl: tokenImageUrl(m.name) });
+                    setMonsterQ("");
+                    setMonsters([]);
+                  }}
+                >
+                  <Plus size={12} /> {m.name} ({m.hp} HP)
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
       {shown.length > 0 && (
         <>
           <small>{isGm ? `On the table (${all.length})` : `Yours on the table (${mine.length} of ${limit})`}</small>
@@ -979,6 +1093,158 @@ export function PawnsPanel({ pawns, myUserId, isGm, held, onTake, onHold, onPutB
       )}
       {(isGm ? all.length > 0 : mine.length > 1) && (
         <div className="lr-row"><button type="button" onClick={onClear}>{isGm ? "Clear the table" : "Put all mine back"}</button></div>
+      )}
+    </div>
+  );
+}
+
+interface BardSnapshot {
+  available: boolean;
+  connected?: boolean;
+  in_voice?: boolean;
+  room?: string | null;
+  can_seat?: boolean;
+  state?: {
+    scene?: string;
+    mood?: string;
+    playing?: boolean;
+    volume?: number;
+    scenes?: Array<{ id: string; name?: string; title?: string } | string>;
+    ambience?: Array<{ id: string; name?: string; active?: boolean } | string>;
+    sfx?: Array<{ id: string; name?: string } | string>;
+  } | null;
+}
+
+const BARD_MOODS = ["explore", "combat", "tavern", "tension", "victory"] as const;
+
+export function BardPanel({ channelId, mood, onMood, onOpenCompanion, onClose }: {
+  channelId: string | null;
+  mood: TableMood;
+  onMood: (mood: TableMood) => void;
+  onOpenCompanion?: (path?: string) => void;
+  onClose: () => void;
+}) {
+  const [snap, setSnap] = useState<BardSnapshot | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = async () => {
+    try {
+      const data = await apiFetch<BardSnapshot>("/api/integrations/dnd/bard");
+      setSnap(data);
+    } catch {
+      setSnap({ available: false });
+    }
+  };
+  useEffect(() => { void load(); }, []);
+  const act = async (body: Record<string, unknown>) => {
+    setBusy(true);
+    try {
+      await apiFetch("/api/integrations/dnd/bard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, channelId }),
+      });
+      await load();
+    } catch {
+      // Best effort.
+    } finally {
+      setBusy(false);
+    }
+  };
+  const st = snap?.state;
+  const vol = typeof st?.volume === "number" ? st.volume : 70;
+  return (
+    <div className="living-room-panel lr-bard" role="dialog" aria-label="Bard & atmosphere">
+      <div className="living-room-panel-head">
+        <strong><Music size={14} /> Bard &amp; Atmosphere</strong>
+        <button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button>
+      </div>
+      <small className="lr-heading">Table lighting mood</small>
+      <div className="lr-chips">
+        {TABLE_MOODS.map((m) => (
+          <button key={m} type="button" className={mood === m ? "active" : ""} onClick={() => onMood(m)}>
+            {m[0].toUpperCase() + m.slice(1)}
+          </button>
+        ))}
+      </div>
+      <small className="lr-heading">Bard companion{snap?.in_voice ? " · In Voice" : snap?.available ? " · Ready" : " · Offline"}</small>
+      {snap?.available ? (
+        <>
+          <div className="lr-row">
+            {snap.in_voice ? (
+              <button type="button" disabled={busy} onClick={() => void act({ action: "leave" })}><Radio size={13} /> Leave voice</button>
+            ) : (
+              <button type="button" className="primary" disabled={busy || !snap.can_seat || !channelId} onClick={() => void act({ action: "join" })}><Radio size={13} /> Join voice</button>
+            )}
+            <button type="button" disabled={busy} onClick={() => void act({ action: "command", cmd: "playback.toggle" })} title={st?.playing ? "Pause" : "Play"}>
+              {st?.playing ? <Pause size={13} /> : <Play size={13} />}
+            </button>
+            <button type="button" disabled={busy} onClick={() => void act({ action: "command", cmd: "playback.next" })} title="Skip track"><SkipForward size={13} /></button>
+            {onOpenCompanion && <button type="button" onClick={() => onOpenCompanion("/bard")}><ExternalLink size={12} /> Full Bard</button>}
+          </div>
+          <label className="lr-field">
+            <small><Volume2 size={11} /> Volume: {Math.round(vol)}%</small>
+            <input type="range" min={0} max={100} value={vol} onChange={(e) => void act({ action: "command", cmd: "volume.set", payload: { volume: Number(e.target.value) } })} />
+          </label>
+          <small className="lr-heading">Playlist mood</small>
+          <div className="lr-chips">
+            {BARD_MOODS.map((m) => (
+              <button key={m} type="button" className={st?.mood === m ? "active" : ""} disabled={busy} onClick={() => void act({ action: "command", cmd: "mood.set", payload: { mood: m } })}>
+                {m[0].toUpperCase() + m.slice(1)}
+              </button>
+            ))}
+          </div>
+          {Array.isArray(st?.scenes) && st.scenes.length > 0 && (
+            <>
+              <small className="lr-heading">Scenes</small>
+              <div className="lr-chips">
+                {st.scenes.slice(0, 8).map((sc) => {
+                  const id = typeof sc === "string" ? sc : sc.id;
+                  const label = typeof sc === "string" ? sc : sc.name || sc.title || sc.id;
+                  return (
+                    <button key={id} type="button" className={st?.scene === id ? "active" : ""} disabled={busy} onClick={() => void act({ action: "command", cmd: "scene.set", payload: { scene: id } })}>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+          {Array.isArray(st?.ambience) && st.ambience.length > 0 && (
+            <>
+              <small className="lr-heading">Ambience</small>
+              <div className="lr-chips">
+                {st.ambience.slice(0, 8).map((am) => {
+                  const id = typeof am === "string" ? am : am.id;
+                  const label = typeof am === "string" ? am : am.name || am.id;
+                  const active = typeof am !== "string" && Boolean(am.active);
+                  return (
+                    <button key={id} type="button" className={active ? "active" : ""} disabled={busy} onClick={() => void act({ action: "command", cmd: "ambience.toggle", payload: { id } })}>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+          {Array.isArray(st?.sfx) && st.sfx.length > 0 && (
+            <>
+              <small className="lr-heading">Sound effects</small>
+              <div className="lr-chips">
+                {st.sfx.slice(0, 8).map((fx) => {
+                  const id = typeof fx === "string" ? fx : fx.id;
+                  const label = typeof fx === "string" ? fx : fx.name || fx.id;
+                  return (
+                    <button key={id} type="button" disabled={busy} onClick={() => void act({ action: "command", cmd: "sfx.play", payload: { id } })}>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
+      ) : (
+        <p className="lr-note">Start the D&amp;D Companion Bard service to stream synced music and sound effects into this voice room.</p>
       )}
     </div>
   );

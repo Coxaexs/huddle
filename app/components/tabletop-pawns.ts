@@ -8,6 +8,7 @@
  * carries its hit points as the viewer may see them.
  */
 import * as THREE from "three";
+import { CONDITIONS } from "@/lib/battlemap";
 import type { TablePawn } from "@/lib/lounge-shared";
 import { terrainOf, type Terrain } from "../lib/map-terrain";
 import { TABLE_CENTRE } from "../lib/living-room";
@@ -27,7 +28,13 @@ export interface PawnShow {
   maxHp?: number;
   /** Show the numbers (theirs, the party's, or the game master looking at a monster). */
   numbers: boolean;
+  conditions?: string[];
+  elevation?: number;
+  isTurn?: boolean;
+  hiddenByFog?: boolean;
 }
+
+const CONDITION_BY_ID = new Map(CONDITIONS.map((c) => [c.id, c]));
 
 interface Piece {
   key: string;
@@ -36,11 +43,17 @@ interface Piece {
   /** Scaled to the grid: the figure, its glow and its ring. */
   body: THREE.Group;
   figure: THREE.Group;
+  dropLine: THREE.Line;
   glow: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>;
   ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   label: THREE.Sprite;
   tagKey: string;
   kind: TablePawn["kind"];
+  size: number | undefined;
+  elevation: number;
+  invisible: boolean;
+  prone: boolean;
+  opacity: number;
   base: number;
   from: THREE.Vector2;
   to: THREE.Vector2;
@@ -83,19 +96,38 @@ function nameTag(show: PawnShow): THREE.Sprite {
   const down = hasHp && hp === 0;
   const bloodied = hasHp && !down && hp <= max / 2;
   const status = show.numbers ? `${hp}/${max}` : down ? "Down" : bloodied ? "Bloodied" : "";
+  const badges: Array<{ text: string; color: string }> = [];
+  if (show.elevation && show.elevation > 0) {
+    badges.push({ text: `↑${show.elevation}ft`, color: "#38bdf8" });
+  }
+  for (const cond of (show.conditions ?? []).slice(0, 4)) {
+    const info = CONDITION_BY_ID.get(cond.toLowerCase());
+    badges.push({
+      text: info?.badge ?? cond.slice(0, 3).toUpperCase(),
+      color: info?.color ?? "#f59e0b",
+    });
+  }
+  const title = show.isTurn ? `▶ ${show.name}` : show.name;
   ctx.font = font;
-  const width = Math.min(400, Math.max(Math.ceil(ctx.measureText(show.name).width) + 28, hasHp ? 150 : 0));
-  const bar = hasHp && (show.numbers || status);
+  const badgeRowW = badges.length ? badges.reduce((s, b) => s + Math.max(46, b.text.length * 13 + 16) + 6, 16) : 0;
+  const width = Math.min(440, Math.max(Math.ceil(ctx.measureText(title).width) + 28, hasHp ? 160 : 0, badgeRowW));
+  const bar = Boolean(hasHp && (show.numbers || status));
+  const hasBadges = badges.length > 0;
   canvas.width = width;
-  canvas.height = bar ? 84 : 48;
-  ctx.fillStyle = "rgba(20,14,28,0.8)";
-  ctx.beginPath(); ctx.roundRect(0, 0, width, canvas.height, 22); ctx.fill();
+  canvas.height = (bar ? 84 : 48) + (hasBadges ? 32 : 0);
+  ctx.fillStyle = "rgba(20,14,28,0.84)";
+  ctx.beginPath(); ctx.roundRect(0, 0, width, canvas.height, 20); ctx.fill();
+  if (show.isTurn) {
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "#ffd23c";
+    ctx.beginPath(); ctx.roundRect(2, 2, width - 4, canvas.height - 4, 18); ctx.stroke();
+  }
   ctx.font = font;
-  ctx.fillStyle = "#fff4e3";
+  ctx.fillStyle = show.isTurn ? "#ffd23c" : "#fff4e3";
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(show.name, width / 2, 26, width - 18);
+  ctx.fillText(title, width / 2, 26, width - 20);
   if (bar) {
-    const x = 14, y = 52, w = width - 28, h = 22;
+    const x = 14, y = 50, w = width - 28, h = 22;
     ctx.fillStyle = "rgba(255,255,255,0.12)";
     ctx.beginPath(); ctx.roundRect(x, y, w, h, 11); ctx.fill();
     if (show.numbers) {
@@ -110,6 +142,23 @@ function nameTag(show: PawnShow): THREE.Sprite {
     ctx.fillStyle = "#fff";
     ctx.fillText(status, width / 2, y + h / 2 + 1);
   }
+  if (hasBadges) {
+    const by = bar ? 82 : 48;
+    const widths = badges.map((b) => Math.max(46, b.text.length * 12 + 16));
+    const totalW = widths.reduce((a, b) => a + b, 0) + (badges.length - 1) * 6;
+    let bx = (width - totalW) / 2;
+    ctx.font = "800 15px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    badges.forEach((b, i) => {
+      const bw = widths[i];
+      ctx.fillStyle = b.color;
+      ctx.beginPath(); ctx.roundRect(bx, by, bw, 22, 11); ctx.fill();
+      ctx.fillStyle = "#0b0812";
+      ctx.fillText(b.text, bx + bw / 2, by + 11.5);
+      bx += bw + 6;
+    });
+  }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
@@ -118,7 +167,8 @@ function nameTag(show: PawnShow): THREE.Sprite {
   return sprite;
 }
 
-const showKey = (show: PawnShow) => `${show.name}|${show.hp}|${show.maxHp}|${show.numbers}`;
+const showKey = (show: PawnShow) =>
+  `${show.name}|${show.hp}|${show.maxHp}|${show.numbers}|${(show.conditions ?? []).join(",")}|${show.elevation ?? 0}|${Boolean(show.isTurn)}|${Boolean(show.hiddenByFog)}`;
 
 const disposeTree = (object: THREE.Object3D, keep: Set<unknown>) => {
   object.traverse((part) => {
@@ -175,7 +225,8 @@ export class TablePawns {
   }
 
   private factor(piece: Piece) {
-    return (PAWN_SQUARES[piece.kind] * this.cell) / (2 * baseOf(piece.kind));
+    const squares = Math.max(1, Math.min(4, piece.size ?? PAWN_SQUARES[piece.kind]));
+    return (squares * this.cell) / (2 * baseOf(piece.kind));
   }
 
   private fit(piece: Piece) {
@@ -187,8 +238,15 @@ export class TablePawns {
    * `turnOwner` the user whose turn it is (their pawns wear a gold ring),
    * `shows` what each tag says, and `hits` the pawns inside a spell's area.
    */
-  set(pawns: Record<string, TablePawn>, held: string | null, turnOwner: string | null, shows: Map<string, PawnShow> = NO_SHOW, hits: Set<string> = NO_HITS) {
-    const heldKey = `${held}|${turnOwner}`;
+  set(
+    pawns: Record<string, TablePawn>,
+    held: string | null,
+    turnOwner: string | null,
+    shows: Map<string, PawnShow> = NO_SHOW,
+    hits: Set<string> = NO_HITS,
+    turnPawnIds: Set<string> = NO_HITS,
+  ) {
+    const heldKey = `${held}|${turnOwner}|${[...turnPawnIds].sort().join(",")}`;
     if (pawns === this.source && heldKey === this.heldKey && shows === this.shows && hits === this.hits) return;
     if (pawns !== this.source) this.sync(pawns);
     this.source = pawns;
@@ -196,11 +254,27 @@ export class TablePawns {
     this.shows = shows;
     this.hits = hits;
     for (const [id, piece] of this.pieces) {
-      const turn = Boolean(turnOwner && piece.owner === turnOwner);
+      const pawn = pawns[id];
+      const show = shows.get(id);
+      const turn = Boolean(turnPawnIds.has(id) || show?.isTurn || (turnOwner && piece.owner === turnOwner));
       const hit = hits.has(id);
+      piece.group.visible = !show?.hiddenByFog;
       piece.ring.visible = id === held || turn || hit;
       piece.ring.material.color.set(id === held ? "#ffffff" : turn ? "#ffd23c" : "#ff4d4d");
-      const show = shows.get(id);
+      const conds = pawn?.conditions ?? show?.conditions ?? [];
+      piece.invisible = conds.includes("invisible");
+      piece.prone = conds.includes("prone");
+      const targetOpacity = piece.invisible ? 0.42 : 1;
+      if (Math.abs(targetOpacity - piece.opacity) > 0.01) {
+        piece.opacity = targetOpacity;
+        piece.figure.traverse((part) => {
+          for (const mat of [(part as THREE.Mesh).material ?? []].flat() as THREE.Material[]) {
+            mat.transparent = targetOpacity < 1 || mat.opacity < 1;
+            mat.opacity = targetOpacity;
+            mat.needsUpdate = true;
+          }
+        });
+      }
       if (show && showKey(show) !== piece.tagKey) this.retag(piece, show);
     }
   }
@@ -247,6 +321,11 @@ export class TablePawns {
         this.pieces.set(pawn.id, piece);
         continue;
       }
+      if (piece.size !== pawn.size) {
+        piece.size = pawn.size;
+        this.fit(piece);
+      }
+      piece.elevation = pawn.elevation ?? 0;
       if (Math.abs(piece.to.x - x) < 1e-4 && Math.abs(piece.to.y - z) < 1e-4) continue;
       // A hop from wherever it is now, longer and higher the further it goes.
       piece.from.set(piece.group.position.x, piece.group.position.z);
@@ -290,12 +369,20 @@ export class TablePawns {
     ring.visible = false;
     ring.raycast = () => undefined;
     body.add(ring);
+    const dropLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0)]),
+      new THREE.LineBasicMaterial({ color: "#7dd3fc", transparent: true, opacity: 0.6, toneMapped: false }),
+    );
+    dropLine.visible = false;
+    dropLine.raycast = () => undefined;
+    group.add(dropLine);
     const show = this.shows.get(pawn.id) ?? { name: pawn.label || pawn.ownerName, numbers: false };
     const label = nameTag(show);
     group.add(label);
     this.root.add(group);
     const piece: Piece = {
-      key, owner: pawn.owner, group, body, figure: holder, glow, ring, label, tagKey: showKey(show), kind: pawn.kind, base,
+      key, owner: pawn.owner, group, body, figure: holder, dropLine, glow, ring, label, tagKey: showKey(show), kind: pawn.kind,
+      size: pawn.size, elevation: pawn.elevation ?? 0, invisible: false, prone: false, opacity: 1, base,
       from: new THREE.Vector2(), to: new THREE.Vector2(), start: 0, duration: 0.4, height: 0.08,
       dropping: true, landed: false, facing: pawn.facing, terrain: "ground", nextFx: 0, phase: Math.random() * 10,
     };
@@ -419,6 +506,7 @@ export class TablePawns {
       const x = piece.from.x + (piece.to.x - piece.from.x) * ease;
       const z = piece.from.y + (piece.to.y - piece.from.y) * ease;
       const lift = piece.dropping ? 0.4 * (1 - p) ** 2 : 4 * piece.height * p * (1 - p);
+      const elevM = piece.elevation > 0 ? Math.min(0.45, piece.elevation * 0.009) : 0;
       // The base, its light and its ring stay on the map; the figure hops.
       piece.group.position.set(x, this.surfaceY, z);
       const factor = this.factor(piece);
@@ -438,8 +526,15 @@ export class TablePawns {
         bob = -0.012 + Math.sin(t * 2.4 + piece.phase) * 0.004;
         if (t > piece.nextFx) { piece.nextFx = t + 2.2 + Math.random(); this.ripple(x, z, new THREE.Color("#dff4ff"), piece.base * factor * 1.1, piece.base * factor * 3.2, 1.4); }
       }
-      piece.figure.position.y = (lift + bob) / factor;
-      piece.label.position.y = HEIGHT[piece.kind] * factor * 1.25 + 0.05 + lift;
+      piece.figure.position.y = (lift + bob + elevM) / factor;
+      piece.figure.rotation.z += ((piece.prone ? 0.48 : 0) - piece.figure.rotation.z) * Math.min(1, dt * 10);
+      if (elevM > 0.005) {
+        piece.dropLine.visible = true;
+        piece.dropLine.scale.y = Math.max(0.01, elevM + lift);
+      } else {
+        piece.dropLine.visible = false;
+      }
+      piece.label.position.y = HEIGHT[piece.kind] * factor * 1.25 + 0.05 + lift + elevM;
       if (piece.landed && piece.terrain === "fire") {
         piece.glow.material.opacity = 0.45 + Math.sin(t * 17 + piece.phase) * 0.08 + Math.sin(t * 7) * 0.06;
         if (t > piece.nextFx) { piece.nextFx = t + 0.35 + Math.random() * 0.3; this.spray(x, z, new THREE.Color("#ff9a3c"), 3, 0.25, 0.3, 1.1, 0.08); }

@@ -24,6 +24,8 @@ import {
   ChevronRight,
   Check,
   Music,
+  Box,
+  ExternalLink,
 } from "lucide-react";
 import {
   type Battlemap,
@@ -35,9 +37,15 @@ import {
   HEX_ROW_HEIGHT,
   snapPoint,
 } from "@/lib/battlemap";
+import { addInitiative, currentEntry, stepTurn, type Initiative, type TableCharacter } from "@/lib/lounge-shared";
 import { apiFetch } from "../lib/client";
 import { useDismiss } from "../hooks/use-dismiss";
 import { freeSpot } from "@/lib/battlemap-spot";
+import {
+  MONSTER_PALETTE,
+  tokenImageUrl,
+  type BattlemapPaletteEntry,
+} from "@/lib/battlemap-tokens";
 
 interface BattlemapBoardProps {
   channelId: string;
@@ -51,36 +59,19 @@ interface BattlemapBoardProps {
   onLocalStroke: (stroke: MapStroke) => void;
   /** Drops a token for yourself onto the board. */
   onAddMyToken: () => void;
+  sharedInitiative?: Initiative | null;
+  onSetInitiative?: (init: Initiative | null) => void;
+  onRollCommand?: (command: string) => void;
+  onOpenTabletop?: () => void;
+  onOpenCompanion?: () => void;
+  myCharacter?: TableCharacter | null;
 }
+
+const pawnIdForToken = (tokenId: string) => `bm-${tokenId.replace(/-/g, "").slice(0, 16)}`;
 
 const PAINT_COLORS = ["#ef6b58", "#f3bd5d", "#49c99a", "#68a8ff", "#e57bd8", "#ffffff"];
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 8;
-
-/** Preset monsters/fixtures the GM can drop with one click. */
-const MONSTER_PALETTE: Array<{
-  label: string;
-  color: string;
-  size: number;
-  emoji?: string;
-}> = [
-  { label: "Goblin", color: "#49a35d", size: 1 },
-  { label: "Orc", color: "#2f7d45", size: 1 },
-  { label: "Hobgoblin", color: "#6b8f4e", size: 1 },
-  { label: "Kobold", color: "#b8a6ff", size: 0.8 },
-  { label: "Skeleton", color: "#cfd6dd", size: 1 },
-  { label: "Zombie", color: "#7a9a5a", size: 1 },
-  { label: "Bandit", color: "#c05c3f", size: 1 },
-  { label: "Wolf", color: "#8a8f98", size: 0.9 },
-  { label: "Giant Spider", color: "#3a3a44", size: 1.5 },
-  { label: "Ogre", color: "#7a4a2a", size: 2 },
-  { label: "Troll", color: "#5a7a4a", size: 2 },
-  { label: "Dragon", color: "#a43a3a", size: 4 },
-  { label: "Chest", color: "#b8860b", size: 1 },
-  { label: "Door", color: "#8a6a3a", size: 1 },
-  { label: "Barrel", color: "#9a6a2a", size: 0.9 },
-  { label: "Torch", color: "#e8a541", size: 0.7 },
-];
 
 /**
  * The shared table: a grid (over an optional map image) with draggable tokens
@@ -97,6 +88,12 @@ export function BattlemapBoard({
   onLocalToken,
   onLocalStroke,
   onAddMyToken,
+  sharedInitiative,
+  onSetInitiative,
+  onRollCommand,
+  onOpenTabletop,
+  onOpenCompanion,
+  myCharacter,
 }: BattlemapBoardProps) {
   const [mode, setMode] = useState<"move" | "paint" | "fog">("move");
   const [color, setColor] = useState(PAINT_COLORS[0]);
@@ -116,10 +113,13 @@ export function BattlemapBoard({
   /** Monster palette dropdown open state (GM only). */
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteLeft, setPaletteLeft] = useState(false);
+  const [paletteQuery, setPaletteQuery] = useState("");
+  const [brokenImgs, setBrokenImgs] = useState<Set<string>>(() => new Set());
   const paletteWrapRef = useRef<HTMLDivElement | null>(null);
   useDismiss(paletteOpen, () => setPaletteOpen(false), paletteWrapRef);
   /** Fog rectangle being drawn (GM): start point in grid units. */
   const fogStartRef = useRef<{ x: number; y: number } | null>(null);
+  const fogDraftRef = useRef<MapFog | null>(null);
   const [fogDraft, setFogDraft] = useState<MapFog | null>(null);
   /** Expand battlemap to full stage height. */
   const [expanded, setExpanded] = useState(false);
@@ -127,12 +127,24 @@ export function BattlemapBoard({
   const [snapMode, setSnapMode] = useState<GridType>("square");
   /** Encounter / initiative tracker panel visibility. */
   const [initiativeOpen, setInitiativeOpen] = useState(false);
-  /** Active combatant turn ID in encounter. */
-  const [currentTurnId, setCurrentTurnId] = useState<string | null>(null);
-  /** Current encounter round number. */
-  const [round, setRound] = useState(1);
+  /** Active combatant turn ID in encounter (local fallback when not wired to sharedInitiative). */
+  const [localTurnId, setLocalTurnId] = useState<string | null>(null);
+  /** Current encounter round number (local fallback). */
+  const [localRound, setLocalRound] = useState(1);
   /** Token currently picking conditions. */
   const [conditionPickerTokenId, setConditionPickerTokenId] = useState<string | null>(null);
+
+  const sharedTurnEntry = sharedInitiative ? currentEntry(sharedInitiative) : null;
+  const round = sharedInitiative?.round ?? localRound;
+  const currentTurnId = sharedTurnEntry
+    ? map.tokens.find(
+        (t) =>
+          sharedTurnEntry.pawnId === pawnIdForToken(t.id) ||
+          sharedTurnEntry.id === `bm-${t.id.slice(0, 12)}` ||
+          sharedTurnEntry.id === t.id ||
+          sharedTurnEntry.name.toLowerCase() === t.label.toLowerCase(),
+      )?.id ?? null
+    : localTurnId;
 
   function toggleCondition(token: MapToken, conditionId: string) {
     const current = token.conditions || [];
@@ -169,19 +181,58 @@ export function BattlemapBoard({
       tokenId: token.id,
       token: { initiative: val },
     });
+    if (onSetInitiative) {
+      if (val === null) {
+        if (sharedInitiative) {
+          const id = `bm-${token.id.slice(0, 12)}`;
+          const next = sharedInitiative.entries.filter((e) => e.id !== id && e.pawnId !== pawnIdForToken(token.id));
+          onSetInitiative(next.length ? { ...sharedInitiative, entries: next, turn: Math.min(sharedInitiative.turn, next.length - 1) } : null);
+        }
+      } else {
+        onSetInitiative(
+          addInitiative(sharedInitiative ?? null, {
+            id: `bm-${token.id.slice(0, 12)}`,
+            name: token.label,
+            value: val,
+            pawnId: pawnIdForToken(token.id),
+          }),
+        );
+      }
+    }
   }
 
   function rollTokenInitiative(token: MapToken) {
-    const roll = Math.floor(Math.random() * 20) + 1;
+    const mod =
+      token.ownerId === userId && myCharacter
+        ? (myCharacter.initiativeBonus ?? Math.floor(((myCharacter.abilities?.[1] ?? 10) - 10) / 2))
+        : 0;
+    const roll = Math.floor(Math.random() * 20) + 1 + mod;
     setTokenInitiative(token, roll);
   }
 
   function rollAllInitiatives() {
+    let nextShared = sharedInitiative ?? null;
     for (const t of map.tokens) {
       if (t.initiative === null || t.initiative === undefined) {
-        rollTokenInitiative(t);
+        const mod =
+          t.ownerId === userId && myCharacter
+            ? (myCharacter.initiativeBonus ?? Math.floor(((myCharacter.abilities?.[1] ?? 10) - 10) / 2))
+            : 0;
+        const val = Math.floor(Math.random() * 20) + 1 + mod;
+        const updated = { ...t, initiative: val };
+        onLocalToken(updated);
+        void act({ action: "update-token", tokenId: t.id, token: { initiative: val } });
+        if (onSetInitiative) {
+          nextShared = addInitiative(nextShared, {
+            id: `bm-${t.id.slice(0, 12)}`,
+            name: t.label,
+            value: val,
+            pawnId: pawnIdForToken(t.id),
+          });
+        }
       }
     }
+    if (onSetInitiative && nextShared) onSetInitiative(nextShared);
   }
 
   /**
@@ -195,29 +246,48 @@ export function BattlemapBoard({
   }
 
   function resetEncounter() {
-    setCurrentTurnId(null);
-    setRound(1);
+    setLocalTurnId(null);
+    setLocalRound(1);
+    onSetInitiative?.(null);
     void act({ action: "reset-initiative" });
     setEncounter("exploration");
   }
 
   function nextTurn() {
+    if (onSetInitiative && sharedInitiative && sharedInitiative.entries.length > 0) {
+      setEncounter("combat");
+      onSetInitiative(stepTurn(sharedInitiative, 1));
+      return;
+    }
     const sorted = [...map.tokens]
       .filter((t) => typeof t.initiative === "number")
       .sort((a, b) => (b.initiative ?? 0) - (a.initiative ?? 0));
     if (sorted.length === 0) return;
     // The first turn starts the fight; later turns leave the music alone.
     setEncounter("combat");
-    if (!currentTurnId) {
-      setCurrentTurnId(sorted[0].id);
+    if (onSetInitiative) {
+      let init: Initiative | null = null;
+      for (const t of sorted) {
+        init = addInitiative(init, {
+          id: `bm-${t.id.slice(0, 12)}`,
+          name: t.label,
+          value: t.initiative ?? 0,
+          pawnId: pawnIdForToken(t.id),
+        });
+      }
+      onSetInitiative(init);
       return;
     }
-    const idx = sorted.findIndex((t) => t.id === currentTurnId);
+    if (!localTurnId) {
+      setLocalTurnId(sorted[0].id);
+      return;
+    }
+    const idx = sorted.findIndex((t) => t.id === localTurnId);
     if (idx === -1 || idx >= sorted.length - 1) {
-      setCurrentTurnId(sorted[0].id);
-      setRound((r) => r + 1);
+      setLocalTurnId(sorted[0].id);
+      setLocalRound((r) => r + 1);
     } else {
-      setCurrentTurnId(sorted[idx + 1].id);
+      setLocalTurnId(sorted[idx + 1].id);
     }
   }
 
@@ -472,7 +542,7 @@ export function BattlemapBoard({
       setPending((current) => {
         if (current.length >= 4) {
           const stroke: MapStroke = {
-            id: crypto.randomUUID(),
+            id: `st-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`,
             color,
             width,
             points: current,
@@ -508,12 +578,15 @@ export function BattlemapBoard({
     const y = Math.min(start.y, now.y);
     const w = Math.max(0.5, Math.abs(now.x - start.x));
     const h = Math.max(0.5, Math.abs(now.y - start.y));
-    setFogDraft({ id: "draft", x, y, w, h });
+    const next: MapFog = { id: "draft", x, y, w, h };
+    fogDraftRef.current = next;
+    setFogDraft(next);
   };
   const up = () => {
     window.removeEventListener("pointermove", move);
-    const draft = fogDraft;
+    const draft = fogDraftRef.current;
     fogStartRef.current = null;
+    fogDraftRef.current = null;
     setFogDraft(null);
     if (draft && draft.id === "draft") {
       const { id: _id, ...fog } = draft;
@@ -554,19 +627,33 @@ function onBoardPointerDown(event: React.PointerEvent) {
     }).catch(() => undefined);
   }
 
-  /** GM: drop a monster from the palette near the board center, on a free square. */
-  function addMonster(monster: (typeof MONSTER_PALETTE)[number]) {
+  /** GM: drop a monster or fixture from the palette near the board center, on a free square. */
+  function addMonster(monster: BattlemapPaletteEntry) {
     setPaletteOpen(false);
+    setPaletteQuery("");
     const spot = freeSpot(map.tokens, Math.round(map.grid / 2), Math.round(rows / 2), monster.size, map.grid, rows);
     void act({
       action: "add-token",
       token: {
         label: monster.label,
         color: monster.color,
+        avatarUrl: monster.avatarUrl,
         size: monster.size,
+        ...(typeof monster.hp === "number" ? { hp: monster.hp, maxHp: monster.hp } : {}),
         x: spot.x,
         y: spot.y,
       },
+    });
+  }
+
+  function addCustomMobByName(rawName: string) {
+    const clean = rawName.trim().slice(0, 40);
+    if (!clean) return;
+    addMonster({
+      label: clean,
+      color: "#a855f7",
+      size: 1,
+      avatarUrl: tokenImageUrl(clean),
     });
   }
 
@@ -679,6 +766,21 @@ function onBoardPointerDown(event: React.PointerEvent) {
           >
             <Swords size={14} />
           </button>
+          {onOpenTabletop && (
+            <button type="button" title="Open 3D Living Room Tabletop" onClick={onOpenTabletop}>
+              <Box size={14} />
+            </button>
+          )}
+          {onOpenCompanion && (
+            <button type="button" title="Open Tavern VTT (SSO)" onClick={onOpenCompanion}>
+              <ExternalLink size={14} />
+            </button>
+          )}
+          {onRollCommand && (
+            <button type="button" title="Roll 1d20 in chat" onClick={() => onRollCommand("/roll 1d20")}>
+              <Dice5 size={14} />
+            </button>
+          )}
           {mode === "paint" && (
             <>
               {PAINT_COLORS.map((option) => (
@@ -722,29 +824,135 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 >
                   <Plus size={14} />
                 </button>
-                {paletteOpen && (
-                  <div className={`battlemap-palette ${paletteLeft ? "battlemap-palette-left" : ""}`}>
-                    <div className="battlemap-palette-title">Add to table</div>
-                    <div className="battlemap-palette-grid">
-                      {MONSTER_PALETTE.map((monster) => (
+                {paletteOpen && (() => {
+                  const q = paletteQuery.trim().toLowerCase();
+                  const filtered = q
+                    ? MONSTER_PALETTE.filter((m) => m.label.toLowerCase().includes(q))
+                    : MONSTER_PALETTE;
+                  return (
+                    <div
+                      className={`battlemap-palette ${paletteLeft ? "battlemap-palette-left" : ""}`}
+                      style={{ width: 320, maxHeight: 360 }}
+                    >
+                      <div className="battlemap-palette-title">Add to table</div>
+                      <input
+                        type="text"
+                        value={paletteQuery}
+                        onChange={(e) => setPaletteQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && paletteQuery.trim()) {
+                            e.preventDefault();
+                            if (filtered.length === 1) addMonster(filtered[0]);
+                            else addCustomMobByName(paletteQuery);
+                          }
+                        }}
+                        placeholder="Filter or type any 5e mob + Enter…"
+                        style={{
+                          width: "100%",
+                          marginBottom: 8,
+                          padding: "5px 8px",
+                          fontSize: 12,
+                          borderRadius: 6,
+                          border: "1px solid var(--line)",
+                          background: "var(--bg)",
+                          color: "var(--ink)",
+                        }}
+                      />
+                      {q && !filtered.some((m) => m.label.toLowerCase() === q) && (
                         <button
-                          key={monster.label}
                           type="button"
                           className="battlemap-palette-item"
-                          onClick={() => addMonster(monster)}
+                          style={{
+                            width: "100%",
+                            height: "auto",
+                            minHeight: 34,
+                            justifyContent: "flex-start",
+                            padding: "5px 8px",
+                            gap: 8,
+                            fontSize: 12,
+                            marginBottom: 6,
+                          }}
+                          onClick={() => addCustomMobByName(paletteQuery)}
                         >
                           <span
                             className="battlemap-palette-token"
-                            style={{ background: monster.color }}
+                            style={{ width: 26, height: 26, background: "#a855f7" }}
                           >
-                            {monster.label.slice(0, 2).toUpperCase()}
+                            {paletteQuery.trim().slice(0, 2).toUpperCase()}
                           </span>
-                          <span>{monster.label}</span>
+                          <span
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              textAlign: "left",
+                              color: "var(--ink)",
+                            }}
+                          >
+                            Spawn &ldquo;{paletteQuery.trim()}&rdquo;
+                          </span>
                         </button>
-                      ))}
+                      )}
+                      <div className="battlemap-palette-grid">
+                        {filtered.map((monster) => (
+                          <button
+                            key={monster.label}
+                            type="button"
+                            className="battlemap-palette-item"
+                            style={{
+                              width: "100%",
+                              height: "auto",
+                              minHeight: 34,
+                              justifyContent: "flex-start",
+                              padding: "5px 8px",
+                              gap: 8,
+                              fontSize: 12,
+                            }}
+                            onClick={() => addMonster(monster)}
+                          >
+                            <span
+                              className="battlemap-palette-token"
+                              style={{ width: 26, height: 26, background: monster.color, overflow: "hidden" }}
+                            >
+                              {!brokenImgs.has(monster.avatarUrl) ? (
+                                <img
+                                  src={monster.avatarUrl}
+                                  alt=""
+                                  width={26}
+                                  height={26}
+                                  loading="lazy"
+                                  decoding="async"
+                                  {...({ fetchpriority: "low" } as Record<string, string>)}
+                                  style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
+                                  onError={() =>
+                                    setBrokenImgs((prev) => new Set(prev).add(monster.avatarUrl))
+                                  }
+                                />
+                              ) : (
+                                monster.label.slice(0, 2).toUpperCase()
+                              )}
+                            </span>
+                            <span
+                              style={{
+                                flex: 1,
+                                minWidth: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                textAlign: "left",
+                                color: "var(--ink)",
+                              }}
+                            >
+                              {monster.label}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
               <button
                 type="button"
@@ -936,8 +1144,14 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 </div>
               )}
 
-              {token.avatarUrl ? (
-                <img src={token.avatarUrl} alt={token.label} />
+              {token.avatarUrl && !brokenImgs.has(token.avatarUrl) ? (
+                <img
+                  src={token.avatarUrl}
+                  alt={token.label}
+                  onError={() =>
+                    setBrokenImgs((prev) => new Set(prev).add(token.avatarUrl!))
+                  }
+                />
               ) : (
                 <span style={{ background: token.color }}>
                   {token.label.slice(0, 2).toUpperCase()}

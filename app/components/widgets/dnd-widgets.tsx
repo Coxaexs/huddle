@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { BookOpen, ChevronRight, Dices, Footprints, Heart, History, Medal, Search, Send, Shield, ShieldHalf, Skull, Sparkles, Swords, Users, WandSparkles, Zap } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, Dices, ExternalLink, EyeOff, Footprints, Heart, History, Medal, Minus, Plus, Search, Send, Shield, ShieldHalf, Skull, Sparkles, Swords, Trash2, Users, WandSparkles, Zap } from "lucide-react";
 import { apiFetch } from "@/app/lib/client";
 import { useI18n } from "@/app/lib/i18n-context";
 import { stepTurn, type TableCharacter } from "@/lib/lounge-shared";
@@ -40,15 +40,17 @@ export function DiceWidget({ size }: Props) {
   const rolls = useRolls(5);
   const [count, setCount] = useState(1);
   const [mode, setMode] = useState<"" | "adv" | "dis">("");
+  const [secret, setSecret] = useState(false);
   const [custom, setCustom] = useState("");
   const mine = rolls.find((roll) => roll.roller.id === host.userId);
-  const roll = (sides: number) => void host.runCommand(`/roll ${count}d${sides}${sides === 20 && mode ? ` ${mode}` : ""}`);
+  const cmd = secret ? "/gmroll" : "/roll";
+  const roll = (sides: number) => void host.runCommand(`${cmd} ${count}d${sides}${sides === 20 && mode ? ` ${mode}` : ""}`);
   const rollCustom = (event: FormEvent) => {
     event.preventDefault();
     const text = custom.trim();
     if (!text) return;
     setCustom("");
-    void host.runCommand(`/roll ${text}`);
+    void host.runCommand(`${cmd} ${text}`);
   };
   const tile = <Tile><Dices size={size === "small" ? 13 : 18} /></Tile>;
   const last = mine ? t("widget.dndDice.last", { total: mine.summary || mine.total, expression: mine.expression }) : t("widget.dndDice.desc");
@@ -81,6 +83,15 @@ export function DiceWidget({ size }: Props) {
           <button type="button" aria-label={t("widget.dndDice.more")} disabled={count >= 20} onClick={() => setCount((n) => Math.min(20, n + 1))}>+</button>
         </span>
         <span className="mw-spacer" />
+        <button
+          type="button"
+          className={`mw-btn ${secret ? "mw-btn-main" : ""}`}
+          aria-pressed={secret}
+          onClick={() => setSecret((s) => !s)}
+          title="Secret GM roll (/gmroll)"
+        >
+          <EyeOff size={12} />
+        </button>
         <span className="xw-seg" role="group" aria-label="d20">
           <button type="button" className={mode === "adv" ? "on" : ""} aria-pressed={mode === "adv"} onClick={() => setMode((m) => (m === "adv" ? "" : "adv"))}>{t("widget.dndDice.adv")}</button>
           <button type="button" className={mode === "dis" ? "on" : ""} aria-pressed={mode === "dis"} onClick={() => setMode((m) => (m === "dis" ? "" : "dis"))}>{t("widget.dndDice.dis")}</button>
@@ -130,11 +141,31 @@ export function InitiativeWidget({ size }: Props) {
   const entries = initiative?.entries ?? [];
   const current = initiative ? entries[initiative.turn] : null;
   const tile = <Tile><Swords size={size === "small" ? 13 : 18} /></Tile>;
-  const next = initiative && entries.length > 0 ? (
-    <button type="button" className="mw-btn mw-btn-main" title={t("widget.dndInitiative.next")} aria-label={t("widget.dndInitiative.next")} onClick={() => host.table.setInitiative(stepTurn(initiative))}>
-      <ChevronRight size={15} />
-    </button>
-  ) : null;
+  const next = (
+    <span className="mw-controls">
+      {initiative && entries.length > 0 ? (
+        <>
+          {size !== "small" && (
+            <button type="button" className="mw-btn" title="Previous turn" aria-label="Previous turn" onClick={() => host.table.setInitiative(stepTurn(initiative, -1))}>
+              <ChevronLeft size={14} />
+            </button>
+          )}
+          <button type="button" className="mw-btn mw-btn-main" title={t("widget.dndInitiative.next")} aria-label={t("widget.dndInitiative.next")} onClick={() => host.table.setInitiative(stepTurn(initiative))}>
+            <ChevronRight size={15} />
+          </button>
+          {size !== "small" && (
+            <button type="button" className="mw-btn" title="End combat" aria-label="End combat" onClick={() => host.table.setInitiative(null)}>
+              <Trash2 size={13} />
+            </button>
+          )}
+        </>
+      ) : host.voiceChannelId ? (
+        <button type="button" className="mw-btn mw-btn-main" title="Roll initiative" onClick={() => void host.runCommand("/roll init")}>
+          <Dices size={14} />
+        </button>
+      ) : null}
+    </span>
+  );
   const idle = host.voiceChannelId ? t("widget.dndInitiative.empty") : t("widget.dnd.noTable");
   if (size === "small") {
     return <Shell size={size} tile={tile} title={current ? t("widget.dndInitiative.turn", { name: current.name }) : t("widget.dndInitiative")} subtitle={current ? undefined : idle} right={next} />;
@@ -221,26 +252,64 @@ export function MyCharacterWidget({ size }: Props) {
   const host = useWidgetHost();
   const me = host.table.characters[host.userId];
   const tile = <Tile image={me?.portraitUrl}>{me ? initial(me.name) : <Shield size={size === "small" ? 13 : 18} />}</Tile>;
+  const adjustHp = (delta: number) => {
+    if (!me || !host.table.setCharacter) return;
+    const max = me.maxHp ?? 9999;
+    const nextHp = Math.max(0, Math.min(max, (me.hp ?? max) + delta));
+    host.table.setCharacter({ ...me, hp: nextHp });
+  };
   if (!me) {
     return <Shell size={size} tile={tile} title={t("widget.dndMe")} subtitle={host.voiceChannelId ? t("widget.dndMe.empty") : t("widget.dnd.noTable")} />;
   }
   if (size === "small") return <Shell size={size} tile={tile} title={me.name} right={<HpBar character={me} />} />;
   return (
-    <Shell size={size} bigTile tile={tile} title={me.name} subtitle={classLine(me, t)}>
-      <HpBar character={me} />
+    <Shell
+      size={size}
+      bigTile
+      tile={tile}
+      title={me.name}
+      subtitle={classLine(me, t)}
+      right={
+        host.table.openCompanion ? (
+          <button type="button" className="mw-btn" title="Open full sheet in Tavern" onClick={() => host.table.openCompanion?.("/sheet")}>
+            <ExternalLink size={13} />
+          </button>
+        ) : undefined
+      }
+    >
+      <div className="mw-row">
+        <HpBar character={me} />
+        {host.table.setCharacter && me.maxHp ? (
+          <span className="xw-seg" role="group" aria-label="Adjust HP">
+            <button type="button" title="-5 HP" onClick={() => adjustHp(-5)}>−5</button>
+            <button type="button" title="-1 HP" onClick={() => adjustHp(-1)}><Minus size={11} /></button>
+            <button type="button" title="+1 HP" onClick={() => adjustHp(1)}><Plus size={11} /></button>
+            <button type="button" title="+5 HP" onClick={() => adjustHp(5)}>+5</button>
+          </span>
+        ) : null}
+      </div>
       <div className="xw-chips">
         {me.maxHp ? <Chip icon={<Heart size={11} />} label="HP">{me.hp ?? 0}</Chip> : null}
         {me.ac ? <Chip icon={<Shield size={11} />} label="AC">{me.ac}</Chip> : null}
         {me.speed ? <Chip icon={<Footprints size={11} />} label={t("widget.dndMe.speed")}>{me.speed}</Chip> : null}
+        {(me.conditions ?? []).slice(0, 3).map((cond) => (
+          <span key={cond} className="xw-chip" style={{ borderColor: "#f59e0b" }}>{cond.slice(0, 3).toUpperCase()}</span>
+        ))}
       </div>
       {size === "large" && me.abilities?.some(Boolean) && (
         <div className="xw-abilities">
           {me.abilities.map((score, index) => (
-            <span key={ABILITIES[index]} className="xw-ability">
+            <button
+              key={ABILITIES[index]}
+              type="button"
+              className="xw-ability"
+              title={`Roll ${ABILITIES[index]} check`}
+              onClick={() => void host.runCommand(`/roll 1d20${modifier(score)} ${ABILITIES[index]}`)}
+            >
               <small>{ABILITIES[index]}</small>
               <strong>{modifier(score)}</strong>
               <small>{score}</small>
-            </span>
+            </button>
           ))}
         </div>
       )}
@@ -260,6 +329,13 @@ export function SlotsWidget({ size }: Props) {
   const tile = <Tile><Sparkles size={size === "small" ? 13 : 18} /></Tile>;
   const idle = host.voiceChannelId ? t("widget.dndSlots.empty") : t("widget.dnd.noTable");
   const line = t("widget.dndSlots.left", { left, all });
+  const toggleSlot = (levelIndex: number, isAvailable: boolean) => {
+    if (!me || !host.table.setCharacter) return;
+    const nextUsed = Array.from({ length: 9 }, (_, i) => me.used?.[i] ?? 0);
+    const total = me.slots?.[levelIndex] ?? 0;
+    nextUsed[levelIndex] = Math.max(0, Math.min(total, nextUsed[levelIndex] + (isAvailable ? 1 : -1)));
+    host.table.setCharacter({ ...me, used: nextUsed });
+  };
   if (size === "small") return <Shell size={size} tile={tile} title={all ? line : t("widget.dndSlots")} subtitle={all ? undefined : idle} />;
   return (
     <Shell size={size} tile={tile} title={t("widget.dndSlots")} subtitle={all ? line : idle}>
@@ -269,7 +345,20 @@ export function SlotsWidget({ size }: Props) {
             <li key={row.level}>
               <small>{row.level + 1}</small>
               <span className="xw-slots" aria-label={`${row.total - row.used}/${row.total}`}>
-                {Array.from({ length: row.total }, (_, index) => <span key={index} className={`xw-slot ${index >= row.total - row.used ? "used" : ""}`} />)}
+                {Array.from({ length: row.total }, (_, index) => {
+                  const avail = index < row.total - row.used;
+                  return host.table.setCharacter ? (
+                    <button
+                      key={index}
+                      type="button"
+                      className={`xw-slot ${avail ? "" : "used"}`}
+                      aria-label={avail ? `Use level ${row.level + 1} slot` : `Restore level ${row.level + 1} slot`}
+                      onClick={() => toggleSlot(row.level, avail)}
+                    />
+                  ) : (
+                    <span key={index} className={`xw-slot ${avail ? "" : "used"}`} />
+                  );
+                })}
               </span>
             </li>
           ))}

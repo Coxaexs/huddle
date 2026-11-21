@@ -2,18 +2,105 @@ import { currentUser, unauthorized } from "@/lib/auth";
 import {
   clampPoint,
   publicBattlemap,
+  type Battlemap,
   type BattlemapRow,
   type MapFog,
   type MapToken,
 } from "@/lib/battlemap";
+import { dndBotToken } from "@/lib/bot-auth";
 import { getDndSettings } from "@/lib/dnd-rules";
-import { playerCommand, publishMessageEvent } from "@/lib/hub-client";
+import { notifyDndTable, tableFromMap, type CompanionPawn } from "@/lib/dnd-table";
+import { dndBaseUrl } from "@/lib/dnd-url";
+import { dndTable, playerCommand, publishMessageEvent } from "@/lib/hub-client";
+import type { PawnKind, TableFog } from "@/lib/lounge-shared";
 import { resolveTracks } from "@/lib/music";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
+
+function pawnFromMapToken(token: MapToken, map: Battlemap, maxY: number, fallbackOwner: string): CompanionPawn {
+  const px = Math.max(0, Math.min(100, (token.x / Math.max(1, map.grid)) * 100));
+  const py = Math.max(0, Math.min(100, (token.y / Math.max(1, maxY)) * 100));
+  const aspect = map.grid / Math.max(1, maxY);
+  const { x, z } = tableFromMap(px, py, aspect, 0, 1);
+  const label = token.label || "Token";
+  const hero = Boolean(token.ownerId);
+  const size = token.size ? Math.max(1, Math.min(6, Math.round(token.size))) : 1;
+  const kind: PawnKind = hero
+    ? "fighter"
+    : /dragon|wyrm|drake|wyvern/i.test(label)
+      ? "dragon"
+      : size >= 2
+        ? "beast"
+        : "fighter";
+  return {
+    id: `bm-${token.id.replace(/-/g, "").slice(0, 16)}`,
+    kind,
+    colour: /^#[0-9a-f]{6}$/i.test(token.color) ? token.color.toLowerCase() : "#b8a6ff",
+    x,
+    z,
+    label: label.slice(0, 24),
+    owner: token.ownerId || fallbackOwner,
+    ownerName: label.slice(0, 40),
+    ...(hero ? { hero: true } : {}),
+    ...(!hero && token.maxHp ? { hp: token.hp ?? token.maxHp, maxHp: token.maxHp } : {}),
+    ...(Array.isArray(token.conditions) && token.conditions.length ? { conditions: token.conditions.slice(0, 8) } : {}),
+    ...(size > 1 ? { size } : {}),
+    ...(token.avatarUrl && token.avatarUrl.startsWith("/") ? { portraitUrl: token.avatarUrl } : {}),
+  };
+}
+
+function fogFromMap(map: Battlemap, maxY: number): TableFog | null {
+  if (!map.fog.length) return null;
+  const g = Math.max(1, map.grid);
+  const h = Math.max(1, maxY);
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  return {
+    enabled: true,
+    rects: map.fog.slice(0, 80).map((f) => ({
+      id: `bmf-${f.id.replace(/-/g, "").slice(0, 16)}`,
+      x: round2(Math.max(0, Math.min(100, (f.x / g) * 100))),
+      y: round2(Math.max(0, Math.min(100, (f.y / h) * 100))),
+      w: round2(Math.max(0.5, Math.min(100, (f.w / g) * 100))),
+      h: round2(Math.max(0.5, Math.min(100, (f.h / h) * 100))),
+    })),
+  };
+}
+
+async function syncBattlemapToTable(
+  channelId: string,
+  userId: string,
+  map: Battlemap,
+  opts: { maxY?: number; syncMap?: boolean; syncTokens?: boolean; token?: MapToken; removeTokenId?: string; syncFog?: boolean } = {},
+): Promise<void> {
+  try {
+    const maxY = opts.maxY || map.rows || Math.round(map.grid * 0.6) || map.grid;
+    const value: Record<string, unknown> = {};
+    if (opts.syncMap) {
+      value.map = map.imageUrl && map.imageUrl.startsWith("/hangout/api/uploads/") ? { url: map.imageUrl, turns: 0, zoom: 1 } : null;
+    }
+    if (opts.token) {
+      value.pawn = pawnFromMapToken(opts.token, map, maxY, userId);
+    } else if (opts.syncTokens) {
+      value.pawns = map.tokens.map((t) => pawnFromMapToken(t, map, maxY, userId));
+    }
+    if (opts.removeTokenId) {
+      value.removePawnId = `bm-${opts.removeTokenId.replace(/-/g, "").slice(0, 16)}`;
+    }
+    const fogValue = opts.syncFog ? fogFromMap(map, maxY) : undefined;
+    if (opts.syncFog) {
+      value.fog = fogValue ?? null;
+    }
+    await dndTable({ op: "battlemap-sync", userId, channelId, value });
+    if (opts.syncFog) {
+      void notifyDndTable(userId, { type: "fog", room: channelId, people: [userId], value: fogValue ?? null });
+    }
+  } catch {
+    // Best-effort live tabletop sync.
+  }
+}
 
 /** Anyone who can manage channels here runs the table. */
 async function isGm(
@@ -136,6 +223,9 @@ export async function POST(request: Request) {
     const row = await activeMap(db, channelId);
     const map = row ? publicBattlemap(row) : null;
     await publishMessageEvent(channelId, { t: "battlemap", action: "open", map });
+    if (map) {
+      await syncBattlemapToTable(channelId, user.id, map, { maxY: map.rows || Math.round(grid * 0.6) || grid, syncMap: true, syncTokens: true, syncFog: true });
+    }
     return Response.json({ map }, { status: 201 });
   }
 
@@ -179,6 +269,21 @@ export async function POST(request: Request) {
         tracks = found.length;
       }
     }
+    void (async () => {
+      try {
+        const base = dndBaseUrl();
+        const secret = bindings().BOT_TOKEN;
+        if (!secret) return;
+        await fetch(new URL("/api/hoffle/bard/action", base), {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${await dndBotToken(secret)}` },
+          body: JSON.stringify({ action: "command", cmd: "mood.set", payload: { mood: encounter === "combat" ? "combat" : "explore" } }),
+          signal: AbortSignal.timeout(2500),
+        });
+      } catch {
+        // Optional Bard integration.
+      }
+    })();
     return Response.json({ encounter, tracks });
   }
 
@@ -217,6 +322,7 @@ export async function POST(request: Request) {
       action: "tokens",
       tokens,
     });
+    await syncBattlemapToTable(channelId, user.id, { ...map, tokens }, { maxY, token });
     return Response.json({ tokens });
   }
 
@@ -258,6 +364,7 @@ export async function POST(request: Request) {
       action: "token",
       token,
     });
+    await syncBattlemapToTable(channelId, user.id, map, { maxY, token });
     return Response.json({ token });
   }
 
@@ -291,6 +398,9 @@ export async function POST(request: Request) {
       action: "tokens",
       tokens,
     });
+    if (body.tokenId) {
+      await syncBattlemapToTable(channelId, user.id, { ...map, tokens }, { maxY, removeTokenId: body.tokenId });
+    }
     return Response.json({ tokens });
   }
 
@@ -319,6 +429,7 @@ export async function POST(request: Request) {
       action: "token",
       token,
     });
+    await syncBattlemapToTable(channelId, user.id, map, { maxY, token });
     return Response.json({ token });
   }
 
@@ -348,6 +459,7 @@ export async function POST(request: Request) {
       action: "token",
       token,
     });
+    await syncBattlemapToTable(channelId, user.id, map, { maxY, token });
     return Response.json({ token });
   }
 
@@ -373,6 +485,7 @@ export async function POST(request: Request) {
       action: "token",
       token,
     });
+    await syncBattlemapToTable(channelId, user.id, map, { maxY, token });
     return Response.json({ token });
   }
 
@@ -396,6 +509,7 @@ export async function POST(request: Request) {
       action: "fog",
       fog: fogList,
     });
+    await syncBattlemapToTable(channelId, user.id, { ...map, fog: fogList }, { maxY, syncFog: true });
     return Response.json({ fog: fogList });
   }
 
@@ -411,6 +525,7 @@ export async function POST(request: Request) {
       action: "fog",
       fog: fogList,
     });
+    await syncBattlemapToTable(channelId, user.id, { ...map, fog: fogList }, { maxY, syncFog: true });
     return Response.json({ fog: fogList });
   }
 
@@ -425,6 +540,7 @@ export async function POST(request: Request) {
       action: "fog",
       fog: [],
     });
+    await syncBattlemapToTable(channelId, user.id, { ...map, fog: [] }, { maxY, syncFog: true });
     return Response.json({ fog: [] });
   }
 
@@ -477,6 +593,9 @@ export async function POST(request: Request) {
       tokens: clearTokens ? [] : map.tokens,
       strokes: clearStrokes ? [] : map.strokes,
     });
+    if (clearTokens) {
+      await syncBattlemapToTable(channelId, user.id, { ...map, tokens: [] }, { maxY, syncTokens: true });
+    }
     return Response.json({ ok: true });
   }
 

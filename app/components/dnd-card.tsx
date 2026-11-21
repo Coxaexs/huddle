@@ -1,8 +1,10 @@
 import { proxiedImage } from "@/app/lib/image-proxy";
 import { useEffect, useState, type ReactNode } from "react";
-import { BookOpen, Dices, EyeOff, Search, Sparkles, Swords } from "lucide-react";
+import { BookOpen, Dices, EyeOff, Pin, Plus, Search, Sparkles, Swords } from "lucide-react";
 import { onSecretRoll, recallSecretRoll } from "@/lib/secret-roll";
 import type { RouseCard, V5Card } from "@/lib/v5-roll";
+import { tokenImageUrl } from "@/lib/battlemap-tokens";
+import { useOptionalWidgetHost } from "./widgets/widget-host";
 import { RouseCheckCard, V5RollCard } from "./v5-card";
 import { createTranslator, type MessageKey } from "@/lib/i18n";
 import { currentLocale } from "../lib/i18n-context";
@@ -48,6 +50,9 @@ export interface DndCardProps {
   verified?: boolean;
   /** Runs a slash command as the viewer: click-to-roll and suggestions. */
   onCommand?: (command: string) => void;
+  onPinToTable?: (card: { title: string; subtitle: string; facts: Array<{ label: string; value: string }>; body: string }) => void;
+  onSpawnMonster?: (monster: { name: string; hp: number; size?: number; portraitUrl?: string }) => void;
+  onAddToInitiative?: (entry: { name: string; value: number }) => void;
   /** The message the card is in, and who is reading it: a V5 roller may spend Willpower on it. */
   messageId?: string;
   viewerId?: string;
@@ -97,7 +102,14 @@ function EntryCard({
   sections = [],
   image,
   onCommand,
+  onPinToTable,
+  onSpawnMonster,
+  onAddToInitiative,
 }: DndCardProps) {
+  const host = useOptionalWidgetHost();
+  const pinFn = onPinToTable ?? (host?.voiceChannelId ? host.table.pinCard : undefined);
+  const spawnFn = onSpawnMonster ?? (host?.voiceChannelId ? host.table.spawnMonster : undefined);
+  const initFn = onAddToInitiative ?? (host?.voiceChannelId ? host.table.addToInitiative : undefined);
   const [expanded, setExpanded] = useState(false);
   const all = sections.length
     ? sections
@@ -190,6 +202,59 @@ function EntryCard({
               ? `Show ${hiddenTitles.join(", ").toLowerCase()}`
               : tx("dndExtra.showFull")}
         </button>
+      )}
+
+      {(pinFn || (type === "monster" && (spawnFn || initFn))) && name && (
+        <div className="dnd-card-actions" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+          {pinFn && (
+            <button
+              type="button"
+              className="dnd-fold"
+              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+              onClick={() =>
+                pinFn({
+                  title: name,
+                  subtitle: subtitle ?? "",
+                  facts: facts.slice(0, 6),
+                  body: (all.find((s) => !s.title) ?? all[0])?.body?.slice(0, 900) ?? "",
+                })
+              }
+            >
+              <Pin size={12} /> Pin to 3D Table
+            </button>
+          )}
+          {type === "monster" && spawnFn && (
+            <button
+              type="button"
+              className="dnd-fold"
+              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+              onClick={() => {
+                const hpFact = facts.find((f) => /hp|hit points/i.test(f.label))?.value ?? "";
+                const hp = Number(/(\d+)/.exec(hpFact)?.[1] || 15);
+                const sub = (subtitle ?? "").toLowerCase();
+                const size = sub.includes("gargantuan") || sub.includes("huge") ? 3 : sub.includes("large") ? 2 : 1;
+                spawnFn({ name, hp, size, portraitUrl: image || tokenImageUrl(name) });
+              }}
+            >
+              <Plus size={12} /> Spawn on Table
+            </button>
+          )}
+          {type === "monster" && initFn && (
+            <button
+              type="button"
+              className="dnd-fold"
+              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+              onClick={() => {
+                const dexMod = abilities.find((a) => /^dex/i.test(a.label))?.mod ?? "+0";
+                const mod = Number.parseInt(dexMod.replace(/[^\d-]/g, ""), 10) || 0;
+                const val = Math.floor(Math.random() * 20) + 1 + mod;
+                initFn({ name, value: val });
+              }}
+            >
+              <Swords size={12} /> + Initiative
+            </button>
+          )}
+        </div>
       )}
 
       {(source || otherVersions.length > 0) && (

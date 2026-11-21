@@ -2,6 +2,7 @@ import { currentUser, unauthorized } from "@/lib/auth";
 import { bindings } from "@/lib/storage";
 import { channelAccess } from "@/lib/access";
 import { findHomebrew, getDndSettings, type DndSettings } from "@/lib/dnd-rules";
+import { dndBaseUrl, dndPublicUrl } from "@/lib/dnd-url";
 
 export const dynamic = "force-dynamic";
 
@@ -18,29 +19,6 @@ const KINDS: Record<string, string> = {
   class: "classes",
   subclass: "subclasses",
 };
-
-function dndBaseUrl(): URL {
-  const configured =
-    bindings().DND_BASE_URL?.trim() || "http://127.0.0.1:8732";
-  const url = new URL(configured);
-  if (!["http:", "https:"].includes(url.protocol)) {
-    throw new Error("Unsupported D&D server URL.");
-  }
-  return url;
-}
-
-/** Where browsers can reach the companion, for monster art. */
-function dndPublicUrl(): URL | null {
-  const configured =
-    bindings().DND_PUBLIC_URL?.trim() || bindings().DND_BASE_URL?.trim();
-  if (!configured) return null;
-  try {
-    const url = new URL(configured);
-    return ["http:", "https:"].includes(url.protocol) ? url : null;
-  } catch {
-    return null;
-  }
-}
 
 /** The structured entry the companion builds; see fiveetools_lookup.py. */
 interface LookupCard {

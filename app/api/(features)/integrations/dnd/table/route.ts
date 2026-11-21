@@ -1,3 +1,4 @@
+import { publicMessage } from "@/app/api/messages/route";
 import { authenticateBot } from "@/lib/bot-auth";
 import {
   companionRoll,
@@ -8,8 +9,10 @@ import {
   type DndTableOp,
 } from "@/lib/dnd-table";
 import { nativeFor } from "@/lib/discord/snowflake";
-import { dndTable, publishMessageEvent } from "@/lib/hub-client";
-import { bindings } from "@/lib/storage";
+import { dndBaseUrl } from "@/lib/dnd-url";
+import { dndTable, publishMessage, publishMessageEvent } from "@/lib/hub-client";
+import type { DiceRollEvent } from "@/lib/protocol";
+import { bindings, type StoredMessage } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +39,8 @@ const MAP_MAX_BYTES = 15 * 1024 * 1024;
  * Everything acts in the voice rooms the person is sitting in right now, with
  * the same checks as their own tab at the table.
  */
+const SHARED_BOARD_OPS = new Set(["pawn", "pawns", "initiative", "grid", "fog", "areas", "ping", "card", "mood"]);
+
 export async function POST(request: Request) {
   const bot = await authenticateBot(request).catch(() => null);
   if (!bot || (bot.kind !== "dnd" && bot.kind !== "system")) {
@@ -46,7 +51,7 @@ export async function POST(request: Request) {
   if (!body || (op !== "roll" && !DND_TABLE_OPS.has(op))) {
     return Response.json({ error: "Unknown op." }, { status: 400 });
   }
-  if (op === "pawn" || op === "pawns" || op === "initiative") return sharedBoard(op, body);
+  if (SHARED_BOARD_OPS.has(op)) return sharedBoard(op, body);
 
   const userId = typeof body.user === "string" ? await nativeFor("user", body.user) : null;
   if (!userId) return Response.json({ error: "No such user here." }, { status: 404 });
@@ -55,31 +60,50 @@ export async function POST(request: Request) {
     const raw = (body.roll ?? {}) as Record<string, unknown>;
     const { rooms } = await dndTable({ op: "where", userId });
     if (!rooms.length) return Response.json({ ok: true, rooms });
+    const name = await displayName(userId);
     const roll = companionRoll(
-      { id: userId, displayName: await displayName(userId) },
+      { id: userId, displayName: name },
       {
         expression: String(raw.expression ?? ""),
-        sides: Number(raw.sides),
-        values: Array.isArray(raw.values) ? (raw.values as number[]) : [],
+        sides: raw.sides !== undefined ? Number(raw.sides) : undefined,
+        values: Array.isArray(raw.values) ? (raw.values as number[]) : undefined,
+        dice: Array.isArray(raw.dice) ? (raw.dice as Parameters<typeof companionRoll>[1]["dice"]) : undefined,
         modifier: Number(raw.modifier ?? 0),
         total: Number(raw.total ?? 0),
+        label: typeof raw.label === "string" ? raw.label : undefined,
+        rollType: typeof raw.rollType === "string" ? (raw.rollType as DiceRollEvent["rollType"]) : undefined,
       },
     );
     if (!roll) return Response.json({ error: "Not a roll the table can show." }, { status: 400 });
-    for (const room of rooms) await publishMessageEvent(room, { t: "dice-roll", roll });
+    for (const room of rooms) {
+      await publishMessageEvent(room, { t: "dice-roll", roll });
+      if (body.postChat !== false) {
+        await postCompanionRollCard(room, userId, name, roll).catch(() => {});
+      }
+    }
     return Response.json({ ok: true, rooms });
   }
+
+  const alsoSnowflakes = Array.isArray(body.also) ? body.also.slice(0, 30) : [];
+  const also = alsoSnowflakes.length
+    ? [...new Set((await Promise.all(alsoSnowflakes.map(hoffleUser))).filter((id): id is string => Boolean(id && id !== userId)))]
+    : undefined;
 
   if (op === "tablemap") {
     const value = (body.value ?? {}) as Record<string, unknown>;
     const url = await copyCompanionMap(String(value.path ?? ""));
     if (!url) return Response.json({ error: "That map could not be copied to the table." }, { status: 400 });
-    const result = await dndTable({ op: "tablemap", userId, value: { url, turns: Number(value.turns ?? 0), zoom: Number(value.zoom ?? 1) } });
+    const result = await dndTable({
+      op: "tablemap",
+      userId,
+      ...(also?.length ? { also } : {}),
+      value: { url, turns: Number(value.turns ?? 0), zoom: Number(value.zoom ?? 1) },
+    });
     return Response.json(result);
   }
 
   const value = body.value === null ? null : ((body.value ?? {}) as Record<string, unknown>);
-  const result = await dndTable({ op, userId, value } as DndTableOp);
+  const result = await dndTable({ op, userId, ...(also?.length ? { also } : {}), value } as DndTableOp);
   return Response.json(result);
 }
 
@@ -96,7 +120,7 @@ async function hoffleUser(snowflake: unknown): Promise<string | null> {
  * companion's party and game master, snowflakes) sits. Players who are not on
  * Hoffle are skipped rather than refused.
  */
-async function sharedBoard(op: "pawn" | "pawns" | "initiative", body: Record<string, unknown>) {
+async function sharedBoard(op: string, body: Record<string, unknown>) {
   const also = Array.isArray(body.also) ? body.also.slice(0, 30) : [];
   const people = [...new Set((await Promise.all([body.user, ...also].map(hoffleUser))).filter((id): id is string => Boolean(id)))];
   if (!people.length) return Response.json({ ok: true, rooms: [] });
@@ -127,27 +151,97 @@ async function sharedBoard(op: "pawn" | "pawns" | "initiative", body: Record<str
     const clean = (await Promise.all(list.map(pawn))).filter((p): p is CompanionPawn => Boolean(p));
     return Response.json(await dndTable({ op, userId, also: rest, value: clean }));
   }
-  // initiative
-  const raw = body.value as Record<string, unknown> | null;
-  if (raw === null) return Response.json(await dndTable({ op, userId, also: rest, value: null }));
-  const entries = Array.isArray(raw?.entries) ? raw.entries.slice(0, 30) : [];
-  const value: CompanionInitiative = {
-    entries: await Promise.all(
-      entries.map(async (entry) => {
-        const e = (entry ?? {}) as Record<string, unknown>;
-        const owner = await hoffleUser(e.owner);
-        return {
-          id: String(e.id ?? "").slice(0, 24),
-          name: String(e.name ?? "").slice(0, 40),
-          value: Math.round(Number(e.value) || 0),
-          ...(owner ? { owner } : {}),
-        };
-      }),
-    ),
-    turn: Math.floor(Number(raw?.turn) || 0),
-    round: Math.max(1, Math.floor(Number(raw?.round) || 1)),
+  if (op === "initiative") {
+    const raw = body.value as Record<string, unknown> | null;
+    if (raw === null) return Response.json(await dndTable({ op, userId, also: rest, value: null }));
+    const entries = Array.isArray(raw?.entries) ? raw.entries.slice(0, 30) : [];
+    const value: CompanionInitiative = {
+      entries: await Promise.all(
+        entries.map(async (entry) => {
+          const e = (entry ?? {}) as Record<string, unknown>;
+          const owner = await hoffleUser(e.owner);
+          const pawnId = typeof e.pawnId === "string" && e.pawnId.trim() ? e.pawnId.trim().slice(0, 24) : undefined;
+          return {
+            id: String(e.id ?? "").slice(0, 24),
+            name: String(e.name ?? "").slice(0, 40),
+            value: Math.round(Number(e.value) || 0),
+            ...(owner ? { owner } : {}),
+            ...(pawnId ? { pawnId } : {}),
+          };
+        }),
+      ),
+      turn: Math.floor(Number(raw?.turn) || 0),
+      round: Math.max(1, Math.floor(Number(raw?.round) || 1)),
+    };
+    return Response.json(await dndTable({ op, userId, also: rest, value }));
+  }
+  const value = body.value === null ? null : ((body.value ?? {}) as unknown);
+  return Response.json(await dndTable({ op, userId, also: rest, value } as DndTableOp));
+}
+
+async function postCompanionRollCard(roomId: string, userId: string, displayName: string, roll: DiceRollEvent): Promise<void> {
+  const db = bindings().DB;
+  if (!db) return;
+  const channel = await db.prepare("SELECT name FROM channels WHERE id = ?").bind(roomId).first<{ name: string }>().catch(() => null);
+  if (!channel) return;
+  const details = roll.dice.map((g) => `${g.sign < 0 ? "-" : ""}${g.rolls.length}d${g.sides} [${g.rolls.map((r) => r.value).join(", ")}]`);
+  if (roll.modifier) details.push(`${roll.modifier >= 0 ? "+" : "-"}${Math.abs(roll.modifier)}`);
+  const title = roll.label ? `${displayName} · ${roll.label}` : `${displayName} rolled ${roll.expression}`;
+  const payload = {
+    type: "roll",
+    name: roll.label || roll.expression,
+    label: roll.label,
+    roller: displayName,
+    expression: roll.expression,
+    details,
+    total: roll.total,
+    modifier: roll.modifier,
+    mode: roll.rollType === "advantage" ? "with advantage" : roll.rollType === "disadvantage" ? "with disadvantage" : "",
+    verified: true,
+    roll,
   };
-  return Response.json(await dndTable({ op, userId, also: rest, value }));
+  const stored: StoredMessage = {
+    id: crypto.randomUUID(),
+    channel: channel.name,
+    channel_id: roomId,
+    user_id: null,
+    author: "D&D Bot",
+    avatar: "⚔",
+    color: "#b8a6ff",
+    content: `${title}: **${roll.total}** (${details.join(" ")})`,
+    attachment_key: null,
+    is_bot: 1,
+    created_at: new Date().toISOString(),
+    kind: "dnd",
+    payload: JSON.stringify(payload),
+    command_text: `/roll ${roll.expression}${roll.label ? ` ${roll.label}` : ""}`.slice(0, 200),
+    command_by: displayName,
+    sender_id: userId,
+  };
+  await db
+    .prepare(
+      `INSERT INTO messages
+       (id, channel, channel_id, user_id, author, avatar, color, content, attachment_key,
+        is_bot, created_at, kind, payload, command_text, command_by, sender_id)
+       VALUES (?, ?, ?, NULL, ?, ?, ?, ?, NULL, 1, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      stored.id,
+      stored.channel,
+      roomId,
+      stored.author,
+      stored.avatar,
+      stored.color,
+      stored.content,
+      stored.created_at,
+      stored.kind,
+      stored.payload,
+      stored.command_text,
+      stored.command_by,
+      stored.sender_id,
+    )
+    .run();
+  await publishMessage(roomId, publicMessage(stored), null);
 }
 
 async function displayName(userId: string): Promise<string> {
@@ -169,7 +263,7 @@ async function displayName(userId: string): Promise<string> {
 async function copyCompanionMap(path: string): Promise<string | null> {
   if (!/^\/uploads\/maps\/[\w.\-]{1,200}$/.test(path)) return null;
   const bucket = bindings().UPLOADS;
-  const base = bindings().DND_BASE_URL?.trim();
+  const base = await dndBaseUrl();
   if (!bucket || !base) return null;
 
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(path));

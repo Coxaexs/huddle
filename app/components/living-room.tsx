@@ -5,7 +5,7 @@ import { markAchievement } from "../lib/achievement-client";
 import { apiUrl } from "../lib/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { Armchair, ChessPawn, Clapperboard, Crown, Disc3, DoorOpen, Dices, Eye, EyeOff, Flame, Fish, Footprints, Gamepad2, Landmark, Navigation, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, SlidersHorizontal, Swords, Trees, UserRound, Users, X } from "lucide-react";
+import { Armchair, ChessPawn, Clapperboard, Crosshair, Crown, Disc3, DoorOpen, Dices, ExternalLink, Eye, EyeOff, Flame, Fish, Footprints, Gamepad2, Landmark, Music, Navigation, Map as MapIcon, Film, Maximize2, Minimize2, Settings2, SkipBack, SkipForward, SlidersHorizontal, Swords, Trees, UserRound, Users, X } from "lucide-react";
 import { playbackPosition, type DiceRollEvent, type PlayerState, type VoiceParticipant } from "@/lib/protocol";
 import { useClubSkin, type LivingRoom, type RoomTheme } from "../hooks/use-living-room";
 import { CLUB_DJ_SEAT, CLUB_STAGE, GM_SEAT_ID, JUMP_SIGNAL, LOUNGE_EMOTES, TABLE_CENTRE, TABLE_RADIUS, VENUE_IDS, fishingSpot, headingTo, inAnnex, routeTo, seatById, stepTo, venueById, wrapHeading, type LoungePose, type VenueId } from "../lib/living-room";
@@ -30,7 +30,8 @@ import { DeepPixelWatcher, deepPixelPlayerId, tileAt, type BoardGameState } from
 import { BoardHallMenu } from "./board-hall-menu";
 import { useDeepPixelBridge } from "../hooks/use-deeppixel-bridge";
 import { TableExtras, behindScreen, type TentSpec, type CharacterTokenSpec, type ScreenPage } from "./tabletop-extras";
-import { BoothPanel, CharacterPanel, GameMasterPanel, InitiativePanel, PAWN_NAMES, PawnsPanel, SeatFinder, WatchPanel, type WatchInfo } from "./lounge-panels";
+import { BardPanel, BoothPanel, CharacterPanel, GameMasterPanel, InitiativePanel, PAWN_NAMES, PawnsPanel, SeatFinder, WatchPanel, type WatchInfo } from "./lounge-panels";
+import { openDndCompanion } from "../lib/dnd-sso";
 import { PAWN_SQUARES, TablePawns, type PawnShow } from "./tabletop-pawns";
 import { TableOverlay, type AreaPreview } from "./tabletop-overlay";
 import { SpellFx } from "./tabletop-spellfx";
@@ -47,7 +48,7 @@ import {
   type ScreenPageId, type ScreenRole,
 } from "../lib/gm-screen";
 import { isFullscreen, onFullscreenChange, toggleFullscreen as toggleElementFullscreen } from "../lib/fullscreen";
-import { DEFAULT_SQUARES, LOUNGE_SWITCHES, TABLE_MOODS, addInitiative, clampPawnSpot, currentEntry, watchPosition, type AreaOp, type PawnKind, type PawnOp, type LoungeSwitches, type SpellFxEvent, type TableArea, type TableCard, type TableCharacter, type TablePawn, type WatchState } from "@/lib/lounge-shared";
+import { DEFAULT_SQUARES, LOUNGE_SWITCHES, TABLE_MOODS, addInitiative, clampPawnSpot, currentEntry, mapFromTable, removeInitiative, stepTurn, watchPosition, type AreaOp, type PawnKind, type PawnOp, type LoungeSwitches, type SpellFxEvent, type TableArea, type TableCard, type TableCharacter, type TableFog, type TableMood, type TablePawn, type WatchState } from "@/lib/lounge-shared";
 import { attachWatchSource } from "../lib/watch-source";
 import { createRoomFollower, roomMoment } from "../lib/watch-sync";
 import { partyPlayerOn } from "../lib/tune-in";
@@ -553,7 +554,36 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   }, [venueId]);
   /** The tabletop's table, once built: dice are thrown through it. */
   const diceRef = useRef<TableDice | null>(null);
-  const [panel, setPanel] = useState<"watch" | "seats" | "initiative" | "character" | "booth" | "gm" | "pawns" | "decks" | "lights" | null>(null);
+  const overlayRef = useRef<TableOverlay | null>(null);
+  const [panel, setPanel] = useState<"watch" | "seats" | "initiative" | "character" | "booth" | "gm" | "pawns" | "bard" | "decks" | "lights" | null>(null);
+  const [pingMode, setPingMode] = useState(false);
+  const [drawingFog, setDrawingFog] = useState(false);
+  const fogCornerRef = useRef<{ x: number; y: number } | null>(null);
+  const [dndEdition, setDndEdition] = useState<"2014" | "2024" | undefined>(undefined);
+  useEffect(() => {
+    if (venueId !== "tabletop") {
+      setPingMode(false);
+      setDrawingFog(false);
+      fogCornerRef.current = null;
+    }
+  }, [venueId]);
+  useEffect(() => {
+    if (venueId !== "tabletop" || !serverId) return;
+    let alive = true;
+    void apiFetch<{ settings?: { edition?: string } }>(`/api/integrations/dnd/settings?serverId=${encodeURIComponent(serverId)}`)
+      .then((data) => {
+        if (alive && (data.settings?.edition === "2014" || data.settings?.edition === "2024")) {
+          setDndEdition(data.settings.edition);
+        }
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [venueId, serverId]);
+  useEffect(() => {
+    if (venueId === "tabletop" && room.ping && overlayRef.current) {
+      overlayRef.current.addPing({ x: room.ping.x, z: room.ping.z, colour: room.ping.colour, byName: room.ping.byName });
+    }
+  }, [room.ping?.seq, venueId]);
   // The club: its lights read the music bot's feed and the room's light desk; strobes, the timing nudge and
   // the brightness are this browser's own.
   const [clubLightSettings, setClubLightSettingsState] = useState<ClubLightSettings>({ strobes: true, nudgeMs: 0, brightness: 1 });
@@ -689,9 +719,12 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     place: (x: number, z: number) => void; tapArea: (id: string) => void;
     /** A spell waiting for its target: a pawn or a spot on the map. */
     targeting: boolean; target: (x: number, z: number, pawnId: string | null) => void;
+    pingMode: boolean; ping: (x: number, z: number) => void;
+    drawingFog: boolean; drawFogCorner: (x: number, z: number) => void;
   }>({
     cell: 0.12, metresPerFoot: 0.024, shows: new Map(), hits: new Set(), areaHits: new Map(), spots: [], aiming: null, ruler: null, ring: null,
     place: () => undefined, tapArea: () => undefined, targeting: false, target: () => undefined,
+    pingMode: false, ping: () => undefined, drawingFog: false, drawFogCorner: () => undefined,
   });
   /** The table's spell animations, once the room is built. */
   const spellFxRef = useRef<SpellFx | null>(null);
@@ -704,8 +737,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const pawnRef = useRef<{ held: string | null; tap: (id: string) => void; moveTo: (x: number, z: number) => void; openCabinet: () => void; landed: (id: string, terrain: Terrain) => void }>({
     held: null, tap: () => undefined, moveTo: () => undefined, openCabinet: () => undefined, landed: () => undefined,
   });
-  const live = useRef({ room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn, screenPagesRef, playerPagesRef });
-  live.current = { room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn, screenPagesRef, playerPagesRef };
+  const live = useRef({ room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn, screenPagesRef, playerPagesRef, isGm: false, turnPawnIds: new Set<string>(), turnUserId: null as string | null });
+  live.current = { ...live.current, room, participants, connectionId, speaking, screens, cameras, view, nowPlaying, serverNow, watchVolume, deafened, canProject, followPawn, screenPagesRef, playerPagesRef };
 
   // The room's recorded sounds, placed in 3D and heard from where you are.
   const ambience = useRef<RoomAmbience | null>(null);
@@ -797,6 +830,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const extras = venueId === "tabletop" ? new TableExtras(house, TABLE_SURFACE_Y) : null;
     const pawns = venueId === "tabletop" ? new TablePawns(house, TABLE_SURFACE_Y, parts.mapColourAt, (id, terrain) => pawnRef.current.landed(id, terrain)) : null;
     const overlay = venueId === "tabletop" ? new TableOverlay(house, TABLE_SURFACE_Y) : null;
+    overlayRef.current = overlay;
     const spellFx = venueId === "tabletop" ? new SpellFx(house, TABLE_SURFACE_Y) : null;
     spellFxRef.current = spellFx;
     // The map itself, for the pointer: a ruler or an area being aimed follows it.
@@ -946,7 +980,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       setHoverSeat(id ? { id, x: event.clientX - rect.left, y: event.clientY - rect.top } : null);
     };
 
-    const pick = (clientX: number, clientY: number) => {
+    const pick = (clientX: number, clientY: number, shiftKey = false) => {
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(pointer, camera);
@@ -962,6 +996,17 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         }
         if (hit.object.userData.card) {
           live.current.room.setShared("card", null);
+          return;
+        }
+        // Ping or fog drawing on the map surface.
+        if (hit.object.userData.tableMap && (shiftKey || tableRef.current.pingMode)) {
+          const at = house.worldToLocal(hit.point.clone());
+          tableRef.current.ping(at.x - TABLE_CENTRE.x, at.z - TABLE_CENTRE.z);
+          return;
+        }
+        if (hit.object.userData.tableMap && tableRef.current.drawingFog) {
+          const at = house.worldToLocal(hit.point.clone());
+          tableRef.current.drawFogCorner(at.x - TABLE_CENTRE.x, at.z - TABLE_CENTRE.z);
           return;
         }
         // A spell waiting for its target: a pawn, or a spot on the map.
@@ -1155,7 +1200,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     const onUp = (event: PointerEvent) => {
       touches.delete(event.pointerId);
       if (touches.size < 2) pinch = null;
-      if (drag && !drag.moved) pick(event.clientX, event.clientY);
+      if (drag && !drag.moved) pick(event.clientX, event.clientY, event.shiftKey);
       drag = null;
     };
     const onWheel = (event: WheelEvent) => {
@@ -1633,23 +1678,33 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         const pose = r.poses.get(turn.connectionId);
         if (body) marker = { x: body.group.position.x, y: body.group.position.y + body.shown.lift + body.size * 0.5 + 0.5, z: body.group.position.z };
         else if (pose) marker = { x: pose.x, y: venue.floorY(pose.x, pose.z) + 1.7, z: pose.z };
+      } else if (turn) {
+        const linked = turn.pawnId ? shared.pawns[turn.pawnId] : undefined;
+        const firstMonster = linked ?? Object.values(shared.pawns).find((p) => !p.hero && (!turn.name || p.label.toLowerCase() === turn.name.toLowerCase()));
+        if (firstMonster) {
+          marker = { x: TABLE_CENTRE.x + firstMonster.x, y: thisSurfacePlus(), z: TABLE_CENTRE.z + firstMonster.z };
+        }
       }
+      function thisSurfacePlus() { return TABLE_SURFACE_Y + 0.48; }
       extras.setTurn(marker);
       extras.update(t);
       if (pawns) {
         const turnOwner = turn?.connectionId ? live.current.participants.find((p) => p.connectionId === turn.connectionId)?.id ?? null : null;
         const table = tableRef.current;
         pawns.setCell(table.cell);
-        pawns.set(shared.pawns, pawnRef.current.held, turnOwner, table.shows, table.hits);
+        pawns.set(shared.pawns, pawnRef.current.held, turnOwner, table.shows, table.hits, live.current.turnPawnIds);
         pawns.update(t, dt);
         if (pawns.busy()) poke();
         if (overlay) {
           overlay.setScale(table.metresPerFoot);
           overlay.setSpots(table.spots);
           overlay.setAreas(shared.areas, table.areaHits);
+          overlay.setFog(shared.fog ?? null, { isGm: live.current.isGm, turns: shared.tablemap?.turns ?? 0, zoom: shared.tablemap?.zoom ?? 1 });
           overlay.setPreview(table.aiming);
           overlay.setRuler(table.ruler?.from ?? null, table.ruler?.limit ?? null);
           overlay.setMoveRing(table.ring?.at ?? null, table.ring?.feet ?? 0);
+          overlay.tick(t, dt);
+          if (overlay.busy()) poke();
           overlay.update();
         }
         if (spellFx) {
@@ -1961,6 +2016,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       extras?.dispose();
       pawns?.dispose();
       overlay?.dispose();
+      if (overlayRef.current === overlay) overlayRef.current = null;
       spellFx?.dispose();
       if (spellFxRef.current === spellFx) spellFxRef.current = null;
       rod?.dispose();
@@ -2103,18 +2159,35 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   /** What each tag says to me: the party's hit points in numbers; a monster's only to its game master, "Bloodied" to the rest. */
   const pawnShows = useMemo(() => {
     const shows = new Map<string, PawnShow>();
+    const combatNow = room.shared.initiative;
+    const activeTurn = currentEntry(combatNow);
+    const fogNow = room.shared.fog ?? null;
+    const tTurns = room.shared.tablemap?.turns ?? 0;
+    const tZoom = room.shared.tablemap?.zoom ?? 1;
     for (const pawn of Object.values(tablePawns)) {
       const sheet = pawn.hero ? characters[pawn.owner] : undefined;
       const monster = !pawn.hero && pawn.owner === gmUserId;
+      const turnMatch = Boolean(
+        combatNow && activeTurn && (
+          activeTurn.pawnId === pawn.id ||
+          (activeTurn.connectionId && participants.find((p) => p.connectionId === activeTurn.connectionId)?.id === pawn.owner && pawn.hero) ||
+          (!activeTurn.connectionId && !pawn.hero && activeTurn.name && pawn.label.toLowerCase() === activeTurn.name.toLowerCase())
+        ),
+      );
+      const hiddenByFog = Boolean(!isGm && fogNow?.enabled && overlayRef.current?.isFogged(pawn.x, pawn.z, fogNow, tTurns, tZoom));
       shows.set(pawn.id, {
         name: (sheet?.name || pawn.label || pawn.ownerName).slice(0, 24),
         hp: sheet ? sheet.hp ?? sheet.maxHp : pawn.hp,
         maxHp: sheet ? sheet.maxHp : pawn.maxHp,
         numbers: !monster || isGm,
+        conditions: pawn.conditions ?? sheet?.conditions,
+        elevation: pawn.elevation,
+        isTurn: turnMatch,
+        hiddenByFog,
       });
     }
     return shows;
-  }, [tablePawns, characters, gmUserId, isGm]);
+  }, [tablePawns, characters, gmUserId, isGm, room.shared.initiative, room.shared.fog, room.shared.tablemap, participants]);
   /** Who stands in each spell's area (a caster is not caught in their own cone or aura). */
   const areaHits = useMemo(() => {
     const byArea = new Map<string, string[]>();
@@ -2147,8 +2220,23 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     return Math.round(Math.hypot(pawn.x - from.x, pawn.z - from.z) / metresPerFoot / 5) * 5;
   };
   const turnUserId = turnEntry?.connectionId ? participants.find((p) => p.connectionId === turnEntry.connectionId)?.id ?? null : null;
-  /** Whether it is this pawn's turn: its player's, or (a monster's turn) the game master's monsters. */
-  const onTurn = (pawn: TablePawn) => (turnEntry?.connectionId ? pawn.owner === turnUserId : !pawn.hero && pawn.owner === gmUserId);
+  /** Whether it is this pawn's turn: its player's, linked monster's, or the GM's monsters. */
+  const onTurn = (pawn: TablePawn) => {
+    if (turnEntry?.pawnId) return turnEntry.pawnId === pawn.id;
+    if (turnEntry?.connectionId) return pawn.owner === turnUserId;
+    return !pawn.hero && (!turnEntry?.name || pawn.label.toLowerCase() === turnEntry.name.toLowerCase() || pawn.owner === gmUserId);
+  };
+  const turnPawnIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!combat || !turnEntry) return ids;
+    for (const pawn of Object.values(tablePawns)) {
+      if (pawnShows.get(pawn.id)?.isTurn) ids.add(pawn.id);
+    }
+    return ids;
+  }, [combat, turnEntry, tablePawns, pawnShows]);
+  live.current.isGm = isGm;
+  live.current.turnPawnIds = turnPawnIds;
+  live.current.turnUserId = turnUserId;
   const held = heldPawn ? tablePawns[heldPawn] : undefined;
 
   // Casting: spells with an area are aimed at the map first; the slot is spent when it lands.
@@ -2286,6 +2374,38 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       sendArea({ op: "remove", id });
       flashHint(`${area.spell} taken off the map.`);
     },
+    pingMode,
+    ping: (x, z) => {
+      const spot = clampPawnSpot(x, z);
+      const id = `pg${Math.random().toString(36).slice(2, 9)}`;
+      room.setShared("ping", {
+        id,
+        x: spot.x,
+        z: spot.z,
+        colour: myPerson?.color || "#fbbf24",
+        byName: myName,
+      });
+      setPingMode(false);
+    },
+    drawingFog,
+    drawFogCorner: (x, z) => {
+      const pt = mapFromTable(x, z, 1.6, room.shared.tablemap?.turns ?? 0, room.shared.tablemap?.zoom ?? 1);
+      if (!fogCornerRef.current) {
+        fogCornerRef.current = pt;
+        flashHint("Click the opposite corner on the map to place fog.", 5000);
+        return;
+      }
+      const a = fogCornerRef.current;
+      fogCornerRef.current = null;
+      const rx = Math.max(0, Math.min(a.x, pt.x));
+      const ry = Math.max(0, Math.min(a.y, pt.y));
+      const rw = Math.max(2, Math.abs(pt.x - a.x));
+      const rh = Math.max(2, Math.abs(pt.y - a.y));
+      const cur: TableFog = room.shared.fog ?? { enabled: true, rects: [] };
+      const id = `fg${Math.random().toString(36).slice(2, 9)}`;
+      room.setShared("fog", { enabled: true, rects: [...cur.rects, { id, x: rx, y: ry, w: rw, h: rh }].slice(0, 80) });
+      flashHint("Fog zone placed.", 2500);
+    },
   };
   const party = participants.flatMap((p) => {
     const character = room.shared.characters[p.id];
@@ -2372,7 +2492,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     setRollNote(`Looking up ${query}…`);
     try {
       const data = await apiFetch<{ text?: string; payload?: { type?: string; name?: string; subtitle?: string; facts?: Array<{ label: string; value: string }>; sections?: Array<{ title: string; body: string }> } }>(
-        "/api/integrations/dnd/lookup", { method: "POST", body: JSON.stringify({ kind, query }) },
+        "/api/integrations/dnd/lookup", { method: "POST", body: JSON.stringify({ kind, query, ...(room.roomId ? { channelId: room.roomId } : {}) }) },
       );
       const payload = data.payload;
       if (!payload || payload.type === "suggest" || !payload.name) { setRollNote(data.text || "Nothing found."); return; }
@@ -2491,6 +2611,9 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               <button type="button" className={panel === "character" ? "active" : ""} onClick={() => setPanel(panel === "character" ? null : "character")} title={tNow("livingRoom.myCharacter")} aria-label={tNow("livingRoom.myCharacter")} aria-expanded={panel === "character"}><UserRound size={16} /></button>
               <button type="button" className={panel === "gm" || isGm ? "active" : ""} onClick={() => setPanel(panel === "gm" ? null : "gm")} title="Game master: the GM's chair, the battle map and your screen" aria-label={tNow("livingRoom.gameMaster")} aria-expanded={panel === "gm"}><Crown size={16} /></button>
               <button type="button" className={panel === "pawns" || heldPawn ? "active" : ""} onClick={() => setPanel(panel === "pawns" ? null : "pawns")} title="Miniatures: take a pawn to the table" aria-label={tNow("livingRoom.miniatures")} aria-expanded={panel === "pawns"}><ChessPawn size={16} /></button>
+              <button type="button" className={pingMode ? "active" : ""} onClick={() => { setPingMode(!pingMode); if (!pingMode) flashHint("Click anywhere on the map to ping (or Shift+Click anytime).", 4000); }} title="Ping map (or Shift+Click)" aria-label="Ping map" aria-pressed={pingMode}><Crosshair size={16} /></button>
+              <button type="button" className={panel === "bard" ? "active" : ""} onClick={() => setPanel(panel === "bard" ? null : "bard")} title="Bard & atmosphere" aria-label="Bard & atmosphere" aria-expanded={panel === "bard"}><Music size={16} /></button>
+              <button type="button" onClick={() => void openDndCompanion("/vtt")} title="Open Tavern D&D Companion (SSO)" aria-label="Open Tavern D&D Companion"><ExternalLink size={16} /></button>
             </>
           )}
           {venueId === "boardhall" && (
@@ -2509,6 +2632,18 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           <button type="button" onClick={() => { setControlsHidden(true); setSettingsOpen(false); }} title={tNow("livingRoom.hideControls")} aria-label={tNow("livingRoom.hideControls")}><EyeOff size={16} /></button>
         </div>
       </div>}
+      {!controlsHidden && venueId === "tabletop" && combat && combat.entries.length > 0 && turnEntry && (
+        <div className="lr-combat-banner" role="region" aria-label="Combat turn">
+          <small>Round {combat.round}</small>
+          <strong>▶ {turnEntry.name} ({turnEntry.value})</strong>
+          {(!room.shared.gm || isGm || turnEntry.connectionId === connectionId) && (
+            <span className="lr-row">
+              <button type="button" onClick={() => room.setShared("initiative", stepTurn(combat, -1))} title="Previous turn" aria-label="Previous turn"><SkipBack size={13} /></button>
+              <button type="button" className="primary" onClick={() => room.setShared("initiative", stepTurn(combat, 1))} title="Next turn" aria-label="Next turn"><SkipForward size={13} /></button>
+            </span>
+          )}
+        </div>
+      )}
       {room.shared.watch?.url && <SubtitleOverlay url={room.shared.watch.url} time={() => watchApi.current.time()} className="watch-subtitles-room" />}
       {watchInfo.error && <div className="watch-surface-problem watch-room-note">{watchInfo.error}</div>}
       {watchInfo.buffering && !watchInfo.error && <div className="watch-surface-note watch-room-note">{tNow("livingRoom.loadingFilm")}</div>}
@@ -2562,7 +2697,12 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
             <InitiativePanel
               initiative={room.shared.initiative} gm={room.shared.gm} myId={connectionId} myName={myName}
               setInitiative={(value) => room.setShared("initiative", value)} setGm={(value) => room.setShared("gm", value)}
-              onRollMine={() => { pendingInitiative.current = true; onCommand?.("/roll 1d20"); }} onClose={() => setPanel(null)}
+              onRollMine={() => {
+                pendingInitiative.current = true;
+                const bonus = myCharacterNow?.initiativeBonus ?? Math.floor(((myCharacterNow?.abilities?.[1] ?? 10) - 10) / 2);
+                onCommand?.(`/roll 1d20${bonus >= 0 ? `+${bonus}` : bonus} Initiative`);
+              }}
+              onClose={() => setPanel(null)}
             />
           )}
           {panel === "gm" && (
@@ -2572,6 +2712,17 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               setGm={(value) => room.setShared("gm", value)}
               map={room.shared.tablemap} canEditMap={canEditMap} setMap={(value) => room.setShared("tablemap", value)}
               squares={squares} setSquares={(value) => room.setShared("grid", { squares: value })}
+              fog={room.shared.fog}
+              setFog={(value) => room.setShared("fog", value)}
+              drawingFog={drawingFog}
+              onToggleDrawFog={() => {
+                setDrawingFog((v) => {
+                  fogCornerRef.current = null;
+                  if (!v) flashHint("Click two opposite corners on the map to hide a fog zone.", 5000);
+                  return !v;
+                });
+              }}
+              onOpenCompanion={openDndCompanion}
               choice={gmPages} setChoice={setScreenChoice} notes={gmNotes} setNotes={setGmNotes} system={gameSystem}
               folded={Boolean(room.shared.gm?.folded)} setFolded={(folded) => room.shared.gm && room.setShared("gm", { ...room.shared.gm, folded })}
               onClose={() => setPanel(null)}
@@ -2579,9 +2730,45 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
           )}
           {panel === "pawns" && venueId === "tabletop" && (
             <PawnsPanel
-              pawns={room.shared.pawns} myUserId={myUserId} isGm={isGm} held={heldPawn}
-              onTake={takePawn} onHold={(id) => { if (id) pawnRef.current.tap(id); else setHeldPawn(null); }}
+              pawns={room.shared.pawns} myUserId={myUserId} isGm={isGm} held={heldPawn} channelId={room.roomId}
+              onTake={takePawn}
+              onSpawnMonster={(spec) => {
+                const id = `m${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-3)}`;
+                const count = Object.values(room.shared.pawns).length;
+                const angle = (count % 10) * (Math.PI / 5);
+                const x = Math.round(Math.sin(angle) * 0.45 * 1000) / 1000;
+                const z = Math.round(Math.cos(angle) * 0.45 * 1000) / 1000;
+                myLastPawn.current = id;
+                sendPawn({
+                  op: "put",
+                  id,
+                  kind: spec.kind,
+                  colour: spec.colour,
+                  x,
+                  z,
+                  facing: Math.atan2(-x, z),
+                  label: spec.name.slice(0, 24),
+                  size: spec.size,
+                  ...(spec.hp > 0 ? { hp: spec.hp, maxHp: spec.hp } : {}),
+                  ...(spec.portraitUrl ? { portraitUrl: spec.portraitUrl } : {}),
+                });
+                setHeldPawn(id);
+                flashHint(`${spec.name} (${spec.hp} HP) spawned. Click the map to move it.`, 5000);
+              }}
+              onHold={(id) => { if (id) pawnRef.current.tap(id); else setHeldPawn(null); }}
               onPutBack={(id) => sendPawn({ op: "remove", id })} onClear={() => sendPawn({ op: "clear" })} onClose={() => setPanel(null)}
+            />
+          )}
+          {panel === "bard" && venueId === "tabletop" && (
+            <BardPanel
+              channelId={room.roomId}
+              mood={switchesOf(room.shared.lounge).mood}
+              onMood={(mood: TableMood) => {
+                const cur = switchesOf(room.shared.lounge);
+                room.setShared("lounge", { ...cur, mood });
+              }}
+              onOpenCompanion={openDndCompanion}
+              onClose={() => setPanel(null)}
             />
           )}
           {panel === "character" && vampire && (
@@ -2596,6 +2783,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               mine={myPerson ? room.shared.characters[myPerson.id] ?? null : null} fallbackName={myName}
               setMine={(value) => room.setShared("character", value)} onClose={() => setPanel(null)}
               legacy={legacySheet}
+              edition={dndEdition}
+              onOpenCompanion={openDndCompanion}
               screen={{ open: playerScreenOpen, setOpen: setPlayerScreenOpen, choice: playerChoice, setChoice: setPlayerChoice, notes: playerNotes, setNotes: setPlayerNotes }}
             />
           )}
@@ -2612,14 +2801,35 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         {held && (() => {
           const mine = held.owner === myUserId;
           const heroSheet = held.hero ? characters[held.owner] : undefined;
+          const canEdit = held.hero ? mine : mine || isGm;
+          const inInit = Boolean(combat?.entries.some((e) => e.pawnId === held.id || (e.name.toLowerCase() === nameOf(held).toLowerCase() && !e.connectionId)));
           return (
             <HeldPawnCard
               name={nameOf(held)}
               hp={heroSheet ? heroSheet.hp ?? heroSheet.maxHp : held.hp} maxHp={heroSheet ? heroSheet.maxHp : held.maxHp}
-              canEditHp={held.hero ? mine : mine || isGm}
+              canEditHp={canEdit}
               setHp={held.hero ? (hp) => heroSheet && setMine({ ...heroSheet, hp }) : (hp, maxHp) => sendPawn({ op: "hp", id: held.id, hp, maxHp })}
               moved={combat ? movedFeet(held) : null} speed={speedOf(held)}
               offTurn={combat && turnEntry && !onTurn(held) ? turnEntry.name : null}
+              conditions={held.conditions ?? heroSheet?.conditions ?? []}
+              elevation={held.elevation ?? 0}
+              size={held.size ?? PAWN_SQUARES[held.kind]}
+              inInitiative={inInit}
+              onUpdateMeta={canEdit ? (patch) => sendPawn({ op: "meta", id: held.id, ...patch }) : undefined}
+              onAddToInitiative={canEdit ? () => {
+                const rolled = Math.floor(Math.random() * 20) + 1;
+                const id = `p${held.id.slice(0, 12)}`;
+                room.setShared("initiative", addInitiative(combat, { id, name: nameOf(held), value: rolled, pawnId: held.id }));
+                flashHint(`${nameOf(held)} rolled ${rolled} for initiative.`, 3000);
+              } : undefined}
+              onRemove={canEdit ? () => {
+                if (combat) {
+                  const found = combat.entries.find((e) => e.pawnId === held.id);
+                  if (found) room.setShared("initiative", removeInitiative(combat, found.id));
+                }
+                sendPawn({ op: "remove", id: held.id });
+                setHeldPawn(null);
+              } : undefined}
               onLetGo={() => setHeldPawn(null)}
             />
           );
@@ -2634,7 +2844,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
             onCast={castSpell} onStopAiming={() => { setAimingState(null); setTargeting(null); }}
             aiming={aiming ? { name: aiming.spell.name, what: "click the map where it goes" } : targeting ? { name: targeting.spell.name, what: /^(misty step|dimension door|thunder step)$/i.test(targeting.spell.name) ? "click where you go" : "click a pawn or a spot" } : null}
             cast={cast ? { ...cast, areaId: cast.areaId && room.shared.areas[cast.areaId] ? cast.areaId : null, inIt: cast.areaId ? areaHits.byArea.get(cast.areaId) : undefined } : null}
-            onRoll={(dice) => onCommand?.(`/roll ${dice}`)} onTakeOff={(id) => sendArea({ op: "remove", id })} onDismissCast={() => setCast(null)}
+            onRoll={(dice) => onCommand?.(`/roll ${dice}`)} onCommand={onCommand} onOpenCompanion={openDndCompanion} edition={dndEdition}
+            onTakeOff={(id) => sendArea({ op: "remove", id })} onDismissCast={() => setCast(null)}
           />
         ) : !isGm && panel !== "character" ? (
           <button type="button" className="lr-hero-make" onClick={() => setPanel("character")}><UserRound size={14} /> Make my character</button>
@@ -3046,4 +3257,22 @@ const LIVING_ROOM_CSS = `
 .lr-chip-note { align-self: center; font-size: 11px; opacity: 0.7; padding: 0 4px; }
 .lr-desk .lr-chips button { min-height: 26px; padding: 0 9px; }
 .living-room-panel button.lr-wide-plain { width: 100%; justify-content: center; }
+.lr-combat-banner { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 10px; padding: 5px 12px; border-radius: 999px; background: var(--lr-panel); border: 1px solid var(--lr-accent); color: var(--lr-ink); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); font-size: 12.5px; z-index: 3; white-space: nowrap; }
+.lr-combat-banner small { opacity: 0.75; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10.5px; }
+.lr-combat-banner strong { color: #ffd23c; }
+.lr-combat-banner button { display: inline-flex; align-items: center; justify-content: center; min-height: 24px; padding: 0 7px; border-radius: 999px; color: inherit; background: rgba(255, 220, 170, 0.14); }
+.lr-combat-banner button.primary { background: var(--lr-accent); color: #1b1530; }
+.lr-hero-tabs { gap: 4px; }
+.lr-hero-tabs button { flex: 1; font-size: 11px; padding: 0 6px; }
+.lr-hero-pane { display: grid; gap: 6px; padding-top: 4px; border-top: 1px solid var(--lr-edge); }
+.lr-hero-pane .lr-abilities button { flex-direction: column; padding: 3px 2px; min-height: 36px; line-height: 1.1; }
+.lr-cond-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.lr-cond-chips button { min-height: 20px !important; padding: 0 6px !important; font-size: 10px !important; border: 1px solid transparent; }
+.lr-death-saves { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.lr-death-saves .ds-ok { border: 1px solid #4ade80; }
+.lr-death-saves .ds-fail { border: 1px solid #f87171; }
+.lr-sep { width: 1px; height: 14px; background: var(--lr-edge); margin: 0 2px; }
+.lr-held select { height: 24px; padding: 0 5px; border-radius: 7px; font: inherit; font-size: 11px; color: inherit; background: rgba(0, 0, 0, 0.25); border: 1px solid var(--lr-edge); }
+.lr-held select option { color: #1b1530; }
+.lr-bard { gap: 7px; }
 `;

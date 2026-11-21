@@ -2,7 +2,8 @@ import { currentUser, unauthorized } from "@/lib/auth";
 import { channelAccess } from "@/lib/access";
 import { channelKindInfo } from "@/lib/channel-kinds";
 import { channelAudience } from "@/lib/dms";
-import { publishMessage, publishMessageEvent } from "@/lib/hub-client";
+import { publishMessage, publishMessageEvent, dndTable } from "@/lib/hub-client";
+import { resolveCheckCommand } from "@/lib/dnd-skills";
 import { can, Permission } from "@/lib/permissions";
 import { limitUser, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
 import { blockIfTimedOut } from "@/lib/timeouts";
@@ -171,6 +172,7 @@ export function resolveRoll(
     dice: diceEvents,
     modifier,
     total,
+    ...(label ? { label } : {}),
     roller: { id: user.id, displayName: user.display_name },
     rollType: advantage
       ? "advantage"
@@ -320,6 +322,16 @@ export async function POST(request: Request) {
   }
   input = remainingTokens.join(" ").trim();
   if (!input && !isRouse) input = rawInput; // Fallback if user only typed theme name
+
+  let resolvedInitiative = false;
+  if (!isV5 && !isRouse && !/\d*d\d+/i.test(input)) {
+    const { character } = await dndTable({ op: "character-get", userId: user.id }).catch(() => ({ character: null }));
+    const check = resolveCheckCommand(input, character ?? null);
+    if (check) {
+      input = `${check.expression} ${check.label}`;
+      resolvedInitiative = Boolean(check.isInitiative);
+    }
+  }
 
   const rawTheme =
     parsedTheme ||
@@ -472,6 +484,8 @@ export async function POST(request: Request) {
       expression: roll.expression,
       total,
       modifier,
+      ...(label ? { label } : {}),
+      rollType: roll.rollType,
       dice: rollFaces(roll),
     });
   }
@@ -503,12 +517,12 @@ export async function POST(request: Request) {
       ...rollBot(storyteller),
     });
     if (posted instanceof Response) return posted;
-    return Response.json({ text, kind: "dnd", payload: { ...payload, verified: true }, roll, secretCard, posted: true, message: posted });
+    return Response.json({ text, kind: "dnd", payload: { ...payload, verified: true }, roll, secretCard, posted: true, message: posted, ...(resolvedInitiative ? { isInitiative: true } : {}) });
   }
 
   // Who answers, for the browser that posts this card itself.
   const { author, avatar } = rollBot(storyteller);
-  return Response.json({ text, kind: "dnd", payload, roll, secretCard, bot: { author, avatar } });
+  return Response.json({ text, kind: "dnd", payload, roll, secretCard, bot: { author, avatar }, ...(resolvedInitiative ? { isInitiative: true } : {}) });
 }
 
 
@@ -521,8 +535,9 @@ async function postVerifiedRoll(
 ): Promise<Response | ReturnType<typeof publicMessage>> {
   const access = await channelAccess(db, channelId, user, { need: [Permission.SEND_MESSAGES] });
   if (!access.ok) return access.response;
-  if (!access.channel.isDm && !channelKindInfo(access.channel.kind).text) {
-    return Response.json({ error: "Roll in a text channel." }, { status: 400 });
+  const chKind = channelKindInfo(access.channel.kind);
+  if (!access.channel.isDm && !chKind.text && !chKind.voice) {
+    return Response.json({ error: "Roll in a text or voice channel." }, { status: 400 });
   }
   if (!access.channel.isDm) {
     const timedOut = await blockIfTimedOut(db, channelId, user.id);

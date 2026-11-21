@@ -64,7 +64,7 @@ const dispose = (object: THREE.Object3D) => {
   });
 };
 
-function drawTent(spec: TentSpec): THREE.CanvasTexture {
+function drawTent(spec: TentSpec, portrait: HTMLImageElement | null = null): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = 256;
   canvas.height = 160;
@@ -75,18 +75,40 @@ function drawTent(spec: TentSpec): THREE.CanvasTexture {
   ctx.lineWidth = spec.turn ? 6 : 4;
   ctx.strokeStyle = spec.turn ? "#ffd23c" : spec.colour;
   ctx.beginPath(); ctx.roundRect(3, 3, 250, 154, 17); ctx.stroke();
-  ctx.fillStyle = "#fff4e3";
-  ctx.font = "700 48px system-ui, sans-serif";
-  ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  const shortName = spec.name.length > 12 ? spec.name.slice(0, 12) + "..." : spec.name;
-  ctx.fillText(shortName, 128, 62);
-  ctx.font = "700 72px system-ui, sans-serif";
-  ctx.fillText(spec.letter.toUpperCase(), 128, 122);
-  if (spec.turn) {
-    ctx.fillStyle = "#ffd23c";
-    ctx.font = "700 24px system-ui, sans-serif";
-    ctx.fillText("YOUR TURN", 128, 150);
+  if (portrait && portrait.naturalWidth > 0) {
+    const cx = 62, cy = 80, r = 44;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+    const s = Math.min(portrait.naturalWidth, portrait.naturalHeight);
+    ctx.drawImage(portrait, (portrait.naturalWidth - s) / 2, (portrait.naturalHeight - s) / 2, s, s, cx - r, cy - r, r * 2, r * 2);
+    ctx.restore();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = spec.turn ? "#ffd23c" : spec.colour;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "#fff4e3";
+    ctx.font = "700 30px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    const shortName = spec.name.length > 12 ? spec.name.slice(0, 12) + "..." : spec.name;
+    ctx.fillText(shortName, 118, spec.turn ? 62 : 80, 126);
+    if (spec.turn) {
+      ctx.fillStyle = "#ffd23c";
+      ctx.font = "700 20px system-ui, sans-serif";
+      ctx.fillText("YOUR TURN", 118, 108, 126);
+    }
+  } else {
+    ctx.fillStyle = "#fff4e3";
+    ctx.font = "700 48px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    const shortName = spec.name.length > 12 ? spec.name.slice(0, 12) + "..." : spec.name;
+    ctx.fillText(shortName, 128, 62);
+    ctx.font = "700 72px system-ui, sans-serif";
+    ctx.fillText(spec.letter.toUpperCase(), 128, 122);
+    if (spec.turn) {
+      ctx.fillStyle = "#ffd23c";
+      ctx.font = "700 24px system-ui, sans-serif";
+      ctx.fillText("YOUR TURN", 128, 150);
+    }
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -606,7 +628,8 @@ export class TableExtras {
         if (this.disposed || target.key !== spec.key) return;
         const material = tentMaterial(target.mesh);
         material.map?.dispose();
-        material.map = drawTent(spec);
+        const portrait = spec.portraitUrl ? pageImage(spec.portraitUrl, paint) : null;
+        material.map = drawTent(spec, portrait);
         material.needsUpdate = true;
       };
       paint();

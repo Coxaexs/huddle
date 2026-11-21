@@ -6,7 +6,7 @@
  * turn. Places are in metres from the table's centre, sizes in feet.
  */
 import * as THREE from "three";
-import type { TableArea } from "@/lib/lounge-shared";
+import { mapFromTable, tableFromMap, type TableArea, type TableFog } from "@/lib/lounge-shared";
 import { areaCentre, areaDirection, inArea, type PlacedArea } from "@/lib/dnd-spells";
 import { TABLE_CENTRE } from "../lib/living-room";
 
@@ -85,6 +85,10 @@ export class TableOverlay {
   private rulerKey = "";
   private ring: THREE.Group | null = null;
   private ringKey = "";
+  private fogGroup: THREE.Group | null = null;
+  private fogKey = "";
+  private pings: Array<{ group: THREE.Group; ring: THREE.Mesh; beacon: THREE.Mesh; born: number; life: number }> = [];
+  private now = 0;
   private metresPerFoot = 0.025;
   private lastAreas: Record<string, TableArea> | null = null;
   private lastHits: Map<string, string[]> | null = null;
@@ -277,11 +281,143 @@ export class TableOverlay {
     }
   }
 
+  setFog(
+    fog: TableFog | null,
+    opts: { isGm: boolean; turns: number; zoom: number; aspect?: number },
+  ) {
+    const aspect = opts.aspect || 1.6;
+    const rectSig = fog?.enabled
+      ? fog.rects.map((r) => `${r.id}:${r.x},${r.y},${r.w},${r.h}`).join(";")
+      : "";
+    const nextKey = `${rectSig}|${opts.isGm}|${opts.turns}|${opts.zoom}|${aspect}`;
+    if (nextKey === this.fogKey) return;
+    this.fogKey = nextKey;
+    if (this.fogGroup) {
+      this.root.remove(this.fogGroup);
+      disposeTree(this.fogGroup);
+      this.fogGroup = null;
+    }
+    if (!fog?.enabled || !fog.rects.length) return;
+    const group = new THREE.Group();
+    const fillOpacity = opts.isGm ? 0.34 : 0.88;
+    const fillColor = opts.isGm ? "#1d1832" : "#0b0914";
+    const radius = 1.31;
+    for (const r of fog.rects) {
+      const p0 = tableFromMap(r.x, r.y, aspect, opts.turns, opts.zoom, false);
+      const p1 = tableFromMap(r.x + r.w, r.y, aspect, opts.turns, opts.zoom, false);
+      const p2 = tableFromMap(r.x + r.w, r.y + r.h, aspect, opts.turns, opts.zoom, false);
+      const p3 = tableFromMap(r.x, r.y + r.h, aspect, opts.turns, opts.zoom, false);
+      const clamped = [p0, p1, p2, p3].map((p) => {
+        const d = Math.hypot(p.x, p.z);
+        return d > radius ? { x: (p.x / d) * radius, z: (p.z / d) * radius } : p;
+      });
+      const shape = new THREE.Shape(clamped.map((p) => new THREE.Vector2(p.x, -p.z)));
+      const mesh = new THREE.Mesh(
+        new THREE.ShapeGeometry(shape),
+        new THREE.MeshBasicMaterial({
+          color: fillColor,
+          transparent: true,
+          opacity: fillOpacity,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          toneMapped: false,
+        }),
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(TABLE_CENTRE.x, this.surfaceY + 0.008, TABLE_CENTRE.z);
+      mesh.renderOrder = 6;
+      mesh.raycast = () => undefined;
+      group.add(mesh);
+      if (opts.isGm) {
+        const loop = new THREE.LineLoop(
+          new THREE.BufferGeometry().setFromPoints(
+            clamped.map((p) => new THREE.Vector3(TABLE_CENTRE.x + p.x, this.surfaceY + 0.009, TABLE_CENTRE.z + p.z)),
+          ),
+          new THREE.LineBasicMaterial({ color: "#9d8cff", transparent: true, opacity: 0.7, toneMapped: false }),
+        );
+        loop.raycast = () => undefined;
+        group.add(loop);
+      }
+    }
+    this.fogGroup = group;
+    this.root.add(group);
+  }
+
+  isFogged(
+    x: number,
+    z: number,
+    fog: TableFog | null,
+    turns: number,
+    zoom: number,
+    aspect = 1.6,
+  ): boolean {
+    if (!fog?.enabled || !fog.rects.length) return false;
+    const pct = mapFromTable(x, z, aspect, turns, zoom);
+    return fog.rects.some((r) => pct.x >= r.x && pct.x <= r.x + r.w && pct.y >= r.y && pct.y <= r.y + r.h);
+  }
+
+  addPing(ping: { x: number; z: number; colour: string; byName?: string }) {
+    const group = new THREE.Group();
+    const colour = ping.colour || "#fbbf24";
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.06, 0.095, 36),
+      new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.014;
+    const beacon = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.015, 0.015, 0.42, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }),
+    );
+    beacon.position.y = 0.22;
+    group.add(ring, beacon);
+    if (ping.byName) {
+      const tag = textSprite([ping.byName], colour);
+      tag.position.set(0, 0.36, 0);
+      group.add(tag);
+    }
+    group.position.set(TABLE_CENTRE.x + ping.x, this.surfaceY, TABLE_CENTRE.z + ping.z);
+    group.traverse((part) => { part.raycast = () => undefined; });
+    this.root.add(group);
+    while (this.pings.length > 8) {
+      const oldest = this.pings.shift()!;
+      this.root.remove(oldest.group);
+      disposeTree(oldest.group);
+    }
+    this.pings.push({ group, ring, beacon, born: this.now, life: 3.2 });
+  }
+
+  tick(t: number, _dt: number) {
+    this.now = t;
+    for (let i = this.pings.length - 1; i >= 0; i--) {
+      const p = this.pings[i];
+      const age = (t - p.born) / p.life;
+      if (age >= 1) {
+        this.root.remove(p.group);
+        disposeTree(p.group);
+        this.pings.splice(i, 1);
+        continue;
+      }
+      const wave = 1 + age * 2.6;
+      p.ring.scale.set(wave, wave, 1);
+      (p.ring.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.95 * (1 - age));
+      (p.beacon.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.55 * (1 - age));
+      p.beacon.scale.y = 1 + age * 0.4;
+    }
+  }
+
+  busy(): boolean {
+    return this.pings.length > 0;
+  }
+
   dispose() {
     for (const drawn of this.areas.values()) { this.root.remove(drawn.group); disposeTree(drawn.group); }
     this.areas.clear();
     this.clearPreview();
     this.setMoveRing(null);
+    if (this.fogGroup) { this.root.remove(this.fogGroup); disposeTree(this.fogGroup); this.fogGroup = null; }
+    for (const p of this.pings) { this.root.remove(p.group); disposeTree(p.group); }
+    this.pings.length = 0;
     if (this.rulerGroup) { this.root.remove(this.rulerGroup); disposeTree(this.rulerGroup); }
   }
 }

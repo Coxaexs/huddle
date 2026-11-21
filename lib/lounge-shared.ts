@@ -8,7 +8,7 @@
 import { CLASSES, type AreaShape } from "./dnd-spells";
 import { sanitizeV5Sheet, type V5Sheet } from "./v5-sheet";
 
-export type LoungeSharedKey = "watch" | "queue" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid" | "spellfx" | "lounge" | "loungefx";
+export type LoungeSharedKey = "watch" | "queue" | "initiative" | "gm" | "card" | "character" | "hiddenroll" | "house" | "tablemap" | "pawn" | "area" | "grid" | "fog" | "ping" | "spellfx" | "lounge" | "loungefx";
 
 /** A video everyone watches in step. `position` is seconds into it at hub time `at`. */
 /**
@@ -123,6 +123,8 @@ export interface InitiativeEntry {
   value: number;
   /** The seat this entry belongs to, so its chair gets the turn marker; absent for a monster. */
   connectionId?: string;
+  /** Linked pawn id on the 3D table / 2D battlemap (especially for monsters). */
+  pawnId?: string;
 }
 
 export interface Initiative {
@@ -154,6 +156,21 @@ export interface TableCard {
  * A player's character at the table: the name and portrait on their tent,
  * and the few numbers play keeps touching. Everyone at the table sees them.
  */
+export interface TableCharacterAction {
+  name: string;
+  kind?: string;
+  bonus?: string;
+  damage?: string;
+  range?: string;
+  summary?: string;
+}
+
+export interface TableDeathSaves {
+  successes: number;
+  failures: number;
+  stable?: boolean;
+}
+
 export interface TableCharacter {
   name: string;
   portraitUrl: string | null;
@@ -162,6 +179,7 @@ export interface TableCharacter {
   level?: number;
   hp?: number;
   maxHp?: number;
+  tempHp?: number;
   ac?: number;
   /** Feet a turn. */
   speed?: number;
@@ -172,8 +190,42 @@ export interface TableCharacter {
   used?: number[];
   /** The spells they know or prepared, by name. */
   spells?: string[];
+  /** Active condition slugs/names (e.g. "poisoned", "prone"). */
+  conditions?: string[];
+  initiativeBonus?: number;
+  proficiency?: number;
+  deathSaves?: TableDeathSaves;
+  actions?: TableCharacterAction[];
+  skills?: Record<string, number>;
+  saves?: Record<string, number>;
+  edition?: "2014" | "2024";
   /** A Vampire: The Masquerade 5th edition sheet, on a server that plays it (lib/v5-sheet). */
   v5?: V5Sheet;
+}
+
+export interface TableFogRect {
+  id: string;
+  /** Percentage of the map (0..100). */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface TableFog {
+  enabled: boolean;
+  rects: TableFogRect[];
+}
+
+export interface TablePing {
+  id: string;
+  /** Metres east and south of the table's centre. */
+  x: number;
+  z: number;
+  colour: string;
+  by: string;
+  byName: string;
+  at: number;
 }
 
 /**
@@ -220,6 +272,14 @@ export interface TablePawn {
   facing: number;
   /** A name over its head ("Goblin 2"); empty: its owner's name. */
   label: string;
+  /** Active condition badges shown over the miniature. */
+  conditions?: string[];
+  /** Creature footprint in grid squares (e.g. 1 Medium, 2 Large, 3 Huge). */
+  size?: number;
+  /** Height above the board in feet (flying/levitating tokens). */
+  elevation?: number;
+  /** Optional portrait/token sprite URL. */
+  portraitUrl?: string | null;
   /** The user who took it from the cabinet. */
   owner: string;
   ownerName: string;
@@ -229,8 +289,24 @@ export interface TablePawn {
 
 /** What a client asks of a pawn: stand it (somewhere new), put it back, or clear the table. */
 export type PawnOp =
-  | { op: "put"; id: string; kind: PawnKind; colour: string; x: number; z: number; facing: number; label: string }
+  | {
+      op: "put";
+      id: string;
+      kind: PawnKind;
+      colour: string;
+      x: number;
+      z: number;
+      facing: number;
+      label: string;
+      size?: number;
+      elevation?: number;
+      conditions?: string[];
+      portraitUrl?: string | null;
+      hp?: number;
+      maxHp?: number;
+    }
   | { op: "hp"; id: string; hp: number; maxHp: number }
+  | { op: "meta"; id: string; conditions?: string[]; elevation?: number; size?: number; label?: string; portraitUrl?: string | null }
   | { op: "remove"; id: string }
   | { op: "clear" };
 
@@ -246,6 +322,73 @@ export function clampPawnSpot(x: number, z: number): { x: number; z: number } {
   const r = Math.hypot(x, z);
   if (r <= PAWN_REACH) return { x, z };
   return { x: (x / r) * PAWN_REACH, z: (z / r) * PAWN_REACH };
+}
+
+/** How big the tabletop's battle map circle is in metres (matches `tabletop-scene.ts` and `hoffle_sync.py`). */
+export const TABLE_MAP_RADIUS = 1.33;
+
+function mapCrop(aspect: number, zoom: number): [number, number] {
+  const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? Math.max(0.1, zoom) : 1;
+  return [
+    (safeAspect > 1 ? 1 / safeAspect : 1) / safeZoom,
+    (safeAspect > 1 ? 1 : safeAspect) / safeZoom,
+  ];
+}
+
+/**
+ * Converts a point on a 2D battle map (0..100%) to tabletop world coordinates
+ * (metres east/south of centre, clamped inside PAWN_REACH), matching `hoffle_sync.py`.
+ */
+export function tableFromMap(
+  px: number,
+  py: number,
+  aspect = 1.6,
+  turns = 0,
+  zoom = 1,
+  clampReach = true,
+): { x: number; z: number } {
+  const [sx, sy] = mapCrop(aspect, zoom);
+  const u = (px / 100 - 0.5) / sx;
+  const v = (1 - py / 100 - 0.5) / sy;
+  const r = -Math.trunc(turns) * (Math.PI / 2);
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  const a = c * u - s * v;
+  const b = s * u + c * v;
+  let x = 2 * TABLE_MAP_RADIUS * a;
+  let z = -2 * TABLE_MAP_RADIUS * b;
+  if (clampReach) {
+    const spot = clampPawnSpot(x, z);
+    x = spot.x;
+    z = spot.z;
+  }
+  return { x: Math.round(x * 1000) / 1000, z: Math.round(z * 1000) / 1000 };
+}
+
+/**
+ * Converts tabletop world coordinates (metres east/south of centre) to 0..100%
+ * on the battle map, inverse of `tableFromMap`.
+ */
+export function mapFromTable(
+  x: number,
+  z: number,
+  aspect = 1.6,
+  turns = 0,
+  zoom = 1,
+): { x: number; y: number } {
+  const [sx, sy] = mapCrop(aspect, zoom);
+  const a = x / (2 * TABLE_MAP_RADIUS);
+  const b = -z / (2 * TABLE_MAP_RADIUS);
+  const r = -Math.trunc(turns) * (Math.PI / 2);
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  const u = 0.5 + sx * (c * a + s * b);
+  const v = 0.5 + sy * (-s * a + c * b);
+  return {
+    x: Math.round(Math.max(0, Math.min(100, u * 100)) * 100) / 100,
+    y: Math.round(Math.max(0, Math.min(100, (1 - v) * 100)) * 100) / 100,
+  };
 }
 
 /**
@@ -270,6 +413,21 @@ export function applyPawn(
     if (!existing || !mayTouch(existing)) return null;
     return { ...pawns, [op.id]: { ...existing, hp: op.hp, maxHp: op.maxHp } };
   }
+  if (op.op === "meta") {
+    if (!existing || !mayTouch(existing)) return null;
+    return {
+      ...pawns,
+      [op.id]: {
+        ...existing,
+        ...(op.conditions !== undefined ? { conditions: op.conditions } : {}),
+        ...(op.elevation !== undefined ? { elevation: op.elevation } : {}),
+        ...(op.size !== undefined ? { size: op.size } : {}),
+        ...(op.label !== undefined ? { label: op.label } : {}),
+        ...(op.portraitUrl !== undefined ? { portraitUrl: op.portraitUrl } : {}),
+        at: now,
+      },
+    };
+  }
   if (op.op === "remove") {
     if (!existing || !mayTouch(existing)) return null;
     const { [op.id]: _gone, ...rest } = pawns;
@@ -279,14 +437,53 @@ export function applyPawn(
     if (!mayTouch(existing)) return null;
     // Moving someone else's leaves it theirs, and as they painted it.
     const mine = existing.owner === who.userId;
-    return { ...pawns, [op.id]: { ...existing, x: op.x, z: op.z, facing: op.facing, ...(mine ? { kind: op.kind, colour: op.colour, label: op.label } : {}), at: now } };
+    return {
+      ...pawns,
+      [op.id]: {
+        ...existing,
+        x: op.x,
+        z: op.z,
+        facing: op.facing,
+        ...(mine ? { kind: op.kind, colour: op.colour, label: op.label } : {}),
+        ...(op.size !== undefined ? { size: op.size } : {}),
+        ...(op.elevation !== undefined ? { elevation: op.elevation } : {}),
+        ...(op.conditions !== undefined ? { conditions: op.conditions } : {}),
+        ...(op.portraitUrl !== undefined ? { portraitUrl: op.portraitUrl } : {}),
+        at: now,
+      },
+    };
   }
   const all = Object.values(pawns);
   const held = all.filter((pawn) => pawn.owner === who.userId).length;
   if (held >= (who.isGm ? PAWNS_GM : PAWNS_EACH) || all.length >= PAWNS_MAX) return null;
   // A player's first pawn is their character; the game master's are monsters.
   const hero = !who.isGm && !all.some((pawn) => pawn.owner === who.userId && pawn.hero);
-  return { ...pawns, [op.id]: { id: op.id, kind: op.kind, colour: op.colour, x: op.x, z: op.z, facing: op.facing, label: op.label, owner: who.userId, ownerName: who.name, at: now, ...(hero ? { hero } : {}) } };
+  return {
+    ...pawns,
+    [op.id]: {
+      id: op.id,
+      kind: op.kind,
+      colour: op.colour,
+      x: op.x,
+      z: op.z,
+      facing: op.facing,
+      label: op.label,
+      ...(op.size !== undefined ? { size: op.size } : {}),
+      ...(op.elevation !== undefined ? { elevation: op.elevation } : {}),
+      ...(op.conditions !== undefined ? { conditions: op.conditions } : {}),
+      ...(op.portraitUrl !== undefined ? { portraitUrl: op.portraitUrl } : {}),
+      ...(!hero && op.maxHp ? { hp: op.hp ?? op.maxHp, maxHp: op.maxHp } : {}),
+      owner: who.userId,
+      ownerName: who.name,
+      at: now,
+      ...(hero ? { hero } : {}),
+    },
+  };
+}
+
+function cleanConditions(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  return [...new Set(raw.flatMap((c) => (typeof c === "string" && c.trim() ? [c.trim().toLowerCase().slice(0, 24)] : [])))].slice(0, 12);
 }
 
 /** A pawn request as sent, cleaned into a PawnOp (null: not one). */
@@ -301,6 +498,32 @@ export function sanitizePawnOp(raw: unknown): PawnOp | null {
     const maxHp = Math.round(num(value.maxHp, 0, 9999));
     return { op: "hp", id, hp: Math.round(num(value.hp, 0, maxHp)), maxHp };
   }
+  if (value.op === "meta") {
+    const conditions = "conditions" in value ? cleanConditions(value.conditions) ?? [] : undefined;
+    const elevation =
+      typeof value.elevation === "number" && Number.isFinite(value.elevation)
+        ? Math.round(num(value.elevation, -120, 500, 0))
+        : undefined;
+    const size =
+      typeof value.size === "number" && Number.isFinite(value.size)
+        ? Math.round(num(value.size, 1, 6, 1))
+        : undefined;
+    const label = typeof value.label === "string" ? str(value.label, 60).trim().slice(0, 24) : undefined;
+    const portraitUrl =
+      "portraitUrl" in value ? (value.portraitUrl === null ? null : safeMediaUrl(value.portraitUrl) ?? undefined) : undefined;
+    if (conditions === undefined && elevation === undefined && size === undefined && label === undefined && portraitUrl === undefined) {
+      return null;
+    }
+    return {
+      op: "meta",
+      id,
+      ...(conditions !== undefined ? { conditions } : {}),
+      ...(elevation !== undefined ? { elevation } : {}),
+      ...(size !== undefined ? { size } : {}),
+      ...(label !== undefined ? { label } : {}),
+      ...(portraitUrl !== undefined ? { portraitUrl } : {}),
+    };
+  }
   if (value.op !== "put") return null;
   const kind = PAWN_KINDS.find((k) => k === value.kind);
   if (!kind) return null;
@@ -308,7 +531,30 @@ export function sanitizePawnOp(raw: unknown): PawnOp | null {
   if (typeof value.x !== "number" || typeof value.z !== "number" || !Number.isFinite(value.x) || !Number.isFinite(value.z)) return null;
   const spot = clampPawnSpot(value.x, value.z);
   const round = (n: number) => Math.round(n * 1000) / 1000;
-  return { op: "put", id, kind, colour, x: round(spot.x), z: round(spot.z), facing: round(num(value.facing, -Math.PI, Math.PI)), label: str(value.label, 60).trim().slice(0, 24) };
+  const conditions = cleanConditions(value.conditions);
+  const size = typeof value.size === "number" && Number.isFinite(value.size) ? Math.round(num(value.size, 1, 6, 1)) : undefined;
+  const elevation =
+    typeof value.elevation === "number" && Number.isFinite(value.elevation)
+      ? Math.round(num(value.elevation, -120, 500, 0))
+      : undefined;
+  const portraitUrl = value.portraitUrl === null ? null : safeMediaUrl(value.portraitUrl) ?? undefined;
+  const maxHpRaw = typeof value.maxHp === "number" && Number.isFinite(value.maxHp) && value.maxHp > 0 ? Math.round(num(value.maxHp, 1, 9999)) : undefined;
+  const hpRaw = maxHpRaw !== undefined ? Math.round(num(value.hp ?? maxHpRaw, 0, maxHpRaw)) : undefined;
+  return {
+    op: "put",
+    id,
+    kind,
+    colour,
+    x: round(spot.x),
+    z: round(spot.z),
+    facing: round(num(value.facing, -Math.PI, Math.PI)),
+    label: str(value.label, 60).trim().slice(0, 24),
+    ...(size !== undefined ? { size } : {}),
+    ...(elevation !== undefined ? { elevation } : {}),
+    ...(conditions !== undefined ? { conditions } : {}),
+    ...(portraitUrl !== undefined ? { portraitUrl } : {}),
+    ...(maxHpRaw !== undefined ? { hp: hpRaw, maxHp: maxHpRaw } : {}),
+  };
 }
 
 const str = (value: unknown, max: number): string => (typeof value === "string" ? value.slice(0, max) : "");
@@ -319,6 +565,7 @@ const num = (value: unknown, min: number, max: number, fallback = 0): number =>
 export function safeMediaUrl(value: unknown): string | null {
   if (typeof value !== "string" || value.length > 600) return null;
   if (/^\/hangout\/api\/uploads\/[\w%.\-]+$/.test(value)) return value;
+  if (/^(?:\/hangout)?\/api\/integrations\/dnd\/token\?[a-zA-Z0-9_%.\-=&+]+$/.test(value)) return value;
   // Videos the server downloaded with yt-dlp (the id is YouTube's 11 characters).
   if (/^\/hangout\/api\/youtube\/stream\/[\w\-]{11}\.mp4$/.test(value)) return value;
   try {
@@ -362,7 +609,16 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
         const name = str(e.name, 40).trim();
         if (!name) return [];
         const connectionId = str(e.connectionId, 64);
-        return [{ id: str(e.id, 24) || name, name, value: num(e.value, -99, 999), ...(connectionId ? { connectionId } : {}) }];
+        const pawnId = str(e.pawnId, 24);
+        return [
+          {
+            id: str(e.id, 24) || name,
+            name,
+            value: num(e.value, -99, 999),
+            ...(connectionId ? { connectionId } : {}),
+            ...(pawnId ? { pawnId } : {}),
+          },
+        ];
       });
       if (!entries.length) return null;
       return {
@@ -399,6 +655,49 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
       const spells = Array.isArray(value.spells)
         ? [...new Set(value.spells.flatMap((spell) => (typeof spell === "string" && spell.trim() ? [spell.trim().slice(0, 60)] : [])))].slice(0, 40)
         : undefined;
+      const conditions = cleanConditions(value.conditions);
+      const deathRaw = value.deathSaves && typeof value.deathSaves === "object" ? (value.deathSaves as Record<string, unknown>) : null;
+      const deathSaves = deathRaw
+        ? {
+            successes: Math.round(num(deathRaw.successes, 0, 3, 0)),
+            failures: Math.round(num(deathRaw.failures, 0, 3, 0)),
+            ...(deathRaw.stable === true ? { stable: true } : {}),
+          }
+        : undefined;
+      const actions = Array.isArray(value.actions)
+        ? value.actions.slice(0, 16).flatMap((rawAction): TableCharacterAction[] => {
+            if (!rawAction || typeof rawAction !== "object") return [];
+            const a = rawAction as Record<string, unknown>;
+            const aName = str(a.name, 50).trim();
+            if (!aName) return [];
+            const kind = str(a.kind, 24).trim();
+            const bonus = str(a.bonus, 24).trim();
+            const damage = str(a.damage, 40).trim();
+            const range = str(a.range, 32).trim();
+            const summary = str(a.summary, 140).trim();
+            return [
+              {
+                name: aName,
+                ...(kind ? { kind } : {}),
+                ...(bonus ? { bonus } : {}),
+                ...(damage ? { damage } : {}),
+                ...(range ? { range } : {}),
+                ...(summary ? { summary } : {}),
+              },
+            ];
+          })
+        : undefined;
+      const numRecord = (rawRec: unknown, maxKeys: number): Record<string, number> | undefined => {
+        if (!rawRec || typeof rawRec !== "object" || Array.isArray(rawRec)) return undefined;
+        const out: Record<string, number> = {};
+        for (const [k, v] of Object.entries(rawRec as Record<string, unknown>).slice(0, maxKeys)) {
+          const cleanKey = str(k, 32).trim();
+          const n = whole(v, -20, 40);
+          if (cleanKey && n !== undefined) out[cleanKey] = n;
+        }
+        return Object.keys(out).length ? out : undefined;
+      };
+      const edition = value.edition === "2014" || value.edition === "2024" ? value.edition : undefined;
       const sheet: TableCharacter = {
         name,
         portraitUrl: safeMediaUrl(value.portraitUrl),
@@ -406,6 +705,7 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
         level: whole(value.level, 1, 20),
         maxHp,
         hp: whole(value.hp, 0, maxHp ?? 9999),
+        tempHp: whole(value.tempHp, 0, 9999),
         ac: whole(value.ac, 0, 40),
         speed: whole(value.speed, 0, 300),
         abilities: list(value.abilities, 6, 30),
@@ -413,6 +713,14 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
         // Never more spent than there are.
         used: slots ? list(value.used, 9, 9)?.map((n, i) => Math.min(n, slots[i])) : undefined,
         spells,
+        conditions,
+        initiativeBonus: whole(value.initiativeBonus, -20, 40),
+        proficiency: whole(value.proficiency, 1, 12),
+        deathSaves,
+        actions,
+        skills: numRecord(value.skills, 24),
+        saves: numRecord(value.saves, 8),
+        edition,
         v5: value.v5 && typeof value.v5 === "object" ? sanitizeV5Sheet(value.v5) : undefined,
       };
       return Object.fromEntries(Object.entries(sheet).filter(([, v]) => v !== undefined)) as unknown as TableCharacter;
@@ -459,6 +767,36 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
     case "grid": {
       const squares = num(value.squares, 10, 60, 0);
       return squares ? ({ squares: Math.round(squares) } satisfies TableGrid) : null;
+    }
+    case "fog": {
+      const rects = (Array.isArray(value.rects) ? value.rects : []).slice(0, 80).flatMap((rawRect): TableFogRect[] => {
+        if (!rawRect || typeof rawRect !== "object") return [];
+        const r = rawRect as Record<string, unknown>;
+        const round2 = (n: number) => Math.round(n * 100) / 100;
+        const x = round2(num(r.x, 0, 100, -1));
+        const y = round2(num(r.y, 0, 100, -1));
+        const w = round2(num(r.w, 0, 100, 0));
+        const h = round2(num(r.h, 0, 100, 0));
+        if (x < 0 || y < 0 || w < 0.2 || h < 0.2) return [];
+        const id = str(r.id, 32) || `${x}-${y}`;
+        return [{ id, x, y, w: Math.min(w, round2(100 - x)), h: Math.min(h, round2(100 - y)) }];
+      });
+      return { enabled: value.enabled !== false && rects.length > 0, rects } satisfies TableFog;
+    }
+    case "ping": {
+      if (typeof value.x !== "number" || typeof value.z !== "number" || !Number.isFinite(value.x) || !Number.isFinite(value.z)) return null;
+      const spot = clampPawnSpot(value.x, value.z);
+      const round = (n: number) => Math.round(n * 1000) / 1000;
+      const colour = typeof value.colour === "string" && /^#[0-9a-f]{6}$/i.test(value.colour) ? value.colour.toLowerCase() : "#fbbf24";
+      return {
+        id: str(value.id, 32) || `${now}`,
+        x: round(spot.x),
+        z: round(spot.z),
+        colour,
+        by,
+        byName: str(value.byName, 40) || by,
+        at: now,
+      } satisfies TablePing;
     }
   }
 }

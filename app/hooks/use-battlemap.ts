@@ -220,25 +220,30 @@ async function getImageDimensions(
     });
   }, [stageChannelId, showPrompt, showConfirm, pickImage, createBattlemap]);
 
-  /** Drops a token for yourself, using your avatar. */
-  const addMyToken = useCallback(async () => {
-    if (!stageChannelId || !user) return;
-    await apiFetch("/api/battlemap", {
-      method: "POST",
-      body: JSON.stringify({
-        channelId: stageChannelId,
-        action: "add-token",
-        token: {
-          label: user.displayName,
-          color: user.color,
-          avatarUrl: user.avatarUrl || null,
-          ownerId: user.id,
-          x: 2,
-          y: 2,
-        },
-      }),
-    }).catch((error: Error) => onNotice(error.message));
-  }, [stageChannelId, user, onNotice]);
+  /** Drops a token for yourself, pre-filled with tabletop character stats if provided. */
+  const addMyToken = useCallback(
+    async (hero?: { name?: string; hp?: number; maxHp?: number; portraitUrl?: string | null }) => {
+      if (!stageChannelId || !user) return;
+      await apiFetch("/api/battlemap", {
+        method: "POST",
+        body: JSON.stringify({
+          channelId: stageChannelId,
+          action: "add-token",
+          token: {
+            label: hero?.name || user.displayName,
+            color: user.color,
+            avatarUrl: hero?.portraitUrl || user.avatarUrl || null,
+            ownerId: user.id,
+            hp: hero?.hp ?? null,
+            maxHp: hero?.maxHp ?? null,
+            x: 2,
+            y: 2,
+          },
+        }),
+      }).catch((error: Error) => onNotice(error.message));
+    },
+    [stageChannelId, user, onNotice],
+  );
 
   /** Local optimistic updates; the socket echo reconciles. */
   const localToken = useCallback((token: MapToken) => {
