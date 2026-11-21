@@ -669,6 +669,11 @@ if (!app.requestSingleInstanceLock()) {
       await shell.openExternal(url);
       return true;
     });
+    // Play together: hand an invite code to the game's mod (a file it watches).
+    ipcMain.handle("game-join:queue", async (event, game, data) => {
+      if (!mainWindow || event.sender !== mainWindow.webContents) return false;
+      return require("./activity-scan").queueGameJoin(String(game || ""), data);
+    });
     ipcMain.on("desktop-notification", (_event, { title, body }) => {
       if (Notification.isSupported()) {
         const iconPath = path.join(__dirname, "../build/icon.png");

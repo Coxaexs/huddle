@@ -7,6 +7,7 @@ import {
   closeInvite,
   mayJoin,
   newPlayInvite,
+  normalizeParty,
   parsePlayInvite,
   planJoin,
   playGameForActivity,
@@ -105,27 +106,72 @@ describe("play together invites", () => {
 describe("planJoin", () => {
   const steamId = "76561198000000001";
   const lobby = "109775242243779373";
+  const run = "steam://run/413150";
   const seen = { personaName: "kiwi", visible: true, appId: 413150, lobbyId: lobby };
+  const none = { hostSteamId: null, presence: null, hasKey: false, party: null };
+  const party = { inviteCode: "S1A2B3C4D5", steamLobby: lobby, steamId, farm: "Kiwi Farm", players: 1, maxPlayers: 4 };
 
-  it("joins the lobby in one click", () => {
-    expect(planJoin("stardew", steamId, seen, true)).toEqual({
+  it("prefers the host's mod: Steam lobby plus invite code", () => {
+    expect(planJoin("stardew", { ...none, party })).toEqual({
       how: "lobby",
       url: `steam://joinlobby/413150/${lobby}/${steamId}`,
+      runUrl: run,
+      inviteCode: "S1A2B3C4D5",
       addFriendUrl: `steam://friends/add/${steamId}`,
     });
   });
 
+  it("uses the invite code alone off Steam (GOG)", () => {
+    expect(planJoin("stardew", { ...none, party: { ...party, steamLobby: null, steamId: null, inviteCode: "G9Z" } })).toEqual({
+      how: "code",
+      url: run,
+      runUrl: run,
+      inviteCode: "G9Z",
+      addFriendUrl: null,
+    });
+  });
+
+  it("falls back to Steam's Web API lobby", () => {
+    expect(planJoin("stardew", { ...none, hostSteamId: steamId, presence: seen, hasKey: true })).toMatchObject({
+      how: "lobby",
+      url: `steam://joinlobby/413150/${lobby}/${steamId}`,
+      inviteCode: null,
+    });
+  });
+
   it("falls back to opening the game, saying why", () => {
-    const run = "steam://run/413150";
-    expect(planJoin("stardew", null, null, true)).toMatchObject({ how: "manual", reason: "host-not-linked", url: run, addFriendUrl: null });
-    expect(planJoin("stardew", steamId, null, false)).toMatchObject({ reason: "no-key", url: run });
-    expect(planJoin("stardew", steamId, { ...seen, visible: false, appId: null, lobbyId: null }, true)).toMatchObject({ reason: "hidden" });
-    expect(planJoin("stardew", steamId, { ...seen, appId: null, lobbyId: null }, true)).toMatchObject({ reason: "not-in-game" });
-    expect(planJoin("stardew", steamId, { ...seen, appId: 570, lobbyId: null }, true)).toMatchObject({ reason: "not-in-game" });
-    expect(planJoin("stardew", steamId, { ...seen, lobbyId: null }, true)).toMatchObject({ reason: "no-lobby" });
+    const linked = { ...none, hostSteamId: steamId, hasKey: true };
+    expect(planJoin("stardew", none)).toMatchObject({ how: "manual", reason: "host-not-linked", url: run, addFriendUrl: null });
+    expect(planJoin("stardew", { ...linked, hasKey: false })).toMatchObject({ reason: "no-key", url: run });
+    expect(planJoin("stardew", { ...linked, presence: { ...seen, visible: false, appId: null, lobbyId: null } })).toMatchObject({ reason: "hidden" });
+    expect(planJoin("stardew", { ...linked, presence: { ...seen, appId: null, lobbyId: null } })).toMatchObject({ reason: "not-in-game" });
+    expect(planJoin("stardew", { ...linked, presence: { ...seen, appId: 570, lobbyId: null } })).toMatchObject({ reason: "not-in-game" });
+    expect(planJoin("stardew", { ...linked, presence: { ...seen, lobbyId: null } })).toMatchObject({ reason: "no-lobby" });
   });
 
   it("does not hand out a lobby from another game", () => {
-    expect(planJoin("stardew", steamId, { ...seen, appId: 570 }, true)).toMatchObject({ how: "manual", reason: "not-in-game" });
+    expect(planJoin("stardew", { ...none, hostSteamId: steamId, hasKey: true, presence: { ...seen, appId: 570 } })).toMatchObject({
+      how: "manual",
+      reason: "not-in-game",
+    });
+  });
+});
+
+describe("normalizeParty", () => {
+  it("keeps only well-formed, joinable reports", () => {
+    expect(normalizeParty({ inviteCode: "S1A2B3", farm: " Kiwi ", players: 2, maxPlayers: 4 })).toEqual({
+      inviteCode: "S1A2B3",
+      steamLobby: null,
+      steamId: null,
+      farm: "Kiwi",
+      players: 2,
+      maxPlayers: 4,
+    });
+    expect(normalizeParty({ inviteCode: "X123" })).toBeNull();
+    expect(normalizeParty({ inviteCode: "S1; rm -rf" })).toBeNull();
+    expect(normalizeParty({ steamLobby: "109775242243779373" })).toBeNull();
+    expect(normalizeParty({ steamLobby: "109775242243779373", steamId: "76561198000000001" })).toMatchObject({ inviteCode: null });
+    expect(normalizeParty({ inviteCode: "S1", players: 999 })).toMatchObject({ players: null });
+    expect(normalizeParty(null)).toBeNull();
   });
 });

@@ -503,7 +503,11 @@ async function migrate(db: D1Database): Promise<void> {
         message_id TEXT PRIMARY KEY,
         host_id TEXT NOT NULL,
         game TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        -- What the host's game mod last reported (GameParty JSON), and when (ms).
+        -- Secret: only handed out, as a join plan, to people the host let in.
+        party TEXT,
+        party_at INTEGER
       )`),
     // A linked Steam account (lib/steam.ts). Private: never sent to others,
     // except as part of a join link the host allowed.

@@ -2,7 +2,9 @@ import { currentUser, unauthorized } from "@/lib/auth";
 import { channelAudience } from "@/lib/dms";
 import { publishMessage, publishMessageEvent, publishPlay } from "@/lib/hub-client";
 import {
+  PARTY_FRESH_MS,
   PLAY_GAMES,
+  PLAY_INVITE_TTL_MS,
   answerRequest,
   askToJoin,
   closeInvite,
@@ -10,9 +12,11 @@ import {
   isPlayGame,
   mayJoin,
   newPlayInvite,
+  normalizeParty,
   parsePlayInvite,
   planJoin,
   playSummary,
+  type GameParty,
   type JoinPlan,
   type PlayGameId,
   type PlayInvite,
@@ -36,21 +40,41 @@ async function steamIdOf(db: D1Database, userId: string): Promise<string | null>
   return row?.steam_id ?? null;
 }
 
-/** How someone gets into this host's game right now (asks Steam each time). */
+/** The newest fresh report from the host's game mod for this game, if any. */
+async function partyOf(db: D1Database, game: PlayGameId, hostId: string): Promise<GameParty | null> {
+  const row = await db
+    .prepare(
+      `SELECT party FROM play_invites
+        WHERE host_id = ? AND game = ? AND party IS NOT NULL AND party_at > ?
+        ORDER BY party_at DESC LIMIT 1`,
+    )
+    .bind(hostId, game, Date.now() - PARTY_FRESH_MS)
+    .first<{ party: string }>();
+  try {
+    return row ? normalizeParty(JSON.parse(row.party)) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * How someone gets into this host's game right now: the host's mod first,
+ * then Steam's Web API (asked only when the mod has nothing).
+ */
 async function joinPlan(db: D1Database, game: PlayGameId, hostId: string): Promise<JoinPlan> {
   const key = bindings().STEAM_WEB_API_KEY?.trim();
-  const hostSteamId = await steamIdOf(db, hostId);
-  const presence = hostSteamId && key ? await steamPresence(hostSteamId, key) : null;
-  return planJoin(game, hostSteamId, presence, Boolean(key));
+  const [hostSteamId, party] = await Promise.all([steamIdOf(db, hostId), partyOf(db, game, hostId)]);
+  const presence = !party && hostSteamId && key ? await steamPresence(hostSteamId, key) : null;
+  return planJoin(game, { hostSteamId, presence, hasKey: Boolean(key), party });
 }
 
 /**
  * What the host sees about their own game: "friends can join in one click",
- * or why not. The join link itself is left out; it is the host's own lobby.
+ * or why not. The join details themselves are left out.
  */
 async function hostCheck(db: D1Database, game: PlayGameId, hostId: string) {
   const plan = await joinPlan(db, game, hostId);
-  return plan.how === "lobby" ? { oneClick: true as const } : { oneClick: false as const, reason: plan.reason };
+  return plan.how === "manual" ? { oneClick: false as const, reason: plan.reason } : { oneClick: true as const };
 }
 
 interface InviteRow {
@@ -146,7 +170,25 @@ export async function POST(request: Request) {
     messageId?: string;
     userId?: string;
     accept?: boolean;
+    party?: unknown;
   };
+
+  if (body.action === "party") {
+    // The host's desktop app passing on what their game mod reports (or null
+    // when they stop hosting). Kept on their open invites for this game only.
+    if (!isPlayGame(body.game)) return Response.json({ error: "Unknown game." }, { status: 400 });
+    const limited = await limitUser(db, { action: "play-party", limit: 20, windowSeconds: 60 }, user.id);
+    if (limited) return limited;
+    const party = normalizeParty(body.party);
+    const saved = await db
+      .prepare(
+        `UPDATE play_invites SET party = ?, party_at = ?
+          WHERE host_id = ? AND game = ? AND created_at > ?`,
+      )
+      .bind(party ? JSON.stringify(party) : null, party ? Date.now() : null, user.id, body.game, new Date(Date.now() - PLAY_INVITE_TTL_MS).toISOString())
+      .run();
+    return Response.json({ invites: saved.meta.changes ?? 0 });
+  }
 
   if (body.action === "check") {
     if (!isPlayGame(body.game)) return Response.json({ error: "Unknown game." }, { status: 400 });

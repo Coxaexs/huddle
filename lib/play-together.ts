@@ -16,6 +16,7 @@
  */
 
 import {
+  isSteamId,
   steamAddFriendUrl,
   steamJoinLobbyUrl,
   steamRunUrl,
@@ -207,42 +208,102 @@ export function parsePlayInvite(value: unknown): PlayInvite | null {
 }
 
 /**
+ * What the Hoffle Stardew mod (game-mods/stardew) reports while you host
+ * co-op, passed on by the desktop app. The invite code is a secret like
+ * Discord's join secret: only people the host lets in are given it.
+ */
+export interface GameParty {
+  inviteCode: string | null;
+  steamLobby: string | null;
+  steamId: string | null;
+  farm: string;
+  players: number | null;
+  maxPlayers: number | null;
+}
+
+/** A party report older than this is ignored (the game closed or the app did). */
+export const PARTY_FRESH_MS = 90_000;
+
+function smallInt(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 && n <= 64 ? n : null;
+}
+
+/** Validates what the page sends; null unless it is hosting something joinable. */
+export function normalizeParty(value: unknown): GameParty | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  const code = typeof v.inviteCode === "string" && /^[SG][0-9A-Za-z]{1,16}$/.test(v.inviteCode) ? v.inviteCode : null;
+  const lobby = typeof v.steamLobby === "string" && /^\d{15,20}$/.test(v.steamLobby) ? v.steamLobby : null;
+  const steamId = isSteamId(v.steamId) ? v.steamId : null;
+  if (!code && !(lobby && steamId)) return null;
+  return {
+    inviteCode: code,
+    steamLobby: lobby,
+    steamId,
+    farm: typeof v.farm === "string" ? v.farm.trim().slice(0, 40) : "",
+    players: smallInt(v.players),
+    maxPlayers: smallInt(v.maxPlayers),
+  };
+}
+
+/**
  * Why a one-click join isn't possible, so the card can say what to do:
- * - host-not-linked: the host never linked Steam in Settings → Activities.
- * - no-key: this Hoffle has no Steam Web API key configured.
+ * - host-not-linked: the host has neither the Hoffle mod running nor Steam linked.
+ * - no-key: Steam is linked but this Hoffle has no Steam Web API key.
  * - hidden: Steam hides the host's game (private profile or game details).
  * - not-in-game: Steam says the host isn't in this game right now.
  * - no-lobby: they are in the game but not hosting co-op (or it is invite-only).
  */
 export type ManualReason = "host-not-linked" | "no-key" | "hidden" | "not-in-game" | "no-lobby";
 
-export type JoinPlan =
-  | { how: "lobby"; url: string; addFriendUrl: string }
-  | { how: "manual"; reason: ManualReason; url: string; addFriendUrl: string | null };
+export interface JoinPlan {
+  /** lobby: Steam drops you into the farm; code: join with the invite code; manual: open the game and find it. */
+  how: "lobby" | "code" | "manual";
+  /** What Join opens. */
+  url: string;
+  /** Just starts the game (when the joiner's mod takes it from there). */
+  runUrl: string;
+  /** The host's invite code, from their mod. */
+  inviteCode: string | null;
+  addFriendUrl: string | null;
+  reason?: ManualReason;
+}
+
+export interface JoinSources {
+  /** The host's linked Steam account. */
+  hostSteamId: string | null;
+  /** What Steam's Web API says about the host (needs a key). */
+  presence: SteamPresence | null;
+  hasKey: boolean;
+  /** What the host's mod reported, if fresh. */
+  party: GameParty | null;
+}
 
 /**
- * How someone who is allowed in gets into the host's game. With a lobby it is
- * one link that opens Steam, starts the game and joins the farm. Without one
- * it still opens the game; Stardew then lists Steam friends' farms under
- * Co-op → Join.
+ * How someone who is allowed in gets into the host's game. The host's mod is
+ * the best source (invite code + Steam lobby, no setup); Steam's Web API is
+ * next. Without either it still opens the game, where Stardew lists Steam
+ * friends' farms under Co-op → Join.
  */
-export function planJoin(
-  game: PlayGameId,
-  hostSteamId: string | null,
-  presence: SteamPresence | null,
-  hasKey: boolean,
-): JoinPlan {
+export function planJoin(game: PlayGameId, sources: JoinSources): JoinPlan {
+  const { hostSteamId, presence, hasKey, party } = sources;
   const appId = PLAY_GAMES[game].steamAppId;
-  const run = steamRunUrl(appId);
-  if (!hostSteamId) return { how: "manual", reason: "host-not-linked", url: run, addFriendUrl: null };
-  const addFriendUrl = steamAddFriendUrl(hostSteamId);
-  if (!hasKey || !presence) return { how: "manual", reason: "no-key", url: run, addFriendUrl };
+  const runUrl = steamRunUrl(appId);
+  const friendId = party?.steamId ?? hostSteamId;
+  const addFriendUrl = friendId ? steamAddFriendUrl(friendId) : null;
+  const manual = (reason: ManualReason): JoinPlan => ({ how: "manual", url: runUrl, runUrl, inviteCode: null, addFriendUrl, reason });
+
+  if (party?.steamLobby && party.steamId) {
+    return { how: "lobby", url: steamJoinLobbyUrl(appId, party.steamLobby, party.steamId), runUrl, inviteCode: party.inviteCode, addFriendUrl };
+  }
+  if (party?.inviteCode) return { how: "code", url: runUrl, runUrl, inviteCode: party.inviteCode, addFriendUrl };
+  if (!hostSteamId) return manual("host-not-linked");
+  if (!hasKey || !presence) return manual("no-key");
   if (presence.lobbyId && (presence.appId === appId || presence.appId === null)) {
-    return { how: "lobby", url: steamJoinLobbyUrl(appId, presence.lobbyId, hostSteamId), addFriendUrl };
+    return { how: "lobby", url: steamJoinLobbyUrl(appId, presence.lobbyId, hostSteamId), runUrl, inviteCode: null, addFriendUrl };
   }
-  if (!presence.visible || presence.appId === null) {
-    return { how: "manual", reason: presence.visible ? "not-in-game" : "hidden", url: run, addFriendUrl };
-  }
-  if (presence.appId !== appId) return { how: "manual", reason: "not-in-game", url: run, addFriendUrl };
-  return { how: "manual", reason: "no-lobby", url: run, addFriendUrl };
+  if (!presence.visible || presence.appId === null) return manual(presence.visible ? "not-in-game" : "hidden");
+  if (presence.appId !== appId) return manual("not-in-game");
+  return manual("no-lobby");
 }

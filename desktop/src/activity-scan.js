@@ -1,6 +1,9 @@
 "use strict";
 
 const { execFile } = require("node:child_process");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
 /**
  * Looks at what is running on this computer so Hoffle can show "Playing X" and
@@ -147,9 +150,67 @@ async function spotifyNowPlaying() {
   return null;
 }
 
+// ---- Play together: game mods (game-mods/ in the Hoffle repo) ----
+// A mod writes ~/.hoffle/play/<game>-host.json while you host, and reads
+// <game>-join.json when Hoffle lets you into someone's game. Only these files
+// in this one folder are touched.
+const PLAY_DIR = path.join(os.homedir(), ".hoffle", "play");
+const PLAY_GAMES = ["stardew"];
+const HOST_FRESH_MS = 30_000;
+
+function readJson(file) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(PLAY_DIR, file), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/** Per game: whether its mod is installed, and what it reports while you host. */
+function playState() {
+  const state = {};
+  for (const game of PLAY_GAMES) {
+    const mod = Boolean(readJson(`${game}-mod.json`));
+    const host = readJson(`${game}-host.json`);
+    const fresh = host && host.hosting === true && Date.now() - Number(host.updatedAt || 0) < HOST_FRESH_MS;
+    state[game] = {
+      mod,
+      party: fresh
+        ? {
+            inviteCode: typeof host.inviteCode === "string" ? host.inviteCode : null,
+            steamLobby: typeof host.steamLobby === "string" ? host.steamLobby : null,
+            steamId: typeof host.steamId === "string" ? host.steamId : null,
+            farm: typeof host.farm === "string" ? host.farm.slice(0, 40) : "",
+            players: Number.isInteger(host.players) ? host.players : null,
+            maxPlayers: Number.isInteger(host.maxPlayers) ? host.maxPlayers : null,
+          }
+        : null,
+    };
+  }
+  return state;
+}
+
+/**
+ * Asks the game's mod to join with this invite code (it does so from the
+ * title screen). Returns false for anything that isn't a plain invite code.
+ */
+function queueGameJoin(game, data) {
+  const code = data && data.inviteCode;
+  if (!PLAY_GAMES.includes(game) || typeof code !== "string" || !/^[SG][0-9A-Za-z]{1,16}$/.test(code)) return false;
+  try {
+    fs.mkdirSync(PLAY_DIR, { recursive: true });
+    const file = path.join(PLAY_DIR, `${game}-join.json`);
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify({ v: 1, inviteCode: code, at: Date.now() }));
+    fs.renameSync(`${file}.tmp`, file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function scan() {
   const [names, music] = await Promise.all([processNames(), spotifyNowPlaying()]);
-  return { activity: classify(names), music };
+  return { activity: classify(names), music, play: playState() };
 }
 
 // Same list as lib/steam.ts GAME_LINK_PATTERN: the only non-web links the
@@ -161,4 +222,4 @@ function isGameLink(url) {
   return typeof url === "string" && GAME_LINK.test(url);
 }
 
-module.exports = { scan, classify, isGameLink };
+module.exports = { scan, classify, isGameLink, queueGameJoin, playState };
