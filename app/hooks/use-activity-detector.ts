@@ -17,7 +17,15 @@ interface UseActivityDetectorOptions {
 
 interface DesktopScan {
   activity: { name: string; kind: ProfileActivity["kind"] } | null;
-  music: { song: string; artist: string; albumArt?: string; url?: string } | null;
+  music: {
+    song: string;
+    artist: string;
+    albumArt?: string;
+    url?: string;
+    trackId?: string;
+    positionMs?: number;
+    durationMs?: number;
+  } | null;
   /** Play together: per game, its Hoffle mod and what it reports while you host. */
   play?: Record<string, { mod?: boolean; party?: unknown } | undefined>;
 }
@@ -167,6 +175,12 @@ export function useActivityDetector({
     const sent = {
       spotifyKey: null as string | null,
       spotifyAt: 0,
+      // Listen along: the position last published and when, and when this song
+      // was first seen (for apps that can't report a position).
+      positionMs: 0,
+      positionSentAt: 0,
+      songKey: "",
+      songSeenAt: 0,
       activityKey: null as string | null,
       activityAt: 0,
       activityStartedAt: 0,
@@ -175,15 +189,29 @@ export function useActivityDetector({
     let cancelled = false;
 
     const publishSpotify = async (song: SpotifyActivity | null) => {
-      const key = song ? `${song.song}\u0000${song.artist}` : "";
+      const key = song ? `${song.song}\u0000${song.artist}\u0000${song.trackId || ""}` : "";
       // Nothing detected and nothing published by us: leave a hand-set song alone.
       if (!song && sent.spotifyKey === null) return;
-      const fresh = Date.now() - sent.spotifyAt < ACTIVITY_HEARTBEAT_MS;
-      if (key === sent.spotifyKey && fresh) return;
+      const now = Date.now();
+      if (song && typeof song.positionMs !== "number" && key) {
+        // Windows' Spotify can't say where it is: count from when the song appeared.
+        if (key !== sent.songKey) {
+          sent.songKey = key;
+          sent.songSeenAt = now;
+        }
+        song = { ...song, positionMs: now - sent.songSeenAt };
+      }
+      // Listen along: a jump within the song (a seek) is news too.
+      const expected = sent.positionMs + (now - sent.positionSentAt);
+      const jumped = typeof song?.positionMs === "number" && Math.abs(song.positionMs - expected) > 4000;
+      const fresh = now - sent.spotifyAt < ACTIVITY_HEARTBEAT_MS;
+      if (key === sent.spotifyKey && fresh && !jumped) return;
       const previous = sent.spotifyKey;
       const previousAt = sent.spotifyAt;
       sent.spotifyKey = key;
-      sent.spotifyAt = Date.now();
+      sent.spotifyAt = now;
+      sent.positionMs = song?.positionMs ?? 0;
+      sent.positionSentAt = now;
       if (key !== previous) onSpotifyRef.current?.(song);
       try {
         await apiFetch("/api/settings/profile", {

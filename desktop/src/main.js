@@ -669,6 +669,15 @@ if (!app.requestSingleInstanceLock()) {
       await shell.openExternal(url);
       return true;
     });
+    // Listen along: play, seek or pause this computer's Spotify, or ask what it plays.
+    ipcMain.handle("spotify:control", async (event, command) => {
+      if (!mainWindow || event.sender !== mainWindow.webContents) return null;
+      try {
+        return await require("./activity-scan").spotifyControl(command, (url) => shell.openExternal(url));
+      } catch {
+        return null;
+      }
+    });
     // Play together: hand an invite code to the game's mod (a file it watches).
     ipcMain.handle("game-join:queue", async (event, game, data) => {
       if (!mainWindow || event.sender !== mainWindow.webContents) return false;

@@ -1,5 +1,17 @@
 /** Play together: invites into real games (app/components/play-card.tsx, play-prompts.tsx). */
 export const play = {
+  "listen.button": "Listen along",
+  "listen.with": "Listening along with {name}",
+  "listen.paused": "{name} isn't playing anything right now.",
+  "listen.noId": "{song} (this song can't be followed: Hoffle doesn't know its Spotify id)",
+  "listen.noControl": "Hoffle can't play songs in Spotify from here. The desktop app can; or open the song yourself.",
+  "listen.open": "Open in Spotify",
+  "listen.stop": "Stop",
+  "listen.ended": "{name} stopped playing, so listening along ended.",
+  "listen.tookOver": "You played something else, so listening along stopped.",
+  "listen.error": "Couldn't listen along.",
+  "listen.prompt.on": "{name} is listening along with you 🎧",
+  "listen.prompt.off": "{name} stopped listening along.",
   "play.subtitle": "{host} is playing · co-op",
   "play.error": "Something went wrong. Try again.",
   "play.status.invited": "{host} is playing {game}. Ask to join and they'll let you in.",

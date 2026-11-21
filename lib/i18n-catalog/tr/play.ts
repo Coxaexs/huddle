@@ -1,6 +1,18 @@
 import type { play as en } from "../en/play";
 
 export const play: Record<keyof typeof en, string> = {
+  "listen.button": "Birlikte dinle",
+  "listen.with": "{name} ile birlikte dinliyorsun",
+  "listen.paused": "{name} şu an bir şey çalmıyor.",
+  "listen.noId": "{song} (bu şarkı takip edilemiyor: Hoffle Spotify kimliğini bilmiyor)",
+  "listen.noControl": "Hoffle buradan Spotify'da şarkı çalamıyor. Masaüstü uygulaması çalabilir; ya da şarkıyı kendin aç.",
+  "listen.open": "Spotify'da aç",
+  "listen.stop": "Durdur",
+  "listen.ended": "{name} çalmayı bıraktı, birlikte dinleme bitti.",
+  "listen.tookOver": "Başka bir şey çaldın, birlikte dinleme durdu.",
+  "listen.error": "Birlikte dinlenemedi.",
+  "listen.prompt.on": "{name} seninle birlikte dinliyor 🎧",
+  "listen.prompt.off": "{name} birlikte dinlemeyi bıraktı.",
   "play.subtitle": "{host} oynuyor · co-op",
   "play.error": "Bir şeyler ters gitti. Tekrar dene.",
   "play.status.invited": "{host} {game} oynuyor. Katılmak için iste, seni içeri alsın.",

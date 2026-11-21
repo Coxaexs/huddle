@@ -859,4 +859,6 @@ export type ServerEvent =
  */
 export type PlayEvent =
   | { kind: "ask"; messageId: string; channelId: string; game: string; from: { id: string; name: string } }
-  | { kind: "answer"; messageId: string; channelId: string; game: string; host: string; accepted: boolean };
+  | { kind: "answer"; messageId: string; channelId: string; game: string; host: string; accepted: boolean }
+  /** Listen along: someone started or stopped following your Spotify. */
+  | { kind: "listen"; from: { id: string; name: string }; on: boolean };

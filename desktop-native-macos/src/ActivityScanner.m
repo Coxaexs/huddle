@@ -107,7 +107,7 @@
     NSString *source =
         @"tell application \"Spotify\"\n"
         @"  if player state is playing then\n"
-        @"    return (artist of current track) & (character id 1) & (name of current track) & (character id 1) & (artwork url of current track) & (character id 1) & (spotify url of current track)\n"
+        @"    return (artist of current track) & (character id 1) & (name of current track) & (character id 1) & (artwork url of current track) & (character id 1) & (spotify url of current track) & (character id 1) & (player position as text) & (character id 1) & (duration of current track as text)\n"
         @"  end if\n"
         @"end tell";
     
@@ -138,6 +138,13 @@
         }
         if ([url hasPrefix:@"http://"] || [url hasPrefix:@"https://"] || [url hasPrefix:@"spotify:"]) {
             dict[@"url"] = url;
+        }
+        // Listen along: where in the song (seconds), and its length (Spotify gives ms).
+        if (parts.count > 5) {
+            double position = [[parts[4] stringByReplacingOccurrencesOfString:@"," withString:@"."] doubleValue];
+            double duration = [[parts[5] stringByReplacingOccurrencesOfString:@"," withString:@"."] doubleValue];
+            if (position >= 0) dict[@"positionMs"] = @((long long)(position * 1000));
+            if (duration > 0) dict[@"durationMs"] = @((long long)(duration > 10000 ? duration : duration * 1000));
         }
         return dict;
     }

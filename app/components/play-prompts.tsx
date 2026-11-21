@@ -14,6 +14,7 @@ import { JoinHelp, joinPlayInvite, type JoinResult } from "./play-card";
 
 type Prompt =
   | { id: string; type: "ask"; messageId: string; game: string; from: { id: string; name: string } }
+  | { id: string; type: "listen"; name: string; on: boolean }
   | { id: string; type: "accepted"; messageId: string; game: string; host: string; result?: JoinResult; error?: string }
   | { id: string; type: "declined"; game: string; host: string }
   | { id: string; type: "invite"; game: PlayGameId };
@@ -74,6 +75,13 @@ export function PlayPrompts({
     const onPlay = (event: Event) => {
       const data = (event as CustomEvent<PlayEvent>).detail;
       if (!data) return;
+      if (data.kind === "listen") {
+        // Listen along: someone started or stopped following your Spotify.
+        const id = crypto.randomUUID();
+        setPrompts((list) => [...list, { id, type: "listen", name: data.from.name, on: data.on }]);
+        window.setTimeout(() => drop(id), 6000);
+        return;
+      }
       if (data.kind === "ask") {
         playSound("game", "turn");
         setPrompts((list) => [
@@ -190,6 +198,9 @@ export function PlayPrompts({
               )}
               {prompt.error && <p className="play-error">{prompt.error}</p>}
             </>
+          )}
+          {prompt.type === "listen" && (
+            <p>{t(prompt.on ? "listen.prompt.on" : "listen.prompt.off", { name: stripTextStyle(prompt.name) })}</p>
           )}
           {prompt.type === "declined" && <p>{t("play.prompt.declined", { host: stripTextStyle(prompt.host), game: prompt.game })}</p>}
           {prompt.type === "invite" && (

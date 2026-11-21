@@ -46,6 +46,7 @@ export const SIDE_FEATURES = {
   gifs: "GIF search",
   guestbook: "Landing page guestbook",
   integrations: "Music bot, D&D, Spotify and Steam integrations",
+  listen: "Listen along (follow a friend on Spotify)",
   media: "Living Room covers",
   msn: "Y2K mode",
   play: "Play together (invites into Steam games)",

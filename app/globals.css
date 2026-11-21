@@ -28168,6 +28168,74 @@ a.play-button {
   font-size: 16px;
 }
 
+/* ---- Listen along (listen-along.tsx) ---- */
+.listen-bar {
+  position: fixed;
+  left: 16px;
+  bottom: 96px;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 12px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid color-mix(in srgb, var(--mint, #4ade80) 45%, var(--line));
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 28%);
+  font-size: 13px;
+}
+
+.listen-bar>svg {
+  flex: none;
+  color: var(--mint, #4ade80);
+}
+
+.listen-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.listen-text small {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--muted);
+  text-overflow: ellipsis;
+}
+
+.listen-bar button,
+.listen-bar a.listen-open {
+  flex: none;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.listen-along-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 6px;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0b2e17;
+  background: var(--mint, #4ade80);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
 /* ---- The MSN Games menu ---- */
 .msn-games {
   width: 320px;

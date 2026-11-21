@@ -32,6 +32,12 @@ contextBridge.exposeInMainWorld("huddle", {
   scanActivity: () => ipcRenderer.invoke("activity:scan"),
   /** Play together: opens a steam:// join link (the shell checks it against its list). */
   openGameLink: (url) => ipcRenderer.invoke("game-link:open", String(url || "")),
+  /**
+   * Listen along: { action: "play", trackId, positionMs } | { action: "seek", positionMs }
+   * | { action: "pause" } | { action: "state" }. Resolves to { trackId, positionMs, playing }
+   * where Spotify can say (macOS, Linux), else null.
+   */
+  spotifyControl: (command) => ipcRenderer.invoke("spotify:control", command),
   /** Play together: asks the game's Hoffle mod to join with this invite code. */
   queueGameJoin: (game, data) => ipcRenderer.invoke("game-join:queue", String(game || ""), data),
   /**

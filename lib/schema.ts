@@ -519,6 +519,18 @@ async function migrate(db: D1Database): Promise<void> {
       )`),
     // One-time "Sign in through Steam" tickets, so linking works even when the
     // Steam page opens in a browser that isn't signed in to Hoffle.
+    // Listen along (lib/listen-along.ts): who follows whose Spotify.
+    db.prepare(`CREATE TABLE IF NOT EXISTS listen_along (
+        listener_id TEXT PRIMARY KEY,
+        host_id TEXT NOT NULL,
+        since TEXT NOT NULL
+      )`),
+    // Spotify track ids found by name (lib/spotify-search.ts); null = not found.
+    db.prepare(`CREATE TABLE IF NOT EXISTS spotify_track_cache (
+        query TEXT PRIMARY KEY,
+        track_id TEXT,
+        at INTEGER NOT NULL
+      )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS steam_link_states (
         nonce TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,

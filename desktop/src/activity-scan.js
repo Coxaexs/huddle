@@ -96,33 +96,56 @@ function classify(names) {
   return best;
 }
 
+// Listen along: the track id and where in it, from whatever form a source gives.
+const TRACK_ID = /(?:spotify:track:|\/track\/)([0-9A-Za-z]{22})/;
+function trackIdOf(value) {
+  const match = TRACK_ID.exec(String(value || ""));
+  return match ? match[1] : undefined;
+}
+const msOrUndefined = (n) => (Number.isFinite(n) && n >= 0 ? Math.round(n) : undefined);
+
 async function spotifyFromMpris() {
   const out = await run("playerctl", [
     "-p",
     "spotify",
     "metadata",
     "--format",
-    "{{status}}\u0001{{artist}}\u0001{{title}}\u0001{{mpris:artUrl}}\u0001{{xesam:url}}",
+    "{{status}}\u0001{{artist}}\u0001{{title}}\u0001{{mpris:artUrl}}\u0001{{xesam:url}}\u0001{{mpris:trackid}}\u0001{{position}}\u0001{{mpris:length}}",
   ]);
-  const [status, artist, title, art, url] = out.trim().split("\u0001");
+  const [status, artist, title, art, url, trackid, position, length] = out.trim().split("\u0001");
   if (status !== "Playing" || !title) return null;
   return {
     song: title,
     artist: artist || "Spotify",
     albumArt: /^https:\/\//.test(art || "") ? art : "",
     url: /^https:\/\/open\.spotify\.com\//.test(url || "") ? url : undefined,
+    trackId: trackIdOf(trackid) || trackIdOf(url),
+    // MPRIS counts microseconds.
+    positionMs: msOrUndefined(Number(position) / 1000),
+    durationMs: msOrUndefined(Number(length) / 1000),
   };
 }
 
 async function spotifyFromMac() {
   const script =
     'if application "Spotify" is running then tell application "Spotify" to if player state is playing then ' +
-    'return (artist of current track) & (character id 1) & (name of current track) & (character id 1) & (artwork url of current track)';
+    'return (artist of current track) & (character id 1) & (name of current track) & (character id 1) & (artwork url of current track)' +
+    ' & (character id 1) & (id of current track) & (character id 1) & (player position as text) & (character id 1) & (duration of current track as text)';
   const out = (await run("osascript", ["-e", script])).trim();
   if (!out) return null;
-  const [artist, title, art] = out.split("\u0001");
+  const [artist, title, art, id, position, duration] = out.split("\u0001");
   if (!title) return null;
-  return { song: title, artist: artist || "Spotify", albumArt: /^https:\/\//.test(art || "") ? art : "" };
+  // Spotify reports the position in seconds and the duration in milliseconds,
+  // whatever its dictionary says; take either.
+  const durationNumber = Number(String(duration || "").replace(",", "."));
+  return {
+    song: title,
+    artist: artist || "Spotify",
+    albumArt: /^https:\/\//.test(art || "") ? art : "",
+    trackId: trackIdOf(id),
+    positionMs: msOrUndefined(Number(String(position || "").replace(",", ".")) * 1000),
+    durationMs: msOrUndefined(durationNumber > 10_000 ? durationNumber : durationNumber * 1000),
+  };
 }
 
 async function spotifyFromWindows() {
@@ -222,4 +245,77 @@ function isGameLink(url) {
   return typeof url === "string" && GAME_LINK.test(url);
 }
 
-module.exports = { scan, classify, isGameLink, queueGameJoin, playState };
+// ---- Listen along: drive this computer's Spotify app ----
+// Only these actions, and only a well-formed track id; nothing else is run.
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** What Spotify is doing here, playing or paused: { trackId, positionMs, playing } or null. */
+async function spotifyState() {
+  if (process.platform === "darwin") {
+    const out = (
+      await run("osascript", [
+        "-e",
+        'if application "Spotify" is running then tell application "Spotify" to return (player state as text) & (character id 1) & (id of current track) & (character id 1) & (player position as text)',
+      ])
+    ).trim();
+    if (!out) return null;
+    const [state, id, position] = out.split("\u0001");
+    return {
+      trackId: trackIdOf(id) || null,
+      positionMs: msOrUndefined(Number(String(position || "").replace(",", ".")) * 1000) ?? null,
+      playing: state === "playing",
+    };
+  }
+  if (process.platform === "linux") {
+    const out = (
+      await run("playerctl", ["-p", "spotify", "metadata", "--format", "{{status}}\u0001{{mpris:trackid}}\u0001{{position}}"])
+    ).trim();
+    if (!out) return null;
+    const [status, trackid, position] = out.split("\u0001");
+    return {
+      trackId: trackIdOf(trackid) || null,
+      positionMs: msOrUndefined(Number(position) / 1000) ?? null,
+      playing: status === "Playing",
+    };
+  }
+  // Windows: Spotify can't be asked, so listen along can only open songs there.
+  return null;
+}
+
+async function spotifyControl(command, openExternal) {
+  const action = command && command.action;
+  const id = command && command.trackId;
+  const position = Math.max(0, Math.min(Number(command && command.positionMs) || 0, 86_400_000));
+  if (action === "state") return spotifyState();
+  if ((action === "play") && !/^[0-9A-Za-z]{22}$/.test(String(id || ""))) return null;
+  if (process.platform === "darwin") {
+    if (action === "play") {
+      await run("osascript", ["-e", `tell application "Spotify" to play track "spotify:track:${id}"`]);
+      await sleep(600);
+      await run("osascript", ["-e", `tell application "Spotify" to set player position to ${(position / 1000).toFixed(1)}`]);
+    } else if (action === "seek") {
+      await run("osascript", ["-e", `tell application "Spotify" to set player position to ${(position / 1000).toFixed(1)}`]);
+    } else if (action === "pause") {
+      await run("osascript", ["-e", 'tell application "Spotify" to pause']);
+    } else return null;
+    return spotifyState();
+  }
+  if (process.platform === "linux") {
+    if (action === "play") {
+      await run("playerctl", ["-p", "spotify", "open", `spotify:track:${id}`]);
+      await sleep(800);
+      await run("playerctl", ["-p", "spotify", "position", (position / 1000).toFixed(1)]);
+    } else if (action === "seek") {
+      await run("playerctl", ["-p", "spotify", "position", (position / 1000).toFixed(1)]);
+    } else if (action === "pause") {
+      await run("playerctl", ["-p", "spotify", "pause"]);
+    } else return null;
+    return spotifyState();
+  }
+  // Windows: open the song in Spotify; it can't be seeked or paused from here.
+  if (action === "play") await openExternal(`spotify:track:${id}`);
+  return null;
+}
+
+module.exports = { scan, classify, isGameLink, queueGameJoin, playState, spotifyControl, spotifyState };

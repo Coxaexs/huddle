@@ -32,6 +32,7 @@ import { StreamPreviewPopover } from "../stream-preview-popover";
 import type { ShellRenderState } from "./chat-shell-renderers";
 import { deferred } from "./deferred";
 import { PlayPrompts } from "../../play-prompts";
+import { ListenAlong } from "../../listen-along";
 import { ChannelPermissionsDialog } from "../../channel-permissions-dialog";
 import { DiscordMoveDialog } from "../../discord-move-dialog";
 
@@ -687,6 +688,7 @@ export function renderChatOverlays(v: ShellRenderState) {
       <BuddyLayer onRollCommand={(command) => void runCommand(command)} />
       <ToastContainer />
       <AchievementLayer userId={user?.id ?? null} />
+      {user && <ListenAlong />}
       {user && (
         <PlayPrompts
           channelId={activeChannelId}
