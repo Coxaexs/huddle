@@ -3,7 +3,7 @@
 const { createMacBundleUpdater, isPathWritable } = require("./mac-updater");
 
 /** How often a running app looks for a newer version. */
-const CHECK_EVERY_MS = 4 * 60 * 60 * 1000;
+const CHECK_EVERY_MS = 30 * 60 * 1000;
 /** An update ready this soon after launch is installed at once unless skipped. */
 const APPLY_AT_LAUNCH_MS = 60 * 1000;
 

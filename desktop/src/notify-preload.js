@@ -69,6 +69,8 @@ contextBridge.exposeInMainWorld("huddle", {
       return () => ipcRenderer.removeListener("update:state", listener);
     },
     install: () => ipcRenderer.send("update:install"),
+    /** Looks for a newer version now (it also looks every 30 minutes). */
+    check: () => ipcRenderer.send("update:check"),
     download: () => ipcRenderer.send("update:download"),
   },
   /** Trigger native OS push notification */

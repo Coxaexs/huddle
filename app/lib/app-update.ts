@@ -46,6 +46,8 @@ export interface DesktopUpdates {
   install(): void;
   /** Opens the download page in the browser (for "manual"). */
   download(): void;
+  /** Looks for a newer version now; apps from before 2.2.1 can't be asked. */
+  check(): void;
 }
 
 interface ElectronUpdates {
@@ -53,6 +55,7 @@ interface ElectronUpdates {
   onChange?: (callback: (state: unknown) => void) => () => void;
   install?: () => void;
   download?: () => void;
+  check?: () => void;
 }
 
 interface TauriApi {
@@ -81,6 +84,7 @@ export function desktopUpdates(): DesktopUpdates | null {
       }),
       install: () => electron.install!(),
       download: () => electron.download?.(),
+      check: () => electron.check?.(),
     };
   }
   const invoke = scope.__TAURI__?.core?.invoke;
@@ -99,6 +103,7 @@ export function desktopUpdates(): DesktopUpdates | null {
         return () => { gone = true; off?.(); };
       },
       install: () => void invoke("update_install").catch(() => undefined),
+      check: () => undefined,
       download() {
         const target = /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent)
           ? "mac-lite"

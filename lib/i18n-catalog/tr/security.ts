@@ -62,6 +62,7 @@ export const security: Record<keyof typeof en, string> = {
   "shell.update.restart": "Yeniden başlat",
   "shell.update.download": "İndir",
   "shell.update.later": "Sonra",
+  "shell.update.autoRestart": "{seconds} sn içinde kendiliğinden yeniden başlıyor.",
   "security.device": "{os} üzerinde {browser}",
   "device.unknown": "Bilinmeyen cihaz",
   "device.hoffleDesktop": "Hoffle masaüstü uygulaması",

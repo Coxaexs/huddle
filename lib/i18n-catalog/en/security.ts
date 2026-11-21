@@ -60,6 +60,7 @@ export const security = {
   "shell.update.restart": "Restart",
   "shell.update.download": "Download",
   "shell.update.later": "Later",
+  "shell.update.autoRestart": "Restarting by itself in {seconds} s.",
   "security.device": "{browser} on {os}",
   "device.unknown": "Unknown device",
   "device.hoffleDesktop": "Hoffle desktop app",

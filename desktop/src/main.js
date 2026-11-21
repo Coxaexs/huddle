@@ -721,6 +721,10 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.on("update:install", (event) => {
       if (mainWindow && event.sender === mainWindow.webContents) updater?.install();
     });
+    // The page asks for a check, e.g. right after the site was deployed.
+    ipcMain.on("update:check", (event) => {
+      if (mainWindow && event.sender === mainWindow.webContents) updater?.check();
+    });
     ipcMain.on("update:download", (event) => {
       if (mainWindow && event.sender === mainWindow.webContents) shell.openExternal(downloadPage());
     });
