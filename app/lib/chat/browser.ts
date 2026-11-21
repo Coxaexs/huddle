@@ -1,6 +1,7 @@
 /** Browser side effects for the chat shell: file picker, notifications, sounds. */
 
 import { playPresetSound } from "@/lib/soundboard-presets";
+import { quietNow } from "../notify-prefs-store";
 import { stripTextStyle } from "@/lib/text-style";
 import { showPageNotification } from "../web-push";
 import { streamerModeActive } from "../streamer-mode";
@@ -32,6 +33,7 @@ export function showNotification(rawTitle: string, rawBody: string, tag?: string
     if (typeof window !== "undefined" && window.localStorage.getItem("huddle-notify") === "off") return;
     // A popup with someone's message in it would show up on stream.
     if (streamerModeActive()) return;
+    if (quietNow()) return;
     // Don't pop a notification while the user is actively focused on the app; the
     // in-app unread badge is the cue there.
     if (typeof document !== "undefined" && document.visibilityState === "visible" && document.hasFocus()) return;

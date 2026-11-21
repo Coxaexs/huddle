@@ -75,6 +75,7 @@ const LIGHT_TOKENS = `
   --muted: #6b6676;
   --line: #e2e0e8;
   --violet: #6a4ddb;
+  --violet-tint: #f3f0fd;
   --coral: #6a4ddb;
   --violet-fill: #6a4ddb;
   --violet-fill-hover: #17151f;
@@ -90,6 +91,7 @@ const DARK_TOKENS = `
   --muted: #958ea6;
   --line: #2b2736;
   --violet: #a993ff;
+  --violet-tint: #1d1832;
   --coral: #a993ff;
   --violet-fill: #6a4ddb;
   --violet-fill-hover: #7d63ec;

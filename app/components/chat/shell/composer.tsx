@@ -79,6 +79,8 @@ export function Composer({
   setEmojiOpen,
   replyTarget,
   setReplyTarget,
+  replyMention,
+  setReplyMention,
   pendingFiles,
   setPendingFiles,
   showCustomPrompt,
@@ -153,6 +155,8 @@ export function Composer({
   setEmojiOpen: Dispatch<SetStateAction<boolean>>;
   replyTarget: Message | null;
   setReplyTarget: Dispatch<SetStateAction<Message | null>>;
+  replyMention: boolean;
+  setReplyMention: Dispatch<SetStateAction<boolean>>;
   pendingFiles: PendingFile[];
   setPendingFiles: Dispatch<SetStateAction<PendingFile[]>>;
   showCustomPrompt: (options: { title: string; message?: string; defaultValue?: string; placeholder?: string; confirmText?: string; maxLength?: number; onConfirm: (value?: string) => void }) => void;
@@ -458,13 +462,25 @@ export function Composer({
                     <span>
                       {t("composer.replyingTo", { author: replyTarget.author })}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setReplyTarget(null)}
-                      aria-label={t("composer.cancelReply")}
-                    >
-                      ×
-                    </button>
+                    <div className="reply-bar-actions">
+                      <button
+                        type="button"
+                        className={`reply-mention-toggle ${replyMention ? "on" : "off"}`}
+                        aria-pressed={replyMention}
+                        title={t(replyMention ? "composer.replyMentionOnTitle" : "composer.replyMentionOffTitle", { author: replyTarget.author })}
+                        onClick={() => setReplyMention((prev) => !prev)}
+                      >
+                        {t(replyMention ? "composer.replyMentionOn" : "composer.replyMentionOff")}
+                      </button>
+                      <button
+                        type="button"
+                        className="reply-cancel-btn"
+                        onClick={() => setReplyTarget(null)}
+                        aria-label={t("composer.cancelReply")}
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
                 )}
 

@@ -1,52 +1,36 @@
 # Hoffle
 
-Hoffle is a chat app for friend groups: voice, 1080p screen sharing with sound, a shared music bot and D&D tools, like your own private Discord. Run it on your own server, or just use it at [chat.hoffle.online](https://chat.hoffle.online), free and with nothing to install. More at [hoffle.online](https://hoffle.online) ([Türkçe](https://hoffle.online/tr)) · [Docs](https://hoffle.online/docs) · [Download apps](https://hoffle.online/download).
+Hoffle is a free, open-source (AGPL-3.0) Discord alternative built for friend groups. It brings LiveKit voice chat, free 1080p60 screen sharing with sound, six shared 3D hangout spaces (Living Room, Club, Tabletop, Cinema, Board Hall, Meadow), built-in D&D battlemaps and 3D physics dice, a synced music bot & Watch Together, a full Y2K / Windows Live Messenger mode, unmodified `discord.js` / `discord.py` bot compatibility, and zero-config Docker self-hosting.
 
-[![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/Coxaexs/badge.svg)](https://hub.xerj.org/contributors/Coxaexs)
-<a href="https://alternativeto.net/software/hoffle/about/?utm_source=badge&utm_medium=referral" target="_blank">
-  <img src="https://alternativeto.net/static/badges/badge-compact-color.svg"
-       alt="Hoffle | AlternativeTo"
-       width="50" height="16"
-       style="width: 50px; height: 16px;" />
-</a>
+Try it live at **[chat.hoffle.online](https://chat.hoffle.online)** (free, nothing to install) · [Website](https://hoffle.online) ([Türkçe](https://hoffle.online/tr)) · [Docs](https://hoffle.online/docs) · [Download apps](https://hoffle.online/download).
 
+[![Open Web App](https://img.shields.io/badge/Live-chat.hoffle.online-10b981)](https://chat.hoffle.online)
+[![Website](https://img.shields.io/badge/Website-hoffle.online-7c3aed)](https://hoffle.online)
 [![Verify CI](https://github.com/Coxaexs/huddle/actions/workflows/verify.yml/badge.svg)](https://github.com/Coxaexs/huddle/actions/workflows/verify.yml)
 [![Docker Image](https://github.com/Coxaexs/huddle/actions/workflows/docker.yml/badge.svg)](https://github.com/Coxaexs/huddle/pkgs/container/huddle)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-[![Website](https://img.shields.io/badge/Website-hoffle.online-7c3aed)](https://hoffle.online)
-[![Open Web App](https://img.shields.io/badge/Live-chat.hoffle.online-10b981)](https://chat.hoffle.online)
+[![Hoffle | AlternativeTo](https://alternativeto.net/static/badges/badge-compact-color.svg)](https://alternativeto.net/software/hoffle/about/?utm_source=badge&utm_medium=referral)
+[![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/Coxaexs/badge.svg)](https://hub.xerj.org/contributors/Coxaexs)
 
-![A Hoffle server in the Cozy theme: channels on the left, a friend group's chat in the middle, who's online on the right](https://hoffle.online/shots/hoffle-cozy-theme-1280.webp)
+![A Hoffle server in the Cozy theme: channels on the left, a friend group's chat in the middle, who's online on the right](public/shots/hoffle-cozy-theme-1280.webp)
 
-- **Text channels and DMs** with replies, reactions, edits, polls, stickers, custom emoji and link previews
-- **Search** with operators: `from:`, `in:`, `has:`, `before:`, `after:`, `pinned:` and quoted phrases
-- **Voice and video rooms** with screen sharing, spatial audio, real-time singing/voice effects and noise suppression
-- **3D Living Room & Club venues**: shared 3D hangouts, beat-synced nightclub lighting, library, cinema and tabletop rooms
-- **Announcement, forum and stage channels**, alongside text and voice
-- **Automod** rules per server: block or time out on keywords, mention spam, links, caps and repeats
-- **Music bot** that plays synced music into voice rooms, plus the full [Music + Watch bot](https://github.com/Coxaexs/musicwatchtogether) (dashboard, DJ booth, lyrics, Watch Together) as an optional container
-- **Tabletop tools**: battlemaps, 3D dice and a D&D 5e companion
-- **Runs real Discord bots**: discord.js and discord.py bots work unchanged
-- **Discord bridge** to mirror channels between Discord and Hoffle
+## See it in action
 
-## Repository structure
+| | |
+| :---: | :---: |
+| ![Hoffle in the Y2K / Windows Live Messenger theme with "says:" messages, emoticons, winks, handwriting, and nudge button](public/shots/hoffle-msn-messenger-theme-1280.webp)<br>**Y2K / Windows Live Messenger mode** — full alternate layout with working nudges that shake the window, winks, handwriting & sign-in sounds (plus 17+ themes & custom CSS) | ![Hoffle's 3D Living Room with fireplace, couch seating, and shared screen TV](public/help-media/img/oda-gozunden.webp)<br>**3D Living Room & Spaces** — sit on the couch by the fire and share screens onto the TV, plus Cinema, Meadow & Board Hall with 3D spatial audio |
+| ![Hoffle's 3D Tabletop room with battlemap, chairs around the table, and 3D dice tray](public/help-media/img/oda-masa.webp)<br>**Built-in D&D & Tabletop** — 3D tabletop room, 2D battlemaps with tokens & fog of war, 3D physics dice & 5e spell/monster compendium | ![Hoffle's 3D Club room with beat-synced lights, dance floor, and DJ decks](public/help-media/img/oda-kulup.webp)<br>**3D Club, Music Bot & Watch Together** — beat-synced nightclub lights, shared queue, two-deck DJ booth, lyrics & synced YouTube/Reels |
 
-Like [Spacebar](https://github.com/spacebarchat/server), this repository is organized into clear, self-contained modules covering the backend server, web client, native desktop/mobile apps, and companion services:
+## Highlights
 
-| Directory / Module | Description |
-| ------------------ | ----------- |
-| [`worker/`](worker/) | **Worker Host & Gateway Router** — HTTP entrypoint, WebSocket upgrade router (`/api/realtime`, `/api/gateway`), and security header pipeline |
-| [`lib/`](lib/) | **Core Server & Domain Logic** — Auth & passkeys (`auth.ts`), SQLite schema & migrations (`schema.ts`), `HuddleHub` Durable Object (`hub.ts`), wire protocol (`protocol.ts`), permissions, automod, feeds, webhooks and i18n |
-| [`lib/discord/`](lib/discord/) | **Discord v10 Compatibility** — `DiscordGateway` WebSocket server (`gateway.ts`), Discord v10 REST API (`rest.ts`), Slash Command interactions (`interactions.ts`), CDN (`cdn.ts`) and Snowflakes |
-| [`app/api/`](app/api/) | **HTTP REST API** — Next.js App Router endpoints for channels, guilds/servers, messages, voice, uploads, admin, native bot API (`v1/`) and feature routes (`app/api/(features)/`) |
-| [`app/components/`](app/components/) | **Web Client UI** — Modular chat shell (`chat/shell/`), voice stage (`voice-stage/`), 3D Living Room & Club (`living-room.tsx`, `club-scene.ts`), battlemap, 3D dice, settings and retro skins (Y2K, Winamp) |
-| [`app/hooks/`](app/hooks/) & [`app/lib/`](app/lib/) | **Client Hooks & Audio DSP** — 9-part chat shell state hooks (`chat-shell/`), WebRTC/LiveKit voice (`use-voice.ts`), AudioWorklet RNNoise/singing DSP (`mic-chain.ts`) and 3D HRTF spatial audio (`spatial-audio.ts`) |
-| [`desktop/`](desktop/) & [`desktop-tauri/`](desktop-tauri/) | **Desktop Clients** — Full Electron app (`desktop/`, with per-app audio capture) and lightweight Rust/Tauri **Hoffle Lite** (`desktop-tauri/`) |
-| [`desktop-native-macos/`](desktop-native-macos/) · [`windows/`](desktop-native-windows/) · [`linux/`](desktop-native-linux/) | **Hoffle Native** — Ultra-lightweight native C++/Objective-C desktop apps using system WebKit / WebView2 (~500 KB bundle) |
-| [`mobile/`](mobile/) | **Mobile Clients** — Android & iOS Capacitor app with background voice, CallKit, floating call bubble and FCM push notifications |
-| [`services/`](services/) & [`discord-bridge/`](discord-bridge/) | **Companion Containers** — `music-bot` (`yt-dlp`), `dnd-bot` (5e SRD), `musicwatch` (DJ booth & Watch Together), `party-bot` and the Discord bridge |
-| [`deploy/`](deploy/) & [`scripts/`](scripts/) | **Operations & Tooling** — Zero-downtime `deploy.sh`, `workerd` systemd units, Nginx/Coturn configs, Unraid template and admin CLI (`admin.mjs`) |
-| [`docs/`](docs/) & [`ARCHITECTURE.md`](ARCHITECTURE.md) | **Documentation** — User guides (published at [hoffle.online/docs](https://hoffle.online/docs)), [System Architecture](ARCHITECTURE.md) and [Codebase Developer Guide](docs/codebase.md) |
+- **Voice & 1080p60 screen sharing** with system audio, 24 fps film modes, on-device RNNoise, spatial audio & real-time singing/voice effects (free, no Nitro)
+- **6 shared 3D spaces** right inside any voice room: Living Room, beat-synced Club, candlelit Tabletop, 150-seat Cinema, life-size Board Hall, and campfire Meadow
+- **Tabletop & D&D tools**: battlemaps with fog of war & tokens, 3D physics dice, and an in-call D&D 5e SRD compendium
+- **Synced music & Watch Together**: built-in music bot plus the optional [Music + Watch bot](https://github.com/Coxaexs/musicwatchtogether) (two-deck DJ booth, lyrics, Watch Together rooms)
+- **Easy Discord migration & bot compatibility**: import channels, roles & permissions from a **Discord Server Template link**, run unmodified **`discord.js` and `discord.py` bots** (Discord v10 Gateway + REST), and optionally mirror channels with the **Discord bridge**
+- **17+ themes & custom CSS**, including the full **Y2K / Windows Live Messenger** alternate UI and Winamp skin
+- **Every client, tiny footprint**: browser/PWA with zero install, full Electron desktop app, Rust/Tauri **Hoffle Lite**, **sub-1 MB native desktop apps** (WebKit / WebView2), and Capacitor mobile
+- **Full chat suite**: text, announcement, forum & stage channels, DMs, threads, replies, reactions, polls, custom emoji/stickers, automod, and filtered search
 
 ## Quick start
 
@@ -114,6 +98,25 @@ The `hoffle` container runs the web app and realtime server: a Cloudflare Worker
 
 More detail: [system architecture](ARCHITECTURE.md) · [codebase guide](docs/codebase.md) · [audio architecture](docs/audio-architecture.md) · [spatial audio](docs/spatial-audio.md) · [voice input chain](docs/voice-input-chain.md).
 
+## Repository structure
+
+Like [Spacebar](https://github.com/spacebarchat/server), this repository is organized into clear, self-contained modules covering the backend server, web client, native desktop/mobile apps, and companion services:
+
+| Directory / Module | Description |
+| ------------------ | ----------- |
+| [`worker/`](worker/) | **Worker Host & Gateway Router** — HTTP entrypoint, WebSocket upgrade router (`/api/realtime`, `/api/gateway`), and security header pipeline |
+| [`lib/`](lib/) | **Core Server & Domain Logic** — Auth & passkeys (`auth.ts`), SQLite schema & migrations (`schema.ts`), `HuddleHub` Durable Object (`hub.ts`), wire protocol (`protocol.ts`), permissions, automod, feeds, webhooks and i18n |
+| [`lib/discord/`](lib/discord/) | **Discord v10 Compatibility** — `DiscordGateway` WebSocket server (`gateway.ts`), Discord v10 REST API (`rest.ts`), Slash Command interactions (`interactions.ts`), CDN (`cdn.ts`) and Snowflakes |
+| [`app/api/`](app/api/) | **HTTP REST API** — Next.js App Router endpoints for channels, guilds/servers, messages, voice, uploads, admin, native bot API (`v1/`) and feature routes (`app/api/(features)/`) |
+| [`app/components/`](app/components/) | **Web Client UI** — Modular chat shell (`chat/shell/`), voice stage (`voice-stage/`), 3D Living Room & Club (`living-room.tsx`, `club-scene.ts`), battlemap, 3D dice, settings and retro skins (Y2K, Winamp) |
+| [`app/hooks/`](app/hooks/) & [`app/lib/`](app/lib/) | **Client Hooks & Audio DSP** — 9-part chat shell state hooks (`chat-shell/`), WebRTC/LiveKit voice (`use-voice.ts`), AudioWorklet RNNoise/singing DSP (`mic-chain.ts`) and 3D HRTF spatial audio (`spatial-audio.ts`) |
+| [`desktop/`](desktop/) & [`desktop-tauri/`](desktop-tauri/) | **Desktop Clients** — Full Electron app (`desktop/`, with per-app audio capture) and lightweight Rust/Tauri **Hoffle Lite** (`desktop-tauri/`) |
+| [`desktop-native-macos/`](desktop-native-macos/) · [`windows/`](desktop-native-windows/) · [`linux/`](desktop-native-linux/) | **Hoffle Native** — Ultra-lightweight native C++/Objective-C desktop apps using system WebKit / WebView2 (~500 KB bundle) |
+| [`mobile/`](mobile/) | **Mobile Clients** — Android & iOS Capacitor app with background voice, CallKit, floating call bubble and FCM push notifications |
+| [`services/`](services/) & [`discord-bridge/`](discord-bridge/) | **Companion Containers** — `music-bot` (`yt-dlp`), `dnd-bot` (5e SRD), `musicwatch` (DJ booth & Watch Together), `party-bot` and the Discord bridge |
+| [`deploy/`](deploy/) & [`scripts/`](scripts/) | **Operations & Tooling** — Zero-downtime `deploy.sh`, `workerd` systemd units, Nginx/Coturn configs, Unraid template and admin CLI (`admin.mjs`) |
+| [`docs/`](docs/) & [`ARCHITECTURE.md`](ARCHITECTURE.md) | **Documentation** — User guides (published at [hoffle.online/docs](https://hoffle.online/docs)), [System Architecture](ARCHITECTURE.md) and [Codebase Developer Guide](docs/codebase.md) |
+
 ## Search operators
 
 Type these into the search box, mixed freely with normal words:
@@ -141,21 +144,16 @@ Requires Node.js 22.
 ```bash
 npm install
 cp .dev.vars.example .dev.vars
-npm run dev        # dev server on http://localhost:3001
-npm test           # unit tests
-npm run build && npm run serve   # production build on :8730
+npm run dev                     # dev server on http://localhost:3001
+npm run verify                  # typecheck + Vitest unit/component/a11y suite
+npm run build && npm run serve  # production build on :8730
 ```
 
-On a server that is already running (`npm run serve` or a systemd unit around
-it), deploy with `npm run deploy` instead of building in place. It builds in a
-separate copy and swaps the finished build in, so the running server reloads
-once instead of crashing mid-build; `scripts/deploy.sh --rollback` puts the
-previous build back.
+On a server that is already running (`npm run serve` or a systemd unit around it), deploy with `npm run deploy` instead of building in place. It builds in a separate copy and swaps the finished build in, so the running server reloads once instead of crashing mid-build; `scripts/deploy.sh --rollback` puts the previous build back.
 
 ### Checks
 
-`npm run verify` runs both of the checks CI enforces, and is what to run before
-pushing:
+`npm run verify` runs both checks CI enforces before pushing:
 
 | Command | What it does |
 | ------- | ------------ |
@@ -163,23 +161,7 @@ pushing:
 | `npm test` | Vitest. Unit tests plus the accessibility and component tests. |
 | `npm run verify` | Both, in order. |
 
-`.github/workflows/verify.yml` runs the same two commands on every push and pull
-request, and `deploy.yml` will not deploy unless it passes.
-
-### Testing conventions
-
-- Component and accessibility tests need a DOM, so they start with
-  `// @vitest-environment jsdom` rather than switching the whole suite over.
-  `vitest.config.ts` collects both `*.test.ts` and `*.test.tsx`.
-- Accessibility assertions use `test/a11y.ts`, which runs
-  [axe-core](https://github.com/dequelabs/axe-core) over rendered markup and
-  reports the failing selectors in the error. Rules that need real layout
-  (`color-contrast`, `scrollable-region-focusable`) are disabled because jsdom
-  has no layout engine — leaving them on would produce failures nobody can fix.
-- Anything reaching Cloudflare bindings needs
-  `vi.mock("cloudflare:workers", () => ({ env: {} }))` and a hand-rolled fake
-  `D1Database`; see `lib/rate-limit.test.ts` for a fake that models the SQL it
-  stands in for rather than just recording calls.
+`.github/workflows/verify.yml` runs the same two commands on every push and pull request, and `deploy.yml` will not deploy unless it passes. See [CONTRIBUTING.md](CONTRIBUTING.md#testing-conventions) for testing conventions (jsdom, axe-core, and Cloudflare bindings fakes).
 
 ## License
 

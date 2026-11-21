@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { myKeywordIn, quietNow } from "../../lib/notify-prefs-store";
 import { flashTitle, playMessageChime, playNudge, playWink } from "../../components/msn-chrome";
 import { stripTextStyle } from "@/lib/text-style";
 import type { RoomActivity } from "@/lib/activities";
@@ -117,7 +118,8 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
           isDm ||
           Boolean(incoming.mentions?.includes(user.id))) &&
         !(incoming.userId && blockedUserIdsRef.current.has(incoming.userId)) &&
-        notifyLevel(channelPrefsRef.current, channelId, channelServerRef.current.get(channelId)) !== "nothing"
+        notifyLevel(channelPrefsRef.current, channelId, channelServerRef.current.get(channelId)) !== "nothing" &&
+        !quietNow()
       ) {
         playMessageChime();
       }
@@ -202,11 +204,18 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
             mentions: (current[channelId]?.mentions || 0) + (mentioned ? 1 : 0),
           },
         }));
+        let keyword: string | null = null;
         if (incoming.payload?.silent) {
           // Sent with @silent: unread, but nothing pops up.
         } else if (mentioned && level !== "nothing") {
           showNotification(
             `${incoming.author} mentioned you`,
+            incoming.text.slice(0, 140),
+            `msg-${channelId}`,
+          );
+        } else if (level !== "nothing" && !incoming.bot && (keyword = myKeywordIn(stripTextStyle(incoming.text)))) {
+          showNotification(
+            `${incoming.author} said “${keyword}”`,
             incoming.text.slice(0, 140),
             `msg-${channelId}`,
           );
@@ -319,9 +328,6 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
   const voiceWhisperRef = useRef<(from: string, active: boolean) => void>(() => { });
 
   const voiceSignalRef = useRef<(from: string, data: unknown) => void>(() => { });
-  const forcedMuteRef = useRef<(userId: string, muted: boolean) => void>(
-    () => { },
-  );
   /** Current connected voice channel, for the soundboard event handler. */
   const voiceChannelRef = useRef<string | null>(null);
   /** Tears this tab out of voice when the account joins from another one. */
@@ -586,7 +592,6 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
       lastDiceRollSeedRef.current = roll?.animationSeed || null;
       setDiceRoll(roll);
     },
-    onForceMute: (userId, muted) => forcedMuteRef.current(userId, muted),
     onVoiceEvicted: (reason) => {
       // The hub already removed this tab from the room; tear the call down
       // locally so the microphone and peer connections actually stop.
@@ -599,7 +604,7 @@ export function useShellRealtime(s: ReturnType<typeof useShellSession>) {
   return {
     ...s,
     refreshPins, handleIncomingMessage, whisperNamesRef, handleTextWhisper, voiceWhisperRef,
-    voiceSignalRef, forcedMuteRef, voiceChannelRef, voiceEvictedRef, voiceMoveRef, onDmCallRef,
+    voiceSignalRef, voiceChannelRef, voiceEvictedRef, voiceMoveRef, onDmCallRef,
     threadRootRef, countedThreadRepliesRef, channelPrefsRef, stageChannelRef, structureReloadRef,
     structureScopeRef, myServerIdsRef, reloadStructureSoon, memberReloadRef, memberReloadDmsRef,
     shownPeopleRef, reloadMemberSoon, forcedMutesRef, captionReceiveRef, hub,

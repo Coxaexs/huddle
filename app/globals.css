@@ -11118,7 +11118,36 @@ html[data-motion="reduced"][data-cute="on"] .synced-timer.finished::after {
   font-size: 13px;
 }
 
-.reply-bar button {
+.reply-bar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reply-bar button.reply-mention-toggle {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.reply-bar button.reply-mention-toggle.on {
+  background: color-mix(in srgb, var(--lavender) 24%, transparent);
+  border-color: color-mix(in srgb, var(--lavender) 55%, transparent);
+  color: var(--lavender);
+}
+
+.reply-bar button.reply-mention-toggle.off {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--muted);
+}
+
+.reply-bar button.reply-cancel-btn {
   border: 0;
   background: none;
   cursor: pointer;

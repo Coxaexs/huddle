@@ -34,13 +34,22 @@ export interface WidgetHostValue {
   table: {
     initiative: Initiative | null;
     characters: Record<string, TableCharacter>;
-    setInitiative: (next: Initiative) => void;
+    setInitiative: (next: Initiative | null) => void;
+    setCharacter?: (next: TableCharacter | null) => void;
+    pinCard?: (card: { title: string; subtitle: string; facts: Array<{ label: string; value: string }>; body: string }) => void;
+    spawnMonster?: (monster: { name: string; hp: number; size?: number; portraitUrl?: string }) => void;
+    addToInitiative?: (entry: { name: string; value: number }) => void;
+    openCompanion?: (route?: string) => void;
   };
 }
 
 const WidgetHost = createContext<WidgetHostValue | null>(null);
 
 export const WidgetHostProvider = WidgetHost.Provider;
+
+export function useOptionalWidgetHost(): WidgetHostValue | null {
+  return useContext(WidgetHost);
+}
 
 export function useWidgetHost(): WidgetHostValue {
   const host = useContext(WidgetHost);

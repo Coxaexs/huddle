@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Coffee, Heart } from "./site-icons";
+import { Bot, Chat, Check, Coffee, Dice, Heart, Mic, Music, Palette } from "./site-icons";
 import { Hoffy } from "./hoffy";
 import { VS_DISCORD_PATH } from "./vs-discord-page";
 import { CopyButton, DownloadButton } from "./landing-client";
@@ -46,6 +46,13 @@ const SCREENSHOTS = [
   "/shots/hoffle-classic-theme",
 ];
 
+const ROOM_IMAGES: Record<LandingCopy["rooms"]["items"][number]["id"], string> = {
+  living: "/help-media/img/oda-gozunden.webp",
+  tabletop: "/help-media/img/oda-masa.webp",
+  club: "/help-media/img/oda-kulup.webp",
+  cinema: "/help-media/img/oda-sinema.webp",
+};
+
 const JOIN_LINKS: JoinLinks = {
   kofi: KOFI_URL,
   sponsors: GITHUB_SPONSORS_URL,
@@ -90,7 +97,10 @@ function jsonLd(lang: LandingLang, copy: LandingCopy) {
         offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
         downloadUrl: `${SITE}${sectionHref(lang, "download")}`,
         installUrl: APP_URL,
-        screenshot: SCREENSHOTS.map((image) => `${SITE}${image}-1280.webp`),
+        screenshot: [
+          ...SCREENSHOTS.map((image) => `${SITE}${image}-1280.webp`),
+          ...Object.values(ROOM_IMAGES).map((path) => `${SITE}${path}`),
+        ],
         image: `${SITE}/og.png`,
         sameAs: [REPO],
       },
@@ -376,6 +386,8 @@ const button =
 const primaryButton = `${button} bg-(--violet-fill) text-white hover:bg-(--violet-fill-hover)`;
 const secondaryButton = `${button} border border-(--line) bg-(--card) text-(--ink) hover:border-(--ink)`;
 const sectionTitle = "lp-display text-3xl font-normal leading-tight sm:text-4xl";
+/** One icon per feature group, in the order landing-copy.ts lists the groups. */
+const FEATURE_ICONS = [Mic, Music, Dice, Chat, Bot, Palette];
 const link = "font-semibold text-(--violet) underline decoration-dotted underline-offset-2";
 
 /* ─── Downloads ────────────────────────────────────────────────────────── */
@@ -468,7 +480,7 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
 
       <main lang={lang}>
         {/* ── Hero ──────────────────────────────────────────────────── */}
-        <section className="px-4 pt-14 sm:px-6 sm:pt-20">
+        <section className="px-4 pb-14 pt-14 sm:px-6 sm:pb-20 sm:pt-20">
           <div className="mx-auto max-w-6xl">
             <div className="flex items-start justify-between gap-8">
               <h1 className="lp-display max-w-[22ch] text-4xl font-normal leading-[1.1] sm:text-[56px]">{copy.hero.title}</h1>
@@ -484,6 +496,13 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
                 <a href={APP_URL} className={primaryButton}>{copy.hero.open}</a>
                 <DownloadButton labels={downloadLabels} hrefs={downloadHrefs} className={secondaryButton} />
               </div>
+              <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-(--ink-2)">
+                {copy.hero.perks.map((perk) => (
+                  <li key={perk} className="inline-flex items-center gap-1.5">
+                    <Check className="h-4 w-4 text-(--violet)" strokeWidth={2.25} /> {perk}
+                  </li>
+                ))}
+              </ul>
             </div>
             <div className="mt-12 sm:mt-14">
               <LiveChannel links={JOIN_LINKS} copy={copy.live} />
@@ -525,11 +544,18 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
           <div className="mx-auto max-w-6xl">
             <h2 className={sectionTitle}>{copy.features.title}</h2>
             <p className="mt-3 max-w-2xl leading-relaxed text-(--ink-2)">{copy.features.lead}</p>
-            <div className="mt-10 grid gap-x-10 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
-              {copy.features.groups.map((group) => (
-                <div key={group.title}>
-                  <h3 className="text-lg font-medium">{group.title}</h3>
-                  <ul className="mt-3 list-disc space-y-2 pl-5 text-[15px] leading-relaxed text-(--ink-2) marker:text-(--muted)">
+            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {copy.features.groups.map((group, i) => {
+                const GroupIcon = FEATURE_ICONS[i % FEATURE_ICONS.length];
+                return (
+                <div key={group.title} className="rounded-2xl border border-(--line) bg-(--card) p-6 transition hover:border-(--violet)">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-(--violet-tint) text-(--violet)">
+                      <GroupIcon className="h-5 w-5" />
+                    </span>
+                    <h3 className="text-lg font-semibold">{group.title}</h3>
+                  </div>
+                  <ul className="mt-4 list-disc space-y-2 pl-5 text-[15px] leading-relaxed text-(--ink-2) marker:text-(--muted)">
                     {group.lead === "musicBot" && (
                       <li>
                         {copy.features.musicBotLead}{" "}
@@ -543,6 +569,32 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
                     ))}
                   </ul>
                 </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        {/* ── 3D Rooms ─────────────────────────────────────────────── */}
+        <section id="rooms" className="scroll-mt-4 border-t border-(--line) bg-(--paper-2) px-4 py-20 sm:px-6 sm:py-24">
+          <div className="mx-auto max-w-6xl">
+            <h2 className={sectionTitle}>{copy.rooms.title}</h2>
+            <p className="mt-3 max-w-2xl leading-relaxed text-(--ink-2)">{copy.rooms.lead}</p>
+            <div className="mt-10 grid gap-6 sm:grid-cols-2">
+              {copy.rooms.items.map((room) => (
+                <figure key={room.id} className="overflow-hidden rounded-2xl border border-(--line) bg-(--card)">
+                  <img
+                    src={ROOM_IMAGES[room.id]}
+                    alt={room.alt}
+                    loading="lazy"
+                    decoding="async"
+                    className="block aspect-[16/10] w-full object-cover"
+                  />
+                  <figcaption className="p-5">
+                    <h3 className="text-lg font-semibold">{room.title}</h3>
+                    <p className="mt-1.5 text-[15px] leading-relaxed text-(--ink-2)">{room.body}</p>
+                  </figcaption>
+                </figure>
               ))}
             </div>
           </div>
@@ -552,7 +604,7 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
         <ThemeTour slides={tourSlides(copy.tour)} controls={copy.tour.controls} />
 
         {/* ── Compared to Discord ──────────────────────────────────── */}
-        <section id="compare" className="scroll-mt-4 px-4 py-20 sm:px-6 sm:py-28">
+        <section id="compare" className="scroll-mt-4 px-4 py-20 sm:px-6 sm:py-24">
           {/* Same left edge as the other sections; the table itself stays narrower. */}
           <div className="mx-auto max-w-6xl"><div className="max-w-4xl">
             <h2 className={sectionTitle}>{copy.compare.title}</h2>
@@ -564,7 +616,7 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
                   <tr className="border-b border-(--line) bg-(--paper-2) text-sm">
                     <th scope="col" className="w-[28%] px-3 py-3 font-semibold text-(--muted) sm:px-4"><span className="sr-only">{copy.compare.featureColumn}</span></th>
                     <th scope="col" className="w-[34%] px-3 py-3 font-semibold sm:px-4">{copy.compare.discord}</th>
-                    <th scope="col" className="w-[38%] px-3 py-3 font-semibold sm:px-4">Hoffle</th>
+                    <th scope="col" className="w-[38%] bg-(--violet-tint) px-3 py-3 font-semibold text-(--violet) sm:px-4">Hoffle</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -572,7 +624,7 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
                     <tr key={row.label} className="border-b border-(--line) last:border-b-0">
                       <th scope="row" className="px-3 py-3 align-top font-semibold sm:px-4">{row.label}</th>
                       <td className="px-3 py-3 align-top text-(--ink-2) sm:px-4">{row.discord}</td>
-                      <td className="px-3 py-3 align-top sm:px-4">{row.hoffle}</td>
+                      <td className="bg-(--violet-tint) px-3 py-3 align-top font-medium sm:px-4">{row.hoffle}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -584,7 +636,7 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
         </section>
 
         {/* ── Download ─────────────────────────────────────────────── */}
-        <section id="download" className="scroll-mt-4 px-4 py-20 sm:px-6 sm:py-24">
+        <section id="download" className="scroll-mt-4 border-y border-(--line) bg-(--paper-2) px-4 py-20 sm:px-6 sm:py-24">
           <div className="mx-auto grid max-w-6xl items-start gap-14 lg:grid-cols-[7fr_5fr]">
             <div>
               <h2 className={sectionTitle}>{copy.download.title}</h2>
@@ -643,7 +695,7 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
         </section>
 
         {/* ── Will it last? ────────────────────────────────────────── */}
-        <section id="staying" className="scroll-mt-4 border-y border-(--line) bg-(--paper-2) px-4 py-20 sm:px-6 sm:py-24">
+        <section id="staying" className="scroll-mt-4 px-4 py-20 sm:px-6 sm:py-24">
           <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[2fr_3fr]">
             <div>
               <h2 className={sectionTitle}>{copy.staying.title}</h2>
@@ -665,7 +717,7 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
         </section>
 
         {/* ── Voice (LiveKit) ──────────────────────────────────────── */}
-        <section id="voice" className="scroll-mt-4 border-b border-(--line) bg-(--paper-2) px-4 py-20 sm:px-6 sm:py-24">
+        <section id="voice" className="scroll-mt-4 border-t border-(--line) bg-(--paper-2) px-4 py-20 sm:px-6 sm:py-24">
           <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[2fr_3fr]">
             <div>
               <h2 className={sectionTitle}>{copy.voice.title}</h2>
@@ -723,6 +775,23 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
                   <p className="max-w-[62ch] pb-5 leading-relaxed text-(--ink-2)">{item.a}</p>
                 </details>
               ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── One last nudge ───────────────────────────────────────── */}
+        <section className="px-4 pb-20 sm:px-6 sm:pb-28">
+          <div className="mx-auto flex max-w-6xl flex-col items-center gap-8 rounded-3xl border border-(--line) bg-(--violet-tint) px-6 py-12 text-center md:flex-row md:gap-12 md:px-14 md:text-left">
+            <span className="shrink-0">
+              <Hoffy size={132} motion="wave" id="hoffy-closing" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className={sectionTitle}>{copy.closing.title}</h2>
+              <p className="mt-3 max-w-xl leading-relaxed text-(--ink-2) max-md:mx-auto">{copy.closing.body}</p>
+            </div>
+            <div className="flex shrink-0 flex-wrap justify-center gap-3">
+              <a href={APP_URL} className={primaryButton}>{copy.hero.open}</a>
+              <a href={sectionHref(lang, "download")} className={secondaryButton}>{copy.hero.downloadGeneric}</a>
             </div>
           </div>
         </section>

@@ -196,14 +196,14 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   // ---- D&D ----
   {
     name: "roll",
-    args: "<d20+5> [label] [adv|dis|crit]",
-    description: "Roll dice: /roll d20+5 stealth adv, /roll 2d6+3 sword crit",
+    args: "<d20+5 | stealth | init> [adv|dis|crit]",
+    description: "Roll dice or sheet checks: /roll d20+5, /roll stealth adv, /roll dex save, /roll init",
     group: "D&D",
   },
   {
     name: "gmroll",
-    args: "<d20+5> [label] [adv|dis|crit]",
-    description: "Roll in secret: only you see the result (/gmroll d20+4 perception)",
+    args: "<d20+5 | perception> [adv|dis|crit]",
+    description: "Roll in secret: only you see the result (/gmroll perception, /gmroll d20+4)",
     group: "D&D",
   },
   {
@@ -231,13 +231,16 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     group: "Hoffle",
   },
   { name: "coinflip", description: "Flip a coin", group: "D&D" },
-  { name: "spell", args: "<fireball> [2024]", description: "Look up a spell", group: "D&D" },
+  { name: "spell", args: "<fireball | cast|list|add>", description: "Look up a spell or run bot spellbook (/spell cast)", group: "D&D" },
   { name: "monster", args: "<goblin> [2024]", description: "Look up a monster's stat block", group: "D&D" },
   { name: "item", args: "<longsword>", description: "Look up an item", group: "D&D" },
   { name: "feat", args: "<alert>", description: "Look up a feat", group: "D&D" },
   { name: "race", args: "<half-orc>", description: "Look up a race", group: "D&D" },
   { name: "class", args: "<paladin>", description: "Look up a class", group: "D&D" },
   { name: "subclass", args: "<oath of vengeance>", description: "Look up a subclass", group: "D&D" },
+  { name: "initiative", description: "Manage shared combat initiative (companion / bot)", group: "D&D" },
+  { name: "bard", description: "Control Tavern Bard music in voice (companion / bot)", group: "D&D" },
+  { name: "hp", description: "Adjust character hit points (companion / bot)", group: "D&D" },
   { name: "character", description: "Your character sheet (companion app)", group: "D&D" },
   { name: "inventory", description: "Your inventory (companion app)", group: "D&D" },
   { name: "condition", description: "Track conditions (companion app)", group: "D&D" },
@@ -386,6 +389,9 @@ export const DND_LINK_COMMANDS = new Set([
   "ask_gm",
   "dnd",
   "campaign",
+  "initiative",
+  "bard",
+  "hp",
 ]);
 
 /** Extra spellings that behave like a listed command. */

@@ -168,6 +168,14 @@ function rewriteHref(href: string, from: string): string {
   return `${REPO}/blob/main/${path}${suffix}`;
 }
 
+/** Repo-relative images under `public/` resolve to root static paths on the site. */
+function rewriteImageSrc(src: string, from: string): string {
+  if (!src || /^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//") || src.startsWith("/")) return src;
+  const path = resolveRepoPath(from, src);
+  if (path.startsWith("public/")) return `/${path.slice("public/".length)}`;
+  return `${REPO}/raw/main/${path}`;
+}
+
 export function renderDoc(doc: Doc): RenderedDoc {
   const tokens = new Marked({ gfm: true }).lexer(doc.source);
 
@@ -197,6 +205,11 @@ export function renderDoc(doc: Doc): RenderedDoc {
         const title = token.title ? ` title="${escapeAttr(token.title)}"` : "";
         const rel = external ? ` rel="noopener"` : "";
         return `<a href="${escapeAttr(href)}"${title}${rel}>${this.parser.parseInline(token.tokens)}</a>`;
+      },
+      image(token) {
+        const href = rewriteImageSrc(token.href, doc.path);
+        const title = token.title ? ` title="${escapeAttr(token.title)}"` : "";
+        return `<img src="${escapeAttr(href)}" alt="${escapeAttr(token.text)}"${title} loading="lazy" decoding="async">`;
       },
       table(token) {
         // Wide tables scroll inside their own box instead of the page.

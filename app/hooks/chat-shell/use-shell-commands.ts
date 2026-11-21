@@ -13,7 +13,7 @@ import { ROLL_COMMANDS, runRollCommand } from "../../lib/chat/commands/roll";
 import { FUN_COMMANDS, funCommandReply } from "@/lib/fun-commands";
 import { type TtsLanguage } from "../../lib/tts/client";
 import { aiFetch } from "../../lib/ai-fetch";
-import { apiFetch } from "../../lib/client";
+import { apiFetch, apiUrl } from "../../lib/client";
 import { openMusicPlayer, type MusicPlayerTab } from "../../components/music-player-store";
 import { COMMAND_ALIASES, DISCORD_ONLY_COMMANDS, DND_LINK_COMMANDS, LOOKUP_COMMANDS, MUSIC_COMMANDS } from "../../lib/commands";
 import type { useShellActions } from "./use-shell-actions";
@@ -460,6 +460,17 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
       return;
     }
 
+    if (name === "spell" && botCommands.some((command) => command.name === "spell")) {
+      const sub = value.split(/\s+/)[0]?.toLowerCase() ?? "";
+      if (!sub || ["cast", "add", "list", "words", "remove", "prepare", "slots", "clear"].includes(sub)) {
+        if (await runBotSlashCommand("spell", value)) return;
+      }
+      if (sub === "lookup") {
+        await runLookupCommand(name, value.slice(6).trim(), { channelId: activeChannelRef.current, postBotMessage, notify: setNotice });
+        return;
+      }
+    }
+
     if (LOOKUP_COMMANDS.has(name)) {
       await runLookupCommand(name, value, { channelId: activeChannelRef.current, postBotMessage, notify: setNotice });
       return;
@@ -472,12 +483,30 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
     }
 
     if (DND_LINK_COMMANDS.has(name)) {
+      const DND_ROUTE_MAP: Record<string, string> = {
+        bard: "/bard",
+        initiative: "/vtt",
+        gmview: "/gm",
+        ask_gm: "/gm",
+        hp: "/sheet",
+        character: "/sheet",
+        inventory: "/sheet",
+        condition: "/sheet",
+        create: "/sheet",
+        edit: "/sheet",
+        levelup: "/sheet",
+        rest: "/sheet",
+        deathsave: "/sheet",
+        importpdf: "/sheet",
+        switch: "/sheet",
+      };
+      const route = DND_ROUTE_MAP[name] || "/";
       await postBotMessage(
         dndOnline
-          ? "Character sheets, inventory and the GM panel live in the D&D companion — open it here."
+          ? "Character sheets, inventory, the VTT and the GM panel live in the D&D companion — open it here."
           : "The D&D companion looks offline right now.",
         {
-          ...(dndUrl ? { link: dndUrl, actionLabel: "Open D&D companion" } : {}),
+          ...(dndUrl ? { link: apiUrl(`/dnd?next=${encodeURIComponent(route)}`), actionLabel: "Open in Tavern" } : {}),
           author: "D&D Bot",
           avatar: "⚔",
         },

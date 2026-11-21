@@ -265,6 +265,10 @@ export function useShellState() {
     });
   }, []);
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
+  const [replyMention, setReplyMention] = useState(true);
+  useEffect(() => {
+    setReplyMention(true);
+  }, [replyTarget?.id]);
   const [editingId, setEditingId] = useState<string | number | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const {
@@ -1404,7 +1408,7 @@ export function useShellState() {
     setIncomingFriendUserIds, blockedUserIds, setBlockedUserIds, blockedUserIdsRef,
     expandedBlockedMessages, setExpandedBlockedMessages, channelDraftsRef, draftSaveTimerRef,
     saveDraftsSoon, prevChannelForDraftRef, draft, setDraftState, draftRef, setDraft, replyTarget,
-    setReplyTarget, editingId, setEditingId, editDraft, setEditDraft, searchOpen, setSearchOpen,
+    setReplyTarget, replyMention, setReplyMention, editingId, setEditingId, editDraft, setEditDraft, searchOpen, setSearchOpen,
     searchQuery, setSearchQuery, searchResults, setSearchResults, runMessageSearch, pendingFiles,
     setPendingFiles, notice, setNotice, mobileNav, setMobileNav, openActionsId, setOpenActionsId,
     shiftPressed, setShiftPressed, mobileActionsMoreId, setMobileActionsMoreId,

@@ -55,6 +55,7 @@ export const menus: Record<keyof typeof en, string> = {
 
   // Server & Rail Menu
   "railMenu.markServerRead": "Okundu olarak işaretle",
+  "railMenu.markAllRead": "Her şeyi okundu olarak işaretle",
   "railMenu.removeFromFolder": "Klasörden çıkar",
   "railMenu.notifications": "Bildirimler",
   "railMenu.allMessages": "Tüm mesajlar",

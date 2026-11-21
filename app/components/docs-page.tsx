@@ -97,6 +97,8 @@ export function DocsPage({ doc }: { doc: Doc }) {
         .doc-prose th, .doc-prose td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
         .doc-prose tr:last-child td { border-bottom: 0; }
         .doc-prose td code, .doc-prose th code { overflow-wrap: normal; white-space: nowrap; }
+        .doc-prose > p > img { border-radius: 10px; border: 1px solid var(--line); width: 100%; height: auto; }
+        .doc-prose td img { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 8px; }
       `}</style>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 

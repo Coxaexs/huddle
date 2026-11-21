@@ -121,7 +121,6 @@ interface HubHandlers {
       reveal?: CharacterReveal;
     },
   ) => void;
-  onForceMute?: (userId: string, muted: boolean) => void;
   /** This tab lost voice because the account joined from elsewhere. */
   onVoiceEvicted?: (reason?: "moderator" | "self") => void;
   /** A moderator moved this account into another voice channel. */
@@ -589,7 +588,6 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               else forcedMutes.delete(payload.userId);
               return { ...current, forcedMutes };
             });
-            handlersRef.current.onForceMute?.(payload.userId, payload.muted);
             break;
           case "achievement":
             handlersRef.current.onAchievement?.(payload.ids);

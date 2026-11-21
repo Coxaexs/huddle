@@ -359,6 +359,7 @@ export function RailMenuLayer({
   setRailMenu,
   unread,
   markServerRead,
+  markAllRead,
   folderIdOf,
   saveServerFolders,
   serverFolders,
@@ -369,6 +370,7 @@ export function RailMenuLayer({
   setRailMenu: Dispatch<SetStateAction<{ server: PublicServer; x: number; y: number; } | null>>;
   unread: Record<string, { unread: boolean; count: number; mentions: number; }>;
   markServerRead: (server: PublicServer) => void;
+  markAllRead: () => void;
   folderIdOf: (serverId: string) => string | null;
   saveServerFolders: (next: ServerFolder[]) => void;
   serverFolders: ServerFolder[];
@@ -410,6 +412,17 @@ export function RailMenuLayer({
               }}
             >
               {t("railMenu.markServerRead")}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!Object.keys(unread).length}
+              onClick={() => {
+                markAllRead();
+                setRailMenu(null);
+              }}
+            >
+              {t("railMenu.markAllRead")}
             </button>
             {folderIdOf(railMenu.server.id) && (
               <button

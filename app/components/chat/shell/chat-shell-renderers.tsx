@@ -22,6 +22,7 @@ import { ringColor } from "../../../lib/profile-look";
 import { StyledName, VoiceAura } from "../../profile-style-parts";
 import type { ChatShellViewState } from "./chat-shell-view";
 import type { StageFocusRequest } from "../../../hooks/chat-shell/use-shell-state";
+import { openDndCompanion } from "../../../lib/dnd-sso";
 
 export type ShellRenderState = ReturnType<typeof withShellRenderers>;
 
@@ -615,11 +616,9 @@ export function withShellRenderers(s: ChatShellViewState) {
     { label: "Find a monster…", onSelect: () => prepareCommand("/monster ") },
     ...(dndUrl
       ? [
-        {
-          label: "Open dashboard",
-          onSelect: () =>
-            window.open(dndUrl, "_blank", "noopener,noreferrer"),
-        },
+        { label: "Open Character Sheet", onSelect: () => void openDndCompanion("/sheet") },
+        { label: "Open Tavern VTT", onSelect: () => void openDndCompanion("/vtt") },
+        { label: "Open Bard Audio", onSelect: () => void openDndCompanion("/bard") },
       ]
       : []),
   ];

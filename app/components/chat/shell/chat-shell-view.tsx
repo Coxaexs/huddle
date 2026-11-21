@@ -15,6 +15,8 @@ import { WidgetHostProvider, type WidgetHostValue } from "../../widgets/widget-h
 import { CustomizeBar } from "../../widgets/customize-bar";
 import { WebViewSheet } from "../../widgets/web-view";
 import { MusicPlayerLayer } from "../../music-player-layer";
+import { openDndCompanion } from "../../../lib/dnd-sso";
+import { addInitiative } from "@/lib/lounge-shared";
 
 export type ChatShellViewState = Omit<ReturnType<typeof useShellComposer>, "user"> & { user: PublicUser };
 
@@ -70,6 +72,38 @@ export function renderChatShell(s: ChatShellViewState) {
       initiative: v.livingRoom.shared.initiative,
       characters: v.livingRoom.shared.characters,
       setInitiative: (next) => v.livingRoom.setShared("initiative", next),
+      setCharacter: (next) => v.livingRoom.setShared("character", next),
+      pinCard: v.livingRoom.roomId ? (card) => v.livingRoom.setShared("card", card) : undefined,
+      spawnMonster: v.livingRoom.roomId
+        ? (monster) => {
+            const id = `m${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-3)}`;
+            const size = monster.size ?? 1;
+            const kind = /dragon|wyrm|drake|wyvern/i.test(monster.name) ? "dragon" : size >= 2 ? "beast" : "fighter";
+            v.livingRoom.setShared("pawn", {
+              op: "put",
+              id,
+              kind,
+              colour: "#9c3b30",
+              x: 0,
+              z: 0,
+              facing: 0,
+              label: monster.name.slice(0, 24),
+              size,
+              ...(monster.hp > 0 ? { hp: monster.hp, maxHp: monster.hp } : {}),
+              ...(monster.portraitUrl ? { portraitUrl: monster.portraitUrl } : {}),
+            });
+          }
+        : undefined,
+      addToInitiative: v.livingRoom.roomId
+        ? (entry) => {
+            const id = `i${Math.random().toString(36).slice(2, 10)}`;
+            v.livingRoom.setShared(
+              "initiative",
+              addInitiative(v.livingRoom.shared.initiative, { id, name: entry.name.slice(0, 40), value: entry.value }),
+            );
+          }
+        : undefined,
+      openCompanion: (route = "/") => void openDndCompanion(route),
     },
   };
 

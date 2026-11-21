@@ -43,4 +43,12 @@ describe("published docs", () => {
     expect(hrefsOnIndex).toContain("https://github.com/Coxaexs/huddle/blob/main/docs/spatial-audio.md");
     expect(hrefsOnIndex.some((href) => href.endsWith(".md") && !href.startsWith("https://"))).toBe(false);
   });
+
+  it("rewrites repo-relative public/ image paths for the docs site", () => {
+    const html = rendered.get("/docs")!;
+    const srcs = [...html.matchAll(/ src="([^"]+)"/g)].map((match) => match[1].replace(/&amp;/g, "&"));
+    expect(srcs).toContain("/shots/hoffle-cozy-theme-1280.webp");
+    expect(srcs).toContain("/help-media/img/oda-gozunden.webp");
+    expect(srcs.some((src) => src.startsWith("public/"))).toBe(false);
+  });
 });

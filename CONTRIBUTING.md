@@ -67,6 +67,21 @@ This runs two checks in order:
 1. **`npm run typecheck`** (`tsc --noEmit`) — Verifies all TypeScript types across the codebase (`vinext build` strips types without checking them).
 2. **`npm test`** (`vitest run`) — Runs unit tests, SQLite/D1 integration tests, `jsdom` React component tests, and `axe-core` accessibility checks.
 
+### Testing conventions
+
+- Component and accessibility tests need a DOM, so they start with
+  `// @vitest-environment jsdom` rather than switching the whole suite over.
+  `vitest.config.ts` collects both `*.test.ts` and `*.test.tsx`.
+- Accessibility assertions use `test/a11y.ts`, which runs
+  [axe-core](https://github.com/dequelabs/axe-core) over rendered markup and
+  reports the failing selectors in the error. Rules that need real layout
+  (`color-contrast`, `scrollable-region-focusable`) are disabled because jsdom
+  has no layout engine — leaving them on would produce failures nobody can fix.
+- Anything reaching Cloudflare bindings needs
+  `vi.mock("cloudflare:workers", () => ({ env: {} }))` and a hand-rolled fake
+  `D1Database`; see `lib/rate-limit.test.ts` for a fake that models the SQL it
+  stands in for rather than just recording calls.
+
 ---
 
 ## Submitting Changes

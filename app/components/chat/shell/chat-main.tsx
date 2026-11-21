@@ -57,7 +57,7 @@ export function renderChatMain(v: ShellRenderState) {
     openThread, openUserMenu, openVoiceChannel, stageFocusRequest, setStageFocusRequest, pendingFiles, pendingInvite, personalEmoticons,
     pickCommand, pickEmojiShortcode, pickMention, pins, pinsOpen, player, pollCounts, pollVoters,
     prefFor, pressBotComponent, quickReactions, quickVoteId, reactionPicker, reactionViewer,
-    removeQuickReaction, renameGroupDm, replyTarget, resolvedInvites, roleColorFor, roomActivity,
+    removeQuickReaction, renameGroupDm, replyMention, replyTarget, resolvedInvites, roleColorFor, roomActivity,
     roomPlayer, runCommand, pressCommandButton, runMusicUiCommand, runSearch, saveEdit, saveVoicePref, savedIds,
     savedList, savedOpen, searchOpen, searchQuery, searchResults, sendMessage, sendNudge,
     sendTextComposer, sendWink, servers, setActiveServerId, setComposerCaret, setDiceRoll,
@@ -67,7 +67,7 @@ export function renderChatMain(v: ShellRenderState) {
     setLightboxImage, setMembersOpen, setMentionsOpen, setMentionsTab, setMessageFont,
     setMobileActionsMoreId, setMobileComposerMenuOpen, setMobileNav, setNotice, setOpenActionsId,
     setPdfViewer, setPendingFiles, setPendingFriendCount, setPictureOpen, setPinsOpen,
-    setPipDismissed, setPollDialogOpen, setQuickVoteId, setReplyTarget, setRoomActivity,
+    setPipDismissed, setPollDialogOpen, setQuickVoteId, setReplyMention, setReplyTarget, setRoomActivity,
     setSavedOpen, setSearchOpen, setSearchQuery, setSearchResults, setSettingsOpen, setSlashIndex,
     setStageChannelId, setStreamVolume, setTtsSpeakingId, setUnreadBarVisible, setVoiceChatOpen,
     setVoiceViewMode, shiftPressed, showCustomConfirm, showJumpLatest, slashActive, slashIndex,
@@ -288,9 +288,21 @@ export function renderChatMain(v: ShellRenderState) {
                     gm={battlemapGm}
                     userId={user.id}
                     onClose={closeBattlemap}
-                    onAddMyToken={() => void addMyToken()}
+                    onAddMyToken={() => {
+                      const c = livingRoom.shared.characters[user.id];
+                      void addMyToken(c ? { name: c.name, hp: c.hp, maxHp: c.maxHp, portraitUrl: c.portraitUrl } : undefined);
+                    }}
                     onLocalToken={onLocalToken}
                     onLocalStroke={onLocalStroke}
+                    sharedInitiative={livingRoom.roomId === stageChannel.id ? livingRoom.shared.initiative : undefined}
+                    onSetInitiative={livingRoom.roomId === stageChannel.id ? (next) => livingRoom.setShared("initiative", next) : undefined}
+                    onRollCommand={(cmd) => void runCommand(cmd)}
+                    onOpenTabletop={() => {
+                      livingRoom.setOpen(true);
+                      livingRoom.setVenue("tabletop");
+                    }}
+                    onOpenCompanion={() => void import("../../../lib/dnd-sso").then((m) => m.openDndCompanion("/vtt"))}
+                    myCharacter={livingRoom.roomId === stageChannel.id ? livingRoom.shared.characters[user.id] ?? null : null}
                   />
                 ) : null
               }
@@ -631,6 +643,8 @@ export function renderChatMain(v: ShellRenderState) {
       setEmojiOpen={setEmojiOpen}
       replyTarget={replyTarget}
       setReplyTarget={setReplyTarget}
+      replyMention={replyMention}
+      setReplyMention={setReplyMention}
       pendingFiles={pendingFiles}
       setPendingFiles={setPendingFiles}
       showCustomPrompt={showCustomPrompt}

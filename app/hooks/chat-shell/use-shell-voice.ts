@@ -31,7 +31,7 @@ export function useShellVoice(s: ReturnType<typeof useShellRealtime>) {
   const {
     activeChannelId, activeChannelRef, activeServerId, autoIdleRef, canManageServer,
     captionReceiveRef, channelLayout, channelServer, dms, draft, emojiOpen, features,
-    focusedStreamInfo, forcedMuteRef, forcedMutesRef, formatOpen, gamesOpen, gifOpen, hub,
+    focusedStreamInfo, forcedMutesRef, formatOpen, gamesOpen, gifOpen, hub,
     inDmHome, kindMenu, lastDiceRollSeedRef, lastTypingSentRef, lightbox, members, membersById,
     membersOpen, mentionsOpen, mobileActionsMoreId, mobileComposerMenuOpen, mobileNav, msnTheme,
     myCustomStatus, myStatus, pinsOpen, prefFor, quickSoundboardOpen, savedOpen, serverMenuOpen,
@@ -197,9 +197,14 @@ export function useShellVoice(s: ReturnType<typeof useShellRealtime>) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voice.channelId]);
 
-  forcedMuteRef.current = (userId, muted) => {
-    if (user && userId === user.id) voice.setForcedMute(muted);
-  };
+  // The hub's set is the one source for a server mute: it carries both the
+  // live force-mute event and the snapshot sent on (re)connect.
+  const selfForcedMuted = Boolean(user && hub.forcedMutes.has(user.id));
+  useEffect(() => {
+    if (voice.forcedMute !== selfForcedMuted) {
+      voice.setForcedMute(selfForcedMuted);
+    }
+  }, [selfForcedMuted, voice.forcedMute, voice.setForcedMute]);
 
   /**
    * Voice rooms with each person's current name (server nickname included)

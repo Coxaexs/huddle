@@ -20,6 +20,7 @@ import type { useShellState } from "./use-shell-state";
 import { adoptUiMode, installUiMode } from "@/app/lib/ui-mode";
 import { adoptLayout, installLayout } from "@/app/lib/layout-store";
 import { avatarForShownName } from "@/lib/avatar-initial";
+import { adoptNotifyPrefs } from "../../lib/notify-prefs-store";
 
 /** ChatShell, part 2 of 9. The signed-in session: loading servers, members, friends, prefs and unread counts; message and invite links; permissions and the active server/channel/DM. */
 export function useShellSession(s: ReturnType<typeof useShellState>) {
@@ -227,6 +228,20 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
     }).catch(() => undefined);
   }, []);
 
+  /** Clears every unread channel and conversation, everywhere. */
+  const markAllRead = useCallback(() => {
+    const ids = Object.keys(rawUnreadRef.current);
+    if (!ids.length) return;
+    setUnread({});
+    // The route takes 500 ids at a time.
+    for (let start = 0; start < ids.length; start += 500) {
+      void apiFetch("/api/channels/reads", {
+        method: "POST",
+        body: JSON.stringify({ channelIds: ids.slice(start, start + 500) }),
+      }).catch(() => undefined);
+    }
+  }, []);
+
   /** Sets a notification level for a channel id or a `server:<id>` key, with optional temporary duration. */
   const setNotifyLevel = useCallback((key: string, level: string, durationMs?: number) => {
     setChannelPrefs((prefs) => {
@@ -289,6 +304,12 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
     installLayout();
     if (accountLayout) adoptLayout(JSON.parse(accountLayout));
   }, [accountLayout]);
+
+  // Quiet hours and keyword alerts, the same way.
+  const accountNotify = user?.notify ? JSON.stringify(user.notify) : "";
+  useEffect(() => {
+    if (accountNotify) adoptNotifyPrefs(JSON.parse(accountNotify));
+  }, [accountNotify]);
 
   // Signed-in only, so it waits for the user: asked from the sign-in screen it
   // was refused, and recording stayed hidden in that tab until a reload.
@@ -852,7 +873,7 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
     ...s,
     loadServers, loadMembers, loadServerFolders, loadDms, loadFriendsCount, handleAddFriend,
     handleRemoveFriend, handleAcceptFriend, handleBlockUser, handleUnblockUser, loadPrefs,
-    loadChannelPrefs, loadEmojis, loadUnread, markServerRead, setNotifyLevel, markChannelRead,
+    loadChannelPrefs, loadEmojis, loadUnread, markServerRead, markAllRead, setNotifyLevel, markChannelRead,
     jumpToMessageRef, linkedMessageHandledRef, joinServerDirectRef, activeServer, textChannels,
     voiceChannels, serverEvents, reloadEvents, nextEvent, membersById, timeoutTick, setTimeoutTick,
     myTimeoutUntil, myPermissions, canManageChannels, canManageServer, canManageRoles,

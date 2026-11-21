@@ -16,7 +16,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
   const {
     activeChannelId, activeChannelRef, activeServerId, composerRef, detachedRef, dmChannelIdsRef, hub, inDmHome,
     loadDms, membersById, messages, msnTheme, nudgeCooling, pendingCommandRef, refreshPins,
-    replyTarget, setActiveChannelId, setActiveServerId, setBannedIds, setDms, setDraft, setMembers,
+    replyTarget, replyMention, setActiveChannelId, setActiveServerId, setBannedIds, setDms, setDraft, setMembers,
     setMessages, setMobileNav, setNotice, setNudgeCooling, setReplyTarget, setStageChannelId,
     setTheme, setVoicePrefs, showCustomConfirm, showCustomPrompt, user, visibleDms, voice,
     voiceChannels, forumDraftTags, setForumDraftTags,
@@ -661,6 +661,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
     const channelId = activeChannelId;
     if (!channelId) return;
     const replyTo = replyTarget?.id != null ? String(replyTarget.id) : undefined;
+    const shouldMentionReply = replyTo ? replyMention : undefined;
     const extension = clip.blob.type.includes("mp4")
       ? "m4a"
       : clip.blob.type.includes("ogg")
@@ -688,6 +689,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
           voice: { durationMs: Math.round(clip.durationMs), waveform: clip.waveform },
         },
         replyTo,
+        replyMention: shouldMentionReply,
       }),
     });
   }
@@ -713,6 +715,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
       );
     }
     const replyTo = replyTarget?.id != null ? String(replyTarget.id) : undefined;
+    const shouldMentionReply = replyTo ? replyMention : undefined;
     setReplyTarget(null);
     const keys =
       typeof attachmentKeys === "string"
@@ -756,6 +759,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
           attachmentKey: keys[0],
           attachmentKeys: keys.slice(1),
           replyTo,
+          replyMention: shouldMentionReply,
           payload: forumTags.length ? { ...(payload || {}), forumTags } : payload,
         }),
       });

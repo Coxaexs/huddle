@@ -9,6 +9,7 @@ import { GUESTBOOK_CHANNEL_ID, GUESTBOOK_SERVER_ID } from "@/lib/guestbook";
 import { dispatchMessage } from "@/lib/discord/dispatch";
 import { hubState, publishMessage } from "@/lib/hub-client";
 import { sendPushNotifications } from "@/lib/push";
+import { keywordHit, normalizeNotifyPrefs } from "@/lib/notify-prefs";
 import { isSilentPayload, takeSilent } from "@/lib/silent-messages";
 import { deliverToFollowers } from "@/lib/channel-follows";
 import { parseForumTags, pickPostTags, requestedTags, withPostTags } from "@/lib/forum-tags";
@@ -524,6 +525,8 @@ export interface PostBody {
   payload?: unknown;
   /** Id of a message in the same channel this one replies to. */
   replyTo?: string;
+  /** Whether a reply pings the replied-to message author (defaults to true). */
+  replyMention?: boolean;
   /** Extra uploaded keys beyond `attachmentKey`. */
   attachmentKeys?: string[];
   /** Posting into a thread: the id of the message that started it. */
@@ -745,12 +748,14 @@ export async function postMessageAs(
   // A reply or thread reply must point into this same channel, so a stray id
   // cannot pull another conversation's text into a preview.
   let replyTo = body.replyTo?.slice(0, 64) || null;
+  let replyAuthorId: string | null = null;
   if (replyTo && channelId) {
     const parent = await db
-      .prepare("SELECT 1 FROM messages WHERE id = ? AND channel_id = ? AND deleted_at IS NULL")
+      .prepare("SELECT sender_id FROM messages WHERE id = ? AND channel_id = ? AND deleted_at IS NULL")
       .bind(replyTo, channelId)
-      .first();
+      .first<{ sender_id: string | null }>();
     if (!parent) replyTo = null;
+    else replyAuthorId = parent.sender_id || null;
   }
   const threadId = body.threadId?.slice(0, 64) || null;
   if (threadId) {
@@ -981,6 +986,22 @@ export async function postMessageAs(
 
   const message = publicMessage(stored);
 
+  // A reply mentions the original message author unless the sender turned it off.
+  if (
+    replyTo &&
+    body.replyMention !== false &&
+    replyAuthorId &&
+    replyAuthorId !== user.id &&
+    (!audience || audience.includes(replyAuthorId)) &&
+    !mentionedIds.includes(replyAuthorId)
+  ) {
+    const canSee =
+      serverId && channelId && !audience
+        ? (await channelViewers(db, channelId, serverId, [replyAuthorId])).includes(replyAuthorId)
+        : true;
+    if (canSee) mentionedIds.push(replyAuthorId);
+  }
+
   // Record the mentions resolved before the insert. Doing it here keeps the
   // write after the message row exists, so an automod refusal above cannot
   // leave orphaned mention rows behind.
@@ -1030,13 +1051,19 @@ export async function postMessageAs(
       if (id !== user.id) pushTargets.add(id);
     }
   }
+  // Someone's keyword was said: it notifies them the way a mention would.
+  const keywordTargets =
+    serverId && channelId && !audience && !silent && stored.content
+      ? await keywordListeners(db, serverId, channelId, user.id, stripTextStyle(stored.content))
+      : [];
+  for (const id of keywordTargets) pushTargets.add(id);
   // A silent message still counts as unread and as a mention, but pushes no one.
   if (pushTargets.size > 0 && !silent) {
     // Filter pushTargets by per-channel or per-server notification levels and temporary mutes.
     const targetIds = Array.from(pushTargets);
     const channelKey = stored.channel_id || "";
     const serverKey = serverId ? `server:${serverId}` : "";
-    const mentionsSet = new Set(message.mentions || []);
+    const mentionsSet = new Set([...(message.mentions || []), ...keywordTargets]);
 
     try {
       const placeholders = targetIds.map(() => "?").join(",");
@@ -1098,6 +1125,41 @@ export async function postMessageAs(
   }
 
   return Response.json({ message, newAchievements }, { status: 201 });
+}
+
+/** At most this many keyword matches are notified per message. */
+const KEYWORD_PUSH_LIMIT = 25;
+
+/**
+ * Members of the server who asked to hear about a word in this message and
+ * can see the channel it was said in. Never the author. Best effort: a failed
+ * lookup notifies nobody.
+ */
+async function keywordListeners(
+  db: D1Database,
+  serverId: string,
+  channelId: string,
+  authorId: string,
+  text: string,
+): Promise<string[]> {
+  try {
+    const rows = await db
+      .prepare(
+        `SELECT u.id, u.notify_prefs FROM users u
+           JOIN server_members m ON m.user_id = u.id
+          WHERE m.server_id = ? AND u.id != ? AND u.notify_prefs LIKE '%"keywords":["%'`,
+      )
+      .bind(serverId, authorId)
+      .all<{ id: string; notify_prefs: string | null }>();
+    const hits = (rows.results || [])
+      .filter((row) => keywordHit(normalizeNotifyPrefs(row.notify_prefs), text) !== null)
+      .map((row) => row.id)
+      .slice(0, KEYWORD_PUSH_LIMIT);
+    // A private channel's words stay with the people who can read it.
+    return hits.length ? await channelViewers(db, channelId, serverId, hits) : [];
+  } catch {
+    return [];
+  }
 }
 
 /** The names a signed-in member's browser may post bot answers under. */

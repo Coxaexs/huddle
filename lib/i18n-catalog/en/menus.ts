@@ -54,6 +54,7 @@ export const menus = {
 
   // Server & Rail Menu
   "railMenu.markServerRead": "Mark as read",
+  "railMenu.markAllRead": "Mark everything as read",
   "railMenu.removeFromFolder": "Remove from folder",
   "railMenu.notifications": "Notifications",
   "railMenu.allMessages": "All messages",

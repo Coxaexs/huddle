@@ -15,7 +15,7 @@ export interface LandingCopy {
   meta: { title: string; description: string; ogLocale: string };
   nav: { features: string; themes: string; download: string; staying: string; docs: string; open: string; otherLang: string; otherLangShort: string; otherLangLabel: string };
   footer: { madeBy: string; notDiscord: string; webApp: string; download: string; docs: string; selfHost: string; faq: string; status: string; terms: string; privacy: string };
-  hero: { title: string; body: string; open: string; downloadFor: (os: string) => string; downloadGeneric: string; onPhone: string };
+  hero: { title: string; body: string; perks: string[]; open: string; downloadFor: (os: string) => string; downloadGeneric: string; onPhone: string };
   live: {
     lead: string;
     tryRoll: string;
@@ -28,6 +28,11 @@ export interface LandingCopy {
   /** `members` is null while the community is too small for a number to help. */
   community: { line: (members: number | null, online: number) => string; button: string; read: string };
   features: { title: string; lead: string; groups: { title: string; items: string[]; lead?: "musicBot" | "themes" }[]; musicBotLink: string; musicBotLead: string; musicBotTail: string };
+  rooms: {
+    title: string;
+    lead: string;
+    items: { id: "living" | "tabletop" | "club" | "cinema"; title: string; body: string; alt: string }[];
+  };
   themesLine: (count: number, names: string) => string;
   tour: {
     /** Strings for the client-side slideshow: {i}, {n} and {name} are filled in there. */
@@ -62,6 +67,8 @@ export interface LandingCopy {
   voice: { title: string; lead: string; points: { title: string; body: string }[] };
   selfHost: { title: string; body: string; points: string[]; guide: string; after: string; copy: string; copied: string };
   faq: { title: string; items: { q: string; a: string }[] };
+  /** The last call to action, above the note about who makes Hoffle. */
+  closing: { title: string; body: string };
   about: { body: string; github: string; kofi: string; sponsors: string };
 }
 
@@ -99,6 +106,7 @@ const en: LandingCopy = {
     title: "Hoffle: a chat app for small groups, with voice, screen sharing and game night built in.",
     body:
       "I started Hoffle for my own friend group, who spent most evenings in a Discord call. It has the things we used every night: voice, 1080p screen sharing with sound, a music bot, and D&D tools. It's free and open source, and it works right in your browser.",
+    perks: ["Free, with no paid tier", "Open source", "Nothing to install"],
     open: "Open Hoffle",
     downloadFor: (os) => `Download for ${os}`,
     downloadGeneric: "Get the desktop app",
@@ -194,6 +202,36 @@ const en: LandingCopy = {
         title: "Themes",
         lead: "themes",
         items: ["Profile banners, pride badges and a nickname per server."],
+      },
+    ],
+  },
+  rooms: {
+    title: "Six 3D rooms inside every voice call",
+    lead: "Switch any voice room from a regular grid into a shared 3D space right in your browser — with optional spatial voices. Besides the four below, there's also a campfire Meadow and a life-size Board Hall.",
+    items: [
+      {
+        id: "living",
+        title: "Living room",
+        body: "Sit on the couch by the fireplace; whatever someone shares or plays shows up on the TV above the hearth.",
+        alt: "Hoffle's 3D Living room: warm cabin with a fireplace, couches, and a shared screen TV above the hearth",
+      },
+      {
+        id: "tabletop",
+        title: "Tabletop",
+        body: "Pull up a chair around a candlelit D&D map, throw 3D physics dice straight onto the board, and grab pawns from the cabinet.",
+        alt: "Hoffle's 3D Tabletop room: round wooden table lit by candles with a D&D battlemap and dice tray",
+      },
+      {
+        id: "club",
+        title: "Club",
+        body: "Lights that pulse to the music stem by stem, a dance floor, booths, and DJ decks you can step behind.",
+        alt: "Hoffle's 3D Club room: beat-synced nightclub stage, disco ball, dance floor, and DJ decks",
+      },
+      {
+        id: "cinema",
+        title: "Cinema",
+        body: "Pick a seat in a 150-seat hall and watch a shared screen or Watch Together queue on the big screen.",
+        alt: "Hoffle's 3D Cinema room: red theater seats facing a large screen inside a voice call",
       },
     ],
   },
@@ -413,6 +451,10 @@ const en: LandingCopy = {
       },
     ],
   },
+  closing: {
+    title: "Try it with your group tonight.",
+    body: "Open Hoffle, make a server and send your friends the invite link. It takes about a minute, and nobody has to install anything.",
+  },
   about: {
     body: "Hoffle is made by me, Abdullah, in the Netherlands. Most of the ideas in it came from the friends who use it. Bug reports and pull requests are welcome on GitHub, or just say hi in #say-hi up top.",
     github: "Hoffle on GitHub",
@@ -455,6 +497,7 @@ const tr: LandingCopy = {
     title: "Hoffle: küçük gruplar için bir sohbet uygulaması. Sesli sohbet, ekran paylaşımı ve oyun gecesi içinde.",
     body:
       "Hoffle'ı akşamlarının çoğunu Discord'daki bir sesli kanalda geçiren kendi arkadaş grubum için yaptım. Her akşam kullandığımız her şey içinde: sesli sohbet, sesli 1080p ekran paylaşımı, müzik botu ve D&D araçları. Ücretsiz, açık kaynak ve doğrudan tarayıcında çalışıyor.",
+    perks: ["Ücretsiz, ücretli sürüm yok", "Açık kaynak", "Kurulum gerekmiyor"],
     open: "Hoffle'ı aç",
     downloadFor: (os) => `${os} için indir`,
     downloadGeneric: "Masaüstü uygulamasını indir",
@@ -549,6 +592,36 @@ const tr: LandingCopy = {
         title: "Temalar",
         lead: "themes",
         items: ["Profil kapakları, onur rozetleri ve her sunucuda ayrı takma ad."],
+      },
+    ],
+  },
+  rooms: {
+    title: "Her ses odasının içinde altı 3D mekan",
+    lead: "Herhangi bir ses odasını normal ızgaradan doğrudan tarayıcında çalışan ortak bir 3D mekana çevirebilirsin — isteğe bağlı uzamsal sesle. Aşağıdaki dördüne ek olarak kamp ateşli bir Çayır ve dev bir Oyun Salonu da var.",
+    items: [
+      {
+        id: "living",
+        title: "Oturma odası",
+        body: "Şöminenin karşısındaki koltuğa otur; birinin paylaştığı ekran ya da açtığı müzik doğrudan üstteki televizyonda oynar.",
+        alt: "Hoffle'ın 3D Oturma odası: şömine, koltuklar ve şöminenin üstünde paylaşılan ekran televizyonu",
+      },
+      {
+        id: "tabletop",
+        title: "Oyun masası",
+        body: "Mum ışığındaki D&D haritasının etrafında yerini al, fiziği olan 3D zarları doğrudan masaya at ve dolaptan piyonunu seç.",
+        alt: "Hoffle'ın 3D Oyun masası: mum ışığında D&D haritası ve zar tepsisiyle yuvarlak ahşap masa",
+      },
+      {
+        id: "club",
+        title: "Kulüp",
+        body: "Müziğin kanallarına göre ritim tutan ışıklar, dans pisti, localar ve başına geçebileceğin DJ kabini.",
+        alt: "Hoffle'ın 3D Kulüp odası: ritme göre değişen kulüp ışıkları, disko topu, dans pisti ve DJ kabini",
+      },
+      {
+        id: "cinema",
+        title: "Sinema",
+        body: "150 kişilik salonda istediğin koltuğa otur, paylaşılan ekranı ya da Birlikte İzle sırasını dev perdeden izle.",
+        alt: "Hoffle'ın 3D Sinema salonu: sesli görüşme içinde dev perdeye bakan kırmızı sinema koltukları",
       },
     ],
   },
@@ -767,6 +840,10 @@ const tr: LandingCopy = {
         a: "Yalnızca renkleri değil, bütün düzeni: gruplu kişi listesi, her mesajın başında “diyor ki:”, profil resimleri, kişisel ifadeler, titreşimler, göz kırpmalar, el yazısı, sohbet arka planları, kendi sesleriyle oturum açma bildirimleri ve bir Y2K Bugün penceresi. Ayarlar → Görünüm'den seçebilirsin.",
       },
     ],
+  },
+  closing: {
+    title: "Bu akşam grubunla dene.",
+    body: "Hoffle'ı aç, bir sunucu kur ve davet bağlantısını arkadaşlarına gönder. Bir dakika sürüyor, kimsenin bir şey kurması da gerekmiyor.",
   },
   about: {
     body: "Hoffle'ı Hollanda'dan ben, Abdullah, yapıyorum. İçindeki fikirlerin çoğu onu kullanan arkadaşlarımdan geldi. Hata bildirimleri ve pull request'ler GitHub'da her zaman açık, ya da yukarıdaki #say-hi kanalında bir selam ver.",
