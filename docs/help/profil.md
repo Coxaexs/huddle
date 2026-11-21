@@ -27,7 +27,7 @@ En üstteki **Browse looks** düğmesi, adını, profil kartını ve ses odasın
 
 ![Avatar süslemesi önizlemesi](/help-media/img/profil-cerceve-onizleme.webp)
 
-Süslemeler ve efektler başkalarına da görünür. Başkalarının efektlerini görmek istemiyorsan **Ayarlar → Görünüm → Extras → Features** altındaki **Profile Cosmetics & FX**'i kapat (bkz. [Ayarlar](/help/ayarlar#özellikleri-açıp-kapatma)).
+Süslemeler ve efektler başkalarına da görünür. Başkalarının efektlerini görmek istemiyorsan **Ayarlar → Görünüm → Ekstralar → Features** altındaki **Profile Cosmetics & FX**'i kapat (bkz. [Ayarlar](/help/ayarlar#özellikleri-açıp-kapatma)).
 
 ## Hakkında (About), Bağlantılar ve Müzik
 
@@ -58,4 +58,4 @@ Hoffle'ı kullandıkça başarımlar kazanırsın: ilk mesajını göndermek, bi
 
 ![Başarımlar](/help-media/img/basarimlar.webp)
 
-Başarım bildirimlerini istemiyorsan **Ayarlar → Görünüm → Extras → Features** altındaki **Achievements**'ı kapatabilirsin.
+Başarım bildirimlerini istemiyorsan **Ayarlar → Görünüm → Ekstralar → Features** altındaki **Achievements**'ı kapatabilirsin.

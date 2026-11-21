@@ -37,7 +37,7 @@ Son adımda Hoffle, Discord sunucunun duyurularına yapıştırabileceğin hazı
 
 Herkes bir anda taşınmayacaksa **Discord köprüsü** seçtiğin kanalları iki yönlü aynalar. Discord'da yazılanlar Hoffle'da yazanın adı ve resmiyle görünür, Hoffle'da yazılanlar Discord'a gider. Yanıtlar, düzenlemeler, silmeler, tepkiler, dosyalar ve konular da karşıya geçer.
 
-1. **Sunucu Ayarları → Entegrasyonlar**'da **Discord Bridge** kartındaki **Set up**'a bas.
+1. **Sunucu Ayarları → Entegrasyonlar**'da **Discord köprüsü** kartındaki **Kur**'a bas.
 2. Köprü botunu Discord sunucuna ekle (bunun için orada **Sunucuyu Yönet** yetkin olmalı).
 3. Hoffle'ın gösterdiği komutu Discord sunucundaki herhangi bir kanala yaz: `/hoffle link <kod>`.
 4. Hangi Discord kanalının hangi Hoffle kanalıyla eşleşeceğini seç. Sayfa, Discord yanıt verince kendiliğinden güncellenir.
@@ -53,7 +53,7 @@ Herkes bir anda taşınmayacaksa **Discord köprüsü** seçtiğin kanalları ik
 
 Hoffle, Discord'un bot arayüzünü (API v10) taklit eder. **discord.js** ya da **discord.py** ile yazılmış botlar, yalnızca bağlandıkları adres değiştirilerek Hoffle'da çalışır.
 
-1. **Sunucu Ayarları → Entegrasyonlar → Your own bot → Open** ile (ya da `chat.hoffle.online/hangout/developers` adresinden) **Geliştirici Portalı**'nı aç.
+1. **Sunucu Ayarları → Entegrasyonlar → Kendi botun → Aç** ile (ya da `chat.hoffle.online/hangout/developers` adresinden) **Geliştirici Portalı**'nı aç.
 2. **New bot** kutusuna bir ad yaz ve **Create**'e bas. Botun **token**'ını kopyala; yalnızca bir kez gösterilir.
 3. **Invite link** bölümünde botun ihtiyaç duyduğu izinleri seç ve bağlantıyı kopyala. Bu bağlantıyla botu sunucuna eklersin.
 4. Bot kodunda Discord adresini Hoffle'ınkiyle değiştir ve yeni token'ı kullan. Örnek kodlar [Bots belgesinde](/docs/bots#running-real-discord-bots) var.

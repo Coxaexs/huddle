@@ -5,7 +5,7 @@
 Hoffle'da D&D ve benzeri masa oyunları için zar, savaş haritası, inisiyatif takibi ve bir büyü-canavar ansiklopedisi bulunur. Bunlar **D&D Bot** tarafından yanıtlanır:
 
 1. **Sunucu Ayarları → Entegrasyonlar** bölümünü aç.
-2. **D&D Companion** kartındaki **Add** düğmesine bas.
+2. **D&D Companion** kartındaki **Ekle** düğmesine bas.
 
 Sunucunda D&D araçlarını hiç istemiyorsan **Sunucu Ayarları → Erişim** bölümündeki **D&D & Tabletop** modülünü kapatabilirsin; komutlar ve düğmeler gizlenir.
 
@@ -114,12 +114,12 @@ Odanın **masa** görünümünde herkes yuvarlak bir masanın etrafında oturur.
 
 ## Masa ayarları
 
-**Sunucu Ayarları → Entegrasyonlar** sayfasının altındaki **Tabletop** bölümünde:
+**Sunucu Ayarları → Entegrasyonlar** sayfasının altındaki **Masa oyunu** bölümünde:
 
-- **Game system:** **D&D 5e** ya da **Vampire V5**. "My character" penceresinin hangi karakter kâğıdını açacağını ve zarları kimin yanıtlayacağını belirler.
-- **Rules for lookups:** `/spell` ve `/monster` komutlarının varsayılan olarak **2014 SRD** mi yoksa **2024 kurallarını** mı göstereceği.
-- **Combat music / Exploration:** Savaş başlayınca ve bitince çalacak müzik (bir çalma listesi bağlantısı ya da arama sözcükleri). **Save music** ile kaydet.
-- **Homebrew:** **Import JSON** ile kendi büyülerini, canavarlarını ve eşyalarını ekle; aynı komutlarla aranırlar.
+- **Oyun sistemi:** **D&D 5e** ya da **Vampire V5**. "Karakterim" penceresinin hangi karakter kâğıdını açacağını ve zarları kimin yanıtlayacağını belirler.
+- **Aramalarda kullanılacak kurallar:** `/spell` ve `/monster` komutlarının varsayılan olarak **2014 SRD** mi yoksa **2024 kuralları** mı göstereceği.
+- **Savaş müziği** (**Savaş** / **Keşif**): Savaş başlayınca ve bitince çalacak müzik (bir çalma listesi bağlantısı ya da arama sözcükleri). **Müziği kaydet** ile kaydet.
+- **Homebrew:** **JSON içe aktar** ile kendi büyülerini, canavarlarını ve eşyalarını ekle; aynı komutlarla aranırlar.
 
 ![Tabletop ayarları](/help-media/img/ayar-tabletop.webp)
 

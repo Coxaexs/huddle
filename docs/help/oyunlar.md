@@ -82,4 +82,4 @@ Bir buluşma, oyun gecesi ya da D&D oturumu planlamak için etkinlik oluştur; �
 
 ![Etkinlik kartı](/help-media/img/etkinlik-karti.webp)
 
-Etkinlik kartında herkes **Going** (Geliyorum), **Maybe** (Belki) ya da **Can't** (Gelemem) seçer; kimlerin geldiği kartta görünür. Yaklaşan etkinlik, kanal listesinin üstünde tarihiyle birlikte durur. Kart üzerindeki indirme düğmesi etkinliği kendi takvimine (.ics) ekler; **Abone Ol** ise sunucunun bütün etkinliklerini takvim uygulamana abone eder. Kalem ile düzenler, çöp kutusuyla silersin.
+Etkinlik kartında herkes **Geliyorum**, **Belki** ya da **Gelemem** seçer; kimlerin geldiği kartta görünür. Yaklaşan etkinlik, kanal listesinin üstünde tarihiyle birlikte durur. Kart üzerindeki indirme düğmesi etkinliği kendi takvimine (.ics) ekler; **Abone Ol** ise sunucunun bütün etkinliklerini takvim uygulamana abone eder. Kalem ile düzenler, çöp kutusuyla silersin.

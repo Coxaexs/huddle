@@ -67,7 +67,7 @@ Pencerenin üstündeki **önizleme** değişikliklerin nasıl görüneceğini g�
 
 ## Özellikleri açıp kapatma
 
-**Görünüm → Extras** bölümünün altında **Features** listesi var. Kullanmadığın özellikleri kapatırsan düğmeleri, menü girişleri ve komutları **yalnızca senin ekranından** kalkar; başkaları kendilerininkini görmeye devam eder:
+**Görünüm → Ekstralar** bölümünün altında **Features** listesi var. Kullanmadığın özellikleri kapatırsan düğmeleri, menü girişleri ve komutları **yalnızca senin ekranından** kalkar; başkaları kendilerininkini görmeye devam eder:
 
 - **D&D & Tabletop**, **Mini-Games**, **Music & Jam Synth**, **3D Living Room & Cinema**
 - **Profile Cosmetics & FX:** Profil efektleri, avatar çerçeveleri ve süslemeler.

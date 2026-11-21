@@ -2,7 +2,7 @@
 
 ## Tema değiştirme
 
-1. **Ayarlar → Görünüm** bölümünü aç ve **Themes** sekmesine geç (Basit modda **Ayarlar → Hoffle'ın görünümü**).
+1. **Ayarlar → Görünüm** bölümünü aç ve **Temalar** sekmesine geç (Basit modda **Ayarlar → Hoffle'ın görünümü**).
 2. Beğendiğin temanın kartındaki **Apply**'a bas. Hoffle anında o temaya geçer.
 
 Temalar yalnızca senin ekranını değiştirir; arkadaşların kendi seçtikleri temayı görür. İlk açılıştaki hoş geldin turunda da tema seçebilirsin.
@@ -25,7 +25,7 @@ Temalar yalnızca senin ekranını değiştirir; arkadaşların kendi seçtikler
 | **Cyberpunk**, **Matrix**, **Midnight** | Neon sarı ve camgöbeği; yeşil yazılar ve dijital yağmur; OLED ekranlar için zifiri siyah. |
 | **Vampire**, **Sunset**, **Zombie**, **Blocks** ve diğerleri | Kan kırmızısı gotik, gün batımı, salgın gecesi, blok dünyası gibi tematik görünümler. |
 
-**Customize** sekmesinde seçtiğin temanın renklerini ve ayrıntılarını değiştirebilirsin. **Create** ile sıfırdan kendi temanı yapar, **Import** ile başkasının paylaştığı bir temayı yüklersin. **Community** sekmesinde başkalarının paylaştığı temalar bulunur. Daha derin değişiklikler için [Özel CSS](/help/ayarlar#özel-css) kullanılabilir.
+**Özelleştir** sekmesinde seçtiğin temanın renklerini ve ayrıntılarını değiştirebilirsin. **Oluştur** ile sıfırdan kendi temanı yapar, **İçe aktar** ile başkasının paylaştığı bir temayı yüklersin. **Topluluk** sekmesinde başkalarının paylaştığı temalar bulunur. Daha derin değişiklikler için [Özel CSS](/help/ayarlar#özel-css) kullanılabilir.
 
 ## Yerleşim
 
@@ -50,4 +50,4 @@ Araç çubuğundaki düğmeler:
 
 **Y2K Bugün** penceresi günde bir kez açılır ve Hoffle'daki durumunu özetler: kimlerin etrafta olduğu, seni bekleyen sohbetler, yaklaşan etkinlikler, çalan müzik ve küçük bir ipucu.
 
-Titreşimler ve göz kırpmalar, senin temandan bağımsız olarak sana ulaşır. İstemiyorsan **Ayarlar → Görünüm → Extras → Features** altındaki **Nudges & Winks**'i kapat; göz kırpmaları yine de sohbetteki satırlarından elle oynatabilirsin. Aynı yerdeki **Retro 2000s sound effects** anahtarı Y2K tarzı bildirim seslerini açar.
+Titreşimler ve göz kırpmalar, senin temandan bağımsız olarak sana ulaşır. İstemiyorsan **Ayarlar → Görünüm → Ekstralar → Features** altındaki **Nudges & Winks**'i kapat; göz kırpmaları yine de sohbetteki satırlarından elle oynatabilirsin. Aynı yerdeki **Retro 2000s sound effects** anahtarı Y2K tarzı bildirim seslerini açar.
