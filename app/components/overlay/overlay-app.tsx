@@ -253,6 +253,14 @@ function MiniHoffle({
     return null;
   }, [shell, channelId]);
   const dmUnread = shell?.dms.some((dm) => dm.unread) ?? false;
+  // The main window sends the list within a moment; if it doesn't, it is
+  // signed out or still starting, and waiting here would never end.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (shell) return;
+    const timer = window.setTimeout(() => setSlow(true), 4000);
+    return () => window.clearTimeout(timer);
+  }, [shell]);
 
   return (
     <div
@@ -277,7 +285,18 @@ function MiniHoffle({
           </IconButton>
         </header>
         {!shell ? (
-          <div className="ov-loading">Loading your servers…</div>
+          <div className="ov-loading">
+            {slow ? (
+              <>
+                <p>Your servers show up here once Hoffle is open and you are signed in.</p>
+                <button type="button" className="ov-text-btn" onClick={() => bridge.action({ type: "open-main" })}>
+                  <ExternalLink size={14} aria-hidden="true" /> Open Hoffle
+                </button>
+              </>
+            ) : (
+              "Loading your servers…"
+            )}
+          </div>
         ) : (
           <div className="ov-body">
             <nav className="ov-rail" aria-label="Servers">
