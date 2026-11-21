@@ -2,6 +2,7 @@ import webPush from "web-push";
 import { sendFcm } from "./fcm";
 import { bindings } from "./storage";
 import { resolvesPublic } from "./unfurl";
+import { inQuietHours, normalizeNotifyPrefs } from "./notify-prefs";
 
 export interface PushPayload {
   title: string;
@@ -18,6 +19,29 @@ interface PushSubscriptionRow {
   p256dh: string;
   auth: string;
   kind: string | null;
+}
+
+/**
+ * Of `userIds`, the ones not in their quiet hours right now (lib/notify-prefs.ts).
+ * A failed lookup silences nobody.
+ */
+export async function outsideQuietHours(
+  db: D1Database,
+  userIds: string[],
+  now: Date = new Date(),
+): Promise<string[]> {
+  const placeholders = userIds.map(() => "?").join(",");
+  const rows = await db
+    .prepare(`SELECT id, notify_prefs FROM users WHERE notify_prefs IS NOT NULL AND id IN (${placeholders})`)
+    .bind(...userIds)
+    .all<{ id: string; notify_prefs: string | null }>()
+    .catch(() => ({ results: [] as { id: string; notify_prefs: string | null }[] }));
+  const quiet = new Set(
+    (rows.results || [])
+      .filter((row) => inQuietHours(normalizeNotifyPrefs(row.notify_prefs), now))
+      .map((row) => row.id),
+  );
+  return quiet.size ? userIds.filter((id) => !quiet.has(id)) : userIds;
 }
 
 /**
@@ -39,6 +63,9 @@ export async function sendPushNotifications(
   userIds: string[],
   payload: PushPayload,
 ): Promise<void> {
+  if (!userIds.length) return;
+  // A call still rings; everything else waits for the morning.
+  if (!payload.urgent) userIds = await outsideQuietHours(db, userIds);
   if (!userIds.length) return;
 
   const placeholders = userIds.map(() => "?").join(",");

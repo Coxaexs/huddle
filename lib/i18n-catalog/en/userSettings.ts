@@ -158,6 +158,16 @@ export const userSettings = {
   "notificationSettings.desktopDesc": "Mentions, DMs and calls — even with the tab closed",
   "notificationSettings.enableSounds": "Sound Effects",
   "notificationSettings.unreadBadge": "Unread Message Badge",
+  "notificationSettings.quietHours": "Quiet Hours",
+  "notificationSettings.quietHoursDesc": "Nothing pops up, chimes or reaches your phone during these hours. Calls still ring.",
+  "notificationSettings.quietFrom": "From",
+  "notificationSettings.quietTo": "Until",
+  "notificationSettings.keywords": "Keyword Alerts",
+  "notificationSettings.keywordsDesc": "Get notified, like a mention, when someone says one of these words in a server.",
+  "notificationSettings.keywordPlaceholder": "Add a word or phrase",
+  "notificationSettings.keywordAdd": "Add",
+  "notificationSettings.keywordRemove": "Remove {word}",
+  "notificationSettings.keywordsFull": "That's the most you can add",
 
   // Notification prompt (app/components/notify-prompt.tsx)
   "notifyPrompt.title": "Get a ping when friends reply?",

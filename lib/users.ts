@@ -3,6 +3,7 @@
 import type { ProfileStyle } from "./profile-style";
 import type { TranslateFn } from "./i18n";
 import type { LayoutPrefs } from "./layout-prefs";
+import type { NotifyPrefs } from "./notify-prefs";
 
 export type { ProfileStyle } from "./profile-style";
 export { normalizeProfileStyle } from "./profile-style";
@@ -177,6 +178,8 @@ export interface PublicUser {
   uiMode?: "simple" | "full";
   /** Only on the signed-in user's own account: panel sides and pinned widgets. */
   layout?: LayoutPrefs;
+  /** Only on the signed-in user's own account: quiet hours and keyword alerts. */
+  notify?: NotifyPrefs;
 }
 
 export interface Member {

@@ -988,6 +988,8 @@ async function migrate(db: D1Database): Promise<void> {
     ["layout_prefs", "ALTER TABLE users ADD COLUMN layout_prefs TEXT"],
     // When this person said they are 18 or older, for AI features (lib/ai-age.ts).
     ["ai_adult_at", "ALTER TABLE users ADD COLUMN ai_adult_at TEXT"],
+    // Quiet hours and keyword alerts (lib/notify-prefs.ts). NULL is neither.
+    ["notify_prefs", "ALTER TABLE users ADD COLUMN notify_prefs TEXT"],
   ] as const) {
     if (!userColumns.has(column)) userMigrations.push(db.prepare(ddl));
   }

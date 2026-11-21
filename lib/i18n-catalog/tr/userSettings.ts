@@ -159,6 +159,16 @@ export const userSettings: Record<keyof typeof en, string> = {
   "notificationSettings.desktopDesc": "Bahsetmeler, DM'ler ve aramalar — sekme kapalıyken bile",
   "notificationSettings.enableSounds": "Ses Efektleri",
   "notificationSettings.unreadBadge": "Okunmamış Mesaj Rozeti",
+  "notificationSettings.quietHours": "Sessiz Saatler",
+  "notificationSettings.quietHoursDesc": "Bu saatlerde hiçbir şey açılmaz, ses çıkarmaz veya telefonuna gelmez. Aramalar yine çalar.",
+  "notificationSettings.quietFrom": "Başlangıç",
+  "notificationSettings.quietTo": "Bitiş",
+  "notificationSettings.keywords": "Anahtar Kelime Uyarıları",
+  "notificationSettings.keywordsDesc": "Biri bir sunucuda bu kelimelerden birini söylediğinde, bahsetme gibi bildirim al.",
+  "notificationSettings.keywordPlaceholder": "Kelime veya ifade ekle",
+  "notificationSettings.keywordAdd": "Ekle",
+  "notificationSettings.keywordRemove": "{word} kelimesini kaldır",
+  "notificationSettings.keywordsFull": "Daha fazla ekleyemezsin",
 
   // Bildirim önerisi (app/components/notify-prompt.tsx)
   "notifyPrompt.title": "Arkadaşların yazınca haber verelim mi?",

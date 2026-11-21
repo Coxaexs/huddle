@@ -8,6 +8,7 @@
 
 import { normalizeShowcase } from "./achievement-defs";
 import { normalizeLayout } from "./layout-prefs";
+import { normalizeNotifyPrefs } from "./notify-prefs";
 import { markActiveDay } from "./active-days";
 import { clientIp } from "./rate-limit";
 import { bindings } from "./storage";
@@ -78,6 +79,8 @@ export interface User {
   ui_mode?: string | null;
   /** JSON from lib/layout-prefs.ts; null is the default layout. */
   layout_prefs?: string | null;
+  /** JSON from lib/notify-prefs.ts; null is no quiet hours and no keywords. */
+  notify_prefs?: string | null;
 }
 
 const USER_COLUMN_NAMES = [
@@ -86,7 +89,7 @@ const USER_COLUMN_NAMES = [
   "social_links", "avatar_frame", "profile_effect", "nameplate", "profile_frame", "profile_style", "color", "is_admin", "can_invite", "status",
   "custom_css", "custom_theme", "quick_reactions", "hidden_emojis", "disabled_modules", "email",
   "email_prompt_skipped", "created_at", "last_seen_at", "suspended_at", "signup_source",
-  "ui_mode", "layout_prefs",
+  "ui_mode", "layout_prefs", "notify_prefs",
 ] as const;
 
 /** Every column the user serializers read, for `SELECT ${userColumns("u")} …`. */
@@ -225,6 +228,7 @@ export function publicUser(user: User): PublicUser {
     ...(user.signup_source === "guest" ? { isGuest: true } : {}),
     uiMode: user.ui_mode === "simple" ? "simple" : "full",
     layout: normalizeLayout(user.layout_prefs),
+    notify: normalizeNotifyPrefs(user.notify_prefs),
   };
 }
 
