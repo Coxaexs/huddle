@@ -42,36 +42,76 @@ html.hoffle-overlay-page body {
   color: #14121c;
 }
 
-/* Corner card over a game */
+/* Who is in the call, over a game: faces and names only, no card */
 .ov-widget {
   position: absolute;
-  top: 24px;
-  left: 24px;
-  width: 230px;
-  padding: 8px 8px 6px;
-  border-radius: 12px;
-  background: rgba(17, 19, 26, 0.78);
-  border: 1px solid var(--ov-line);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(10px);
+  max-width: 220px;
 }
 
-.ov-widget header {
+.ov-widget.at-top-left,
+.ov-toasts.at-top-left {
+  top: 16px;
+  left: 16px;
+}
+
+.ov-widget.at-top-right,
+.ov-toasts.at-top-right {
+  top: 16px;
+  right: 16px;
+}
+
+.ov-widget.at-bottom-left,
+.ov-toasts.at-bottom-left {
+  bottom: 16px;
+  left: 16px;
+}
+
+.ov-widget.at-bottom-right,
+.ov-toasts.at-bottom-right {
+  bottom: 16px;
+  right: 16px;
+}
+
+.ov-face-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 4px 6px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ov-muted);
+  gap: 7px;
+  padding: 2px 0;
+  opacity: 0.72;
+  transition: opacity 120ms ease;
 }
 
-.ov-widget header span {
-  flex: 1;
+.ov-face-row.is-speaking {
+  opacity: 1;
+}
+
+.ov-face-row.is-speaking .ov-person-face {
+  box-shadow: 0 0 0 2px var(--ov-talk);
+}
+
+/* On the right, the faces sit against the screen edge. */
+.ov-widget.at-top-right .ov-face-row,
+.ov-widget.at-bottom-right .ov-face-row {
+  flex-direction: row-reverse;
+}
+
+.ov-widget.at-top-right,
+.ov-widget.at-bottom-right {
+  text-align: right;
+}
+
+.ov-face-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  /* No card behind the names, so an outline keeps them readable on any game. */
+  text-shadow:
+    0 0 3px rgba(0, 0, 0, 0.95),
+    0 1px 2px rgba(0, 0, 0, 0.95);
 }
 
 .ov-widget ul,
@@ -119,22 +159,17 @@ html.hoffle-overlay-page body {
   color: var(--ov-danger);
 }
 
-.ov-more,
-.ov-widget-hint {
-  margin: 4px 4px 0;
-  font-size: 11px;
-  color: var(--ov-muted);
-}
-
-.ov-widget-hint {
-  opacity: 0.75;
+.ov-more {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.95);
 }
 
 /* Message pop-ups */
 .ov-toasts {
   position: absolute;
-  top: 24px;
-  right: 24px;
   display: flex;
   flex-direction: column;
   gap: 8px;

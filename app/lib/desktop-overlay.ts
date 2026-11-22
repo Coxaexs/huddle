@@ -75,7 +75,11 @@ export interface OverlayState {
   /** The shortcut as this keyboard shows it ("Alt + `", "⌥`"), or "" when none works. */
   shortcut: string;
   platform: string;
+  /** Where the call list sits; missing from desktop apps before 2.3.1. */
+  corner?: OverlayCorner;
 }
+
+export type OverlayCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 
 export interface OverlayToast {
   kind: "message" | "hint";
@@ -109,12 +113,23 @@ export interface OverlaySettings {
   /** False when another app already holds the shortcut. */
   hotkeyOk: boolean;
   game: string | null;
+  /** Both missing from desktop apps before 2.3.1, which cannot change them. */
+  showWhilePlaying?: boolean;
+  corner?: OverlayCorner;
 }
+
+export type OverlaySettingsPatch = {
+  enabled?: boolean;
+  combo?: string;
+  accelerator?: string;
+  showWhilePlaying?: boolean;
+  corner?: OverlayCorner;
+};
 
 /** `window.huddle.overlay`, in the main window of the desktop app. */
 export interface MainOverlayBridge {
   settings: () => Promise<OverlaySettings | null>;
-  setSettings: (patch: { enabled?: boolean; combo?: string; accelerator?: string }) => Promise<OverlaySettings | null>;
+  setSettings: (patch: OverlaySettingsPatch) => Promise<OverlaySettings | null>;
   want: () => Promise<{ voice: boolean; shell: boolean } | null>;
   onWant: (callback: (want: { voice: boolean; shell: boolean }) => void) => () => void;
   publishVoice: (voice: OverlayVoice | null) => void;

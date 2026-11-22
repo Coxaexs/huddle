@@ -21,6 +21,9 @@ const path = require("node:path");
 
 const DEFAULT_COMBO = "Alt+Backquote";
 const DEFAULT_ACCELERATOR = "Alt+`";
+/** Where the call list sits over a game. */
+const CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"];
+const DEFAULT_CORNER = "top-left";
 const GAME_CHECK_MS = 15_000;
 const TOAST_MS = 7_000;
 /** A closed overlay with no game running is unloaded after this long. */
@@ -53,6 +56,10 @@ function createOverlay(deps) {
     combo: typeof stored.combo === "string" ? stored.combo : DEFAULT_COMBO,
     accelerator: typeof stored.accelerator === "string" ? stored.accelerator : DEFAULT_ACCELERATOR,
     hintShown: Boolean(stored.hintShown),
+    // Who is talking and message pop-ups while a game runs. Off, nothing
+    // shows over the game and only the shortcut brings up the small Hoffle.
+    showWhilePlaying: stored.showWhilePlaying !== false,
+    corner: CORNERS.includes(stored.corner) ? stored.corner : DEFAULT_CORNER,
   };
 
   let win = null;
@@ -198,7 +205,12 @@ function createOverlay(deps) {
 
   /** Passive overlay: a game is running and there is something to show. */
   function passiveWanted() {
-    return settings.enabled && Boolean(game) && (Boolean(voice && voice.channelId) || Date.now() < toastUntil);
+    return (
+      settings.enabled &&
+      settings.showWhilePlaying &&
+      Boolean(game) &&
+      (Boolean(voice && voice.channelId) || Date.now() < toastUntil)
+    );
   }
 
   /** Shows, hides or switches the window to match the current state. */
@@ -232,7 +244,7 @@ function createOverlay(deps) {
   /** Decides whether a window is needed at all, then applies. */
   function refresh() {
     clearTimeout(unloadTimer);
-    const needed = settings.enabled && (open || Boolean(game));
+    const needed = settings.enabled && (open || (settings.showWhilePlaying && Boolean(game)));
     if (!needed) {
       if (win && !win.isDestroyed()) {
         open = false;
@@ -292,6 +304,7 @@ function createOverlay(deps) {
       game,
       shortcut: boundAccelerator ? shortcutLabel() : "",
       platform: process.platform,
+      corner: settings.corner,
     };
   }
 
@@ -324,13 +337,14 @@ function createOverlay(deps) {
       settings = { ...settings, hintShown: true };
       saveSettings();
       const label = shortcutLabel();
-      toast({
+      const shown = toast({
         kind: "hint",
         title: "Hoffle overlay is on",
         body: boundAccelerator
           ? `Press ${label} to open Hoffle over your game. Turn it off in Settings → Activities.`
           : "Turn it off in Settings → Activities.",
       });
+      if (!shown) refresh();
       return;
     }
     refresh();
@@ -359,6 +373,8 @@ function createOverlay(deps) {
       shortcut: shortcutLabel(),
       hotkeyOk: !settings.enabled || hotkeyOk,
       game,
+      showWhilePlaying: settings.showWhilePlaying,
+      corner: settings.corner,
     };
   }
 
@@ -367,7 +383,8 @@ function createOverlay(deps) {
    * so the system notification can be skipped.
    */
   function toast(note) {
-    if (!settings.enabled || !game || open) return false;
+    // Hidden while playing: the normal notification shows instead.
+    if (!settings.enabled || !settings.showWhilePlaying || !game || open) return false;
     const clean = {
       kind: note.kind === "hint" ? "hint" : "message",
       title: String(note.title || "Hoffle").slice(0, 120),
@@ -390,6 +407,8 @@ function createOverlay(deps) {
     if (!fromMain(event) || !patch || typeof patch !== "object") return null;
     const next = { ...settings };
     if (typeof patch.enabled === "boolean") next.enabled = patch.enabled;
+    if (typeof patch.showWhilePlaying === "boolean") next.showWhilePlaying = patch.showWhilePlaying;
+    if (CORNERS.includes(patch.corner)) next.corner = patch.corner;
     if (typeof patch.combo === "string" && typeof patch.accelerator === "string") {
       // An empty accelerator is "no shortcut"; anything else must be safe to grab.
       if (!patch.accelerator || deps.isSafeAccelerator(patch.accelerator)) {

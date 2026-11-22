@@ -2,8 +2,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { comboLabel, comboToAccelerator, globalShortcutProblem } from "../../lib/hotkeys";
-import { mainOverlayBridge, type OverlaySettings as Settings } from "../../lib/desktop-overlay";
+import {
+  mainOverlayBridge,
+  type OverlayCorner,
+  type OverlaySettings as Settings,
+  type OverlaySettingsPatch,
+} from "../../lib/desktop-overlay";
 import { ComboButton } from "./roles-tab";
+
+const CORNERS: Array<[OverlayCorner, string]> = [
+  ["top-left", "Top left"],
+  ["top-right", "Top right"],
+  ["bottom-left", "Bottom left"],
+  ["bottom-right", "Bottom right"],
+];
 
 /**
  * Activities → Game overlay. Only in the desktop app, which keeps these
@@ -28,7 +40,7 @@ export function OverlaySettings() {
 
   if (!bridge || !settings) return null;
 
-  const update = (patch: { enabled?: boolean; combo?: string; accelerator?: string }) => {
+  const update = (patch: OverlaySettingsPatch) => {
     setRefused("");
     void bridge.setSettings(patch).then((next) => {
       if (!next) return;
@@ -90,6 +102,42 @@ export function OverlaySettings() {
             >
               Use the default shortcut
             </button>
+          )}
+          {/* Desktop apps before 2.3.1 do not send these and cannot change them. */}
+          {settings.showWhilePlaying !== undefined && (
+            <label className="appearance-switch">
+              <span>
+                <strong>Show who&apos;s talking while you play</strong>
+                <small>
+                  Faces and names in a corner of the screen, plus new messages. Off, nothing shows over your
+                  game and the shortcut still opens Hoffle.
+                </small>
+              </span>
+              <input
+                type="checkbox"
+                checked={settings.showWhilePlaying}
+                onChange={(event) => update({ showWhilePlaying: event.target.checked })}
+              />
+            </label>
+          )}
+          {settings.corner !== undefined && settings.showWhilePlaying !== false && (
+            <>
+              <h4 className="field-label">Corner</h4>
+              <div className="appearance-choice-row vs-mode-row" role="radiogroup" aria-label="Corner">
+                {CORNERS.map(([id, label]) => (
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={settings.corner === id}
+                    key={id}
+                    className={settings.corner === id ? "active" : ""}
+                    onClick={() => update({ corner: id })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
           {settings.game && <p className="modal-hint">Playing now: {settings.game}.</p>}
         </>

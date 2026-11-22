@@ -25,6 +25,7 @@ import {
   type OverlayShell,
   type OverlayState,
   type OverlayToast,
+  type OverlayCorner,
   type OverlayVoice,
 } from "../../lib/desktop-overlay";
 import { ChatPane, type ChatPaneLiveSignal, type SimpleChatMessage } from "../second-screen/chat-pane";
@@ -33,7 +34,7 @@ import "./overlay.css";
 
 const DM_HOME = "@me";
 const TOAST_MS = 6000;
-/** The corner widget lists this many people before "+N more". */
+/** The corner list shows this many people before "+N more". */
 const WIDGET_PEOPLE = 8;
 
 const CLOSED: OverlayState = { open: false, game: null, shortcut: "", platform: "" };
@@ -55,6 +56,9 @@ export function OverlayApp() {
   const [serverId, setServerId] = useState<string | null>(null);
   const [channelId, setChannelId] = useState<string | null>(null);
   const seq = useRef(0);
+  const corner: OverlayCorner = state.corner || "top-left";
+  // Pop-ups take the other side of the screen, so they never cover the list.
+  const toastCorner = corner.endsWith("left") ? corner.replace("left", "right") : corner.replace("right", "left");
 
   useEffect(() => {
     const found = overlayPageBridge();
@@ -124,9 +128,9 @@ export function OverlayApp() {
 
   return (
     <div className="ov-root">
-      {!state.open && voice && <CallWidget voice={voice} shortcut={state.shortcut} />}
+      {!state.open && voice && <CallWidget voice={voice} corner={corner} />}
       {!state.open && toasts.length > 0 && (
-        <div className="ov-toasts" aria-live="polite">
+        <div className={`ov-toasts at-${toastCorner}`} aria-live="polite">
           {toasts.map((toast) => (
             <div key={toast.at} className={`ov-toast ${toast.kind === "hint" ? "is-hint" : ""}`}>
               <MessageCircle size={16} aria-hidden="true" />
@@ -187,26 +191,29 @@ function PersonRow({ person, speaking }: { person: OverlayPerson; speaking: bool
   );
 }
 
-/** The corner card over a game: the room and who is talking. */
-function CallWidget({ voice, shortcut }: { voice: OverlayVoice; shortcut: string }) {
+/**
+ * Who is in your call, over a game: just faces and names, no card behind
+ * them, so it covers as little of the game as possible. A green ring shows
+ * who is talking.
+ */
+function CallWidget({ voice, corner }: { voice: OverlayVoice; corner: OverlayCorner }) {
   const speaking = new Set(voice.speaking);
   // Talking people first, so a big room still shows who is speaking.
   const people = [...voice.people].sort((a, b) => Number(speaking.has(b.connectionId)) - Number(speaking.has(a.connectionId)));
   const shown = people.slice(0, WIDGET_PEOPLE);
   return (
-    <section className="ov-widget" aria-label={`In voice: ${voice.channelName}`}>
-      <header>
-        <Volume2 size={13} aria-hidden="true" />
-        <span>{voice.channelName}</span>
-        {voice.deafened ? <HeadphoneOff size={13} aria-label="You are deafened" /> : voice.muted ? <MicOff size={13} aria-label="You are muted" /> : null}
-      </header>
+    <section className={`ov-widget at-${corner}`} aria-label="In voice">
       <ul>
         {shown.map((person) => (
-          <PersonRow key={person.connectionId} person={person} speaking={speaking.has(person.connectionId)} />
+          <li key={person.connectionId} className={`ov-face-row ${speaking.has(person.connectionId) ? "is-speaking" : ""}`}>
+            <span className="ov-person-face">
+              <Avatar name={person.name} avatar={person.avatar} avatarUrl={person.avatarUrl} color={person.color} size={22} />
+            </span>
+            <span className="ov-face-name">{person.name}</span>
+          </li>
         ))}
       </ul>
-      {people.length > shown.length && <p className="ov-more">+{people.length - shown.length} more</p>}
-      {shortcut && <p className="ov-widget-hint">{shortcut} opens Hoffle</p>}
+      {people.length > shown.length && <p className="ov-more">+{people.length - shown.length}</p>}
     </section>
   );
 }
