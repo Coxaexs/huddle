@@ -207,3 +207,38 @@ export function ListenAlong() {
     </div>
   );
 }
+
+/**
+ * A "listen along with me" card in chat: the song when it was posted, and a
+ * Listen along button that follows whatever the host plays from then on.
+ */
+export function ListenCard({
+  invite,
+  userId,
+}: {
+  invite: { host: { id: string; name: string }; song: string; artist: string; albumArt?: string; trackId: string };
+  userId: string;
+}) {
+  const { t } = useI18n();
+  const isHost = invite.host.id === userId;
+  const host = stripTextStyle(invite.host.name);
+  return (
+    <div className="listen-card">
+      <div className="listen-card-art" aria-hidden="true">
+        {invite.albumArt ? <img src={invite.albumArt} alt="" /> : <Headphones size={20} />}
+      </div>
+      <div className="listen-card-text">
+        <small>{t("listen.card.title", { name: host })}</small>
+        <strong>{invite.song}</strong>
+        <span>{invite.artist}</span>
+      </div>
+      {isHost ? (
+        <small className="listen-card-note">{t("listen.card.host")}</small>
+      ) : (
+        <button type="button" className="listen-along-button" onClick={() => startListenAlong(invite.host.id, invite.host.name)}>
+          <Headphones size={14} aria-hidden="true" /> {t("listen.button")}
+        </button>
+      )}
+    </div>
+  );
+}

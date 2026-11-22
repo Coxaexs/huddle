@@ -212,7 +212,11 @@ export function useActivityDetector({
       sent.spotifyAt = now;
       sent.positionMs = song?.positionMs ?? 0;
       sent.positionSentAt = now;
-      if (key !== previous) onSpotifyRef.current?.(song);
+      if (key !== previous) {
+        onSpotifyRef.current?.(song);
+        // The composer's "Invite to listen along" button listens for this.
+        window.dispatchEvent(new CustomEvent("hoffle:spotify-detected", { detail: song }));
+      }
       try {
         await apiFetch("/api/settings/profile", {
           method: "PATCH",

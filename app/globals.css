@@ -28224,6 +28224,76 @@ a.play-button {
   text-overflow: ellipsis;
 }
 
+.game-invite-button.listen {
+  color: #0b2e17;
+  background: var(--mint, #4ade80);
+}
+
+.listen-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(420px, 100%);
+  margin-top: 8px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 90%, var(--mint, #4ade80));
+  border: 1px solid color-mix(in srgb, var(--line) 60%, var(--mint, #4ade80));
+  border-radius: 14px;
+}
+
+.listen-card-art {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  color: var(--mint, #4ade80);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mint, #4ade80) 18%, transparent);
+}
+
+.listen-card-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.listen-card-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 1px;
+}
+
+.listen-card-text small,
+.listen-card-note {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.listen-card-text strong,
+.listen-card-text span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listen-card-text strong {
+  font-size: 14px;
+}
+
+.listen-card-text span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.listen-card .listen-along-button {
+  flex: none;
+  margin: 0;
+}
+
 .game-invite-button.done {
   color: var(--ink);
   background: color-mix(in srgb, var(--mint, #4ade80) 30%, transparent);

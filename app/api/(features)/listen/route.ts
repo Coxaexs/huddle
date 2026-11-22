@@ -1,8 +1,11 @@
 import { currentUser, unauthorized } from "@/lib/auth";
-import { publishPlay } from "@/lib/hub-client";
+import { channelAudience } from "@/lib/dms";
+import { publishMessage, publishPlay } from "@/lib/hub-client";
+import { playableChannel } from "@/lib/playable-channel";
 import { WRITE_RATE_LIMITS, limitUser } from "@/lib/rate-limit";
 import { ensureSchema } from "@/lib/schema";
-import { bindings } from "@/lib/storage";
+import { bindings, type StoredMessage } from "@/lib/storage";
+import { publicMessage } from "@/app/api/messages/route";
 import { liveSpotify, type SpotifyActivity } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -65,7 +68,23 @@ export async function GET(request: Request) {
   return Response.json({ host: row.display_name, activity, serverNow: Date.now() });
 }
 
-/** POST { hostId, on }: start or stop listening along; tells the host. */
+/**
+ * What a "Listen along" card shows: the song when it was posted. Following
+ * always reads the host's live song from GET ?host=, not this.
+ */
+export interface ListenInvite {
+  host: { id: string; name: string };
+  song: string;
+  artist: string;
+  albumArt?: string;
+  trackId: string;
+}
+
+/**
+ * POST { hostId, on }: start or stop listening along; tells the host.
+ * POST { action: "invite", channelId }: posts a card inviting the chat to
+ * listen along with the song you're playing now.
+ */
 export async function POST(request: Request) {
   const db = bindings().DB;
   if (!db) return Response.json({ error: "Storage is not connected." }, { status: 503 });
@@ -74,7 +93,83 @@ export async function POST(request: Request) {
   await ensureSchema(db);
   const limited = await limitUser(db, WRITE_RATE_LIMITS.message, user.id);
   if (limited) return limited;
-  const body = (await request.json().catch(() => ({}))) as { hostId?: string; on?: boolean };
+  const body = (await request.json().catch(() => ({}))) as {
+    hostId?: string;
+    on?: boolean;
+    action?: string;
+    channelId?: string;
+  };
+
+  if (body.action === "invite") {
+    const inviteLimited = await limitUser(db, { action: "listen-invite", limit: 6, windowSeconds: 60 }, user.id);
+    if (inviteLimited) return inviteLimited;
+    const channel = await playableChannel(db, String(body.channelId || "").slice(0, 64), user.id);
+    if (channel instanceof Response) return channel;
+    const row = await db
+      .prepare("SELECT spotify_activity FROM users WHERE id = ?")
+      .bind(user.id)
+      .first<{ spotify_activity: string | null }>();
+    let song: SpotifyActivity | null = null;
+    try {
+      song = row?.spotify_activity ? liveSpotify(JSON.parse(row.spotify_activity) as SpotifyActivity) : null;
+    } catch {
+      song = null;
+    }
+    if (!song?.trackId) {
+      return Response.json(
+        { error: "Hoffle can't see a Spotify song it can follow right now. Play something in the Spotify app with the Hoffle desktop app open." },
+        { status: 409 },
+      );
+    }
+    const invite: ListenInvite = {
+      host: { id: user.id, name: user.display_name },
+      song: song.song,
+      artist: song.artist,
+      ...(song.albumArt ? { albumArt: song.albumArt } : {}),
+      trackId: song.trackId,
+    };
+    const stored: StoredMessage = {
+      id: crypto.randomUUID(),
+      channel: channel.name,
+      channel_id: channel.id,
+      user_id: user.id,
+      author: user.display_name,
+      avatar: user.avatar,
+      color: user.color,
+      content: `is listening to ${song.song} by ${song.artist}. Listen along!`,
+      attachment_key: null,
+      is_bot: 0,
+      created_at: new Date().toISOString(),
+      kind: "listen",
+      payload: JSON.stringify({ listen: invite }),
+    };
+    await db
+      .prepare(
+        `INSERT INTO messages
+         (id, channel, channel_id, user_id, author, avatar, color, content, attachment_key,
+          is_bot, created_at, kind, payload)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        stored.id,
+        stored.channel,
+        stored.channel_id,
+        stored.user_id,
+        stored.author,
+        stored.avatar,
+        stored.color,
+        stored.content,
+        null,
+        0,
+        stored.created_at,
+        stored.kind,
+        stored.payload,
+      )
+      .run();
+    const message = publicMessage(stored);
+    await publishMessage(channel.id, message, await channelAudience(db, channel.id));
+    return Response.json({ message }, { status: 201 });
+  }
   const hostId = String(body.hostId || "").slice(0, 64);
   const me = { id: user.id, name: user.display_name };
 

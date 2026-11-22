@@ -94,6 +94,14 @@ export interface Message {
     game?: GameState;
     /** A Play together invite into a real game (lib/play-together.ts). */
     play?: import("@/lib/play-together").PlayInvite;
+    /** A "listen along with me" invite (app/api/(features)/listen). */
+    listen?: {
+      host: { id: string; name: string };
+      song: string;
+      artist: string;
+      albumArt?: string;
+      trackId: string;
+    };
     /** Sent automatically while its author was away (MSN auto-message). */
     autoReply?: boolean;
     /** Poll cards. */

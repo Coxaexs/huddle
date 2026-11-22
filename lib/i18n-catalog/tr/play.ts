@@ -1,6 +1,10 @@
 import type { play as en } from "../en/play";
 
 export const play: Record<keyof typeof en, string> = {
+  "listen.invite.button": "Birlikte dinlemeye davet et",
+  "listen.invite.title": "Buradakileri seninle Spotify'da {song} dinlemeye davet et",
+  "listen.card.title": "{name} Spotify'da dinliyor",
+  "listen.card.host": "Buradakiler seninle birlikte dinleyebilir.",
   "listen.button": "Birlikte dinle",
   "listen.with": "{name} ile birlikte dinliyorsun",
   "listen.paused": "{name} şu an bir şey çalmıyor.",

@@ -1,12 +1,12 @@
 "use client";
 
-import { Gamepad2 } from "lucide-react";
+import { Gamepad2, Headphones } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../lib/i18n-context";
 import { apiFetch } from "../lib/client";
 import { useModuleOn } from "../lib/modules";
 import { gameKeyForActivity, playGameInfo, type PlayGameId } from "@/lib/play-together";
-import { liveActivity, type ProfileActivity, type PublicUser } from "@/lib/users";
+import { liveActivity, liveSpotify, type ProfileActivity, type PublicUser, type SpotifyActivity } from "@/lib/users";
 import { showToast } from "./toast";
 
 interface Detected {
@@ -123,6 +123,55 @@ export function GameInviteButton({ channelId, user }: { channelId: string | null
     >
       <Gamepad2 size={16} aria-hidden="true" />
       <span>{done ? t("play.button.sent") : t("play.button.invite", { game: name })}</span>
+    </button>
+  );
+}
+
+/**
+ * "🎧 Invite to listen along" beside the composer's + button, shown while
+ * Hoffle sees you playing a song on Spotify: posts a card inviting the chat
+ * to follow your Spotify (listen-along.tsx).
+ */
+export function ListenInviteButton({ channelId, user }: { channelId: string | null; user: PublicUser }) {
+  const { t } = useI18n();
+  const musicOn = useModuleOn("music");
+  const [song, setSong] = useState<SpotifyActivity | null>(() => liveSpotify(user.spotifyActivity));
+  const [sent, setSent] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const onSong = (event: Event) => setSong((event as CustomEvent<SpotifyActivity | null>).detail ?? null);
+    window.addEventListener("hoffle:spotify-detected", onSong);
+    return () => window.removeEventListener("hoffle:spotify-detected", onSong);
+  }, []);
+
+  if (!musicOn || !channelId || !song) return null;
+  const done = sent === `${channelId}:${song.song}`;
+
+  async function invite() {
+    if (!channelId || !song || busy) return;
+    setBusy(true);
+    try {
+      await apiFetch("/api/listen", { method: "POST", body: JSON.stringify({ action: "invite", channelId }) });
+      setSent(`${channelId}:${song.song}`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t("listen.error"), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className={`game-invite-button listen ${done ? "done" : ""}`}
+      onClick={() => void invite()}
+      disabled={busy}
+      title={t("listen.invite.title", { song: song.song })}
+      aria-label={t("listen.invite.title", { song: song.song })}
+    >
+      <Headphones size={16} aria-hidden="true" />
+      <span>{done ? t("play.button.sent") : t("listen.invite.button")}</span>
     </button>
   );
 }

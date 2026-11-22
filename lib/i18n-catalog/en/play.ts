@@ -1,5 +1,9 @@
 /** Play together: invites into real games (app/components/play-card.tsx, play-prompts.tsx). */
 export const play = {
+  "listen.invite.button": "Invite to listen along",
+  "listen.invite.title": "Invite people here to listen to {song} with you on Spotify",
+  "listen.card.title": "{name} is listening on Spotify",
+  "listen.card.host": "People here can listen along with you.",
   "listen.button": "Listen along",
   "listen.with": "Listening along with {name}",
   "listen.paused": "{name} isn't playing anything right now.",
