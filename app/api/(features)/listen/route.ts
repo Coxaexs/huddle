@@ -7,6 +7,41 @@ import { ensureSchema } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { publicMessage } from "@/app/api/messages/route";
 import { liveSpotify, type SpotifyActivity } from "@/lib/users";
+import { JAM_TTL_MS, jamLink, shortLinkIsJam } from "@/lib/listen-along";
+
+/** A shared Spotify Jam on someone's profile, if they started one in the last 8 hours. */
+async function jamOf(db: D1Database, userId: string): Promise<{ url: string; since: string } | null> {
+  const row = await db
+    .prepare("SELECT url, started_at FROM spotify_jams WHERE user_id = ?")
+    .bind(userId)
+    .first<{ url: string; started_at: string }>();
+  if (!row || Date.now() - Date.parse(row.started_at) > JAM_TTL_MS) return null;
+  return { url: row.url, since: row.started_at };
+}
+
+/**
+ * Checks a pasted Jam link. Session links are Jams; a spotify.link short link
+ * is fetched once and accepted only if its page leads to a socialsession.
+ */
+async function checkJamLink(value: unknown): Promise<string | null> {
+  const link = jamLink(value);
+  if (!link) return null;
+  if (link.kind === "session") return link.url;
+  try {
+    const response = await fetch(link.url, { redirect: "follow", headers: { Accept: "text/html" } });
+    if (!response.ok) return null;
+    const html = (await response.text()).slice(0, 200_000);
+    return shortLinkIsJam(html) ? link.url : null;
+  } catch {
+    return null;
+  }
+}
+
+/** What a "Join the Jam" card carries. */
+export interface JamInvite {
+  host: { id: string; name: string };
+  url: string;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +76,13 @@ export async function GET(request: Request) {
   if (!user) return unauthorized();
   await ensureSchema(db);
   const hostId = (new URL(request.url).searchParams.get("host") || "").slice(0, 64);
+
+  // ?jamOf=<id>: their shared Spotify Jam (for the profile card), or yours.
+  const jamUser = (new URL(request.url).searchParams.get("jamOf") || "").slice(0, 64);
+  if (jamUser) {
+    if (jamUser !== user.id && !(await canFollow(db, user.id, jamUser))) return Response.json({ jam: null });
+    return Response.json({ jam: await jamOf(db, jamUser) });
+  }
 
   if (!hostId) {
     const { results } = await db
@@ -98,7 +140,59 @@ export async function POST(request: Request) {
     on?: boolean;
     action?: string;
     channelId?: string;
+    url?: string;
   };
+
+  if (body.action === "jam") {
+    // Share a Spotify Jam: keep it on your profile for 8 hours, and post a
+    // "Join the Jam" card when a channel is given.
+    const jamLimited = await limitUser(db, { action: "listen-invite", limit: 6, windowSeconds: 60 }, user.id);
+    if (jamLimited) return jamLimited;
+    const url = await checkJamLink(body.url);
+    if (!url) {
+      return Response.json({ error: "That isn't a Spotify Jam invite link. In Spotify, start a Jam, then Share → Copy link." }, { status: 400 });
+    }
+    const channel = body.channelId ? await playableChannel(db, String(body.channelId).slice(0, 64), user.id) : null;
+    if (channel instanceof Response) return channel;
+    await db
+      .prepare("INSERT OR REPLACE INTO spotify_jams (user_id, url, started_at) VALUES (?, ?, ?)")
+      .bind(user.id, url, new Date().toISOString())
+      .run();
+    if (!channel) return Response.json({ jam: { url } });
+    const invite: JamInvite = { host: { id: user.id, name: user.display_name }, url };
+    const stored: StoredMessage = {
+      id: crypto.randomUUID(),
+      channel: channel.name,
+      channel_id: channel.id,
+      user_id: user.id,
+      author: user.display_name,
+      avatar: user.avatar,
+      color: user.color,
+      content: `started a Spotify Jam. Join the Jam: ${url}`,
+      attachment_key: null,
+      is_bot: 0,
+      created_at: new Date().toISOString(),
+      kind: "jam",
+      payload: JSON.stringify({ jam: invite }),
+    };
+    await db
+      .prepare(
+        `INSERT INTO messages
+         (id, channel, channel_id, user_id, author, avatar, color, content, attachment_key,
+          is_bot, created_at, kind, payload)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(stored.id, stored.channel, stored.channel_id, stored.user_id, stored.author, stored.avatar, stored.color, stored.content, null, 0, stored.created_at, stored.kind, stored.payload)
+      .run();
+    const message = publicMessage(stored);
+    await publishMessage(channel.id, message, await channelAudience(db, channel.id));
+    return Response.json({ jam: { url }, message }, { status: 201 });
+  }
+
+  if (body.action === "jam-end") {
+    await db.prepare("DELETE FROM spotify_jams WHERE user_id = ?").bind(user.id).run();
+    return Response.json({ jam: null });
+  }
 
   if (body.action === "invite") {
     const inviteLimited = await limitUser(db, { action: "listen-invite", limit: 6, windowSeconds: 60 }, user.id);

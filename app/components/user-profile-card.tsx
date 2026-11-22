@@ -1,6 +1,6 @@
 "use client";
 
-import { startListenAlong } from "./listen-along";
+import { ProfileJam, startListenAlong } from "./listen-along";
 import { useModuleOn } from "@/app/lib/modules";
 import { getAchievement } from "@/lib/achievement-defs";
 import { openAchievements } from "../lib/achievement-client";
@@ -569,6 +569,8 @@ export function UserProfileCard({
             </>
           );
         })()}
+
+        {musicOn && <ProfileJam userId={member.id} isSelf={isSelf} />}
 
         {(() => {
           const activity = liveActivity(member.activity);

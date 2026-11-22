@@ -94,6 +94,8 @@ export interface Message {
     game?: GameState;
     /** A Play together invite into a real game (lib/play-together.ts). */
     play?: import("@/lib/play-together").PlayInvite;
+    /** A "Join the Jam" card: a Spotify Jam invite link (app/api/(features)/listen). */
+    jam?: { host: { id: string; name: string }; url: string };
     /** A "listen along with me" invite (app/api/(features)/listen). */
     listen?: {
       host: { id: string; name: string };

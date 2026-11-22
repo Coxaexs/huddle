@@ -28382,6 +28382,16 @@ a.play-button {
   cursor: pointer;
 }
 
+/* ---- Spotify Jam (listen-along.tsx JamCard, ProfileJam) ---- */
+a.listen-along-button {
+  text-decoration: none;
+}
+
+.listen-along-button.jam-end {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
 /* ---- The MSN Games menu ---- */
 .msn-games {
   width: 320px;

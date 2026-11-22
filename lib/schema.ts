@@ -525,6 +525,12 @@ async function migrate(db: D1Database): Promise<void> {
         host_id TEXT NOT NULL,
         since TEXT NOT NULL
       )`),
+    // A shared Spotify Jam invite link per person (lib/listen-along.ts).
+    db.prepare(`CREATE TABLE IF NOT EXISTS spotify_jams (
+        user_id TEXT PRIMARY KEY,
+        url TEXT NOT NULL,
+        started_at TEXT NOT NULL
+      )`),
     // Spotify track ids found by name (lib/spotify-search.ts); null = not found.
     db.prepare(`CREATE TABLE IF NOT EXISTS spotify_track_cache (
         query TEXT PRIMARY KEY,

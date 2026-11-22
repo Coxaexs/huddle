@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expectedPositionMs, nextListenStep, spotifyTrackId, type HostTrack } from "./listen-along";
+import { expectedPositionMs, jamLink, nextListenStep, shortLinkIsJam, spotifyTrackId, type HostTrack } from "./listen-along";
 
 const ID = "4uLU6hMCjMI75M1A2tKUQC";
 const OTHER = "7GhIk7Il098yCjg4BQjzvb";
@@ -87,5 +87,29 @@ describe("nextListenStep", () => {
 
   it("ignores a host song with no id", () => {
     expect(nextListenStep({ isPlaying: true }, null, fresh, NOW)).toEqual({ do: "none" });
+  });
+});
+
+describe("Jam links", () => {
+  it("accepts Jam invite links", () => {
+    expect(jamLink("https://open.spotify.com/socialsession/AbC123xyz?si=1")).toEqual({
+      url: "https://open.spotify.com/socialsession/AbC123xyz",
+      kind: "session",
+    });
+    expect(jamLink(" https://spotify.link/q9ZkLm2 ")).toEqual({ url: "https://spotify.link/q9ZkLm2", kind: "short" });
+  });
+
+  it("refuses everything else", () => {
+    expect(jamLink("https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC")).toBeNull();
+    expect(jamLink("https://evil.example/socialsession/AbC123xyz")).toBeNull();
+    expect(jamLink("http://open.spotify.com/socialsession/AbC123xyz")).toBeNull();
+    expect(jamLink("https://spotify.link/a/b")).toBeNull();
+    expect(jamLink(42)).toBeNull();
+  });
+
+  it("tells a Jam short link from any other", () => {
+    expect(shortLinkIsJam('<a href="https://open.spotify.com/socialsession/AbC123xyz">')).toBe(true);
+    expect(shortLinkIsJam("$full_url=https%3A%2F%2Fopen.spotify.com%2Fsocialsession%2FAbC123xyz")).toBe(true);
+    expect(shortLinkIsJam('<a href="https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC">')).toBe(false);
   });
 });
