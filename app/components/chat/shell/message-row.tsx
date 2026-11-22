@@ -7,7 +7,7 @@ import { MessageAttachmentFiles } from "../../message-file-card";
 import { MsnFileTransfer, fileNameFromUrl, findWink, playWink } from "../../msn-chrome";
 import { GameCard } from "../../game-card";
 import { PlayCard } from "../../play-card";
-import { ListenCard } from "../../listen-along";
+import { JamCard, ListenCard } from "../../listen-along";
 import { type GameKind } from "@/lib/games";
 import { stripTextStyle } from "@/lib/text-style";
 import type { PublicChannel, PublicServer } from "@/lib/servers";
@@ -762,6 +762,8 @@ function MessageRowImpl({
                           <PlayCard messageId={String(message.id)} play={message.payload.play} userId={user.id} />
                         ) : message.kind === "listen" && message.payload?.listen ? (
                           <ListenCard invite={message.payload.listen} userId={user.id} />
+                        ) : message.kind === "jam" && message.payload?.jam ? (
+                          <JamCard invite={message.payload.jam} userId={user.id} />
                         ) : message.kind === "poll" && message.payload?.pollId ? (
                           <PollCard
                             pollId={message.payload.pollId}

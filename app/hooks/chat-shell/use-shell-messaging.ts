@@ -13,6 +13,7 @@ import { applyReaction } from "../../lib/chat/reactions";
 import { replaceEmojiShortcodes, parseQuickReaction } from "@/lib/emoji-shortcodes";
 import { aiFetch } from "../../lib/ai-fetch";
 import { apiFetch } from "../../lib/client";
+import { jamLink } from "@/lib/listen-along";
 import { uploadBigFile } from "../../lib/big-upload";
 import { NORMAL_UPLOAD_MAX_BYTES } from "@/lib/big-upload-key";
 import { useDmCalls } from "../use-dm-calls";
@@ -302,6 +303,21 @@ export function useShellMessaging(s: ReturnType<typeof useShellCommands>) {
 
     if (text.startsWith("/") && !files.length) {
       await runCommand(text);
+      return;
+    }
+
+    // A lone Spotify Jam invite link becomes a "Join the Jam" card (and goes
+    // on your profile for a few hours).
+    if (!files.length && activeChannelId && jamLink(typed)) {
+      try {
+        await apiFetch("/api/listen", {
+          method: "POST",
+          body: JSON.stringify({ action: "jam", url: typed, channelId: activeChannelId }),
+        });
+      } catch (err) {
+        setDraft(typed);
+        setNotice(err instanceof Error ? err.message : "Couldn't share the Jam.");
+      }
       return;
     }
 

@@ -149,6 +149,7 @@ export async function DELETE(request: Request) {
     ["DELETE FROM user_emoticons WHERE user_id = ?", [id]],
     ["DELETE FROM steam_links WHERE user_id = ?", [id]],
     ["DELETE FROM listen_along WHERE listener_id = ? OR host_id = ?", [id, id]],
+    ["DELETE FROM spotify_jams WHERE user_id = ?", [id]],
     ["DELETE FROM steam_link_states WHERE user_id = ?", [id]],
     ["DELETE FROM user_notes WHERE owner_id = ? OR target_id = ?", [id, id]],
     ["DELETE FROM server_folders WHERE user_id = ?", [id]],

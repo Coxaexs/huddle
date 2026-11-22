@@ -1,6 +1,6 @@
 "use client";
 
-import { Headphones } from "lucide-react";
+import { Headphones, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../lib/i18n-context";
 import { apiFetch } from "../lib/client";
@@ -240,5 +240,69 @@ export function ListenCard({
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * "Join the Jam": a Spotify Jam someone shared (lib/listen-along.ts). In a
+ * Jam everyone adds to one queue inside Spotify; Hoffle only carries the
+ * invite link, which opens Spotify.
+ */
+export function JamCard({ invite, userId }: { invite: { host: { id: string; name: string }; url: string }; userId: string }) {
+  const { t } = useI18n();
+  const isHost = invite.host.id === userId;
+  return (
+    <div className="listen-card jam-card">
+      <div className="listen-card-art" aria-hidden="true">
+        <Users size={20} />
+      </div>
+      <div className="listen-card-text">
+        <small>{t("jam.card.title", { name: stripTextStyle(invite.host.name) })}</small>
+        <strong>{t("jam.card.what")}</strong>
+      </div>
+      {isHost ? (
+        <small className="listen-card-note">{t("jam.card.host")}</small>
+      ) : (
+        <a className="listen-along-button" href={invite.url} target="_blank" rel="noreferrer">
+          <Users size={14} aria-hidden="true" /> {t("jam.join")}
+        </a>
+      )}
+    </div>
+  );
+}
+
+/** The profile card's Jam line: "Join the Jam" for others, "End Jam" for you. */
+export function ProfileJam({ userId, isSelf }: { userId: string; isSelf: boolean }) {
+  const { t } = useI18n();
+  const [jam, setJam] = useState<{ url: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch(`/api/listen?jamOf=${encodeURIComponent(userId)}`)
+      .then((data) => !cancelled && setJam((data as { jam: { url: string } | null }).jam))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+  if (!jam) return null;
+  if (isSelf) {
+    return (
+      <button
+        type="button"
+        className="listen-along-button jam-end"
+        onClick={() =>
+          void apiFetch("/api/listen", { method: "POST", body: JSON.stringify({ action: "jam-end" }) })
+            .then(() => setJam(null))
+            .catch(() => undefined)
+        }
+      >
+        <Users size={14} aria-hidden="true" /> {t("jam.end")}
+      </button>
+    );
+  }
+  return (
+    <a className="listen-along-button" href={jam.url} target="_blank" rel="noreferrer">
+      <Users size={14} aria-hidden="true" /> {t("jam.join")}
+    </a>
   );
 }

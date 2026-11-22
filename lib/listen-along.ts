@@ -121,3 +121,33 @@ export function nextListenStep(
   }
   return { do: "none" };
 }
+
+// ---- Spotify Jam: everyone adds to one shared queue, inside Spotify ----
+// Spotify gives other apps no way to start or join a Jam, so Hoffle shares
+// the Jam's own invite link: open.spotify.com/socialsession/<id>, or the
+// spotify.link short link the Share button makes (checked on the server).
+
+const SESSION_LINK = /^https:\/\/open\.spotify\.com\/(?:intl-[a-z-]+\/)?socialsession\/([0-9A-Za-z]{6,64})(?:[?#].*)?$/;
+const SHORT_LINK = /^https:\/\/spotify\.link\/([0-9A-Za-z]{4,32})\/?$/;
+
+/** How long a shared Jam stays on your profile unless you end it. */
+export const JAM_TTL_MS = 8 * 60 * 60_000;
+
+/**
+ * A Jam invite link as pasted: "session" links are Jams for sure; "short"
+ * links might be anything Spotify shares, so the server looks inside first.
+ */
+export function jamLink(value: unknown): { url: string; kind: "session" | "short" } | null {
+  if (typeof value !== "string") return null;
+  const v = value.trim();
+  const session = SESSION_LINK.exec(v);
+  if (session) return { url: `https://open.spotify.com/socialsession/${session[1]}`, kind: "session" };
+  const short = SHORT_LINK.exec(v);
+  if (short) return { url: `https://spotify.link/${short[1]}`, kind: "short" };
+  return null;
+}
+
+/** Whether a spotify.link page leads to a Jam (its page names the socialsession link). */
+export function shortLinkIsJam(html: string): boolean {
+  return /open\.spotify\.com(?:%2F|\/)socialsession(?:%2F|\/)[0-9A-Za-z]{6,64}/i.test(html);
+}
