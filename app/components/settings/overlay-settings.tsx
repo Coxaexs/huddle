@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { comboToAccelerator } from "../../lib/hotkeys";
+import { comboLabel, comboToAccelerator, globalShortcutProblem } from "../../lib/hotkeys";
 import { mainOverlayBridge, type OverlaySettings as Settings } from "../../lib/desktop-overlay";
 import { ComboButton } from "./roles-tab";
 
@@ -13,7 +13,7 @@ import { ComboButton } from "./roles-tab";
 export function OverlaySettings() {
   const bridge = useMemo(() => mainOverlayBridge(), []);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [refused, setRefused] = useState(false);
+  const [refused, setRefused] = useState("");
 
   useEffect(() => {
     if (!bridge) return;
@@ -29,12 +29,14 @@ export function OverlaySettings() {
   if (!bridge || !settings) return null;
 
   const update = (patch: { enabled?: boolean; combo?: string; accelerator?: string }) => {
-    setRefused(false);
+    setRefused("");
     void bridge.setSettings(patch).then((next) => {
       if (!next) return;
       setSettings(next);
       // The app keeps the old shortcut when the new one is not safe to grab everywhere.
-      if (patch.combo && next.combo !== patch.combo) setRefused(true);
+      if (patch.combo && next.combo !== patch.combo) {
+        setRefused(`${comboLabel(patch.combo)} can't be used. Hold Ctrl or Alt too, and press a letter, number, symbol key or F-key.`);
+      }
     });
   };
 
@@ -61,14 +63,20 @@ export function OverlaySettings() {
             label="Open Hoffle over everything"
             combo={settings.combo}
             onChange={(combo) => {
-              const accelerator = comboToAccelerator(combo);
-              if (accelerator) update({ combo, accelerator });
-              else setRefused(true);
+              const problem = globalShortcutProblem(combo);
+              const label = comboLabel(combo);
+              if (!problem) update({ combo, accelerator: comboToAccelerator(combo) });
+              else if (problem === "modifier")
+                setRefused(`${label} would get in the way of typing in other apps. Hold Ctrl or Alt (or Cmd on a Mac) too.`);
+              else if (problem === "reserved")
+                setRefused(`${label} is copy, paste or undo in every app. Pick another.`);
+              else
+                setRefused(`${label} can't be a shortcut outside Hoffle. Use a letter, number, symbol key, F-key or Space.`);
             }}
           />
           <p className="modal-hint" role="status">
             {refused
-              ? "That can't be a shortcut outside Hoffle. Hold Ctrl, Alt or Shift and press a letter, number, F-key, Space or `."
+              ? refused
               : settings.hotkeyOk
               ? `Press ${settings.shortcut} anywhere, in a game or not, for a small Hoffle with your servers, channels and call. Press it again or Esc to go back.`
               : `Another app already uses ${settings.shortcut}. Pick a different shortcut.`}

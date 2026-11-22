@@ -119,7 +119,10 @@ function isSafeAccelerator(accelerator) {
     /^(CommandOrControl|CmdOrCtrl|Command|Cmd|Control|Ctrl|Alt|Option|AltGr|Shift|Super|Meta)$/i.test(part),
   );
   if (modifiers.length < 1 || modifiers.length === parts.length) return false;
-  return !/^(CommandOrControl|CmdOrCtrl|Control|Ctrl|Command|Cmd)\+[CVXAZ]$/i.test(value);
+  // Shift alone would swallow capital letters everywhere; only F-keys may use it.
+  const key = parts[parts.length - 1];
+  if (modifiers.every((part) => /^shift$/i.test(part)) && !/^F\d{1,2}$/i.test(key)) return false;
+  return !/^(CommandOrControl|CmdOrCtrl|Control|Ctrl|Command|Cmd|Super|Meta)\+[CVXAZ]$/i.test(value);
 }
 
 /** Brings the main window forward, creating it if it was never opened. */

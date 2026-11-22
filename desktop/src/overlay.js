@@ -278,8 +278,8 @@ function createOverlay(deps) {
   function shortcutLabel() {
     const mac = process.platform === "darwin";
     const names = mac
-      ? { CommandOrControl: "⌘", Alt: "⌥", Shift: "⇧", Super: "⌘" }
-      : { CommandOrControl: "Ctrl", Alt: "Alt", Shift: "Shift", Super: "Win" };
+      ? { CommandOrControl: "⌘", Control: "⌃", Alt: "⌥", Shift: "⇧", Super: "⌘" }
+      : { CommandOrControl: "Ctrl", Control: "Ctrl", Alt: "Alt", Shift: "Shift", Super: "Win" };
     return settings.accelerator
       .split("+")
       .map((part) => names[part] || part)

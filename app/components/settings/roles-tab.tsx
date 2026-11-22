@@ -5,7 +5,7 @@ import { PERMISSION_INFO, type PermissionFlag } from "@/lib/permissions";
 import type { PublicRole, PublicServer } from "@/lib/servers";
 import { type Member } from "@/lib/users";
 import { apiFetch } from "../../lib/client";
-import { comboFromEvent, comboLabel, isModifierOnly } from "../../lib/hotkeys";
+import { comboFromEvent, comboLabel, isModifierOnly, loadKeyboardLayout } from "../../lib/hotkeys";
 
 /**
  * A button that records the next key combination pressed. Modifier-only
@@ -22,6 +22,18 @@ export function ComboButton({
   onChange: (combo: string) => void;
 }) {
   const [listening, setListening] = useState(false);
+  const [, setLayoutReady] = useState(false);
+
+  // Name keys the way this keyboard prints them (ö, ç, ş on a Turkish one).
+  useEffect(() => {
+    let live = true;
+    void loadKeyboardLayout().then(() => {
+      if (live) setLayoutReady(true);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!listening) return;
