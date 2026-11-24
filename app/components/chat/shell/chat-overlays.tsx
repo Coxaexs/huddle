@@ -613,7 +613,8 @@ export function renderChatOverlays(v: ShellRenderState) {
       )}
 
       <OnboardingDirectoryDialog
-        open={directoryOpen}
+        open={Boolean(directoryOpen)}
+        initialTab={typeof directoryOpen === "string" ? directoryOpen : undefined}
         onClose={() => setDirectoryOpen(false)}
         onServersUpdated={setServers}
         onSelectServer={(serverId, channelId) => {

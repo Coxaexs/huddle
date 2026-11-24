@@ -10,6 +10,7 @@ import type { RoomActivity } from "@/lib/activities";
 import { channelKindInfo } from "@/lib/channel-kinds";
 import { type Member, type PresenceStatus } from "@/lib/users";
 import { EMAIL_PROMPT_AFTER_KEY, FIRST_RUN_KEY, type FirstRun } from "../../components/welcome-tutorial";
+import type { DirectoryTab } from "../../components/onboarding-directory-dialog";
 import { type MentionEntry } from "../../lib/chat/types";
 import { DM_HOME } from "../../lib/chat/constants";
 import { hasLiveVideo } from "../../components/voice-stage/tiles";
@@ -600,7 +601,8 @@ export function useShellVoice(s: ReturnType<typeof useShellRealtime>) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   /** The welcome tutorial: which page, and whether it is folded away while a "Try it" runs. */
   const [tutorial, setTutorial] = useState<{ page: number; folded: boolean } | null>(null);
-  const [directoryOpen, setDirectoryOpen] = useState(false);
+  /** The Explore dialog: true opens it on Discover, a tab name opens it on that tab. */
+  const [directoryOpen, setDirectoryOpen] = useState<boolean | DirectoryTab>(false);
   /** The add-an-email prompt waits a day after signup, so it isn't part of the first visits. */
   const [holdEmailPrompt, setHoldEmailPrompt] = useState(() => {
     try {

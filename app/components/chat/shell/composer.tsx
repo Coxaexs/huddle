@@ -967,7 +967,8 @@ export function Composer({
                     >
                       /
                     </button>
-                    {myCharacterName && onToggleIc && (
+                    {/* Only while /ic mode is on, so it can be turned off; /ic turns it on. */}
+                    {myCharacterName && onToggleIc && icActive && (
                       <button
                         type="button"
                         className={`gif-button ${icActive ? "active" : ""}`}

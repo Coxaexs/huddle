@@ -1,5 +1,6 @@
 "use client";
 
+import { requestProfileEditor } from "@/lib/profile-editor-request";
 import { MSN_EXTRA_STATUSES } from "../msn-chrome";
 import { PRESENCE, type PresenceStatus } from "@/lib/users";
 import { Pencil, Settings, User, Zap } from "lucide-react";
@@ -245,6 +246,7 @@ export function StatusMenu({
         role="menuitem"
         onClick={() => {
           setStatusOpen(false);
+          requestProfileEditor();
           setSettingsOpen(true);
         }}
       >

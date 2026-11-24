@@ -29,9 +29,7 @@ import {
 import { DM_HOME } from "../lib/chat/constants";
 import { withArticle } from "../lib/chat/format";
 import { apiFetch } from "../lib/client";
-import { looksLikeDiscordTemplate } from "@/lib/discord-import";
-import { showDiscordMove, type DiscordMoveDetail } from "../components/discord-move-dialog";
-import { localeNow, tNow } from "../lib/i18n-context";
+import { tNow } from "../lib/i18n-context";
 
 export function useChannelServerActions({
   activeServer,
@@ -187,50 +185,6 @@ export function useChannelServerActions({
       onConfirm: async (rawInput) => {
         await joinServerDirect(rawInput);
       },
-    });
-  }
-
-  function createServer() {
-    showCustomConfirm({
-      title: tNow("addServer.title"),
-      message: tNow("addServer.message"),
-      confirmText: tNow("addServer.createNew"),
-      cancelText: tNow("addServer.joinWithCode"),
-      onConfirm: () => {
-        showCustomPrompt({
-          title: tNow("addServer.createTitle"),
-          message: tNow("discordMove.createHint"),
-          placeholder: tNow("discordMove.createPlaceholder"),
-          confirmText: tNow("addServer.createConfirm"),
-          maxLength: 60,
-          onConfirm: async (input) => {
-            const value = input?.trim();
-            if (!value) return;
-            // A Discord template link copies that server; anything else is a name.
-            const fromDiscord = looksLikeDiscordTemplate(value);
-            try {
-              const data = await apiFetch<{
-                server: PublicServer;
-                servers: PublicServer[];
-                imported?: DiscordMoveDetail["imported"];
-              }>("/api/servers", {
-                method: "POST",
-                body: JSON.stringify(fromDiscord ? { discordTemplate: value, locale: localeNow() } : { name: value.slice(0, 50), locale: localeNow() }),
-              });
-              setServers(data.servers);
-              setActiveServerId(data.server.id);
-              if (data.imported) {
-                showDiscordMove({ server: data.server, imported: data.imported });
-                return;
-              }
-              setNotice(tNow("serverAction.live", { name: data.server.name }));
-            } catch (error) {
-              setNotice(error instanceof Error ? error.message : "Could not create it.");
-            }
-          },
-        });
-      },
-      onCancel: () => void joinServerByCode(),
     });
   }
 
@@ -801,7 +755,6 @@ export function useChannelServerActions({
     leaveServer,
     joinServerDirect,
     joinServerByCode,
-    createServer,
     createChannel,
     changeChannelKind,
     renderKindMenu,

@@ -6,6 +6,8 @@ import { apiFetch } from "../lib/client";
 import { membersText, SHOW_MEMBERS_FROM } from "@/lib/member-counts";
 import type { PublicServer } from "@/lib/servers";
 import { SERVER_TEMPLATES } from "@/lib/server-templates";
+import { looksLikeDiscordTemplate } from "@/lib/discord-import";
+import { showDiscordMove, type DiscordMoveDetail } from "./discord-move-dialog";
 import { showToast } from "./toast";
 import { useDismiss } from "../hooks/use-dismiss";
 import { useI18n } from "../lib/i18n-context";
@@ -23,20 +25,25 @@ type PublicDirectoryEntry = {
   raidMode: boolean;
 };
 
+export type DirectoryTab = "discover" | "invite" | "create";
+
 export function OnboardingDirectoryDialog({
   open,
+  initialTab,
   onClose,
   onServersUpdated,
   onSelectServer,
 }: {
   open: boolean;
+  /** Which tab to show on open: the rail's + button opens straight on Create. */
+  initialTab?: DirectoryTab;
   onClose: () => void;
   onServersUpdated: (servers: PublicServer[]) => void;
   /** channelId: the channel a joined invite lands you in, if it names one. */
   onSelectServer: (serverId: string, channelId?: string | null) => void;
 }) {
-  const { t } = useI18n();
-  const [tab, setTab] = useState<"discover" | "invite" | "create">("discover");
+  const { t, locale } = useI18n();
+  const [tab, setTab] = useState<DirectoryTab>("discover");
   const [directory, setDirectory] = useState<PublicDirectoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [joiningId, setJoiningId] = useState<string | null>(null);
@@ -48,6 +55,10 @@ export function OnboardingDirectoryDialog({
   const [newServerPublic, setNewServerPublic] = useState(false);
   const [creating, setCreating] = useState(false);
   useDismiss(open, onClose);
+
+  useEffect(() => {
+    if (open) setTab(initialTab ?? "discover");
+  }, [open, initialTab]);
 
   useEffect(() => {
     if (!open) return;
@@ -106,25 +117,51 @@ export function OnboardingDirectoryDialog({
     }
   };
 
+  // A Discord template link in the name box copies that server instead of a starter template.
+  const nameIsDiscordLink = looksLikeDiscordTemplate(newServerName.trim());
+
   const handleCreateServer = async () => {
-    if (!newServerName.trim()) return;
+    const value = newServerName.trim();
+    if (!value) return;
     setCreating(true);
     try {
-      const res = await apiFetch<{ server: PublicServer; servers: PublicServer[] }>(
+      const res = await apiFetch<{
+        server: PublicServer;
+        servers: PublicServer[];
+        imported?: DiscordMoveDetail["imported"];
+      }>(
         "/api/servers",
         {
           method: "POST",
-          body: JSON.stringify({
-            name: newServerName.trim(),
-            description: newServerDescription.trim() || null,
-            templateId: newServerTemplateId || undefined,
-            isPublic: newServerPublic,
-          }),
+          body: JSON.stringify(
+            nameIsDiscordLink
+              ? {
+                  discordTemplate: value,
+                  description: newServerDescription.trim() || undefined,
+                  isPublic: newServerPublic,
+                  locale,
+                }
+              : {
+                  name: value,
+                  description: newServerDescription.trim() || null,
+                  templateId: newServerTemplateId || undefined,
+                  isPublic: newServerPublic,
+                  locale,
+                },
+          ),
         },
       );
       onServersUpdated(res.servers);
       onSelectServer(res.server.id);
-      showToast(t("onboarding.created", { name: res.server.name }));
+      if (nameIsDiscordLink && res.imported) {
+        showDiscordMove({ server: res.server, imported: res.imported });
+      } else {
+        showToast(t("onboarding.created", { name: res.server.name }));
+      }
+      setNewServerName("");
+      setNewServerDescription("");
+      setNewServerTemplateId("");
+      setNewServerPublic(false);
       onClose();
     } catch (e) {
       showToast(e instanceof Error ? e.message : t("onboarding.createError"));
@@ -303,9 +340,11 @@ export function OnboardingDirectoryDialog({
                 value={newServerName}
                 onChange={(e) => setNewServerName(e.target.value)}
                 maxLength={60}
-                placeholder={t("onboarding.serverNamePlaceholder")}
+                autoFocus={initialTab === "create"}
+                placeholder={t("discordMove.createPlaceholder")}
                 className="w-full px-3 py-2 rounded-lg bg-[var(--paper)] border border-[var(--line)] text-sm text-[var(--ink)]"
               />
+              <p className="mt-1 text-[11px] text-[var(--muted)]">{t("discordMove.createHint")}</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-[var(--muted)] mb-1">
@@ -324,7 +363,12 @@ export function OnboardingDirectoryDialog({
               <label className="block text-xs font-medium text-[var(--muted)] mb-1">
                 {t("template.pickerLabel")}
               </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-40 overflow-y-auto pr-1">
+              <div
+                className={`grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-40 overflow-y-auto pr-1 ${
+                  nameIsDiscordLink ? "opacity-40 pointer-events-none" : ""
+                }`}
+                aria-disabled={nameIsDiscordLink}
+              >
                 <button
                   type="button"
                   onClick={() => setNewServerTemplateId("")}

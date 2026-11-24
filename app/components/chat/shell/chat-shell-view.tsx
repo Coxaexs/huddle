@@ -38,7 +38,7 @@ export function renderChatShell(s: ChatShellViewState) {
     activeChannel, activeChannelId, activeServer, addCategory, applyTheme, autoIdleRef, autoReply,
     canCreateServerInvites, canManageChannels, canManageServer, canOpenServerSettings,
     categoryDropProps, channelLayout, channelPrefs, collapsedCats, collapsedGroups,
-    createContactGroup, createServer, currentVoiceChannel, deleteCategory, deleteContactGroup,
+    createContactGroup, currentVoiceChannel, deleteCategory, deleteContactGroup,
     dmCall, dmUnreadTotal, emojiMap, hoverCard, hoverTimer, hub, inDmHome, joinServerDirect,
     kindMenu, markServerRead, memberFilterQuery, members, membersById, membersOpen, membersWidth, mentionsOpen,
     mobileNav, msnContacts, msnTheme, myCustomStatus, myStatus, nextEvent, offlineMembers,
@@ -292,7 +292,7 @@ export function renderChatShell(s: ChatShellViewState) {
         serverFolders={serverFolders}
         renderRailServer={renderRailServer}
         renderRailFolder={renderRailFolder}
-        createServer={createServer}
+        createServer={() => setDirectoryOpen("create")}
         openDirectory={() => setDirectoryOpen(true)}
         activeChannelId={activeChannelId}
         unread={unread}
