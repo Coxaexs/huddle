@@ -31,7 +31,7 @@ export function ChatShell() {
   const messaging = useShellMessaging(commands);
   const shell = useShellComposer(messaging);
   const {
-    applyTheme, bootstrap, openSignup, ready, setBootstrap, setUser, turnstileSiteKey, user,
+    applyTheme, bootstrap, oauth, openSignup, ready, setBootstrap, setUser, turnstileSiteKey, user,
   } = shell;
   // Before anything below renders, so buttons for switched-off modules never flash.
   syncModuleSwitches(user?.disabledModules, shell.activeServer?.disabledModules);
@@ -58,6 +58,7 @@ export function ChatShell() {
           bootstrap={bootstrap}
           openSignup={openSignup}
           turnstileSiteKey={turnstileSiteKey}
+          oauth={oauth}
           onSignedIn={(signedIn, defaultTheme) => {
             const startTheme = defaultTheme && findThemeById(defaultTheme);
             if (startTheme) applyTheme(startTheme);

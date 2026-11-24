@@ -19,6 +19,8 @@ import type { GameSystem } from "@/lib/v5-sheet";
 import { downloadYouTubeVideo, extractYouTubeId, needsYouTubeDownload, resolveVideo } from "../lib/watch-video";
 import { jellyfinLink } from "../lib/stream-url";
 import { SubtitlePicker } from "./watch-subtitles";
+import { useI18n } from "../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 
 const formatTime = (seconds: number) => {
   const total = Math.max(0, Math.floor(seconds));
@@ -68,6 +70,7 @@ function QueueSection({ queue, watch, myUserId, roomSize, sendQueue }: {
   roomSize: number;
   sendQueue: (op: QueueOp) => void;
 }) {
+  const { t } = useI18n();
   const [link, setLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -80,14 +83,14 @@ function QueueSection({ queue, watch, myUserId, roomSize, sendQueue }: {
   const add = async () => {
     const raw = link.trim();
     if (!raw) return;
-    if (films.length >= QUEUE_MAX) { setProblem(`The queue is full (${QUEUE_MAX}).`); return; }
+    if (films.length >= QUEUE_MAX) { setProblem(t("lp.queueFull", { max: QUEUE_MAX })); return; }
     setBusy(true); setProblem(null);
     try {
       const { url, title } = await resolveVideo(raw);
       sendQueue({ op: "add", url, title, ...(jellyfinLink(url) ? { quality } : {}) });
       setLink("");
     } catch (error) {
-      setProblem(error instanceof Error ? error.message : "That video could not be added.");
+      setProblem(error instanceof Error ? error.message : t("lp.queueAddFailed"));
     } finally {
       setBusy(false);
     }
@@ -96,15 +99,15 @@ function QueueSection({ queue, watch, myUserId, roomSize, sendQueue }: {
   return (
     <div className="lr-queue">
       <div className="lr-row lr-queue-head">
-        <strong>Up next{films.length ? ` (${films.length})` : ""}</strong>
+        <strong>{t("lp.upNext", { suffix: films.length ? ` (${films.length})` : "" })}</strong>
         <button
           type="button"
           className={iSkipped ? "lr-on" : undefined}
           aria-pressed={iSkipped}
           onClick={() => sendQueue({ op: "skip" })}
-          title={`More than half the room skips it: ${needed} of ${roomSize}`}
+          title={t("lp.skipTitle", { needed, roomSize })}
         >
-          <SkipForward size={13} /> {iSkipped ? "Voted to skip" : "Vote to skip"} ({skipVotes.length}/{needed})
+          <SkipForward size={13} /> {iSkipped ? t("lp.votedToSkip") : t("lp.voteToSkip")} ({skipVotes.length}/{needed})
         </button>
       </div>
       {films.length ? (
@@ -122,18 +125,18 @@ function QueueSection({ queue, watch, myUserId, roomSize, sendQueue }: {
                   type="button"
                   className={voted ? "lr-on" : undefined}
                   aria-pressed={voted}
-                  aria-label={`${voted ? "Take back your vote for" : "Vote for"} ${film.title}`}
+                  aria-label={voted ? t("lp.takeBackVoteAria", { title: film.title }) : t("lp.voteForAria", { title: film.title })}
                   onClick={() => sendQueue({ op: "vote", id: film.id })}
                 >
                   <ThumbsUp size={12} /> {film.votes.length}
                 </button>
                 {index === 0 && (
-                  <button type="button" onClick={() => sendQueue({ op: "next", from: watch.url })} title="Start it now for everyone" aria-label={`Play ${film.title} now`}>
+                  <button type="button" onClick={() => sendQueue({ op: "next", from: watch.url })} title={t("lp.startNowTitle")} aria-label={t("lp.playNowAria", { title: film.title })}>
                     <PlayCircle size={13} />
                   </button>
                 )}
                 {mine && (
-                  <button type="button" onClick={() => sendQueue({ op: "remove", id: film.id })} aria-label={`Take ${film.title} out of the queue`}>
+                  <button type="button" onClick={() => sendQueue({ op: "remove", id: film.id })} aria-label={t("lp.removeQueueAria", { title: film.title })}>
                     <Trash2 size={12} />
                   </button>
                 )}
@@ -142,11 +145,11 @@ function QueueSection({ queue, watch, myUserId, roomSize, sendQueue }: {
           })}
         </ol>
       ) : (
-        <p className="lr-note">Nothing queued. Add a video and it plays when this one ends; vote one up to move it nearer the front.</p>
+        <p className="lr-note">{t("lp.queueEmpty")}</p>
       )}
       <form className="lr-row" onSubmit={(event) => { event.preventDefault(); void add(); }}>
-        <input value={link} onChange={(event) => setLink(event.target.value)} placeholder="Add a YouTube link, a name, or a video link" aria-label="Add to the queue" maxLength={600} disabled={busy} />
-        <button type="submit" disabled={!link.trim() || busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Queue</button>
+        <input value={link} onChange={(event) => setLink(event.target.value)} placeholder={t("lp.queuePlaceholder")} aria-label={t("lp.queueAddAria")} maxLength={600} disabled={busy} />
+        <button type="submit" disabled={!link.trim() || busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {t("lp.queueBtn")}</button>
       </form>
       {jellyfinLink(link.trim()) && <QualityPicker value={quality} onChange={setQuality} />}
       {problem && <p className="lr-note" style={{ color: "#ff6b6b" }}>{problem}</p>}
@@ -156,10 +159,10 @@ function QueueSection({ queue, watch, myUserId, roomSize, sendQueue }: {
 
 export { extractYouTubeId };
 
-const QUALITY_LABELS: Record<WatchQuality, string> = {
-  original: "Original",
-  "8": "8 Mbps",
-  "4": "4 Mbps",
+const QUALITY_LABEL_KEYS: Record<WatchQuality, MessageKey> = {
+  original: "lp.quality.original",
+  "8": "lp.quality.8",
+  "4": "lp.quality.4",
 };
 
 /** The quality a Jellyfin film starts at, remembered for next time. */
@@ -184,10 +187,12 @@ function useWatchQuality(): [WatchQuality, (quality: WatchQuality) => void] {
  * converts it once for the whole room ("Original" only converts when a
  * browser cannot play the file as it is).
  */
-function QualityPicker({ value, onChange, label = "Quality" }: { value: WatchQuality; onChange: (quality: WatchQuality) => void; label?: string }) {
+function QualityPicker({ value, onChange, label }: { value: WatchQuality; onChange: (quality: WatchQuality) => void; label?: string }) {
+  const { t } = useI18n();
+  const shownLabel = label ?? t("lp.qualityDefault");
   return (
-    <div className="lr-row lr-quality" role="radiogroup" aria-label={label}>
-      <small title="Jellyfin converts the film once for everyone in the room">{label}</small>
+    <div className="lr-row lr-quality" role="radiogroup" aria-label={shownLabel}>
+      <small title={t("lp.qualityTitle")}>{shownLabel}</small>
       {WATCH_QUALITIES.map((option) => (
         <button
           key={option}
@@ -196,9 +201,9 @@ function QualityPicker({ value, onChange, label = "Quality" }: { value: WatchQua
           aria-checked={value === option}
           className={value === option ? "lr-on" : undefined}
           onClick={() => onChange(option)}
-          title={option === "original" ? "The file as it is; converted (once, at 8 Mbps) only if a browser cannot play it" : `Converted once for everyone, at ${option} Mbps`}
+          title={option === "original" ? t("lp.qualityOrigTitle") : t("lp.qualityOptTitle", { opt: option })}
         >
-          {QUALITY_LABELS[option]}
+          {t(QUALITY_LABEL_KEYS[option])}
         </button>
       ))}
     </div>
@@ -222,6 +227,7 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
   onYoutube?: () => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [link, setLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [busyMessage, setBusyMessage] = useState<string | null>(null);
@@ -239,9 +245,9 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
     setWatch({ url, title, position: 0, paused: false, ...(jellyfinLink(url) ? { quality } : {}) });
   const chooseFile = async (chosen: File | undefined) => {
     if (!chosen) return;
-    setBusy(true); setProblem(null); setBusyMessage("Uploading video…");
+    setBusy(true); setProblem(null); setBusyMessage(t("lp.uploadingVideo"));
     try { start(await upload(chosen), chosen.name.replace(/\.[^.]+$/, "")); }
-    catch (error) { setProblem(error instanceof Error ? error.message : "That upload failed."); }
+    catch (error) { setProblem(error instanceof Error ? error.message : t("lp.uploadFailed")); }
     finally { setBusy(false); setBusyMessage(null); if (file.current) file.current.value = ""; }
   };
 
@@ -255,15 +261,15 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
       const results = await searchYouTube(ytQuery);
       setYtResults(results);
       setYtSearching(false);
-      if (results.length === 0) setYtError("No videos found. Try a different search.");
+      if (results.length === 0) setYtError(t("lp.noVideosFound"));
     }, 400);
     return () => { if (searchDebounce.current) clearTimeout(searchDebounce.current); };
-  }, [ytQuery, showYouTube]);
+  }, [ytQuery, showYouTube, t]);
 
   const handleYtSelect = async (video: YouTubeVideo) => {
     setBusy(true);
     setProblem(null);
-    setBusyMessage(`Downloading "${video.title}" to server with yt-dlp…`);
+    setBusyMessage(t("lp.downloadingYt", { title: video.title }));
     try {
       const { streamUrl, title } = await downloadYouTubeVideo(`https://www.youtube.com/watch?v=${video.id}`);
       start(streamUrl, title || video.title);
@@ -271,7 +277,7 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
       setYtQuery("");
       setYtResults([]);
     } catch (err) {
-      setProblem(err instanceof Error ? err.message : "YouTube download failed");
+      setProblem(err instanceof Error ? err.message : t("lp.ytDownloadFailed"));
     } finally {
       setBusy(false);
       setBusyMessage(null);
@@ -279,32 +285,32 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
   };
 
   return (
-    <div className="living-room-panel" role="dialog" aria-label="Watch together" style={{ maxHeight: "85vh", overflow: "auto" }}>
-      <div className="living-room-panel-head"><strong><Film size={14} /> Watch together</strong><button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button></div>
+    <div className="living-room-panel" role="dialog" aria-label={t("lp.watchTogether")} style={{ maxHeight: "85vh", overflow: "auto" }}>
+      <div className="living-room-panel-head"><strong><Film size={14} /> {t("lp.watchTogether")}</strong><button type="button" onClick={onClose} aria-label={t("common.close")}><X size={14} /></button></div>
       {watch ? (
         <>
-          <div className="lr-line"><span className="lr-title">{watch.title || "Video"}</span><small>started by {watch.by}</small></div>
+          <div className="lr-line"><span className="lr-title">{watch.title || t("lp.videoFallback")}</span><small>{t("lp.startedBy", { by: watch.by })}</small></div>
           <div className="lr-row">
-            <button type="button" onClick={() => setWatch({ url: watch.url, title: watch.title, position: here, paused: !watch.paused })}>{watch.paused ? "▶ Play" : "❚❚ Pause"}</button>
+            <button type="button" onClick={() => setWatch({ url: watch.url, title: watch.title, position: here, paused: !watch.paused })}>{watch.paused ? t("lp.playBtn") : t("lp.pauseBtn")}</button>
             <input
               type="range" min={0} max={Math.max(1, Math.floor(info.duration || 1))} step={1} value={Math.min(Math.floor(here), Math.floor(info.duration || 1))}
-              disabled={!info.duration} aria-label="Seek"
+              disabled={!info.duration} aria-label={t("lp.seekAria")}
               onChange={(event) => setWatch({ url: watch.url, title: watch.title, position: Number(event.target.value), paused: watch.paused })}
             />
             <small>{formatTime(here)} / {info.duration ? formatTime(info.duration) : "--:--"}</small>
           </div>
-          <label className="lr-row"><small>Volume</small><input type="range" min={0} max={1} step={0.01} value={volume} onChange={(event) => onVolume(Number(event.target.value))} aria-label="Film volume" /></label>
-          {info.blocked && <button type="button" className="lr-wide" onClick={onStartSound}>Click to start the sound</button>}
+          <label className="lr-row"><small>{t("lp.volume")}</small><input type="range" min={0} max={1} step={0.01} value={volume} onChange={(event) => onVolume(Number(event.target.value))} aria-label={t("lp.filmVolumeAria")} /></label>
+          {info.blocked && <button type="button" className="lr-wide" onClick={onStartSound}>{t("lp.startSound")}</button>}
           {info.error && <p className="lr-note">{info.error}</p>}
-          {jellyfinLink(watch.url) && <div className="lr-row"><small>Subtitles</small><SubtitlePicker url={watch.url} /></div>}
+          {jellyfinLink(watch.url) && <div className="lr-row"><small>{t("lp.subtitles")}</small><SubtitlePicker url={watch.url} /></div>}
           {jellyfinLink(watch.url) && (
             <QualityPicker
               value={watch.quality ?? "original"}
               onChange={(next) => setWatch({ url: watch.url, title: watch.title, position: here, paused: watch.paused, quality: next })}
-              label="Quality for everyone"
+              label={t("lp.qualityForEveryone")}
             />
           )}
-          <div className="lr-row"><button type="button" onClick={() => setWatch(null)}>Stop for everyone</button></div>
+          <div className="lr-row"><button type="button" onClick={() => setWatch(null)}>{t("lp.stopForEveryone")}</button></div>
           {sendQueue && <QueueSection queue={queue} watch={watch} myUserId={myUserId} roomSize={roomSize} sendQueue={sendQueue} />}
         </>
       ) : (
@@ -318,20 +324,20 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
                 setBusy(true);
                 setProblem(null);
                 // A YouTube link, or anything that is not a web address (a name), goes through yt-dlp.
-                setBusyMessage(needsYouTubeDownload(raw) ? "Downloading YouTube video with yt-dlp to server storage…" : null);
+                setBusyMessage(needsYouTubeDownload(raw) ? t("lp.downloadingYtServer") : null);
                 try {
                   const { url, title } = await resolveVideo(raw);
                   start(url, title);
                   setLink("");
                 } catch (err) {
-                  setProblem(err instanceof Error ? err.message : "That video could not be played.");
+                  setProblem(err instanceof Error ? err.message : t("lp.videoPlayFailed"));
                 } finally {
                   setBusy(false);
                   setBusyMessage(null);
                 }
               }}>
-                <input value={link} onChange={(event) => setLink(event.target.value)} placeholder="YouTube link, Jellyfin stream link, or direct .mp4/.webm" aria-label="Video link" maxLength={600} disabled={busy} />
-                <button type="submit" disabled={!link.trim() || busy}>{busy ? "Downloading…" : "Play"}</button>
+                <input value={link} onChange={(event) => setLink(event.target.value)} placeholder={t("lp.videoLinkPlaceholder")} aria-label={t("lp.videoLinkAria")} maxLength={600} disabled={busy} />
+                <button type="submit" disabled={!link.trim() || busy}>{busy ? t("lp.downloading") : t("lp.play")}</button>
               </form>
               {jellyfinLink(link.trim()) && <QualityPicker value={quality} onChange={setQuality} />}
               {busy && busyMessage && (
@@ -341,11 +347,11 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
                 </div>
               )}
               <div className="lr-row">
-                <button type="button" disabled={busy} onClick={() => file.current?.click()}><Upload size={14} /> {busy ? "Uploading…" : "Upload a video"}</button>
+                <button type="button" disabled={busy} onClick={() => file.current?.click()}><Upload size={14} /> {busy ? t("lp.uploading") : t("lp.uploadVideo")}</button>
                 <input ref={file} type="file" accept="video/mp4,video/webm,.mp4,.webm" hidden onChange={(event) => void chooseFile(event.target.files?.[0])} />
-                <button type="button" disabled={busy} onClick={() => setShowYouTube(true)} title="Search YouTube"><PlayCircle size={14} /> YouTube & more…</button>
+                <button type="button" disabled={busy} onClick={() => setShowYouTube(true)} title={t("lp.searchYtTitle")}><PlayCircle size={14} /> {t("lp.ytMore")}</button>
               </div>
-              <p className="lr-note">YouTube videos, Jellyfin streams, direct video links and uploads up to 40 MB supported.</p>
+              <p className="lr-note">{t("lp.watchSupportedNote")}</p>
               {problem && <p className="lr-note" style={{ color: "#ff6b6b" }}>{problem}</p>}
             </>
           ) : (
@@ -355,8 +361,8 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
                 <input
                   value={ytQuery}
                   onChange={(e) => { setYtQuery(e.target.value); setYtError(null); }}
-                  placeholder="Search YouTube…"
-                  aria-label="Search YouTube"
+                  placeholder={t("lp.searchYtPlaceholder")}
+                  aria-label={t("lp.searchYtTitle")}
                   style={{ flex: 1, minWidth: 0 }}
                   autoFocus
                 />
@@ -386,7 +392,7 @@ export function WatchPanel({ watch, hubNow, info, volume, onVolume, setWatch, on
                 </div>
               )}
               <div className="lr-row" style={{ marginTop: 8 }}>
-                <button type="button" onClick={() => setShowYouTube(false)}>Back</button>
+                <button type="button" onClick={() => setShowYouTube(false)}>{t("lp.back")}</button>
               </div>
             </div>
           )}
@@ -410,6 +416,7 @@ export function BoothPanel({ watch, hubNow, info, house, setWatch, setHouse, onP
   onPick: () => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const here = watch ? watchPosition(watch, hubNow()) : 0;
   const auto = house?.auto ?? true;
   const level = house?.level ?? 1;
@@ -426,53 +433,53 @@ export function BoothPanel({ watch, hubNow, info, house, setWatch, setHouse, onP
   const seek = (position: number) => { if (watch) setWatch({ url: watch.url, title: watch.title, position: Math.max(0, position), paused: watch.paused }); };
   const mode = auto ? "auto" : level >= 0.95 ? "up" : level <= 0.02 ? "out" : "dim";
   const scenes: Array<{ id: string; label: string; hint: string; run: () => void }> = [
-    { id: "showtime", label: "🎬 Showtime", hint: "Lights down, film rolling", run: () => { setHouse({ level: 0, auto: true }); if (watch) setWatch({ url: watch.url, title: watch.title, position: here, paused: false }); } },
-    { id: "intermission", label: "🍿 Intermission", hint: "Pause and bring the lights up", run: () => { if (watch) setWatch({ url: watch.url, title: watch.title, position: here, paused: true }); setHouse({ level: 1, auto: false }); } },
+    { id: "showtime", label: t("lp.showtimeLabel"), hint: t("lp.showtimeHint"), run: () => { setHouse({ level: 0, auto: true }); if (watch) setWatch({ url: watch.url, title: watch.title, position: here, paused: false }); } },
+    { id: "intermission", label: t("lp.intermissionLabel"), hint: t("lp.intermissionHint"), run: () => { if (watch) setWatch({ url: watch.url, title: watch.title, position: here, paused: true }); setHouse({ level: 1, auto: false }); } },
   ];
   return (
-    <div className="living-room-panel lr-booth" role="dialog" aria-label="Projection booth">
+    <div className="living-room-panel lr-booth" role="dialog" aria-label={t("lp.boothTitle")}>
       <div className="living-room-panel-head">
-        <strong><Clapperboard size={14} /> Projection booth {playing && <span className="lr-onair">ON AIR</span>}</strong>
-        <button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button>
+        <strong><Clapperboard size={14} /> {t("lp.boothTitle")} {playing && <span className="lr-onair">{t("lp.onAir")}</span>}</strong>
+        <button type="button" onClick={onClose} aria-label={t("common.close")}><X size={14} /></button>
       </div>
       <div className="lr-line">
-        <span className="lr-title">{watch ? watch.title || "Video" : "Nothing loaded"}</span>
-        <small>{watch ? `loaded by ${watch.by}` : "Pick something for the screen: a link, an upload or YouTube."}</small>
+        <span className="lr-title">{watch ? watch.title || t("lp.videoFallback") : t("lp.nothingLoaded")}</span>
+        <small>{watch ? t("lp.loadedBy", { by: watch.by }) : t("lp.pickForScreen")}</small>
       </div>
       <div className="lr-row">
-        <button type="button" onClick={onPick}><Film size={13} /> {watch ? "Change film…" : "Choose a film…"}</button>
-        {watch && <button type="button" onClick={() => setWatch(null)}>Eject</button>}
+        <button type="button" onClick={onPick}><Film size={13} /> {watch ? t("lp.changeFilm") : t("lp.chooseFilm")}</button>
+        {watch && <button type="button" onClick={() => setWatch(null)}>{t("lp.eject")}</button>}
       </div>
       {watch && (
         <>
           <div className="lr-row">
-            <button type="button" onClick={() => seek(here - 10)} aria-label="Back 10 seconds" title="Back 10 seconds"><SkipBack size={13} /> 10s</button>
-            <button type="button" className={playing ? "active" : ""} onClick={() => setWatch({ url: watch.url, title: watch.title, position: here, paused: playing })}>{playing ? "❚❚ Pause" : "▶ Play"}</button>
-            <button type="button" onClick={() => seek(Math.min(here + 10, info.duration || here + 10))} aria-label="Forward 10 seconds" title="Forward 10 seconds">10s <SkipForward size={13} /></button>
-            <button type="button" onClick={() => seek(0)} title="Back to the start">⏮ Start</button>
+            <button type="button" onClick={() => seek(here - 10)} aria-label={t("lp.back10s")} title={t("lp.back10s")}><SkipBack size={13} /> 10s</button>
+            <button type="button" className={playing ? "active" : ""} onClick={() => setWatch({ url: watch.url, title: watch.title, position: here, paused: playing })}>{playing ? t("lp.pauseBtn") : t("lp.playBtn")}</button>
+            <button type="button" onClick={() => seek(Math.min(here + 10, info.duration || here + 10))} aria-label={t("lp.fwd10s")} title={t("lp.fwd10s")}>10s <SkipForward size={13} /></button>
+            <button type="button" onClick={() => seek(0)} title={t("lp.backToStartTitle")}>{t("lp.startBtn")}</button>
           </div>
           <div className="lr-row">
             <input
               type="range" min={0} max={Math.max(1, Math.floor(info.duration || 1))} step={1} value={Math.min(Math.floor(here), Math.floor(info.duration || 1))}
-              disabled={!info.duration} aria-label="Seek" style={{ flex: 1 }} onChange={(event) => seek(Number(event.target.value))}
+              disabled={!info.duration} aria-label={t("lp.seekAria")} style={{ flex: 1 }} onChange={(event) => seek(Number(event.target.value))}
             />
             <small>{formatTime(here)} / {info.duration ? formatTime(info.duration) : "--:--"}</small>
           </div>
         </>
       )}
-      <div className="lr-line"><span className="lr-title">House lights</span><small>Set for everyone in the room.</small></div>
+      <div className="lr-line"><span className="lr-title">{t("lp.houseLights")}</span><small>{t("lp.houseLightsDesc")}</small></div>
       <div className="lr-row">
         {scenes.map((scene) => <button key={scene.id} type="button" onClick={scene.run} title={scene.hint} disabled={!watch && scene.id !== "intermission"}>{scene.label}</button>)}
       </div>
       <div className="lr-row">
-        <button type="button" className={mode === "up" ? "active" : ""} onClick={() => setHouse({ level: 1, auto: false })}>Up</button>
-        <button type="button" className={mode === "dim" ? "active" : ""} onClick={() => setHouse({ level: 0.35, auto: false })}>Dim</button>
-        <button type="button" className={mode === "out" ? "active" : ""} onClick={() => setHouse({ level: 0, auto: false })}>Out</button>
-        <button type="button" className={mode === "auto" ? "active" : ""} onClick={() => setHouse(null)} title="Dim by themselves while a film plays">Auto</button>
+        <button type="button" className={mode === "up" ? "active" : ""} onClick={() => setHouse({ level: 1, auto: false })}>{t("lp.lightsUp")}</button>
+        <button type="button" className={mode === "dim" ? "active" : ""} onClick={() => setHouse({ level: 0.35, auto: false })}>{t("lp.lightsDim")}</button>
+        <button type="button" className={mode === "out" ? "active" : ""} onClick={() => setHouse({ level: 0, auto: false })}>{t("lp.lightsOut")}</button>
+        <button type="button" className={mode === "auto" ? "active" : ""} onClick={() => setHouse(null)} title={t("lp.lightsAutoTitle")}>{t("lp.lightsAuto")}</button>
       </div>
       <label className="lr-row">
         <small style={{ width: 54 }}>{Math.round((draft ?? level) * 100)}%</small>
-        <input type="range" min={0} max={1} step={0.01} value={draft ?? level} disabled={auto && !draft} aria-label="House light level" style={{ flex: 1 }} onChange={(event) => dragLights(Number(event.target.value))} />
+        <input type="range" min={0} max={1} step={0.01} value={draft ?? level} disabled={auto && !draft} aria-label={t("lp.houseLightLevelAria")} style={{ flex: 1 }} onChange={(event) => dragLights(Number(event.target.value))} />
       </label>
       {info.error && <p className="lr-note">{info.error}</p>}
     </div>
@@ -487,19 +494,20 @@ export function SeatFinder({ participants, poses, myId, onSitNear, onClose }: {
   onSitNear: (connectionId: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const people = participants.filter((p) => !p.bot && !p.recorder && poses.has(p.connectionId))
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
   return (
-    <div className="living-room-panel" role="dialog" aria-label="Find a seat">
-      <div className="living-room-panel-head"><strong>Who is where</strong><button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button></div>
+    <div className="living-room-panel" role="dialog" aria-label={t("lp.findSeatAria")}>
+      <div className="living-room-panel-head"><strong>{t("lp.whoIsWhere")}</strong><button type="button" onClick={onClose} aria-label={t("common.close")}><X size={14} /></button></div>
       <ul className="lr-list">
         {people.map((person) => {
           const seat = poses.get(person.connectionId)?.seat ?? null;
           return (
             <li key={person.connectionId}>
-              <span className="lr-name">{person.displayName}{person.connectionId === myId ? " (you)" : ""}</span>
-              <small>{cinemaSeatLabel(seat) ?? "standing"}</small>
-              {person.connectionId !== myId && seat && <button type="button" onClick={() => onSitNear(person.connectionId)}>Sit next to</button>}
+              <span className="lr-name">{person.displayName}{person.connectionId === myId ? t("lp.youSuffix") : ""}</span>
+              <small>{cinemaSeatLabel(seat) ?? t("lp.standing")}</small>
+              {person.connectionId !== myId && seat && <button type="button" onClick={() => onSitNear(person.connectionId)}>{t("lp.sitNextTo")}</button>}
             </li>
           );
         })}
@@ -519,6 +527,7 @@ export function InitiativePanel({ initiative, gm, myId, myName, setInitiative, s
   onRollMine: () => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
   const isGm = Boolean(gm && gm.connectionId === myId);
@@ -532,43 +541,43 @@ export function InitiativePanel({ initiative, gm, myId, myName, setInitiative, s
     setName(""); setValue("");
   };
   return (
-    <div className="living-room-panel" role="dialog" aria-label="Initiative">
+    <div className="living-room-panel" role="dialog" aria-label={t("lp.initiative")}>
       <div className="living-room-panel-head">
-        <strong>Initiative{initiative ? ` · round ${initiative.round}` : ""}</strong>
-        <button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button>
+        <strong>{t("lp.initiative")}{initiative ? t("lp.roundSuffix", { round: initiative.round }) : ""}</strong>
+        <button type="button" onClick={onClose} aria-label={t("common.close")}><X size={14} /></button>
       </div>
       <div className="lr-row">
-        {gm ? <small><Crown size={12} /> GM: {gm.name}</small> : <small>No game master yet: anyone can run the order.</small>}
-        {isGm ? <button type="button" onClick={() => setGm(null)}>Hand over</button>
-          : !gm && myId ? <button type="button" onClick={() => setGm({ connectionId: myId, name: myName })}>I&apos;m the GM</button> : null}
+        {gm ? <small><Crown size={12} /> {t("lp.gmLabel", { name: gm.name })}</small> : <small>{t("lp.noGmYet")}</small>}
+        {isGm ? <button type="button" onClick={() => setGm(null)}>{t("lp.handOver")}</button>
+          : !gm && myId ? <button type="button" onClick={() => setGm({ connectionId: myId, name: myName })}>{t("lp.imGm")}</button> : null}
       </div>
       {initiative ? (
         <ol className="lr-order">
           {initiative.entries.map((entry, index) => (
             <li key={entry.id} className={index === initiative.turn ? "turn" : ""}>
               <b>{entry.value}</b><span>{entry.name}</span>
-              {canEdit && <button type="button" onClick={() => setInitiative(removeInitiative(initiative, entry.id))} aria-label={`Remove ${entry.name}`}><Trash2 size={12} /></button>}
+              {canEdit && <button type="button" onClick={() => setInitiative(removeInitiative(initiative, entry.id))} aria-label={t("lp.removeEntryAria", { name: entry.name })}><Trash2 size={12} /></button>}
             </li>
           ))}
         </ol>
-      ) : <p className="lr-note">Nobody is in the order yet. Roll yours, and the game master can add the monsters.</p>}
+      ) : <p className="lr-note">{t("lp.orderEmpty")}</p>}
       <div className="lr-row">
-        <button type="button" onClick={onRollMine} title="Rolls a d20 and puts the total in the order for you">Roll my initiative</button>
+        <button type="button" onClick={onRollMine} title={t("lp.rollInitTitle")}>{t("lp.rollMyInit")}</button>
         {canEdit && initiative && (
           <>
-            <button type="button" onClick={() => setInitiative(stepTurn(initiative, -1))} aria-label="Previous turn"><SkipBack size={14} /></button>
-            <button type="button" className="primary" onClick={() => setInitiative(stepTurn(initiative, 1))} title={current ? `Next: after ${current.name}` : "Next turn"}>Next turn <SkipForward size={14} /></button>
+            <button type="button" onClick={() => setInitiative(stepTurn(initiative, -1))} aria-label={t("lp.prevTurnAria")}><SkipBack size={14} /></button>
+            <button type="button" className="primary" onClick={() => setInitiative(stepTurn(initiative, 1))} title={current ? t("lp.nextAfterTitle", { name: current.name }) : t("lp.nextTurn")}>{t("lp.nextTurn")} <SkipForward size={14} /></button>
           </>
         )}
       </div>
       {canEdit && (
         <form className="lr-row" onSubmit={(event) => { event.preventDefault(); addNpc(); }}>
-          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Goblin" aria-label="Name" maxLength={40} />
-          <input className="lr-narrow" value={value} onChange={(event) => setValue(event.target.value.replace(/[^\d-]/g, ""))} placeholder="d20" aria-label="Initiative" inputMode="numeric" maxLength={4} />
-          <button type="submit" disabled={!name.trim()} aria-label="Add"><Plus size={14} /></button>
+          <input value={name} onChange={(event) => setName(event.target.value)} placeholder={t("lp.goblinPlaceholder")} aria-label={t("lp.nameAria")} maxLength={40} />
+          <input className="lr-narrow" value={value} onChange={(event) => setValue(event.target.value.replace(/[^\d-]/g, ""))} placeholder="d20" aria-label={t("lp.initiative")} inputMode="numeric" maxLength={4} />
+          <button type="submit" disabled={!name.trim()} aria-label={t("lp.addAria")}><Plus size={14} /></button>
         </form>
       )}
-      {canEdit && initiative && <div className="lr-row"><button type="button" onClick={() => setInitiative(null)}>End combat</button></div>}
+      {canEdit && initiative && <div className="lr-row"><button type="button" onClick={() => setInitiative(null)}>{t("lp.endCombat")}</button></div>}
     </div>
   );
 }
@@ -579,15 +588,16 @@ export function InitiativePanel({ initiative, gm, myId, myName, setInitiative, s
  * master's three to five, a player's two to four.
  */
 export function ScreenPagesPicker({ role, choice, setChoice, system = "dnd5e" }: { role: ScreenRole; choice: ScreenPageId[]; setChoice: (value: ScreenPageId[]) => void; system?: GameSystem }) {
+  const { t } = useI18n();
   const { min, max } = SCREEN_SIZES[role];
   const counts = Array.from({ length: max - min + 1 }, (_, i) => min + i);
   // As the owner sees them: Left, Middle, Right; with more, the ones between are numbered.
   const label = (index: number) =>
-    index === 0 ? "Left" : index === choice.length - 1 ? "Right" : choice.length === 3 ? "Middle" : `Panel ${index + 1}`;
+    index === 0 ? t("lp.panelLeft") : index === choice.length - 1 ? t("lp.panelRight") : choice.length === 3 ? t("lp.panelMiddle") : t("lp.panelN", { num: index + 1 });
   return (
     <>
-      <div className="lr-row lr-panels" role="group" aria-label="Panels">
-        <small>Panels</small>
+      <div className="lr-row lr-panels" role="group" aria-label={t("lp.panels")}>
+        <small>{t("lp.panels")}</small>
         {counts.map((count) => (
           <button key={count} type="button" className={choice.length === count ? "active" : ""} aria-pressed={choice.length === count} onClick={() => setChoice(resizeChoice(role, choice, count, system))}>{count}</button>
         ))}
@@ -632,6 +642,7 @@ function fromLegacy(sheet: CharacterSheet | null): Partial<TableCharacter> {
 
 /** Spells by name: type a few letters, pick one; each shows as a chip to take off again. */
 function SpellPicker({ spells, setSpells, edition }: { spells: string[]; setSpells: (value: string[]) => void; edition?: "2014" | "2024" }) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<string[]>([]);
   useEffect(() => {
@@ -643,15 +654,15 @@ function SpellPicker({ spells, setSpells, edition }: { spells: string[]; setSpel
   const add = (name: string) => { if (!spells.includes(name) && spells.length < 40) setSpells([...spells, name]); setQuery(""); setFound([]); };
   return (
     <div className="lr-field">
-      <small>Spells</small>
+      <small>{t("lp.spells")}</small>
       {spells.length > 0 && (
         <div className="lr-chips">
           {spells.map((name) => (
-            <span key={name} className="lr-chip">{name}<button type="button" onClick={() => setSpells(spells.filter((s) => s !== name))} aria-label={`Remove ${name}`}><X size={11} /></button></span>
+            <span key={name} className="lr-chip">{name}<button type="button" onClick={() => setSpells(spells.filter((s) => s !== name))} aria-label={t("lp.removeEntryAria", { name })}><X size={11} /></button></span>
           ))}
         </div>
       )}
-      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Add a spell: fireball, cure wounds…" aria-label="Find a spell" maxLength={60}
+      <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("lp.spellPlaceholder")} aria-label={t("lp.findSpellAria")} maxLength={60}
         onKeyDown={(event) => { if (event.key === "Enter" && found[0]) { event.preventDefault(); add(found[0]); } }} />
       {found.length > 0 && (
         <div className="lr-chips">
@@ -678,6 +689,7 @@ export function CharacterPanel({ mine, fallbackName, setMine, legacy, screen, ed
   onOpenCompanion?: (path?: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const start = { ...(mine?.maxHp === undefined && !mine?.cls ? fromLegacy(legacy) : {}), ...Object.fromEntries(Object.entries(mine ?? {}).filter(([, v]) => v !== undefined)) } as Partial<TableCharacter>;
   const [name, setName] = useState(start.name ?? "");
   const [portrait, setPortrait] = useState(start.portraitUrl ?? "");
@@ -721,43 +733,43 @@ export function CharacterPanel({ mine, fallbackName, setMine, legacy, screen, ed
     if (!chosen) return;
     setBusy(true); setProblem(null);
     try { setPortrait(await upload(chosen)); }
-    catch (error) { setProblem(error instanceof Error ? error.message : "That upload failed."); }
+    catch (error) { setProblem(error instanceof Error ? error.message : t("lp.uploadFailed")); }
     finally { setBusy(false); if (file.current) file.current.value = ""; }
   };
   const caster = auto.some((n) => n > 0);
   return (
-    <div className="living-room-panel" role="dialog" aria-label="My character">
-      <div className="living-room-panel-head"><strong>My character</strong><button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button></div>
-      <label className="lr-field"><small>Name</small><input value={name} onChange={(event) => setName(event.target.value)} placeholder={fallbackName} maxLength={40} /></label>
+    <div className="living-room-panel" role="dialog" aria-label={t("lp.myCharacter")}>
+      <div className="living-room-panel-head"><strong>{t("lp.myCharacter")}</strong><button type="button" onClick={onClose} aria-label={t("common.close")}><X size={14} /></button></div>
+      <label className="lr-field"><small>{t("lp.name")}</small><input value={name} onChange={(event) => setName(event.target.value)} placeholder={fallbackName} maxLength={40} /></label>
       <div className="lr-sheet lr-sheet-2">
-        <label className="lr-field"><small>Class</small>
+        <label className="lr-field"><small>{t("lp.class")}</small>
           <select value={cls} onChange={(event) => setCls(event.target.value)}>
-            <option value="">Choose…</option>
+            <option value="">{t("lp.choose")}</option>
             {CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </label>
-        <label className="lr-field"><small>Level</small><input value={level} onChange={(event) => setLevel(event.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="1" /></label>
+        <label className="lr-field"><small>{t("lp.level")}</small><input value={level} onChange={(event) => setLevel(event.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="1" /></label>
       </div>
       <div className="lr-sheet">
-        <label className="lr-field"><small>Max HP</small><input value={maxHp} onChange={(event) => setMaxHp(event.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" placeholder="24" /></label>
-        <label className="lr-field"><small>AC</small><input value={ac} onChange={(event) => setAc(event.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="15" /></label>
-        <label className="lr-field"><small>Speed (ft)</small><input value={speed} onChange={(event) => setSpeed(event.target.value.replace(/\D/g, "").slice(0, 3))} inputMode="numeric" placeholder="30" /></label>
+        <label className="lr-field"><small>{t("lp.maxHp")}</small><input value={maxHp} onChange={(event) => setMaxHp(event.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" placeholder="24" /></label>
+        <label className="lr-field"><small>{t("lp.ac")}</small><input value={ac} onChange={(event) => setAc(event.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="15" /></label>
+        <label className="lr-field"><small>{t("lp.speedFt")}</small><input value={speed} onChange={(event) => setSpeed(event.target.value.replace(/\D/g, "").slice(0, 3))} inputMode="numeric" placeholder="30" /></label>
       </div>
       {caster && !customSlots && (
-        <p className="lr-note">Spell slots: {auto.map((n, i) => (n ? `${n}×${i + 1}${i === 0 ? "st" : i === 1 ? "nd" : i === 2 ? "rd" : "th"}` : "")).filter(Boolean).join(" · ")}</p>
+        <p className="lr-note">{t("lp.spellSlotsNote", { slots: auto.map((n, i) => (n ? `${n}×${i + 1}${i === 0 ? "st" : i === 1 ? "nd" : i === 2 ? "rd" : "th"}` : "")).filter(Boolean).join(" · ") })}</p>
       )}
       <SpellPicker spells={spells} setSpells={setSpells} edition={edition} />
       <div className="lr-row">
-        <button type="button" className="primary" onClick={() => { save(); onClose(); }}>Save</button>
-        {mine && <button type="button" onClick={() => { setMine(null); onClose(); }}>Clear</button>}
-        {onOpenCompanion && <button type="button" onClick={() => onOpenCompanion("/sheet")} title="Edit full sheet in Tavern Companion"><ExternalLink size={12} /> Tavern Sheet</button>}
+        <button type="button" className="primary" onClick={() => { save(); onClose(); }}>{t("lp.save")}</button>
+        {mine && <button type="button" onClick={() => { setMine(null); onClose(); }}>{t("lp.clear")}</button>}
+        {onOpenCompanion && <button type="button" onClick={() => onOpenCompanion("/sheet")} title={t("lp.tavernSheetTitle")}><ExternalLink size={12} /> {t("lp.tavernSheet")}</button>}
       </div>
 
       <details className="lr-more">
-        <summary>More: portrait, ability scores, slots, my screen</summary>
-        <label className="lr-field"><small>Portrait</small><input value={portrait} onChange={(event) => setPortrait(event.target.value)} placeholder="https://… or upload" maxLength={600} /></label>
+        <summary>{t("lp.moreSummary")}</summary>
+        <label className="lr-field"><small>{t("lp.portrait")}</small><input value={portrait} onChange={(event) => setPortrait(event.target.value)} placeholder={t("lp.portraitPlaceholder")} maxLength={600} /></label>
         <div className="lr-row">
-          <button type="button" disabled={busy} onClick={() => file.current?.click()}><Upload size={14} /> {busy ? "Uploading…" : "Upload a portrait"}</button>
+          <button type="button" disabled={busy} onClick={() => file.current?.click()}><Upload size={14} /> {busy ? t("lp.uploading") : t("lp.uploadPortrait")}</button>
           <input ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(event) => void chooseFile(event.target.files?.[0])} />
         </div>
         {problem && <p className="lr-note">{problem}</p>}
@@ -769,7 +781,7 @@ export function CharacterPanel({ mine, fallbackName, setMine, legacy, screen, ed
           ))}
         </div>
         <label className="living-room-switch">
-          <span><strong>Set my own spell slots</strong><small>For multiclassing, or a subclass that casts. Off: from class and level.</small></span>
+          <span><strong>{t("lp.ownSlots")}</strong><small>{t("lp.ownSlotsDesc")}</small></span>
           <input type="checkbox" checked={Boolean(customSlots)} onChange={(event) => setCustomSlots(event.target.checked ? auto.map(String) : null)} />
         </label>
         {customSlots && (
@@ -781,18 +793,18 @@ export function CharacterPanel({ mine, fallbackName, setMine, legacy, screen, ed
             ))}
           </div>
         )}
-        <small className="lr-heading">My screen (only you see it)</small>
+        <small className="lr-heading">{t("lp.myScreen")}</small>
         <div className="lr-row">
           <button type="button" className={screen.open ? "active" : ""} aria-pressed={screen.open} onClick={() => screen.setOpen(!screen.open)}>
-            {screen.open ? "Put my screen away" : "Stand my screen up"}
+            {screen.open ? t("lp.putScreenAway") : t("lp.standScreenUp")}
           </button>
         </div>
         {screen.open && (
           <>
             <ScreenPagesPicker role="player" choice={screen.choice} setChoice={screen.setChoice} />
             <label className="lr-field">
-              <small>My notes</small>
-              <textarea value={screen.notes} onChange={(event) => screen.setNotes(event.target.value)} rows={3} maxLength={2000} placeholder="Owe Brannigan 5 gold. The key fits the red door." />
+              <small>{t("lp.myNotes")}</small>
+              <textarea value={screen.notes} onChange={(event) => screen.setNotes(event.target.value)} rows={3} maxLength={2000} placeholder={t("lp.playerNotesPlaceholder")} />
             </label>
           </>
         )}
@@ -833,6 +845,7 @@ export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myNam
   /** The game the table plays: which reference pages the screen offers. */
   system?: GameSystem;
 }) {
+  const { t } = useI18n();
   const isGm = Boolean(gm && gm.connectionId === myId);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -856,85 +869,85 @@ export function GameMasterPanel({ gm, myId, inGmChair, onTakeChair, setGm, myNam
     if (!chosen) return;
     setBusy(true); setProblem(null);
     try { setMap({ url: await upload(chosen), turns: 0, zoom: 1 }); }
-    catch (error) { setProblem(error instanceof Error ? error.message : "That upload failed."); }
+    catch (error) { setProblem(error instanceof Error ? error.message : t("lp.uploadFailed")); }
     finally { setBusy(false); if (file.current) file.current.value = ""; }
   };
   return (
-    <div className="living-room-panel" role="dialog" aria-label="Game master">
-      <div className="living-room-panel-head"><strong>Game master</strong><button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button></div>
+    <div className="living-room-panel" role="dialog" aria-label={t("lp.gameMaster")}>
+      <div className="living-room-panel-head"><strong>{t("lp.gameMaster")}</strong><button type="button" onClick={onClose} aria-label={t("common.close")}><X size={14} /></button></div>
       <div className="lr-row">
-        {gm ? <small><Crown size={12} /> GM: {isGm ? "you" : gm.name}</small> : <small>No game master yet.</small>}
-        {!inGmChair && (!gm || isGm) && <button type="button" onClick={onTakeChair}>Sit in the GM&apos;s chair</button>}
-        {isGm ? <button type="button" onClick={() => setGm(null)}>Hand over</button>
-          : !gm && myId ? <button type="button" onClick={() => setGm({ connectionId: myId, name: myName })}>I&apos;m the GM</button> : null}
+        {gm ? <small><Crown size={12} /> {t("lp.gmLabel", { name: isGm ? t("lp.you") : gm.name })}</small> : <small>{t("lp.noGm")}</small>}
+        {!inGmChair && (!gm || isGm) && <button type="button" onClick={onTakeChair}>{t("lp.sitGmChair")}</button>}
+        {isGm ? <button type="button" onClick={() => setGm(null)}>{t("lp.handOver")}</button>
+          : !gm && myId ? <button type="button" onClick={() => setGm({ connectionId: myId, name: myName })}>{t("lp.imGm")}</button> : null}
       </div>
 
-      <small className="lr-heading">Battle map</small>
+      <small className="lr-heading">{t("lp.battleMap")}</small>
       {canEditMap ? (
         <>
           <div className="lr-row">
-            <button type="button" disabled={busy} onClick={() => file.current?.click()}><Upload size={14} /> {busy ? "Uploading…" : map ? "Change the map" : "Upload a map"}</button>
+            <button type="button" disabled={busy} onClick={() => file.current?.click()}><Upload size={14} /> {busy ? t("lp.uploading") : map ? t("lp.changeMap") : t("lp.uploadMap")}</button>
             <input ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(event) => void chooseFile(event.target.files?.[0])} />
-            {map && <button type="button" onClick={() => setMap({ url: map.url, turns: (map.turns + 1) % 4, zoom: map.zoom })} title="Turn the map a quarter"><RotateCw size={14} /> Turn</button>}
-            {map && <button type="button" onClick={() => setMap(null)}>Use the drawn map</button>}
+            {map && <button type="button" onClick={() => setMap({ url: map.url, turns: (map.turns + 1) % 4, zoom: map.zoom })} title={t("lp.turnMapTitle")}><RotateCw size={14} /> {t("lp.turn")}</button>}
+            {map && <button type="button" onClick={() => setMap(null)}>{t("lp.useDrawnMap")}</button>}
           </div>
           {map && (
             <label className="lr-field">
-              <small>Zoom: {zoom.toFixed(1)}×</small>
-              <input type="range" min={1} max={4} step={0.1} value={zoom} onChange={(event) => setZoom(Number(event.target.value))} aria-label="Map zoom" />
+              <small>{t("lp.zoom", { val: zoom.toFixed(1) })}</small>
+              <input type="range" min={1} max={4} step={0.1} value={zoom} onChange={(event) => setZoom(Number(event.target.value))} aria-label={t("lp.mapZoomAria")} />
             </label>
           )}
           <label className="lr-field">
-            <small>Scale: {grid} squares across ({grid * 5} ft)</small>
-            <input type="range" min={10} max={60} step={1} value={grid} onChange={(event) => setGrid(Number(event.target.value))} aria-label="Squares across the map" />
+            <small>{t("lp.scale", { grid, feet: grid * 5 })}</small>
+            <input type="range" min={10} max={60} step={1} value={grid} onChange={(event) => setGrid(Number(event.target.value))} aria-label={t("lp.squaresAcrossAria")} />
           </label>
           {setFog && (
             <>
-              <small className="lr-heading">Fog of war{fog?.enabled ? ` · ${fog.rects.length} zone${fog.rects.length === 1 ? "" : "s"}` : ""}</small>
+              <small className="lr-heading">{t("lp.fogOfWar", { suffix: fog?.enabled ? ` · ${fog.rects.length} ${fog.rects.length === 1 ? t("lp.fogZoneSingle") : t("lp.fogZonePlural")}` : "" })}</small>
               <div className="lr-row">
                 {onToggleDrawFog && (
-                  <button type="button" className={drawingFog ? "active" : ""} onClick={onToggleDrawFog} title="Click two corners on the map to hide an area">
-                    {drawingFog ? "Finish fog tool" : "Draw fog area"}
+                  <button type="button" className={drawingFog ? "active" : ""} onClick={onToggleDrawFog} title={t("lp.drawFogTitle")}>
+                    {drawingFog ? t("lp.finishFog") : t("lp.drawFog")}
                   </button>
                 )}
-                <button type="button" onClick={() => setFog({ enabled: true, rects: [{ id: "fullmap", x: 0, y: 0, w: 100, h: 100 }] })}>Cover map</button>
-                {fog?.enabled && <button type="button" onClick={() => setFog(null)}>Clear fog</button>}
+                <button type="button" onClick={() => setFog({ enabled: true, rects: [{ id: "fullmap", x: 0, y: 0, w: 100, h: 100 }] })}>{t("lp.coverMap")}</button>
+                {fog?.enabled && <button type="button" onClick={() => setFog(null)}>{t("lp.clearFog")}</button>}
               </div>
             </>
           )}
           {onOpenCompanion && (
             <div className="lr-row">
-              <button type="button" onClick={() => onOpenCompanion("/gm")}><ExternalLink size={12} /> Tavern GM Studio</button>
+              <button type="button" onClick={() => onOpenCompanion("/gm")}><ExternalLink size={12} /> {t("lp.tavernGmStudio")}</button>
             </div>
           )}
           {problem && <p className="lr-note">{problem}</p>}
-          <p className="lr-note">Everyone at the table sees it. The middle of the picture fills the round table. Match the scale to the map&apos;s grid: pawns, rulers and spells use it.</p>
+          <p className="lr-note">{t("lp.mapNote")}</p>
         </>
       ) : (
-        <p className="lr-note">{map ? `The map is ${map.by}'s upload. ` : ""}Only the game master changes the map.</p>
+        <p className="lr-note">{map ? t("lp.mapUploadedBy", { by: map.by }) : ""}{t("lp.onlyGmChangesMap")}</p>
       )}
 
       {isGm ? (
         <>
-          <small className="lr-heading">Your screen</small>
+          <small className="lr-heading">{t("lp.yourScreen")}</small>
           <div className="lr-row">
             <button type="button" className={folded ? "" : "active"} aria-pressed={!folded} onClick={() => setFolded(!folded)}>
-              {folded ? "Stand the screen up" : "Fold the screen away"}
+              {folded ? t("lp.standScreenUpGm") : t("lp.foldScreenAwayGm")}
             </button>
           </div>
           {!folded && (
             <>
-              <small className="lr-heading">Inside it (only you see this side)</small>
+              <small className="lr-heading">{t("lp.insideScreen")}</small>
               <ScreenPagesPicker role="gm" choice={choice} setChoice={setChoice} system={system} />
             </>
           )}
           <label className="lr-field">
-            <small>My notes</small>
-            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} maxLength={2000} placeholder="Ogre in the cellar. Map hidden in the third book." />
+            <small>{t("lp.myNotes")}</small>
+            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={4} maxLength={2000} placeholder={t("lp.gmNotesPlaceholder")} />
           </label>
         </>
       ) : (
-        <p className="lr-note">The game master&apos;s screen shows them the order, rules and notes they pick.</p>
+        <p className="lr-note">{t("lp.gmScreenNote")}</p>
       )}
     </div>
   );
@@ -948,6 +961,14 @@ export const PAWN_NAMES: Record<PawnKind, { name: string; glyph: string }> = {
   cleric: { name: "Cleric", glyph: "✨" },
   beast: { name: "Ogre", glyph: "👹" },
   dragon: { name: "Dragon", glyph: "🐉" },
+};
+const PAWN_NAME_KEYS: Record<PawnKind, MessageKey> = {
+  fighter: "lp.pawn.fighter",
+  wizard: "lp.pawn.wizard",
+  rogue: "lp.pawn.rogue",
+  cleric: "lp.pawn.cleric",
+  beast: "lp.pawn.beast",
+  dragon: "lp.pawn.dragon",
 };
 
 /** The paints on the cabinet's shelf. */
@@ -971,6 +992,7 @@ export function PawnsPanel({ pawns, myUserId, isGm, held, channelId, onTake, onS
   onClear: () => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [colour, setColour] = useState(PAWN_PAINTS[0]);
   const [label, setLabel] = useState("");
   const [monsterQ, setMonsterQ] = useState("");
@@ -1014,25 +1036,28 @@ export function PawnsPanel({ pawns, myUserId, isGm, held, channelId, onTake, onS
   }, [monsterQ, isGm, onSpawnMonster, channelId]);
 
   return (
-    <div className="living-room-panel" role="dialog" aria-label="Miniatures">
-      <div className="living-room-panel-head"><strong><ChessPawn size={14} /> Miniatures</strong><button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button></div>
-      <p className="lr-note">Take one from the cabinet and it stands on the map in front of you. Click your pawn, then click the map to move it. {isGm ? "As the game master you can move anyone's." : `You can have ${limit} on the table.`}</p>
-      <div className="lr-row" role="group" aria-label="Paint">
+    <div className="living-room-panel" role="dialog" aria-label={t("lp.miniatures")}>
+      <div className="living-room-panel-head"><strong><ChessPawn size={14} /> {t("lp.miniatures")}</strong><button type="button" onClick={onClose} aria-label={t("common.close")}><X size={14} /></button></div>
+      <p className="lr-note">{t("lp.miniaturesHint")}{isGm ? t("lp.miniaturesGm") : t("lp.miniaturesPlayer", { limit })}</p>
+      <div className="lr-row" role="group" aria-label={t("lp.paintAria")}>
         {PAWN_PAINTS.map((paint) => (
-          <button key={paint} type="button" className="lr-paint" style={{ background: paint }} aria-label={`Paint ${paint}`} aria-pressed={paint === colour} onClick={() => setColour(paint)} />
+          <button key={paint} type="button" className="lr-paint" style={{ background: paint }} aria-label={t("lp.paintColourAria", { paint })} aria-pressed={paint === colour} onClick={() => setColour(paint)} />
         ))}
       </div>
-      <input value={label} onChange={(event) => setLabel(event.target.value)} placeholder={isGm ? "Name over it (Goblin 2)" : "Name over it (optional)"} aria-label="Name over the pawn" maxLength={24} />
+      <input value={label} onChange={(event) => setLabel(event.target.value)} placeholder={isGm ? t("lp.pawnLabelGmPlaceholder") : t("lp.pawnLabelPlaceholder")} aria-label={t("lp.pawnLabelAria")} maxLength={24} />
       <div className="lr-pawn-kinds">
-        {PAWN_KINDS.map((kind) => (
-          <button key={kind} type="button" disabled={full || !myUserId} onClick={() => { onTake(kind, colour, label.trim()); if (isGm) setLabel(""); }} title={full ? `You have ${limit} on the table already` : `Put a ${PAWN_NAMES[kind].name.toLowerCase()} on the map`}>
-            <span aria-hidden="true">{PAWN_NAMES[kind].glyph}</span>{PAWN_NAMES[kind].name}
-          </button>
-        ))}
+        {PAWN_KINDS.map((kind) => {
+          const kindName = t(PAWN_NAME_KEYS[kind]);
+          return (
+            <button key={kind} type="button" disabled={full || !myUserId} onClick={() => { onTake(kind, colour, label.trim()); if (isGm) setLabel(""); }} title={full ? t("lp.pawnFullTitle", { limit }) : t("lp.pawnPutTitle", { kind: kindName.toLowerCase() })}>
+              <span aria-hidden="true">{PAWN_NAMES[kind].glyph}</span>{kindName}
+            </button>
+          );
+        })}
       </div>
       {isGm && onSpawnMonster && (
         <>
-          <small className="lr-heading">Quick monster spawner</small>
+          <small className="lr-heading">{t("lp.quickMonsterSpawner")}</small>
           <div className="lr-chips">
             {MONSTER_PALETTE.slice(0, 8).map((m) => (
               <button
@@ -1053,7 +1078,7 @@ export function PawnsPanel({ pawns, myUserId, isGm, held, channelId, onTake, onS
             ))}
           </div>
           <div className="lr-row">
-            <input value={monsterQ} onChange={(e) => setMonsterQ(e.target.value)} placeholder="Search compendium monster (e.g. Owlbear)…" aria-label="Search compendium monster" />
+            <input value={monsterQ} onChange={(e) => setMonsterQ(e.target.value)} placeholder={t("lp.searchMonsterPlaceholder")} aria-label={t("lp.searchMonsterAria")} />
             {searching && <Loader2 size={14} className="spin" />}
           </div>
           {monsters.length > 0 && (
@@ -1079,20 +1104,23 @@ export function PawnsPanel({ pawns, myUserId, isGm, held, channelId, onTake, onS
       )}
       {shown.length > 0 && (
         <>
-          <small>{isGm ? `On the table (${all.length})` : `Yours on the table (${mine.length} of ${limit})`}</small>
+          <small>{isGm ? t("lp.onTheTable", { count: all.length }) : t("lp.yoursOnTable", { count: mine.length, limit })}</small>
           <ul className="lr-list">
-            {shown.map((pawn) => (
-              <li key={pawn.id} className={pawn.id === held ? "lr-held" : ""}>
-                <span className="lr-name"><i className="lr-dot" style={{ background: pawn.colour }} />{pawn.label || PAWN_NAMES[pawn.kind].name}{isGm && pawn.owner !== myUserId ? <small> · {pawn.ownerName}</small> : null}</span>
-                <button type="button" className={pawn.id === held ? "active" : ""} aria-pressed={pawn.id === held} onClick={() => onHold(pawn.id === held ? null : pawn.id)} title="Then click the map where it should go">{pawn.id === held ? "Moving…" : "Move"}</button>
-                <button type="button" onClick={() => onPutBack(pawn.id)} aria-label={`Put ${pawn.label || PAWN_NAMES[pawn.kind].name} back`} title="Back in the cabinet"><Trash2 size={12} /></button>
-              </li>
-            ))}
+            {shown.map((pawn) => {
+              const pawnLabel = pawn.label || t(PAWN_NAME_KEYS[pawn.kind]);
+              return (
+                <li key={pawn.id} className={pawn.id === held ? "lr-held" : ""}>
+                  <span className="lr-name"><i className="lr-dot" style={{ background: pawn.colour }} />{pawnLabel}{isGm && pawn.owner !== myUserId ? <small> · {pawn.ownerName}</small> : null}</span>
+                  <button type="button" className={pawn.id === held ? "active" : ""} aria-pressed={pawn.id === held} onClick={() => onHold(pawn.id === held ? null : pawn.id)} title={t("lp.moveTitle")}>{pawn.id === held ? t("lp.moving") : t("lp.move")}</button>
+                  <button type="button" onClick={() => onPutBack(pawn.id)} aria-label={t("lp.putBackAria", { name: pawnLabel })} title={t("lp.putBackTitle")}><Trash2 size={12} /></button>
+                </li>
+              );
+            })}
           </ul>
         </>
       )}
       {(isGm ? all.length > 0 : mine.length > 1) && (
-        <div className="lr-row"><button type="button" onClick={onClear}>{isGm ? "Clear the table" : "Put all mine back"}</button></div>
+        <div className="lr-row"><button type="button" onClick={onClear}>{isGm ? t("lp.clearTable") : t("lp.putAllMineBack")}</button></div>
       )}
     </div>
   );
@@ -1124,6 +1152,7 @@ export function BardPanel({ channelId, mood, onMood, onOpenCompanion, onClose }:
   onOpenCompanion?: (path?: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [snap, setSnap] = useState<BardSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const load = async () => {
@@ -1153,12 +1182,12 @@ export function BardPanel({ channelId, mood, onMood, onOpenCompanion, onClose }:
   const st = snap?.state;
   const vol = typeof st?.volume === "number" ? st.volume : 70;
   return (
-    <div className="living-room-panel lr-bard" role="dialog" aria-label="Bard & atmosphere">
+    <div className="living-room-panel lr-bard" role="dialog" aria-label={t("lp.bardAria")}>
       <div className="living-room-panel-head">
-        <strong><Music size={14} /> Bard &amp; Atmosphere</strong>
-        <button type="button" onClick={onClose} aria-label="Close"><X size={14} /></button>
+        <strong><Music size={14} /> {t("lp.bardTitle")}</strong>
+        <button type="button" onClick={onClose} aria-label={t("common.close")}><X size={14} /></button>
       </div>
-      <small className="lr-heading">Table lighting mood</small>
+      <small className="lr-heading">{t("lp.tableLightingMood")}</small>
       <div className="lr-chips">
         {TABLE_MOODS.map((m) => (
           <button key={m} type="button" className={mood === m ? "active" : ""} onClick={() => onMood(m)}>
@@ -1166,26 +1195,26 @@ export function BardPanel({ channelId, mood, onMood, onOpenCompanion, onClose }:
           </button>
         ))}
       </div>
-      <small className="lr-heading">Bard companion{snap?.in_voice ? " · In Voice" : snap?.available ? " · Ready" : " · Offline"}</small>
+      <small className="lr-heading">{t("lp.bardCompanion")}{snap?.in_voice ? t("lp.bardInVoice") : snap?.available ? t("lp.bardReady") : t("lp.bardOffline")}</small>
       {snap?.available ? (
         <>
           <div className="lr-row">
             {snap.in_voice ? (
-              <button type="button" disabled={busy} onClick={() => void act({ action: "leave" })}><Radio size={13} /> Leave voice</button>
+              <button type="button" disabled={busy} onClick={() => void act({ action: "leave" })}><Radio size={13} /> {t("lp.leaveVoice")}</button>
             ) : (
-              <button type="button" className="primary" disabled={busy || !snap.can_seat || !channelId} onClick={() => void act({ action: "join" })}><Radio size={13} /> Join voice</button>
+              <button type="button" className="primary" disabled={busy || !snap.can_seat || !channelId} onClick={() => void act({ action: "join" })}><Radio size={13} /> {t("lp.joinVoice")}</button>
             )}
-            <button type="button" disabled={busy} onClick={() => void act({ action: "command", cmd: "playback.toggle" })} title={st?.playing ? "Pause" : "Play"}>
+            <button type="button" disabled={busy} onClick={() => void act({ action: "command", cmd: "playback.toggle" })} title={st?.playing ? t("lp.pauseBtn") : t("lp.playBtn")}>
               {st?.playing ? <Pause size={13} /> : <Play size={13} />}
             </button>
-            <button type="button" disabled={busy} onClick={() => void act({ action: "command", cmd: "playback.next" })} title="Skip track"><SkipForward size={13} /></button>
-            {onOpenCompanion && <button type="button" onClick={() => onOpenCompanion("/bard")}><ExternalLink size={12} /> Full Bard</button>}
+            <button type="button" disabled={busy} onClick={() => void act({ action: "command", cmd: "playback.next" })} title={t("lp.skipTrack")}><SkipForward size={13} /></button>
+            {onOpenCompanion && <button type="button" onClick={() => onOpenCompanion("/bard")}><ExternalLink size={12} /> {t("lp.fullBard")}</button>}
           </div>
           <label className="lr-field">
-            <small><Volume2 size={11} /> Volume: {Math.round(vol)}%</small>
+            <small><Volume2 size={11} /> {t("lp.volumePct", { vol: Math.round(vol) })}</small>
             <input type="range" min={0} max={100} value={vol} onChange={(e) => void act({ action: "command", cmd: "volume.set", payload: { volume: Number(e.target.value) } })} />
           </label>
-          <small className="lr-heading">Playlist mood</small>
+          <small className="lr-heading">{t("lp.playlistMood")}</small>
           <div className="lr-chips">
             {BARD_MOODS.map((m) => (
               <button key={m} type="button" className={st?.mood === m ? "active" : ""} disabled={busy} onClick={() => void act({ action: "command", cmd: "mood.set", payload: { mood: m } })}>
@@ -1195,7 +1224,7 @@ export function BardPanel({ channelId, mood, onMood, onOpenCompanion, onClose }:
           </div>
           {Array.isArray(st?.scenes) && st.scenes.length > 0 && (
             <>
-              <small className="lr-heading">Scenes</small>
+              <small className="lr-heading">{t("lp.scenes")}</small>
               <div className="lr-chips">
                 {st.scenes.slice(0, 8).map((sc) => {
                   const id = typeof sc === "string" ? sc : sc.id;
@@ -1211,7 +1240,7 @@ export function BardPanel({ channelId, mood, onMood, onOpenCompanion, onClose }:
           )}
           {Array.isArray(st?.ambience) && st.ambience.length > 0 && (
             <>
-              <small className="lr-heading">Ambience</small>
+              <small className="lr-heading">{t("lp.ambience")}</small>
               <div className="lr-chips">
                 {st.ambience.slice(0, 8).map((am) => {
                   const id = typeof am === "string" ? am : am.id;
@@ -1228,7 +1257,7 @@ export function BardPanel({ channelId, mood, onMood, onOpenCompanion, onClose }:
           )}
           {Array.isArray(st?.sfx) && st.sfx.length > 0 && (
             <>
-              <small className="lr-heading">Sound effects</small>
+              <small className="lr-heading">{t("lp.sfx")}</small>
               <div className="lr-chips">
                 {st.sfx.slice(0, 8).map((fx) => {
                   const id = typeof fx === "string" ? fx : fx.id;
@@ -1244,7 +1273,7 @@ export function BardPanel({ channelId, mood, onMood, onOpenCompanion, onClose }:
           )}
         </>
       ) : (
-        <p className="lr-note">Start the D&amp;D Companion Bard service to stream synced music and sound effects into this voice room.</p>
+        <p className="lr-note">{t("lp.bardOfflineNote")}</p>
       )}
     </div>
   );

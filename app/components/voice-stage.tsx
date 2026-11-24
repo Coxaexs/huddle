@@ -119,6 +119,7 @@ interface VoiceStageProps {
   /** "Watch Stream" from the channel list: open on this stream, past the tune-in prompt. */
   focusRequest?: StageFocusRequest | null;
   onFocusRequestDone?: () => void;
+  tabletopDock?: React.ReactNode;
 }
 
 
@@ -179,6 +180,7 @@ export function VoiceStage({
   onFocusRequestDone,
   onSetStreamVolume,
   onToggleStreamMute,
+  tabletopDock,
 }: VoiceStageProps) {
   const speakingIds = useSpeaking(voice.speakingStore);
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
@@ -860,6 +862,7 @@ export function VoiceStage({
         handleViewModeChange={handleViewModeChange}
         onToggleBattlemap={onToggleBattlemap}
         battlemapOpen={battlemapOpen}
+        tabletopDock={tabletopDock}
       />
 
       <StageBody

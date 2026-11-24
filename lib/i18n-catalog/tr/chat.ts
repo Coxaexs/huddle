@@ -98,6 +98,8 @@ export const chat: Record<keyof typeof en, string> = {
   "composer.openEmojiPicker": "Emoji Seçiciyi Aç",
   "composer.addGif": "GIF Ekle",
   "composer.showCommands": "Komutları göster",
+  "composer.icPill": "IC: {name}",
+  "composer.icToggleTitle": "{name} karakteri olarak konuş",
   "composer.sendMessage": "Mesajı gönder",
   "composer.formatTooltip": "Renkler, yazı tipleri ve efektler",
   "composer.playGameTooltip": "Oyun oyna",

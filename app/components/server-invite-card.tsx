@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, Users, Sparkles } from "lucide-react";
 import { shownCounts } from "@/lib/member-counts";
+import { useI18n } from "../lib/i18n-context";
 
 export interface ResolvedInvite {
   valid: boolean;
@@ -39,6 +40,7 @@ export function ServerInviteCard({
   onJoin,
   onSelectServer,
 }: ServerInviteCardProps) {
+  const { t } = useI18n();
   const isMember = isMemberProp !== undefined ? isMemberProp : Boolean(invite.isMember);
   const [joining, setJoining] = useState(false);
   const [joined, setJoined] = useState(isMember);
@@ -51,9 +53,9 @@ export function ServerInviteCard({
           <div className="server-invite-invalid-inner">
             <span className="server-invite-invalid-icon">⚠️</span>
             <div>
-              <strong>Invalid Invite</strong>
+              <strong>{t("chat.invite.invalidTitle")}</strong>
               <div style={{ fontSize: "11px", color: "var(--text-muted, #949ba4)" }}>
-                {invite.error || "This invite may be expired or invalid."}
+                {invite.error || t("chat.invite.invalidDesc")}
               </div>
             </div>
           </div>
@@ -68,8 +70,8 @@ export function ServerInviteCard({
         <div className="server-invite-header">
           <span className="server-invite-eyebrow">
             {invite.inviter
-              ? `${invite.inviter.displayName} shared an account invite`
-              : "ACCOUNT REGISTRATION INVITE"}
+              ? t("chat.invite.sharedAccount", { name: invite.inviter.displayName })
+              : t("chat.invite.accountReg")}
           </span>
         </div>
         <div className="server-invite-body">
@@ -80,10 +82,10 @@ export function ServerInviteCard({
             ✉️
           </div>
           <div className="server-invite-details">
-            <div className="server-invite-name">Account Invite</div>
+            <div className="server-invite-name">{t("chat.invite.accountTitle")}</div>
             <div className="server-invite-counts">
               <span className="server-invite-count-item" style={{ fontFamily: "monospace", letterSpacing: "0.05em" }}>
-                Code: {invite.code}
+                {t("chat.invite.codeLabel", { code: invite.code })}
               </span>
             </div>
           </div>
@@ -94,7 +96,7 @@ export function ServerInviteCard({
               void navigator.clipboard?.writeText(invite.code);
             }}
           >
-            Copy Code
+            {t("chat.invite.copyCode")}
           </button>
         </div>
       </div>
@@ -145,8 +147,8 @@ export function ServerInviteCard({
         <Sparkles size={12} className="server-invite-spark" />
         <span className="server-invite-eyebrow">
           {inviter
-            ? `${inviter.displayName} invited you to join`
-            : "You've been invited to join a server"}
+            ? t("chat.invite.invitedBy", { name: inviter.displayName })
+            : t("chat.invite.invitedGeneric")}
         </span>
       </div>
 
@@ -173,12 +175,12 @@ export function ServerInviteCard({
               {counts.online !== null && (
                 <span className="server-invite-count-item">
                   <span className="server-invite-dot online" />
-                  <b>{counts.online}</b> Online
+                  <b>{counts.online}</b> {t("chat.invite.online")}
                 </span>
               )}
               <span className="server-invite-count-item">
                 <span className="server-invite-dot total" />
-                <b>{counts.members}</b> Members
+                <b>{counts.members}</b> {t("chat.invite.members")}
               </span>
             </div>
           )}
@@ -191,13 +193,13 @@ export function ServerInviteCard({
           disabled={joining}
         >
           {joining ? (
-            "Joining…"
+            t("chat.invite.joining")
           ) : joined ? (
             <>
-              <Check size={14} className="btn-icon" /> Joined
+              <Check size={14} className="btn-icon" /> {t("chat.invite.joined")}
             </>
           ) : (
-            "Join Server"
+            t("chat.invite.joinServer")
           )}
         </button>
       </div>

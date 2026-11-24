@@ -10,6 +10,7 @@ import { scopeProfileCss } from "@/lib/themes";
 import type { PrideBadgeId, ProfileStyle, SocialLink } from "@/lib/users";
 import { useRef } from "react";
 import { cardLook, useCardPointer } from "../../lib/profile-look";
+import { useI18n } from "../../lib/i18n-context";
 import { CardBackdrop, CardChrome, StyledName } from "../profile-style-parts";
 
 export interface Cosmetics {
@@ -68,9 +69,10 @@ export function ProfilePreviewCard({
   /** Tilts toward the pointer and plays the entrance, like the real card. */
   interactive?: boolean;
 }) {
+  const { t, locale } = useI18n();
   const lg = size === "lg";
   const since = profile.createdAt
-    ? new Date(profile.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    ? new Date(profile.createdAt).toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" })
     : null;
   const frame = cosmetics.profileFrame !== "none" ? ` profile-frame-${cosmetics.profileFrame}` : "";
   const look = cardLook(profile.profileStyle, profile.color);
@@ -117,14 +119,14 @@ export function ProfilePreviewCard({
         {profile.tagline && <p className="pv-tagline profile-tagline">{profile.tagline}</p>}
         {(profile.isAdmin || (profile.prideBadges && profile.prideBadges.length > 1)) && (
           <div className="pv-badges">
-            {profile.isAdmin && <span className="pv-badge" title="Server owner">🛡️</span>}
+            {profile.isAdmin && <span className="pv-badge" title={t("settings.profilePreview.owner")}>🛡️</span>}
             {profile.prideBadges && profile.prideBadges.length > 1 && <PrideBadges badges={profile.prideBadges.slice(1)} compact />}
           </div>
         )}
 
         {lg ? (
           <div className="pv-actions" aria-hidden="true">
-            <span className="pv-btn pv-btn-primary"><MessageCircle size={16} /> Message</span>
+            <span className="pv-btn pv-btn-primary"><MessageCircle size={16} /> {t("settings.profilePreview.message")}</span>
             <span className="pv-btn pv-btn-icon"><UserPlus size={16} /></span>
             <span className="pv-btn pv-btn-icon"><MoreHorizontal size={16} /></span>
           </div>
@@ -136,7 +138,7 @@ export function ProfilePreviewCard({
               {profile.song.cover ? <img src={proxiedImage(profile.song.cover)} alt="" /> : <Music size={18} />}
             </span>
             <span className="pv-song-text">
-              <small>Listening to</small>
+              <small>{t("settings.profilePreview.listeningTo")}</small>
               <strong>{profile.song.title}</strong>
               <span>{profile.song.artist}</span>
             </span>
@@ -144,25 +146,25 @@ export function ProfilePreviewCard({
         )}
 
         <div className="pv-section">
-          {lg && <h3>About Me</h3>}
+          {lg && <h3>{t("settings.profilePreview.aboutMe")}</h3>}
           <p
             className="pv-bio profile-bio"
             style={bioLines ? ({ WebkitLineClamp: bioLines, display: "-webkit-box", WebkitBoxOrient: "vertical", overflow: "hidden" } as React.CSSProperties) : undefined}
           >
-            {profile.bio?.trim() || (lg ? "Nothing here yet. Write something in About." : "No bio yet.")}
+            {profile.bio?.trim() || (lg ? t("settings.profilePreview.noBioLg") : t("settings.profilePreview.noBioSm"))}
           </p>
         </div>
 
         {lg && since && (
           <div className="pv-section">
-            <h3>Member Since</h3>
+            <h3>{t("settings.profilePreview.memberSince")}</h3>
             <p className="pv-since"><Calendar size={14} /> {since}</p>
           </div>
         )}
 
         {lg && profile.socialLinks && profile.socialLinks.length > 0 && (
           <div className="pv-section">
-            <h3>Connections</h3>
+            <h3>{t("settings.profilePreview.connections")}</h3>
             <ul className="pv-links profile-social-links">
               {profile.socialLinks.map((link, index) => (
                 <li key={index}>
@@ -174,7 +176,7 @@ export function ProfilePreviewCard({
           </div>
         )}
 
-        {!lg && <span className="pv-example-btn">Example Button</span>}
+        {!lg && <span className="pv-example-btn">{t("settings.profilePreview.exampleBtn")}</span>}
       </div>
       <ProfileEffect id={cosmetics.profileEffect} />
     </div>

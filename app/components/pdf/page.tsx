@@ -12,6 +12,7 @@ import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import { loadPdfJs } from "./runtime";
 import type { PdfField, PdfValue, PdfWidget } from "./forms";
 import { findMatches, type TextRun } from "./search";
+import { useI18n } from "../../lib/i18n-context";
 
 /** Keeps a canvas under ~16M device pixels so iOS Safari doesn't refuse it. */
 const MAX_CANVAS_PIXELS = 16_000_000;
@@ -126,6 +127,7 @@ export const PdfPageView = memo(function PdfPageView({
   onLink,
   highlight,
 }: PdfPageViewProps) {
+  const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState<PDFPageProxy | null>(null);
@@ -340,7 +342,7 @@ export const PdfPageView = memo(function PdfPageView({
           "--total-scale-factor": scale,
         } as CSSProperties
       }
-      aria-label={`Page ${pageNumber}`}
+      aria-label={t("pdf.pageAria", { num: pageNumber })}
     >
       <canvas ref={canvasRef} className={painted ? "painted" : ""} />
       {!painted && !failed && <div className="pdfv-page-loading" aria-hidden="true" />}
@@ -353,7 +355,7 @@ export const PdfPageView = memo(function PdfPageView({
             setAttempt((value) => value + 1);
           }}
         >
-          This page could not be drawn · Retry
+          {t("pdf.pageDrawFailed")}
         </button>
       )}
       <div className="pdfv-text textLayer" ref={textRef} />
@@ -377,7 +379,7 @@ export const PdfPageView = memo(function PdfPageView({
               key={link.id}
               style={style}
               href="#"
-              title="Go to destination"
+              title={t("pdf.goToDest")}
               onClick={(event) => {
                 event.preventDefault();
                 onLink({ dest: link.dest });
@@ -531,6 +533,7 @@ export const PdfThumb = memo(function PdfThumb({
   root: HTMLElement | null;
   onSelect: (pageNumber: number) => void;
 }) {
+  const { t } = useI18n();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [near, setNear] = useState(false);
@@ -587,7 +590,7 @@ export const PdfThumb = memo(function PdfThumb({
       className={`pdfv-thumb${active ? " active" : ""}`}
       data-thumb={pageNumber}
       onClick={() => onSelect(pageNumber)}
-      aria-label={`Go to page ${pageNumber}`}
+      aria-label={t("pdf.goToPageAria", { num: pageNumber })}
       aria-current={active ? "page" : undefined}
     >
       <span className="pdfv-thumb-sheet" style={{ width, height }}>

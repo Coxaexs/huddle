@@ -1,7 +1,10 @@
+import { canSeeServer } from "@/lib/access";
 import { currentUser, unauthorized, type User } from "@/lib/auth";
 import { dndBotToken } from "@/lib/bot-auth";
 import { snowflakeFor } from "@/lib/discord/snowflake";
+import { isServerDm, userHasAnyGmRole } from "@/lib/dnd-rules";
 import { dndBaseUrl, dndPublicUrl } from "@/lib/dnd-url";
+import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +18,7 @@ const ALLOWED_ROUTES = new Set([
   "party",
   "new",
   "display",
+  "vtt",
 ]);
 
 function normalizeRoute(raw: unknown): string {
@@ -23,19 +27,26 @@ function normalizeRoute(raw: unknown): string {
   return ALLOWED_ROUTES.has(cleaned) ? cleaned : "sheet";
 }
 
-/**
- * Hoffle admins choose the companion's game masters and switch their own GM
- * mode there (dndbot gm_access.py); nobody else becomes a GM by signing in,
- * not even a server owner. So only the admin flag is passed on.
- */
 function isHoffleAdmin(user: User): boolean {
   return Boolean(user.is_admin);
+}
+
+async function resolveHasDmRole(user: User, serverId: string | null): Promise<boolean> {
+  const db = bindings().DB;
+  if (!db) return false;
+  await ensureSchema(db);
+  if (serverId) {
+    if (!(await canSeeServer(db, serverId, user))) return false;
+    return isServerDm(db, user.id, serverId);
+  }
+  return userHasAnyGmRole(db, user.id);
 }
 
 async function handleSso(
   user: User,
   route: string,
   mode: "user" | "display",
+  serverId: string | null,
 ): Promise<Response> {
   const b = bindings();
   const secret = b.BOT_TOKEN?.trim();
@@ -50,6 +61,7 @@ async function handleSso(
 
   const snowflake = mode === "display" ? "" : await snowflakeFor("user", user.id);
   const isAdmin = mode === "display" ? false : isHoffleAdmin(user);
+  const hasDmRole = mode === "display" ? false : await resolveHasDmRole(user, serverId);
 
   let upstream: Response;
   try {
@@ -62,8 +74,7 @@ async function handleSso(
       body: JSON.stringify({
         user_id: snowflake,
         username: user.display_name || user.username,
-        // can_gm only for companions older than gm_access.py, which used it.
-        can_gm: isAdmin,
+        can_gm: isAdmin || hasDmRole,
         is_admin: isAdmin,
         mode,
         route,
@@ -103,7 +114,8 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const route = normalizeRoute(params.get("route"));
   const mode = params.get("mode") === "display" ? "display" : "user";
-  return handleSso(user, route, mode);
+  const serverId = params.get("serverId")?.trim().slice(0, 64) || null;
+  return handleSso(user, route, mode, serverId);
 }
 
 export async function POST(request: Request) {
@@ -112,8 +124,10 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     route?: string;
     mode?: string;
+    serverId?: string | null;
   };
   const route = normalizeRoute(body.route);
   const mode = body.mode === "display" ? "display" : "user";
-  return handleSso(user, route, mode);
+  const serverId = typeof body.serverId === "string" && body.serverId.trim() ? body.serverId.trim().slice(0, 64) : null;
+  return handleSso(user, route, mode, serverId);
 }

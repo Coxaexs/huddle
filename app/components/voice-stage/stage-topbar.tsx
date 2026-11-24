@@ -18,6 +18,7 @@ export function StageTopbar({
   handleViewModeChange,
   onToggleBattlemap,
   battlemapOpen,
+  tabletopDock,
 }: {
   hideTopbar: boolean;
   channelName: string;
@@ -30,6 +31,7 @@ export function StageTopbar({
   handleViewModeChange: (mode: "grid" | "table" | "map") => void;
   onToggleBattlemap: (() => void) | undefined;
   battlemapOpen: boolean | undefined;
+  tabletopDock?: React.ReactNode;
 }) {
   const { t } = useI18n();
   return (
@@ -83,6 +85,8 @@ export function StageTopbar({
                 <ExternalLink size={15} />
               </button>
             )}
+
+            {tabletopDock}
 
             <div className="voice-view-switcher">
               {(["grid", "table", "map"] as const).map((mode) => (

@@ -33,6 +33,7 @@ import {
   type PdfLinkTarget,
 } from "./page";
 import { findMatches, normalizeNeedle, type TextRun } from "./search";
+import { useI18n } from "../../lib/i18n-context";
 
 interface PdfViewerProps {
   url: string;
@@ -112,6 +113,7 @@ const ICONS = {
 };
 
 export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
+  const { t } = useI18n();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const spacerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -226,10 +228,10 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
         const kind = (loadError as { name?: string })?.name;
         setError(
           kind === "InvalidPDFException"
-            ? "This file doesn't look like a valid PDF."
+            ? t("pdf.invalidPdf")
             : kind === "MissingPDFException"
-              ? "This PDF is no longer available."
-              : "The PDF could not be loaded.",
+              ? t("pdf.missingPdf")
+              : t("pdf.loadFailed"),
         );
       }
     })();
@@ -569,7 +571,7 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
         return;
       }
     }
-    setStatus("Every fillable field has a value.");
+    setStatus(t("pdf.allFilled"));
   }, [fields, values, locateField]);
 
   const visibleFields = useMemo(() => {
@@ -595,7 +597,7 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
       const blob = new Blob([Uint8Array.from(bytes)], { type: "application/pdf" });
       if (mode === "send" && onSendCopy) {
         await onSendCopy(new File([blob], copy, { type: "application/pdf" }));
-        setStatus(`Sent ${copy} to the chat`);
+        setStatus(t("pdf.sentToChat", { copy }));
       } else {
         const blobUrl = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -603,12 +605,12 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
         link.download = copy;
         link.click();
         window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1_000);
-        setStatus(`Saved ${copy}`);
+        setStatus(t("pdf.savedCopy", { copy }));
       }
       setSavedValues(values);
     } catch (saveError) {
       setStatus(
-        saveError instanceof Error ? saveError.message : "The filled copy could not be saved.",
+        saveError instanceof Error ? saveError.message : t("pdf.saveCopyFailed"),
       );
     } finally {
       setSaving(false);
@@ -616,11 +618,11 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
   }
 
   const requestClose = useCallback(() => {
-    if (dirty && !window.confirm("Close without saving your edits to this PDF?")) {
+    if (dirty && !window.confirm(t("pdf.confirmClose"))) {
       return;
     }
     onClose();
-  }, [dirty, onClose]);
+  }, [dirty, onClose, t]);
 
   // ---------- search ----------
   useEffect(() => {
@@ -804,10 +806,10 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
               <strong title={name}>{name}</strong>
               <small>
                 {loading
-                  ? `Opening… ${progress ? Math.round(progress * 100) + "%" : ""}`
+                  ? t("pdf.openingPct", { pct: progress ? Math.round(progress * 100) + "%" : "" })
                   : pageCount
-                    ? `${pageCount} page${pageCount === 1 ? "" : "s"}${
-                        hasForm ? ` · ${filledCount}/${editable.length} fields filled` : ""
+                    ? `${pageCount} ${pageCount === 1 ? t("pdf.pageSingle") : t("pdf.pagePlural")}${
+                        hasForm ? t("pdf.fieldsFilledSuffix", { filled: filledCount, total: editable.length }) : ""
                       }`
                     : ""}
               </small>
@@ -815,11 +817,11 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
           </div>
 
           <div className="pdfv-tools">
-            <div className="pdfv-group" aria-label="Page navigation">
+            <div className="pdfv-group" aria-label={t("pdf.pageNavAria")}>
               <button
                 type="button"
-                title="Previous page (Alt+←)"
-                aria-label="Previous page"
+                title={t("pdf.prevPageTitle")}
+                aria-label={t("pdf.prevPageAria")}
                 disabled={!pageCount || view.current <= 1}
                 onClick={() => goToPage(view.current - 1)}
               >
@@ -828,7 +830,7 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
               <label className="pdfv-page-box">
                 <input
                   inputMode="numeric"
-                  aria-label="Page number"
+                  aria-label={t("pdf.pageNumAria")}
                   value={pageDraft ?? String(view.current)}
                   disabled={!pageCount}
                   onFocus={(event) => event.currentTarget.select()}
@@ -842,8 +844,8 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
               </label>
               <button
                 type="button"
-                title="Next page (Alt+→)"
-                aria-label="Next page"
+                title={t("pdf.nextPageTitle")}
+                aria-label={t("pdf.nextPageAria")}
                 disabled={!pageCount || view.current >= pageCount}
                 onClick={() => goToPage(view.current + 1)}
               >
@@ -851,18 +853,18 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
               </button>
             </div>
 
-            <div className="pdfv-group" aria-label="Zoom">
+            <div className="pdfv-group" aria-label={t("pdf.zoomAria")}>
               <button
                 type="button"
-                title="Zoom out (Ctrl −)"
-                aria-label="Zoom out"
+                title={t("pdf.zoomOutTitle")}
+                aria-label={t("pdf.zoomOutAria")}
                 disabled={!pageCount}
                 onClick={() => stepZoom(-1)}
               >
                 <Icon d={ICONS.minus} />
               </button>
               <select
-                aria-label="Zoom level"
+                aria-label={t("pdf.zoomLevelAria")}
                 value={zoomValue}
                 disabled={!pageCount}
                 onChange={(event) => {
@@ -873,8 +875,8 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
                   else setZoomMode((Number(next) / 100) * CSS_UNITS);
                 }}
               >
-                <option value="width">Fit width</option>
-                <option value="page">Fit page</option>
+                <option value="width">{t("pdf.fitWidth")}</option>
+                <option value="page">{t("pdf.fitPage")}</option>
                 {presets.map((preset) => (
                   <option key={preset} value={String(preset)}>
                     {preset}%
@@ -883,8 +885,8 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
               </select>
               <button
                 type="button"
-                title="Zoom in (Ctrl +)"
-                aria-label="Zoom in"
+                title={t("pdf.zoomInTitle")}
+                aria-label={t("pdf.zoomInAria")}
                 disabled={!pageCount}
                 onClick={() => stepZoom(1)}
               >
@@ -896,8 +898,8 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
               <button
                 type="button"
                 className={searchOpen ? "on" : ""}
-                title="Find in document (Ctrl F)"
-                aria-label="Find in document"
+                title={t("pdf.findTitle")}
+                aria-label={t("pdf.findAria")}
                 aria-pressed={searchOpen}
                 disabled={!pageCount}
                 onClick={() => (searchOpen ? setSearchOpen(false) : openSearch())}
@@ -907,8 +909,8 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
               <button
                 type="button"
                 className={sidebar === "pages" ? "on" : ""}
-                title="Page thumbnails"
-                aria-label="Page thumbnails"
+                title={t("pdf.thumbsTitle")}
+                aria-label={t("pdf.thumbsTitle")}
                 aria-pressed={sidebar === "pages"}
                 disabled={!pageCount}
                 onClick={() => setSidebar((current) => (current === "pages" ? null : "pages"))}
@@ -919,13 +921,13 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
                 <button
                   type="button"
                   className={`pdfv-form-toggle${sidebar === "form" ? " on" : ""}`}
-                  title="Form fields"
-                  aria-label="Form fields"
+                  title={t("pdf.formFields")}
+                  aria-label={t("pdf.formFields")}
                   aria-pressed={sidebar === "form"}
                   onClick={() => setSidebar((current) => (current === "form" ? null : "form"))}
                 >
                   <Icon d={ICONS.form} />
-                  <span>Form</span>
+                  <span>{t("pdf.form")}</span>
                 </button>
               )}
             </div>
@@ -936,8 +938,8 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
               className="pdfv-icon-btn"
               href={url}
               download={name}
-              title="Download original"
-              aria-label="Download original"
+              title={t("pdf.downloadOriginal")}
+              aria-label={t("pdf.downloadOriginal")}
             >
               <Icon d={ICONS.download} />
             </a>
@@ -949,23 +951,23 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
                 onClick={() => void exportCopy(onSendCopy ? "send" : "download")}
                 title={
                   onSendCopy
-                    ? "Post a copy with your entries filled in to this chat"
-                    : "Download a copy with your entries filled in"
+                    ? t("pdf.sendCopyTitle")
+                    : t("pdf.downloadCopyTitle")
                 }
               >
                 <Icon d={onSendCopy ? ICONS.send : ICONS.save} size={16} />
                 <span>
                   {saving
-                    ? onSendCopy ? "Sending…" : "Saving…"
-                    : onSendCopy ? "Send copy" : "Save copy"}
+                    ? onSendCopy ? t("pdf.sending") : t("pdf.saving")
+                    : onSendCopy ? t("pdf.sendCopy") : t("pdf.saveCopy")}
                 </span>
               </button>
             )}
             <button
               type="button"
               className="pdfv-icon-btn"
-              aria-label="Close PDF"
-              title="Close (Esc)"
+              aria-label={t("pdf.closePdfAria")}
+              title={t("pdf.closeEscTitle")}
               onClick={requestClose}
             >
               <Icon d={ICONS.close} />
@@ -980,8 +982,8 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
               ref={searchInputRef}
               type="search"
               value={query}
-              placeholder="Find in document"
-              aria-label="Find in document"
+              placeholder={t("pdf.findAria")}
+              aria-label={t("pdf.findAria")}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
@@ -994,18 +996,18 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
               {!query.trim()
                 ? ""
                 : searching && !matches.length
-                  ? "Searching…"
+                  ? t("pdf.searching")
                   : matches.length
-                    ? `${matchIndex + 1} of ${matches.length}${matches.length >= MAX_MATCHES ? "+" : ""}${searching ? "…" : ""}`
-                    : "No matches"}
+                    ? t("pdf.matchOf", { current: matchIndex + 1, total: matches.length, plus: matches.length >= MAX_MATCHES ? "+" : "", ellipsis: searching ? "…" : "" })
+                    : t("pdf.noMatches")}
             </span>
-            <button type="button" aria-label="Previous match" disabled={!matches.length} onClick={() => stepMatch(-1)}>
+            <button type="button" aria-label={t("pdf.prevMatchAria")} disabled={!matches.length} onClick={() => stepMatch(-1)}>
               <Icon d={ICONS.up} size={16} />
             </button>
-            <button type="button" aria-label="Next match" disabled={!matches.length} onClick={() => stepMatch(1)}>
+            <button type="button" aria-label={t("pdf.nextMatchAria")} disabled={!matches.length} onClick={() => stepMatch(1)}>
               <Icon d={ICONS.down} size={16} />
             </button>
-            <button type="button" aria-label="Close search" onClick={() => setSearchOpen(false)}>
+            <button type="button" aria-label={t("pdf.closeSearchAria")} onClick={() => setSearchOpen(false)}>
               <Icon d={ICONS.close} size={16} />
             </button>
           </div>
@@ -1024,7 +1026,7 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
                       className={sidebar === "pages" ? "on" : ""}
                       onClick={() => setSidebar("pages")}
                     >
-                      Pages
+                      {t("pdf.pages")}
                     </button>
                     <button
                       type="button"
@@ -1033,14 +1035,14 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
                       className={sidebar === "form" ? "on" : ""}
                       onClick={() => setSidebar("form")}
                     >
-                      Form
+                      {t("pdf.form")}
                     </button>
                   </div>
                 )}
                 <button
                   type="button"
                   className="pdfv-side-close"
-                  aria-label="Close panel"
+                  aria-label={t("pdf.closePanelAria")}
                   onClick={() => setSidebar(null)}
                 >
                   <Icon d={ICONS.close} size={16} />
@@ -1077,21 +1079,21 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
                       <i style={{ width: `${editable.length ? (filledCount / editable.length) * 100 : 0}%` }} />
                     </div>
                     <p>
-                      {filledCount} of {editable.length} fields filled
-                      {changedCount ? ` · ${changedCount} edited` : ""}
+                      {t("pdf.fieldsFilledOf", { filled: filledCount, total: editable.length })}
+                      {changedCount ? t("pdf.editedSuffix", { count: changedCount }) : ""}
                     </p>
                     <div className="pdfv-form-actions">
                       <button type="button" className="pdfv-chip" onClick={nextEmpty}>
-                        Next empty field
+                        {t("pdf.nextEmptyField")}
                       </button>
                       <button
                         type="button"
                         className="pdfv-chip subtle"
                         disabled={saving}
                         onClick={() => void exportCopy("download")}
-                        title="Download a copy with your entries filled in"
+                        title={t("pdf.downloadCopyTitle")}
                       >
-                        Download
+                        {t("pdf.download")}
                       </button>
                       <button
                         type="button"
@@ -1099,18 +1101,18 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
                         disabled={!changedCount}
                         onClick={() => {
                           setValues(initialRef.current);
-                          setStatus("Your entries were reset.");
+                          setStatus(t("pdf.entriesReset"));
                         }}
                       >
-                        Reset
+                        {t("pdf.reset")}
                       </button>
                     </div>
                     <input
                       type="search"
                       value={formQuery}
                       onChange={(event) => setFormQuery(event.target.value)}
-                      placeholder="Search fields…"
-                      aria-label="Search form fields"
+                      placeholder={t("pdf.searchFieldsPlaceholder")}
+                      aria-label={t("pdf.searchFieldsAria")}
                     />
                     <label className="pdfv-check-row">
                       <input
@@ -1118,7 +1120,7 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
                         checked={onlyEmpty}
                         onChange={(event) => setOnlyEmpty(event.target.checked)}
                       />
-                      Only show empty fields
+                      {t("pdf.onlyEmptyFields")}
                     </label>
                   </div>
                   <div className="pdfv-fieldlist">
@@ -1128,8 +1130,8 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
                           <span title={field.name}>{field.label}</span>
                           <button
                             type="button"
-                            title="Show on page"
-                            aria-label={`Show ${field.label} on page`}
+                            title={t("pdf.showOnPage")}
+                            aria-label={t("pdf.showFieldOnPageAria", { label: field.label })}
                             onClick={() => locateField(field)}
                           >
                             p.{field.widgets[0].page}
@@ -1137,11 +1139,11 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
                           </button>
                         </div>
                         <FieldEditor field={field} value={values[field.name]} onValue={setValue} />
-                        {field.readOnly && <small>Read only</small>}
+                        {field.readOnly && <small>{t("pdf.readOnly")}</small>}
                       </div>
                     ))}
                     {!visibleFields.length && (
-                      <p className="pdfv-empty">No matching fields.</p>
+                      <p className="pdfv-empty">{t("pdf.noMatchingFields")}</p>
                     )}
                   </div>
                 </div>
@@ -1154,7 +1156,7 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
               className="pdfv-scroller"
               ref={scrollerRef}
               tabIndex={0}
-              aria-label="Document pages"
+              aria-label={t("pdf.documentPagesAria")}
             >
               {doc && (
                 <div
@@ -1186,14 +1188,14 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
             {loading && (
               <div className="pdfv-state">
                 <div className="pdfv-spinner" />
-                <p>Opening PDF{progress ? ` · ${Math.round(progress * 100)}%` : "…"}</p>
+                <p>{t("pdf.openingPdf", { suffix: progress ? ` · ${Math.round(progress * 100)}%` : "…" })}</p>
               </div>
             )}
             {error && (
               <div className="pdfv-state error">
                 <p>{error}</p>
                 <a href={url} download={name} className="pdfv-chip">
-                  Download the file instead
+                  {t("pdf.downloadInstead")}
                 </a>
               </div>
             )}
@@ -1208,19 +1210,19 @@ export function PdfViewer({ url, name, onClose, onSendCopy }: PdfViewerProps) {
               >
                 <p>
                   {password.wrong
-                    ? "That password didn't work. Try again."
-                    : "This PDF is password protected."}
+                    ? t("pdf.wrongPassword")
+                    : t("pdf.passwordProtected")}
                 </p>
                 <input
                   type="password"
                   autoFocus
                   value={passwordDraft}
                   onChange={(event) => setPasswordDraft(event.target.value)}
-                  placeholder="Password"
-                  aria-label="PDF password"
+                  placeholder={t("pdf.passwordPlaceholder")}
+                  aria-label={t("pdf.passwordAria")}
                 />
                 <button type="submit" className="pdfv-chip primary">
-                  Open
+                  {t("pdf.open")}
                 </button>
               </form>
             )}
@@ -1247,6 +1249,7 @@ function FieldEditor({
   value: PdfValue | undefined;
   onValue: (field: PdfField, value: PdfValue) => void;
 }) {
+  const { t } = useI18n();
   if (field.kind === "checkbox") {
     return (
       <label className="pdfv-check-row box">
@@ -1256,7 +1259,7 @@ function FieldEditor({
           disabled={field.readOnly}
           onChange={(event) => onValue(field, event.target.checked)}
         />
-        {value ? "Checked" : "Not checked"}
+        {value ? t("pdf.checked") : t("pdf.notChecked")}
       </label>
     );
   }
@@ -1285,7 +1288,7 @@ function FieldEditor({
         disabled={field.readOnly}
         onChange={(event) => onValue(field, event.target.value)}
       >
-        <option value="">Choose…</option>
+        <option value="">{t("pdf.choose")}</option>
         {field.options?.map((option) => (
           <option key={option} value={option}>
             {option}

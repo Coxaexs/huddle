@@ -24,6 +24,8 @@ import type { DiceRollEvent } from "@/lib/protocol";
 import type { TranslateFn } from "@/lib/i18n";
 import { tRich, useI18n } from "../lib/i18n-context";
 import { BUILTIN_THEMES, type Theme } from "@/lib/themes";
+import { setEcoMode, useEcoMode } from "../lib/eco-mode";
+import { setUiMode, useUiMode } from "../lib/ui-mode";
 
 /**
  * The welcome tutorial: a theme picker, then five pages on how Hoffle works.
@@ -78,6 +80,11 @@ const STYLE = `
 .tutorial-card { width: min(640px, 100%); max-height: min(720px, calc(var(--app-height, 100vh) - 40px)); display: flex; flex-direction: column;
   background: var(--panel, #1a1628); color: var(--ink, #e8e3f5); border: 1px solid var(--line, rgba(255,255,255,.08));
   border-radius: calc(var(--ui-corners, 16px) + 4px); box-shadow: 0 28px 90px rgba(0,0,0,.45); overflow: hidden; }
+.tutorial-progress { height: 3px; width: 100%; background: color-mix(in srgb, var(--ink) 10%, transparent); }
+.tutorial-progress-bar { height: 100%; background: var(--lavender, #a78bfa); transition: width .2s ease; }
+.tutorial-pill-toggle { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; padding: 7px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: color-mix(in srgb, var(--ink) 4%, transparent); color: var(--ink); font-size: 13px; cursor: pointer; }
+.tutorial-pill-toggle[aria-pressed="true"] { border-color: var(--lavender); background: var(--lavender-soft, rgba(167,139,250,.15)); }
 .tutorial-head { display: flex; align-items: center; gap: 10px; padding: 16px 18px 0; }
 .tutorial-step { font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--lavender, #a78bfa); }
 .tutorial-close { margin-left: auto; display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 999px;
@@ -126,7 +133,11 @@ const STYLE = `
 }
 `;
 
-function pages(actions: TutorialActions, t: TranslateFn): Page[] {
+function pages(
+  actions: TutorialActions,
+  t: TranslateFn,
+  prefs: { eco: boolean; ui: "simple" | "full" },
+): Page[] {
   const keys = (...names: string[]) => (
     <>
       {names.map((name, index) => (
@@ -162,6 +173,14 @@ function pages(actions: TutorialActions, t: TranslateFn): Page[] {
               );
             })}
           </div>
+          <button
+            type="button"
+            className="tutorial-pill-toggle"
+            aria-pressed={prefs.eco}
+            onClick={() => setEcoMode(!prefs.eco)}
+          >
+            ⚡ {prefs.eco ? t("tutorial.ecoOn") : t("tutorial.ecoToggle")}
+          </button>
         </>
       ),
     },
@@ -250,6 +269,17 @@ function pages(actions: TutorialActions, t: TranslateFn): Page[] {
           <p className="tutorial-text" style={{ marginTop: 12 }}>
             {tRich(t, "tutorial.yours.end", { path: <b>{t("tutorial.path.tutorial")}</b> })}
           </p>
+          <div style={{ marginTop: 12 }}>
+            <p className="tutorial-text" style={{ fontSize: 13 }}>{t("tutorial.modeToggle")}</p>
+            <button
+              type="button"
+              className="tutorial-pill-toggle"
+              aria-pressed={prefs.ui === "full"}
+              onClick={() => setUiMode(prefs.ui === "simple" ? "full" : "simple")}
+            >
+              {prefs.ui === "simple" ? t("tutorial.modeSwitchFull") : t("tutorial.modeSwitchSimple")}
+            </button>
+          </div>
         </>
       ),
       tries: [
@@ -296,9 +326,12 @@ export function WelcomeTutorial({
   actions: TutorialActions;
 }) {
   const { t } = useI18n();
-  const all = pages(actions, t);
+  const eco = useEcoMode();
+  const ui = useUiMode();
+  const all = pages(actions, t, { eco, ui });
   const current = all[Math.min(page, all.length - 1)];
   const last = page >= all.length - 1;
+  const pct = Math.round(((page + 1) / all.length) * 100);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -312,6 +345,9 @@ export function WelcomeTutorial({
     <div className="tutorial-backdrop" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
       <style href="hoffle-tutorial" precedence="default">{STYLE}</style>
       <div className="tutorial-card">
+        <div className="tutorial-progress" aria-hidden="true">
+          <div className="tutorial-progress-bar" style={{ width: `${pct}%` }} />
+        </div>
         <div className="tutorial-head">
           <span className="tutorial-step">
             {page === 0 ? t("tutorial.step.welcome") : t("tutorial.step.tutorial")} ·{" "}

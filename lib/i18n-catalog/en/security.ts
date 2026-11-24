@@ -68,4 +68,13 @@ export const security = {
   "device.script": "A script or bot",
   "device.browser": "A browser",
   "security.failed": "That did not work.",
+  "security.oauth.title": "Connected accounts",
+  "security.oauth.about": "Link Google or Discord so you can sign in with one click.",
+  "security.oauth.linkedAs": "Linked as {name}",
+  "security.oauth.notLinked": "Not linked",
+  "security.oauth.link": "Link {provider}",
+  "security.oauth.unlink": "Unlink",
+  "security.oauth.unlinked": "{provider} unlinked.",
+  "security.oauth.linkedNotice": "{provider} account linked!",
+  "security.oauth.noneConfigured": "No external OAuth providers are configured on this server yet.",
 } as const;

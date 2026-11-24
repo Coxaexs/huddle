@@ -5,6 +5,7 @@ import { Avatar } from "./avatar";
 import { MessageBody } from "./message-body";
 
 import { MessageAttachmentFiles, type MessageFileItem } from "./message-file-card";
+import { useI18n } from "../lib/i18n-context";
 
 export interface ForwardedFromData {
   id?: string;
@@ -45,6 +46,7 @@ export function ForwardedMessageCard({
   onPdf,
   formatTime,
 }: ForwardedMessageCardProps) {
+  const { t } = useI18n();
   const showComment = comment && comment.trim().length > 0 && comment !== "Forwarded a message";
 
   return (
@@ -64,11 +66,12 @@ export function ForwardedMessageCard({
       <div className="forwarded-card">
         <div className="forwarded-card-header">
           <Forward size={13} className="forwarded-badge-icon" />
-          <span className="forwarded-badge-title">Forwarded</span>
+          <span className="forwarded-badge-title">{t("chat.forward.badge")}</span>
           {(data.serverName || data.channelName) && (
             <span className="forwarded-origin">
-              from {data.serverName ? `${data.serverName} · ` : ""}
-              #{data.channelName || "chat"}
+              {t("chat.forward.from", {
+                origin: `${data.serverName ? `${data.serverName} · ` : ""}#${data.channelName || "chat"}`,
+              })}
             </span>
           )}
         </div>
@@ -106,7 +109,7 @@ export function ForwardedMessageCard({
             <img
               className="message-image forwarded-attachment"
               src={data.image}
-              alt="Attachment"
+              alt={t("chat.forward.attachmentAlt")}
               onClick={() => onImage?.(data.image!)}
             />
           )}
@@ -118,7 +121,7 @@ export function ForwardedMessageCard({
                   key={url}
                   className="message-image"
                   src={url}
-                  alt="Attachment"
+                  alt={t("chat.forward.attachmentAlt")}
                   onClick={() => onImage?.(url)}
                 />
               ))}

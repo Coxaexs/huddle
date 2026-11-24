@@ -5,6 +5,7 @@ import { useSpeaking, type SpeakingStore } from "../../../lib/speaking-store";
 import { type PublicUser } from "@/lib/users";
 import { Video, PhoneOff, Phone, VideoOff, Mic, MicOff, Headphones, HeadphoneOff, Monitor, Maximize2 } from "lucide-react";
 import { playCallAnswerSound } from "../../../lib/audio-cues";
+import { useI18n } from "../../../lib/i18n-context";
 import { Avatar } from "../../avatar";
 import { type DmSummary } from "../../../lib/chat/types";
 import type { VoiceParticipant } from "@/lib/protocol";
@@ -39,20 +40,21 @@ export function DmCallView({
   activeDm: DmSummary | null;
   setDmCall: Dispatch<SetStateAction<{ channelId: string; otherUser: { id: string; displayName: string; avatar?: string; avatarUrl?: string | null; color?: string; }; status: "calling" | "connected"; startTime: number; isVideo?: boolean; seenOther?: boolean; } | null>>;
 }) {
+  const { t } = useI18n();
   const speakingNow = useSpeaking(voice.speakingStore);
   return (
     <>
       {inDmHome && activeChannelId && dmCallView && (
                   <section
                     className={`dm-call-stage ${dmCallView.ringing ? "is-calling" : "is-connected"}`}
-                    aria-label="Direct Message Call"
+                    aria-label={t("voice.dmCall.aria")}
                   >
                     <span className="dm-call-status">
                       {dmCallView.ringing
-                        ? `Calling ${dmCallView.ringing.displayName}…`
+                        ? t("voice.dmCall.calling", { name: dmCallView.ringing.displayName })
                         : dmCallView.joined && dmCall?.channelId === activeChannelId
                           ? `${Math.floor(callDuration / 60)}:${String(callDuration % 60).padStart(2, "0")}`
-                          : `${dmCallView.people.length} in the call`}
+                          : t("voice.dmCall.inCall", { count: dmCallView.people.length })}
                     </span>
 
                     {/* Everyone in the call, large and centred; a ring lights up
@@ -80,7 +82,7 @@ export function DmCallView({
                             />
                             <span className="dm-call-person-name">{isSelf ? user.displayName : person.displayName}</span>
                             {muted && (
-                              <span className="dm-call-person-badge" aria-label="Muted">
+                              <span className="dm-call-person-badge" aria-label={t("voice.dmCall.mutedAria")}>
                                 <MicOff size={13} />
                               </span>
                             )}
@@ -108,7 +110,7 @@ export function DmCallView({
                             type="button"
                             className={`dm-call-ctrl ${voice.muted ? "off" : ""}`}
                             onClick={() => voice.toggleMute()}
-                            title={voice.muted ? "Unmute" : "Mute"}
+                            title={voice.muted ? t("voice.dmCall.unmute") : t("voice.dmCall.mute")}
                             aria-pressed={voice.muted}
                           >
                             {voice.muted ? <MicOff size={19} /> : <Mic size={19} />}
@@ -117,7 +119,7 @@ export function DmCallView({
                             type="button"
                             className={`dm-call-ctrl ${voice.deafened ? "off" : ""}`}
                             onClick={() => voice.toggleDeafen()}
-                            title={voice.deafened ? "Undeafen" : "Deafen"}
+                            title={voice.deafened ? t("voice.dmCall.undeafen") : t("voice.dmCall.deafen")}
                             aria-pressed={voice.deafened}
                           >
                             {voice.deafened ? <HeadphoneOff size={19} /> : <Headphones size={19} />}
@@ -128,7 +130,7 @@ export function DmCallView({
                             type="button"
                             className={`dm-call-ctrl ${voice.cameraOn ? "on" : ""}`}
                             onClick={() => (voice.cameraOn ? voice.stopCamera() : void voice.startCamera())}
-                            title={voice.cameraOn ? "Turn off camera" : "Turn on camera"}
+                            title={voice.cameraOn ? t("voice.dmCall.cameraOff") : t("voice.dmCall.cameraOn")}
                             aria-pressed={voice.cameraOn}
                           >
                             {voice.cameraOn ? <Video size={19} /> : <VideoOff size={19} />}
@@ -137,7 +139,7 @@ export function DmCallView({
                             type="button"
                             className={`dm-call-ctrl ${voice.screenSharing ? "on" : ""}`}
                             onClick={() => (voice.screenSharing ? voice.stopScreenShare() : void voice.startScreenShare())}
-                            title={voice.screenSharing ? "Stop sharing" : "Share screen"}
+                            title={voice.screenSharing ? t("voice.dmCall.stopSharing") : t("voice.dmCall.shareScreen")}
                             aria-pressed={voice.screenSharing}
                           >
                             <Monitor size={19} />
@@ -146,7 +148,7 @@ export function DmCallView({
                             type="button"
                             className="dm-call-ctrl"
                             onClick={() => setStageChannelId(activeChannelId)}
-                            title="Open full call view"
+                            title={t("voice.dmCall.openFullView")}
                           >
                             <Maximize2 size={19} />
                           </button>
@@ -155,7 +157,7 @@ export function DmCallView({
                           type="button"
                           className="dm-call-hangup"
                           onClick={() => endDmCall(false)}
-                          title={dmCallView.ringing ? "Cancel call" : "Leave call"}
+                          title={dmCallView.ringing ? t("voice.dmCall.cancelCall") : t("voice.dmCall.leaveCall")}
                         >
                           <PhoneOff size={21} />
                         </button>
@@ -186,7 +188,7 @@ export function DmCallView({
                             void voice.join(activeChannelId);
                           }}
                         >
-                          <Phone size={18} /> Join call
+                          <Phone size={18} /> {t("voice.dmCall.joinCall")}
                         </button>
                       </div>
                     )}

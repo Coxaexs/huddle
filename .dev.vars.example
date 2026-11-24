@@ -57,3 +57,10 @@ HUDDLE_ICE_SERVERS=[{"urls":["stun:stun.cloudflare.com:3478"]}]
 # HUDDLE_TURN_SECRET=
 # Comma-separated list of developer usernames who see verbose WebRTC/SFU console logs
 DEV_USERS=kiwi,flo
+
+# [OPTIONAL] Google & Discord OAuth 2.0 (sign-in, sign-up, account linking)
+# Callback URLs: <PUBLIC_URL>/hangout/api/auth/oauth/{google,discord}/callback
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
+# DISCORD_OAUTH_CLIENT_ID=
+# DISCORD_OAUTH_CLIENT_SECRET=

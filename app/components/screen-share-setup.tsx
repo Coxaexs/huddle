@@ -2,6 +2,7 @@
 
 import { Monitor, X } from "lucide-react";
 import { useDismiss } from "../hooks/use-dismiss";
+import { useI18n } from "../lib/i18n-context";
 import {
   makeScreenQuality,
   SCREEN_FRAMERATES,
@@ -35,6 +36,7 @@ export function ScreenShareSetup({
   onClose: () => void;
   className?: string;
 }) {
+  const { t } = useI18n();
   useDismiss(true, onClose);
   const { height, fps } = screenQualityParts(quality);
   const chip = (selected: boolean) =>
@@ -51,21 +53,21 @@ export function ScreenShareSetup({
       <div className="flex items-center justify-between">
         <div className="screen-setup-title flex items-center gap-1.5 font-bold text-xs text-[var(--ink)]">
           <Monitor size={14} className="text-[var(--lavender)]" />
-          <span>Share Screen</span>
+          <span>{t("voice.screenSetup.title")}</span>
         </div>
         <button
           type="button"
           className="screen-setup-close text-[var(--muted)] hover:text-[var(--ink)] p-1 rounded-md transition-colors cursor-pointer"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t("common.close")}
         >
           <X size={14} />
         </button>
       </div>
 
-      <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Resolution">
+      <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={t("voice.screenSetup.resolution")}>
         <span className="screen-setup-label text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider">
-          Resolution
+          {t("voice.screenSetup.resolution")}
         </span>
         <div className="grid grid-cols-4 gap-1.5">
           {SCREEN_RESOLUTIONS.map((option) => (
@@ -83,9 +85,9 @@ export function ScreenShareSetup({
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="Frame rate">
+      <div className="flex flex-col gap-1.5" role="radiogroup" aria-label={t("voice.screenSetup.frameRate")}>
         <span className="screen-setup-label text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider">
-          Frame rate
+          {t("voice.screenSetup.frameRate")}
         </span>
         <div className="grid grid-cols-4 gap-1.5">
           {SCREEN_FRAMERATES.map((option) => (
@@ -97,7 +99,7 @@ export function ScreenShareSetup({
               className={chip(fps === option)}
               onClick={() => onQuality(makeScreenQuality(height, option))}
             >
-              {option} fps
+              {t("voice.screenSetup.fps", { fps: option })}
             </button>
           ))}
         </div>
@@ -116,9 +118,9 @@ export function ScreenShareSetup({
             className="accent-[var(--lavender)] rounded mt-0.5"
           />
           <span>
-            Film mode
+            {t("voice.screenSetup.filmMode")}
             <small className="block text-[10px] font-normal text-[var(--muted)] leading-tight">
-              Smooth motion over sharp text, for movies and videos
+              {t("voice.screenSetup.filmModeDesc")}
             </small>
           </span>
         </label>
@@ -130,9 +132,9 @@ export function ScreenShareSetup({
             className="accent-[var(--lavender)] rounded mt-0.5"
           />
           <span>
-            Share stream audio
+            {t("voice.screenSetup.shareAudio")}
             <small className="block text-[10px] font-normal text-[var(--muted)] leading-tight">
-              Captures tab, game, or system sound so viewers can hear it
+              {t("voice.screenSetup.shareAudioDesc")}
             </small>
           </span>
         </label>
@@ -144,7 +146,7 @@ export function ScreenShareSetup({
         onClick={onStart}
       >
         <Monitor size={14} />
-        <span>Start Sharing</span>
+        <span>{t("voice.screenSetup.start")}</span>
       </button>
     </div>
   );

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { PlayerState } from "@/lib/protocol";
 import { EQ_LABELS, EQ_MAX_DB, EQ_PRESETS, eqGraphPoints } from "@/lib/winamp-eq";
+import { tNow } from "../lib/i18n-context";
 import { openMusicReader } from "../lib/music-tap";
 import { setWinampEq, useWinampEq } from "../lib/winamp-eq-store";
 
@@ -229,7 +230,7 @@ function WinampViz({ playing }: { playing: boolean }) {
   }, [mode]);
   const pretend = playing && !real && mode !== "off";
   return (
-    <span className={`wa-viz ${pretend ? "live" : ""} ${real ? "real" : ""}`} onClick={cycle} title="Click: analyser, oscilloscope, off">
+    <span className={`wa-viz ${pretend ? "live" : ""} ${real ? "real" : ""}`} onClick={cycle} title={tNow("retro.winamp.vizTitle")}>
       <canvas ref={canvasRef} />
       {!real && Array.from({ length: 19 }, (_, i) => (
         <i key={i} style={{ animationDelay: `${(i * 173) % 700}ms`, animationDuration: `${420 + ((i * 97) % 300)}ms` }} />
@@ -261,13 +262,13 @@ function EqSlider({ label, value, onChange, preamp = false }: { label: string; v
         className="wa-band-track"
         role="slider"
         tabIndex={0}
-        aria-label={preamp ? "Preamp" : `${label}Hz`}
+        aria-label={preamp ? tNow("retro.winamp.preamp") : `${label}Hz`}
         aria-orientation="vertical"
         aria-valuemin={-EQ_MAX_DB}
         aria-valuemax={EQ_MAX_DB}
         aria-valuenow={value}
         aria-valuetext={text}
-        title={`${preamp ? "Preamp" : `${label}Hz`}: ${text}`}
+        title={`${preamp ? tNow("retro.winamp.preamp") : `${label}Hz`}: ${text}`}
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
           fromPointer(event.clientY);
@@ -311,7 +312,7 @@ function WinampEqualizer() {
       <WinampTitle label="WINAMP EQUALIZER" />
       <div className="wa-eq-body">
         <div className="wa-eq-top">
-          <button type="button" className={`wa-mini ${eq.on ? "on" : ""}`} aria-pressed={eq.on} onClick={() => setWinampEq({ on: !eq.on })} title="Equalizer on or off: it changes how the music bot sounds to you">ON</button>
+          <button type="button" className={`wa-mini ${eq.on ? "on" : ""}`} aria-pressed={eq.on} onClick={() => setWinampEq({ on: !eq.on })} title={tNow("retro.winamp.eqOnTitle")}>ON</button>
           <span className="wa-mini" aria-hidden="true">AUTO</span>
           <span className="wa-eq-graph" aria-hidden="true">
             <svg viewBox="0 0 100 20" preserveAspectRatio="none">
@@ -320,10 +321,10 @@ function WinampEqualizer() {
             </svg>
           </span>
           <div className="wa-presets" ref={menuRef}>
-            <button type="button" className="wa-mini wide" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((open) => !open)} title={eq.preset ?? "Presets"}>PRESETS</button>
+            <button type="button" className="wa-mini wide" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((open) => !open)} title={eq.preset ?? tNow("retro.winamp.presets")}>PRESETS</button>
             {menu && (
               <div className="wa-preset-menu" role="menu">
-                <button type="button" role="menuitem" onClick={() => { setWinampEq({ preamp: 0, bands: EQ_LABELS.map(() => 0), preset: null }); setMenu(false); }}>Reset (flat)</button>
+                <button type="button" role="menuitem" onClick={() => { setWinampEq({ preamp: 0, bands: EQ_LABELS.map(() => 0), preset: null }); setMenu(false); }}>{tNow("retro.winamp.resetFlat")}</button>
                 <hr />
                 {EQ_PRESETS.map((preset) => (
                   <button
@@ -341,7 +342,7 @@ function WinampEqualizer() {
             )}
           </div>
         </div>
-        <div className={`wa-eq-bands ${eq.on ? "" : "off"}`} title="How the music bot sounds to you">
+        <div className={`wa-eq-bands ${eq.on ? "" : "off"}`} title={tNow("retro.winamp.eqBandsTitle")}>
           <EqSlider label="PREAMP" preamp value={eq.preamp} onChange={(db) => setWinampEq({ preamp: db, preset: null })} />
           <span className="wa-eq-scale" aria-hidden="true"><small>+12db</small><small>+0db</small><small>-12db</small></span>
           {EQ_LABELS.map((label, i) => (
@@ -440,9 +441,9 @@ function WinampChrome(p: RetroChromeProps) {
               </span>
             </div>
             <div className="wa-stats">
-              <span className="wa-box" title="Members online">{p.onlineCount}</span>
+              <span className="wa-box" title={tNow("retro.winamp.membersOnline")}>{p.onlineCount}</span>
               <small>kbps</small>
-              <span className="wa-box" title="Members">{p.memberCount}</span>
+              <span className="wa-box" title={tNow("retro.winamp.members")}>{p.memberCount}</span>
               <small>khz</small>
               <span className={`wa-light ${inVoice ? "" : "on"}`}>mono</span>
               <span className={`wa-light ${inVoice ? "on" : ""}`}>stereo</span>
@@ -452,22 +453,22 @@ function WinampChrome(p: RetroChromeProps) {
                 <i style={{ left: `${Math.round(((p.player?.volume ?? 80) / 100) * 100)}%` }} />
               </span>
               <span className="wa-slider short" aria-hidden="true"><i style={{ left: "50%" }} /></span>
-              <button type="button" className={`wa-mini ${eqOpen ? "on" : ""}`} onClick={toggleEq} title="Equalizer">EQ</button>
-              <button type="button" className={`wa-mini ${p.membersOpen ? "on" : ""}`} onClick={p.onToggleMembers} title="Member list">PL</button>
+              <button type="button" className={`wa-mini ${eqOpen ? "on" : ""}`} onClick={toggleEq} title={tNow("retro.winamp.eqTitle")}>EQ</button>
+              <button type="button" className={`wa-mini ${p.membersOpen ? "on" : ""}`} onClick={p.onToggleMembers} title={tNow("retro.winamp.plTitle")}>PL</button>
             </div>
           </div>
           <div className="wa-seek" aria-hidden="true">
             <i style={{ left: `calc(${(progress * 100).toFixed(2)}% - ${(progress * 28).toFixed(1)}px)` }} />
           </div>
           <div className="wa-transport">
-            <button type="button" onClick={p.onPrevChannel} title="Previous channel" aria-label="Previous channel">⏮</button>
-            <button type="button" onClick={() => p.muted && p.onToggleMute()} disabled={!inVoice} title="Play (unmute)" aria-label="Unmute">▶</button>
-            <button type="button" onClick={() => !p.muted && p.onToggleMute()} disabled={!inVoice} title="Pause (mute)" aria-label="Mute">❚❚</button>
-            <button type="button" onClick={p.onLeaveVoice} disabled={!inVoice} title="Stop (leave voice)" aria-label="Leave voice">■</button>
-            <button type="button" onClick={p.onNextChannel} title="Next channel" aria-label="Next channel">⏭</button>
-            <button type="button" className="wa-eject" onClick={p.onOpenSettings} title="Settings" aria-label="Settings">⏏</button>
+            <button type="button" onClick={p.onPrevChannel} title={tNow("retro.winamp.prevChan")} aria-label={tNow("retro.winamp.prevChan")}>⏮</button>
+            <button type="button" onClick={() => p.muted && p.onToggleMute()} disabled={!inVoice} title={tNow("retro.winamp.playUnmute")} aria-label={tNow("retro.winamp.unmuteAria")}>▶</button>
+            <button type="button" onClick={() => !p.muted && p.onToggleMute()} disabled={!inVoice} title={tNow("retro.winamp.pauseMute")} aria-label={tNow("retro.winamp.muteAria")}>❚❚</button>
+            <button type="button" onClick={p.onLeaveVoice} disabled={!inVoice} title={tNow("retro.winamp.stopLeave")} aria-label={tNow("retro.winamp.leaveVoiceAria")}>■</button>
+            <button type="button" onClick={p.onNextChannel} title={tNow("retro.winamp.nextChan")} aria-label={tNow("retro.winamp.nextChan")}>⏭</button>
+            <button type="button" className="wa-eject" onClick={p.onOpenSettings} title={tNow("retro.ts.menu.settings")} aria-label={tNow("retro.ts.menu.settings")}>⏏</button>
             <span className="wa-shuffle" aria-hidden="true">SHUFFLE</span>
-            <button type="button" className={`wa-rep ${p.deafened ? "on" : ""}`} onClick={p.onToggleDeafen} disabled={!inVoice} title={p.deafened ? "Undeafen" : "Deafen"}>
+            <button type="button" className={`wa-rep ${p.deafened ? "on" : ""}`} onClick={p.onToggleDeafen} disabled={!inVoice} title={p.deafened ? tNow("retro.winamp.undeafen") : tNow("retro.winamp.deafen")}>
               {p.deafened ? <HeadphoneOff size={11} /> : <Headphones size={11} />}
             </button>
             <Lightning />
@@ -551,8 +552,8 @@ function TitleBar({ className, icon, title }: { className: string; icon: string;
       type="button"
       onClick={() => postWindowCommand("windowMinimize")}
       disabled={!app}
-      title={app ? "Minimize" : "Can't minimize a browser tab"}
-      aria-label="Minimize"
+      title={app ? tNow("retro.win.minimize") : tNow("retro.win.cantMinimize")}
+      aria-label={tNow("retro.win.minimize")}
     >
       _
     </button>
@@ -562,8 +563,8 @@ function TitleBar({ className, icon, title }: { className: string; icon: string;
       key="max"
       type="button"
       onClick={maximize}
-      title={app ? "Maximize" : fullscreen ? "Exit fullscreen" : "Fullscreen"}
-      aria-label={app ? "Maximize" : fullscreen ? "Exit fullscreen" : "Fullscreen"}
+      title={app ? tNow("retro.win.maximize") : fullscreen ? tNow("s2.app.exitFullscreen") : tNow("s2.app.fullscreen")}
+      aria-label={app ? tNow("retro.win.maximize") : fullscreen ? tNow("s2.app.exitFullscreen") : tNow("s2.app.fullscreen")}
     >
       {fullscreen ? "❐" : "□"}
     </button>
@@ -575,8 +576,8 @@ function TitleBar({ className, icon, title }: { className: string; icon: string;
       className="x"
       onClick={() => postWindowCommand("windowClose")}
       disabled={!app}
-      title={app ? "Close" : "Can't close a browser tab from the page"}
-      aria-label="Close"
+      title={app ? tNow("common.close") : tNow("retro.win.cantClose")}
+      aria-label={tNow("common.close")}
     >
       ×
     </button>
@@ -658,31 +659,31 @@ function MenuBar({ className, menus }: { className: string; menus: Record<string
 function MsnChrome(p: RetroChromeProps) {
   const inVoice = Boolean(p.voiceRoom);
   const menus: Record<string, MenuItem[]> = {
-    File: [
-      { label: "My Display Picture...", onClick: p.onOpenPicture },
-      { label: "Y2K Today", onClick: p.onOpenToday },
+    [tNow("retro.msn.menu.file")]: [
+      { label: tNow("retro.msn.myPicture"), onClick: p.onOpenPicture },
+      { label: tNow("msnToday.title"), onClick: p.onOpenToday },
       "sep",
-      { label: "Sign Out", onClick: p.onSignOut },
+      { label: tNow("retro.msn.signOut"), onClick: p.onSignOut },
     ],
-    Contacts: [
-      { label: "Search for a Contact...", onClick: p.onOpenSearch },
-      { label: "Show Contact List", onClick: p.onToggleMembers, checked: p.membersOpen },
+    [tNow("retro.msn.menu.contacts")]: [
+      { label: tNow("retro.msn.searchContact"), onClick: p.onOpenSearch },
+      { label: tNow("retro.msn.showContactList"), onClick: p.onToggleMembers, checked: p.membersOpen },
     ],
-    Actions: [
-      { label: "Send a Nudge", onClick: p.onSendNudge, disabled: !p.channelName && !p.serverName },
+    [tNow("retro.msn.menu.actions")]: [
+      { label: tNow("retro.msn.sendNudge"), onClick: p.onSendNudge, disabled: !p.channelName && !p.serverName },
       "sep",
-      { label: "Mute Microphone", onClick: p.onToggleMute, checked: p.muted, disabled: !inVoice },
-      { label: "Leave Call", onClick: p.onLeaveVoice, disabled: !inVoice },
+      { label: tNow("retro.msn.muteMic"), onClick: p.onToggleMute, checked: p.muted, disabled: !inVoice },
+      { label: tNow("retro.msn.leaveCall"), onClick: p.onLeaveVoice, disabled: !inVoice },
     ],
-    Tools: [
-      { label: "Sounds...", onClick: p.onOpenSounds },
-      { label: "Options...", onClick: p.onOpenSettings },
+    [tNow("retro.msn.menu.tools")]: [
+      { label: tNow("retro.msn.sounds"), onClick: p.onOpenSounds },
+      { label: tNow("retro.msn.options"), onClick: p.onOpenSettings },
     ],
-    Help: [{ label: "Keyboard Shortcuts", onClick: p.onOpenShortcuts }],
+    [tNow("retro.msn.menu.help")]: [{ label: tNow("retro.msn.shortcuts"), onClick: p.onOpenShortcuts }],
   };
   return (
     <>
-      <TitleBar className="msn-titlebar" icon="msn-app-icon" title="Y2K Chat" />
+      <TitleBar className="msn-titlebar" icon="msn-app-icon" title={tNow("retro.msn.title")} />
       <MenuBar className="msn-menubar" menus={menus} />
     </>
   );
@@ -696,20 +697,20 @@ function TeamSpeakChrome(p: RetroChromeProps) {
   const inVoice = Boolean(p.voiceRoom);
 
   const menus: Record<string, MenuItem[]> = {
-    Connections: [
-      { label: "Disconnect", onClick: p.onLeaveVoice, disabled: !inVoice },
+    [tNow("retro.ts.menu.connections")]: [
+      { label: tNow("retro.ts.disconnect"), onClick: p.onLeaveVoice, disabled: !inVoice },
       "sep",
-      { label: "Find...", onClick: p.onOpenSearch },
+      { label: tNow("retro.ts.find"), onClick: p.onOpenSearch },
     ],
-    Self: [
-      { label: "Mute Microphone", onClick: p.onToggleMute, checked: p.muted, disabled: !inVoice },
-      { label: "Mute Speakers", onClick: p.onToggleDeafen, checked: p.deafened, disabled: !inVoice },
+    [tNow("retro.ts.menu.self")]: [
+      { label: tNow("retro.msn.muteMic"), onClick: p.onToggleMute, checked: p.muted, disabled: !inVoice },
+      { label: tNow("retro.ts.muteSpeakers"), onClick: p.onToggleDeafen, checked: p.deafened, disabled: !inVoice },
     ],
-    Settings: [
-      { label: "Options...", onClick: p.onOpenSettings },
-      { label: "Player List", onClick: p.onToggleMembers, checked: p.membersOpen },
+    [tNow("retro.ts.menu.settings")]: [
+      { label: tNow("retro.msn.options"), onClick: p.onOpenSettings },
+      { label: tNow("retro.ts.playerList"), onClick: p.onToggleMembers, checked: p.membersOpen },
     ],
-    Help: [{ label: "Keyboard Shortcuts", onClick: p.onOpenShortcuts }],
+    [tNow("retro.msn.menu.help")]: [{ label: tNow("retro.msn.shortcuts"), onClick: p.onOpenShortcuts }],
   };
 
   const d = new Date(now);
@@ -724,38 +725,38 @@ function TeamSpeakChrome(p: RetroChromeProps) {
       />
       <MenuBar className="ts-menubar" menus={menus} />
       <div className="ts-toolbar">
-        <button type="button" onClick={p.onLeaveVoice} disabled={!inVoice} title="Disconnect"><PhoneOff size={15} /></button>
+        <button type="button" onClick={p.onLeaveVoice} disabled={!inVoice} title={tNow("retro.ts.disconnect")}><PhoneOff size={15} /></button>
         <span className="ts-sep" />
-        <button type="button" className={p.muted ? "pressed" : ""} onClick={p.onToggleMute} disabled={!inVoice} title="Mute microphone">
+        <button type="button" className={p.muted ? "pressed" : ""} onClick={p.onToggleMute} disabled={!inVoice} title={tNow("retro.msn.muteMic")}>
           {p.muted ? <MicOff size={15} /> : <Mic size={15} />}
         </button>
-        <button type="button" className={p.deafened ? "pressed" : ""} onClick={p.onToggleDeafen} disabled={!inVoice} title="Mute speakers">
+        <button type="button" className={p.deafened ? "pressed" : ""} onClick={p.onToggleDeafen} disabled={!inVoice} title={tNow("retro.ts.muteSpeakers")}>
           {p.deafened ? <HeadphoneOff size={15} /> : <Headphones size={15} />}
         </button>
         <span className="ts-sep" />
-        <button type="button" onClick={p.onOpenSearch} title="Find"><Search size={15} /></button>
-        <button type="button" className={p.membersOpen ? "pressed" : ""} onClick={p.onToggleMembers} title="Player list"><Users size={15} /></button>
-        <button type="button" onClick={p.onOpenSettings} title="Options"><Settings size={15} /></button>
+        <button type="button" onClick={p.onOpenSearch} title={tNow("retro.ts.findShort")}><Search size={15} /></button>
+        <button type="button" className={p.membersOpen ? "pressed" : ""} onClick={p.onToggleMembers} title={tNow("retro.ts.playerList")}><Users size={15} /></button>
+        <button type="button" onClick={p.onOpenSettings} title={tNow("retro.msn.options")}><Settings size={15} /></button>
       </div>
       <div className="ts-info">
         <div className="ts-info-text">
           <div className="ts-info-head">
             {p.serverIconUrl ? <img src={p.serverIconUrl} alt="" /> : <span className="ts-app-icon big" />}
-            <strong>{p.serverName ?? "Direct messages"}</strong>
+            <strong>{p.serverName ?? tNow("retro.ts.directMessages")}</strong>
           </div>
           <table>
             <tbody>
               {p.channelName && (
-                <tr><th>Channel:</th><td>{p.channelName}</td></tr>
+                <tr><th>{tNow("retro.ts.channel")}</th><td>{p.channelName}</td></tr>
               )}
               {p.channelTopic && (
-                <tr><th>Topic:</th><td>{p.channelTopic}</td></tr>
+                <tr><th>{tNow("retro.ts.topic")}</th><td>{p.channelTopic}</td></tr>
               )}
-              <tr><th>Clients:</th><td>{p.onlineCount} / {p.memberCount}</td></tr>
-              <tr><th>Nickname:</th><td>{p.userName}</td></tr>
+              <tr><th>{tNow("retro.ts.clients")}</th><td>{p.onlineCount} / {p.memberCount}</td></tr>
+              <tr><th>{tNow("retro.ts.nickname")}</th><td>{p.userName}</td></tr>
               <tr>
-                <th>Voice:</th>
-                <td>{p.voiceRoom ? `${p.voiceRoom}${joinedAt ? ` (${clock(now - joinedAt)})` : ""}` : "Not connected"}</td>
+                <th>{tNow("retro.ts.voice")}</th>
+                <td>{p.voiceRoom ? `${p.voiceRoom}${joinedAt ? ` (${clock(now - joinedAt)})` : ""}` : tNow("retro.ts.notConnected")}</td>
               </tr>
             </tbody>
           </table>
@@ -763,7 +764,7 @@ function TeamSpeakChrome(p: RetroChromeProps) {
         {p.bannerUrl && <img className="ts-info-banner" src={p.bannerUrl} alt="" />}
       </div>
       <div className="ts-statusbar">
-        <span>{p.connected ? (p.voiceRoom ? `Connected to ${p.voiceRoom}` : "Connected to server") : "Connection lost - reconnecting..."}</span>
+        <span>{p.connected ? (p.voiceRoom ? tNow("retro.ts.connectedTo", { room: p.voiceRoom }) : tNow("retro.ts.connectedServer")) : tNow("retro.ts.reconnecting")}</span>
         <span>{p.serverName ?? "Hoffle"}</span>
         <span>{inVoice && p.pingMs ? `Ping: ${Math.round(p.pingMs)} ms` : "Ping: --"}</span>
         <span>{time}</span>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   Pencil,
   Plus,
@@ -26,16 +26,32 @@ import {
   Music,
   Box,
   ExternalLink,
+  Ruler,
+  Target,
+  MapPin,
+  Eye,
+  EyeOff,
+  Trash2,
+  Shield,
 } from "lucide-react";
 import {
   type Battlemap,
+  type BattlemapSceneSummary,
+  type FogMode,
+  type HpVisibility,
+  type MapArea,
   type MapFog,
+  type MapPing,
   type MapStroke,
   type MapToken,
   type GridType,
   CONDITIONS,
   HEX_ROW_HEIGHT,
+  areaSvgGeometry,
+  hpTierFor,
+  measureFeet,
   snapPoint,
+  tickConditionDurations,
 } from "@/lib/battlemap";
 import { addInitiative, currentEntry, stepTurn, type Initiative, type TableCharacter } from "@/lib/lounge-shared";
 import { apiFetch } from "../lib/client";
@@ -46,6 +62,14 @@ import {
   tokenImageUrl,
   type BattlemapPaletteEntry,
 } from "@/lib/battlemap-tokens";
+import { useI18n } from "../lib/i18n-context";
+
+interface ConcentrationCheckPrompt {
+  tokenId: string;
+  label: string;
+  damage: number;
+  dc: number;
+}
 
 interface BattlemapBoardProps {
   channelId: string;
@@ -65,6 +89,18 @@ interface BattlemapBoardProps {
   onOpenTabletop?: () => void;
   onOpenCompanion?: () => void;
   myCharacter?: TableCharacter | null;
+  scenes?: BattlemapSceneSummary[];
+  lastPing?: MapPing | null;
+  selectedTokenId?: string | null;
+  onSelectToken?: (id: string | null) => void;
+  onSwitchScene?: (id: string) => void;
+  onPrepScene?: () => void;
+  onDeleteScene?: (id: string) => void;
+  onSetHpVisibility?: (v: HpVisibility) => void;
+  onApplyDamage?: (
+    tokenId: string,
+    delta: number,
+  ) => Promise<{ token: MapToken; concentrationCheck: ConcentrationCheckPrompt | null } | null>;
 }
 
 const pawnIdForToken = (tokenId: string) => `bm-${tokenId.replace(/-/g, "").slice(0, 16)}`;
@@ -94,8 +130,20 @@ export function BattlemapBoard({
   onOpenTabletop,
   onOpenCompanion,
   myCharacter,
+  scenes,
+  lastPing,
+  selectedTokenId,
+  onSelectToken,
+  onSwitchScene,
+  onPrepScene,
+  onDeleteScene,
+  onSetHpVisibility,
+  onApplyDamage,
 }: BattlemapBoardProps) {
-  const [mode, setMode] = useState<"move" | "paint" | "fog">("move");
+  const { t } = useI18n();
+  const rawMaskId = useId();
+  const fogMaskId = `bm-fog-${rawMaskId.replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const [mode, setMode] = useState<"move" | "paint" | "fog" | "ruler" | "area" | "ping">("move");
   const [color, setColor] = useState(PAINT_COLORS[0]);
   const [width, setWidth] = useState(3);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -118,9 +166,26 @@ export function BattlemapBoard({
   const paletteWrapRef = useRef<HTMLDivElement | null>(null);
   useDismiss(paletteOpen, () => setPaletteOpen(false), paletteWrapRef);
   /** Fog rectangle being drawn (GM): start point in grid units. */
+  const [fogMode, setFogMode] = useState<FogMode>("cover");
   const fogStartRef = useRef<{ x: number; y: number } | null>(null);
+  const fogDraggedRef = useRef(false);
   const fogDraftRef = useRef<MapFog | null>(null);
   const [fogDraft, setFogDraft] = useState<MapFog | null>(null);
+  /** Distance ruler measurement state. */
+  const rulerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [rulerPts, setRulerPts] = useState<{ sx: number; sy: number; ex: number; ey: number } | null>(null);
+  /** AoE spell template tool state. */
+  const [aoeShape, setAoeShape] = useState<MapArea["shape"]>("sphere");
+  const [aoeSizeFt, setAoeSizeFt] = useState<number>(20);
+  const areaDraftRef = useRef<MapArea | null>(null);
+  const [areaDraft, setAreaDraft] = useState<MapArea | null>(null);
+  /** Map ping & GM camera pull state. */
+  const [activePing, setActivePing] = useState<MapPing | null>(null);
+  const [pullViewNext, setPullViewNext] = useState(false);
+  const lastHandledPingIdRef = useRef<string | null>(null);
+  /** Concentration check & condition expiry banners. */
+  const [concentrationPrompt, setConcentrationPrompt] = useState<ConcentrationCheckPrompt | null>(null);
+  const [expiredNotice, setExpiredNotice] = useState<string | null>(null);
   /** Expand battlemap to full stage height. */
   const [expanded, setExpanded] = useState(false);
   /** Grid snapping mode: square, hex, or free/none. */
@@ -146,31 +211,152 @@ export function BattlemapBoard({
       )?.id ?? null
     : localTurnId;
 
+  const prevTurnIdRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (prevTurnIdRef.current === undefined) {
+      prevTurnIdRef.current = currentTurnId;
+      return;
+    }
+    if (prevTurnIdRef.current !== currentTurnId && currentTurnId) {
+      const activeTok = map.tokens.find((t) => t.id === currentTurnId);
+      if (activeTok && activeTok.ownerId === userId) {
+        try {
+          if (typeof window !== "undefined" && "AudioContext" in window) {
+            const Ctx = window.AudioContext;
+            const audio = new Ctx();
+            const osc = audio.createOscillator();
+            const gain = audio.createGain();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(523.25, audio.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(659.25, audio.currentTime + 0.14);
+            gain.gain.setValueAtTime(0.06, audio.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.35);
+            osc.connect(gain);
+            gain.connect(audio.destination);
+            osc.start();
+            osc.stop(audio.currentTime + 0.36);
+          }
+        } catch {
+          // Ignore browser autoplay or test environment audio restrictions.
+        }
+      }
+    }
+    prevTurnIdRef.current = currentTurnId;
+  }, [currentTurnId, map.tokens, userId]);
+
+  useEffect(() => {
+    if (mode !== "ruler") {
+      setRulerPts(null);
+      rulerStartRef.current = null;
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    if (!lastPing) return;
+    setActivePing(lastPing);
+  }, [lastPing]);
+
+  useEffect(() => {
+    if (!activePing) return;
+    const timer = window.setTimeout(() => {
+      setActivePing((cur) => (cur?.id === activePing.id ? null : cur));
+    }, 3500);
+    return () => window.clearTimeout(timer);
+  }, [activePing]);
+
   function toggleCondition(token: MapToken, conditionId: string) {
     const current = token.conditions || [];
     const next = current.includes(conditionId)
       ? current.filter((c) => c !== conditionId)
       : [...current, conditionId];
-    const updated = { ...token, conditions: next };
+    const nextDurations = token.conditionDurations ? { ...token.conditionDurations } : undefined;
+    if (nextDurations && !next.includes(conditionId)) {
+      delete nextDurations[conditionId];
+    }
+    const cleanDurations =
+      nextDurations && Object.keys(nextDurations).length > 0 ? nextDurations : undefined;
+    const updated = { ...token, conditions: next, conditionDurations: cleanDurations };
     onLocalToken(updated);
     void act({
       action: "update-token",
       tokenId: token.id,
-      token: { conditions: next },
+      token: { conditions: next, conditionDurations: cleanDurations ?? {} },
+    });
+  }
+
+  function setConditionDuration(token: MapToken, conditionId: string, rounds: number | null) {
+    const nextConditions = (token.conditions || []).includes(conditionId)
+      ? token.conditions || []
+      : [...(token.conditions || []), conditionId];
+    const nextDurations = { ...(token.conditionDurations || {}) };
+    if (rounds === null) delete nextDurations[conditionId];
+    else nextDurations[conditionId] = rounds;
+    const cleanDurations = Object.keys(nextDurations).length > 0 ? nextDurations : undefined;
+    const updated = { ...token, conditions: nextConditions, conditionDurations: cleanDurations };
+    onLocalToken(updated);
+    void act({
+      action: "update-token",
+      tokenId: token.id,
+      token: { conditions: nextConditions, conditionDurations: cleanDurations ?? {} },
     });
   }
 
   function updateTokenHp(token: MapToken, delta: number) {
+    if (onApplyDamage) {
+      void onApplyDamage(token.id, delta).then((res) => {
+        if (res?.concentrationCheck) setConcentrationPrompt(res.concentrationCheck);
+      });
+      return;
+    }
     const curHp = token.hp ?? (token.maxHp ?? 10);
     const maxHp = token.maxHp ?? 10;
     const nextHp = Math.max(0, curHp + delta);
     const updated = { ...token, hp: nextHp, maxHp };
     onLocalToken(updated);
+    if (delta < 0 && (token.conditions || []).includes("concentrating")) {
+      const dmg = Math.abs(delta);
+      setConcentrationPrompt({
+        tokenId: token.id,
+        label: token.label,
+        damage: dmg,
+        dc: Math.max(10, Math.floor(dmg / 2)),
+      });
+    }
     void act({
       action: "update-token",
       tokenId: token.id,
       token: { hp: nextHp, maxHp },
     });
+  }
+
+  function applyTurnConditionTick(activeTokenId: string | null) {
+    if (!activeTokenId) return;
+    const { tokens: ticked, expired } = tickConditionDurations(map.tokens, activeTokenId);
+    for (const nextTok of ticked) {
+      const prevTok = map.tokens.find((t) => t.id === nextTok.id);
+      if (
+        prevTok &&
+        (JSON.stringify(prevTok.conditions || []) !== JSON.stringify(nextTok.conditions || []) ||
+          JSON.stringify(prevTok.conditionDurations || {}) !== JSON.stringify(nextTok.conditionDurations || {}))
+      ) {
+        onLocalToken(nextTok);
+        void act({
+          action: "update-token",
+          tokenId: nextTok.id,
+          token: {
+            conditions: nextTok.conditions || [],
+            conditionDurations: nextTok.conditionDurations ?? {},
+          },
+        });
+      }
+    }
+    if (expired.length > 0) {
+      setExpiredNotice(
+        expired
+          .map((e) => t("battlemap.condExpiredNotice", { label: e.label, condition: e.conditionId }))
+          .join(" · "),
+      );
+    }
   }
 
   function setTokenInitiative(token: MapToken, val: number | null) {
@@ -256,7 +442,19 @@ export function BattlemapBoard({
   function nextTurn() {
     if (onSetInitiative && sharedInitiative && sharedInitiative.entries.length > 0) {
       setEncounter("combat");
-      onSetInitiative(stepTurn(sharedInitiative, 1));
+      const stepped = stepTurn(sharedInitiative, 1);
+      onSetInitiative(stepped);
+      const nextEntry = currentEntry(stepped);
+      const nextToken = nextEntry
+        ? map.tokens.find(
+            (t) =>
+              nextEntry.pawnId === pawnIdForToken(t.id) ||
+              nextEntry.id === `bm-${t.id.slice(0, 12)}` ||
+              nextEntry.id === t.id ||
+              nextEntry.name.toLowerCase() === t.label.toLowerCase(),
+          ) ?? null
+        : null;
+      applyTurnConditionTick(nextToken?.id ?? null);
       return;
     }
     const sorted = [...map.tokens]
@@ -276,18 +474,22 @@ export function BattlemapBoard({
         });
       }
       onSetInitiative(init);
+      applyTurnConditionTick(sorted[0]?.id ?? null);
       return;
     }
     if (!localTurnId) {
       setLocalTurnId(sorted[0].id);
+      applyTurnConditionTick(sorted[0].id);
       return;
     }
     const idx = sorted.findIndex((t) => t.id === localTurnId);
     if (idx === -1 || idx >= sorted.length - 1) {
       setLocalTurnId(sorted[0].id);
       setLocalRound((r) => r + 1);
+      applyTurnConditionTick(sorted[0].id);
     } else {
       setLocalTurnId(sorted[idx + 1].id);
+      applyTurnConditionTick(sorted[idx + 1].id);
     }
   }
 
@@ -327,6 +529,19 @@ export function BattlemapBoard({
     (imageAspect
       ? Math.max(1, Math.round(map.grid / imageAspect))
       : Math.round(map.grid * 0.6) || map.grid);
+
+  useEffect(() => {
+    if (!lastPing?.pullView || lastHandledPingIdRef.current === lastPing.id) return;
+    lastHandledPingIdRef.current = lastPing.id;
+    const box = boardRef.current?.getBoundingClientRect();
+    if (!box || box.width <= 0 || box.height <= 0) return;
+    const gx = (lastPing.x / Math.max(1, map.grid)) * box.width;
+    const gy = (lastPing.y / Math.max(1, rows)) * box.height;
+    setPan({
+      x: box.width / 2 - gx * zoom,
+      y: box.height / 2 - gy * zoom,
+    });
+  }, [lastPing, map.grid, rows, zoom]);
 
   /** Pointer position in grid units, accounting for the local zoom/pan. */
   function toGrid(event: { clientX: number; clientY: number }) {
@@ -565,51 +780,160 @@ export function BattlemapBoard({
   }
 
   function startFog(event: React.PointerEvent) {
-  if (mode !== "fog") return;
-  event.preventDefault();
-  const point = toGrid(event);
-  fogStartRef.current = point;
+    if (mode !== "fog") return;
+    event.preventDefault();
+    const point = toGrid(event);
+    fogStartRef.current = point;
+    fogDraggedRef.current = false;
 
-  const move = (moveEvent: PointerEvent) => {
-    const now = toGrid(moveEvent);
-    const start = fogStartRef.current;
-    if (!start) return;
-    const x = Math.min(start.x, now.x);
-    const y = Math.min(start.y, now.y);
-    const w = Math.max(0.5, Math.abs(now.x - start.x));
-    const h = Math.max(0.5, Math.abs(now.y - start.y));
-    const next: MapFog = { id: "draft", x, y, w, h };
-    fogDraftRef.current = next;
-    setFogDraft(next);
-  };
-  const up = () => {
-    window.removeEventListener("pointermove", move);
-    const draft = fogDraftRef.current;
-    fogStartRef.current = null;
-    fogDraftRef.current = null;
-    setFogDraft(null);
-    if (draft && draft.id === "draft") {
-      const { id: _id, ...fog } = draft;
-      void act({ action: "add-fog", fog });
+    const move = (moveEvent: PointerEvent) => {
+      const now = toGrid(moveEvent);
+      const start = fogStartRef.current;
+      if (!start) return;
+      const dist = Math.hypot(now.x - start.x, now.y - start.y);
+      if (dist > 0.25) fogDraggedRef.current = true;
+      const x = Math.min(start.x, now.x);
+      const y = Math.min(start.y, now.y);
+      const w = Math.max(0.5, Math.abs(now.x - start.x));
+      const h = Math.max(0.5, Math.abs(now.y - start.y));
+      const next: MapFog = { id: "draft", x, y, w, h, mode: fogMode };
+      fogDraftRef.current = next;
+      setFogDraft(next);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      const draft = fogDraftRef.current;
+      fogStartRef.current = null;
+      fogDraftRef.current = null;
+      setFogDraft(null);
+      if (draft && draft.id === "draft" && fogDraggedRef.current) {
+        const { id: _id, ...fog } = draft;
+        void act({ action: "add-fog", fog });
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+  }
+
+  function startRuler(event: React.PointerEvent) {
+    if (mode !== "ruler") return;
+    event.preventDefault();
+    const rawStart = toGrid(event);
+    const start =
+      snapMode !== "none" && !event.shiftKey
+        ? snapPoint(rawStart.x, rawStart.y, snapMode, map.grid, rows)
+        : rawStart;
+    rulerStartRef.current = start;
+    setRulerPts({ sx: start.x, sy: start.y, ex: start.x, ey: start.y });
+
+    const move = (moveEvent: PointerEvent) => {
+      const raw = toGrid(moveEvent);
+      const end =
+        snapMode !== "none" && !moveEvent.shiftKey
+          ? snapPoint(raw.x, raw.y, snapMode, map.grid, rows)
+          : raw;
+      const anchor = rulerStartRef.current;
+      if (!anchor) return;
+      setRulerPts({ sx: anchor.x, sy: anchor.y, ex: end.x, ey: end.y });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+  }
+
+  function startArea(event: React.PointerEvent) {
+    if (mode !== "area") return;
+    event.preventDefault();
+    const rawStart = toGrid(event);
+    const start =
+      snapMode !== "none" && !event.shiftKey
+        ? snapPoint(rawStart.x, rawStart.y, snapMode, map.grid, rows)
+        : rawStart;
+    const initArea: MapArea = {
+      id: "draft",
+      shape: aoeShape,
+      x: start.x,
+      y: start.y,
+      tx: start.x,
+      ty: start.y,
+      sizeFt: aoeSizeFt,
+      color: "#f97316",
+    };
+    areaDraftRef.current = initArea;
+    setAreaDraft(initArea);
+
+    const move = (moveEvent: PointerEvent) => {
+      const raw = toGrid(moveEvent);
+      const now =
+        snapMode !== "none" && !moveEvent.shiftKey
+          ? snapPoint(raw.x, raw.y, snapMode, map.grid, rows)
+          : raw;
+      const cur = areaDraftRef.current;
+      if (!cur) return;
+      const next: MapArea = { ...cur, tx: now.x, ty: now.y };
+      areaDraftRef.current = next;
+      setAreaDraft(next);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      const draft = areaDraftRef.current;
+      areaDraftRef.current = null;
+      setAreaDraft(null);
+      if (draft) {
+        const { id: _id, ...area } = draft;
+        void act({ action: "add-area", area });
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+  }
+
+  function sendPing(point: { x: number; y: number }, forcePull = false) {
+    const pull = Boolean(gm && (forcePull || pullViewNext));
+    if (pullViewNext) setPullViewNext(false);
+    setActivePing({
+      id: `local-${Date.now()}`,
+      x: point.x,
+      y: point.y,
+      color: "#38bdf8",
+      byName: "Ping",
+      pullView: pull || undefined,
+      at: Date.now(),
+    });
+    void act({
+      action: "ping",
+      x: point.x,
+      y: point.y,
+      color: "#38bdf8",
+      pullView: pull,
+    });
+  }
+
+  function onBoardPointerDown(event: React.PointerEvent) {
+    if (event.button === 1) {
+      startPan(event);
+      return;
     }
-  };
-  window.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", up, { once: true });
-}
-
-function onBoardPointerDown(event: React.PointerEvent) {
-  if (event.button === 1) {
-    startPan(event);
-    return;
+    if (event.altKey || mode === "ping") {
+      event.preventDefault();
+      sendPing(toGrid(event), event.shiftKey);
+      return;
+    }
+    if (mode === "paint") {
+      startPaint(event);
+    } else if (mode === "fog") {
+      startFog(event);
+    } else if (mode === "ruler") {
+      startRuler(event);
+    } else if (mode === "area") {
+      startArea(event);
+    } else {
+      onSelectToken?.(null);
+      startPan(event);
+    }
   }
-  if (mode === "paint") {
-    startPaint(event);
-  } else if (mode === "fog") {
-    startFog(event);
-  } else {
-    startPan(event);
-  }
-}
 
   /** Turns grid points into an SVG path in the 0..grid / 0..rows space. */
   function pathOf(points: number[]): string {
@@ -693,16 +1017,67 @@ function onBoardPointerDown(event: React.PointerEvent) {
     setResizing(token.id);
   }
 
+  const hpVis: HpVisibility = map.hpVisibility ?? "exact";
+  const nextHpVis: HpVisibility = hpVis === "exact" ? "tier" : hpVis === "tier" ? "hidden" : "exact";
+  const activeSceneId = scenes?.find((s) => s.active)?.id || map.id;
+  const hasCoverFog = map.fog.some((f) => f.mode !== "reveal");
+  const sortedInitiativeTokens = [...map.tokens]
+    .filter((t) => (gm || !t.hidden) && typeof t.initiative === "number")
+    .sort((a, b) => (b.initiative ?? 0) - (a.initiative ?? 0));
+  const curInitIdx = currentTurnId ? sortedInitiativeTokens.findIndex((t) => t.id === currentTurnId) : -1;
+  const currentInitToken = curInitIdx >= 0 ? sortedInitiativeTokens[curInitIdx] : null;
+  const onDeckToken =
+    sortedInitiativeTokens.length >= 2 && curInitIdx >= 0
+      ? sortedInitiativeTokens[(curInitIdx + 1) % sortedInitiativeTokens.length]
+      : null;
+
   return (
     <div className={`battlemap ${expanded ? "expanded" : ""}`}>
       <div className="battlemap-bar">
-        <strong className="flex items-center gap-1.5"><Map size={16} /> {map.name}</strong>
+        <div className="flex items-center gap-2 min-w-0">
+          <strong className="flex items-center gap-1.5"><Map size={16} /> {map.name}</strong>
+          {gm && ((scenes && scenes.length > 0) || onPrepScene) && (
+            <div className="bm-scene-bar">
+              {scenes && scenes.length > 0 && onSwitchScene && (
+                <select
+                  aria-label={t("battlemap.sceneSelectAria")}
+                  value={activeSceneId}
+                  onChange={(e) => onSwitchScene(e.target.value)}
+                >
+                  {scenes.map((scene) => (
+                    <option key={scene.id} value={scene.id}>
+                      {scene.name} ({scene.tokenCount})
+                    </option>
+                  ))}
+                </select>
+              )}
+              {onPrepScene && (
+                <button
+                  type="button"
+                  title={t("battlemap.prepSceneTitle")}
+                  onClick={onPrepScene}
+                >
+                  {t("battlemap.prepSceneBtn")}
+                </button>
+              )}
+              {onDeleteScene && scenes && scenes.length > 1 && (
+                <button
+                  type="button"
+                  title={t("battlemap.deleteSceneTitle")}
+                  onClick={() => onDeleteScene(activeSceneId)}
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
         <div className="battlemap-tools">
           <button
             type="button"
             className={mode === "move" ? "on" : ""}
             onClick={() => setMode("move")}
-            title="Move tokens"
+            title={t("battlemap.moveTokens")}
           >
             <Hand size={14} />
           </button>
@@ -710,38 +1085,82 @@ function onBoardPointerDown(event: React.PointerEvent) {
             type="button"
             className={mode === "paint" ? "on" : ""}
             onClick={() => setMode("paint")}
-            title="Paint"
+            title={t("battlemap.paint")}
           >
             <Pencil size={14} />
           </button>
+          <button
+            type="button"
+            className={mode === "ruler" ? "on" : ""}
+            onClick={() => setMode(mode === "ruler" ? "move" : "ruler")}
+            title={t("battlemap.rulerTitle")}
+          >
+            <Ruler size={14} />
+          </button>
+          <button
+            type="button"
+            className={mode === "area" ? "on" : ""}
+            onClick={() => setMode(mode === "area" ? "move" : "area")}
+            title={t("battlemap.aoeTitle")}
+          >
+            <Target size={14} />
+          </button>
+          <button
+            type="button"
+            className={mode === "ping" ? "on" : ""}
+            onClick={() => setMode(mode === "ping" ? "move" : "ping")}
+            title={t("battlemap.pingTitle")}
+          >
+            <MapPin size={14} />
+          </button>
           {gm && (
-            <button
-              type="button"
-              className={mode === "fog" ? "on" : ""}
-              onClick={() => setMode("fog")}
-              title="Fog of war (drag to hide an area)"
-            >
-              <CloudFog size={14} />
-            </button>
+            <>
+              <button
+                type="button"
+                className={mode === "fog" ? "on" : ""}
+                onClick={() => setMode("fog")}
+                title={t("battlemap.fogOfWar")}
+              >
+                <CloudFog size={14} />
+              </button>
+              <button
+                type="button"
+                className={hpVis !== "exact" ? "on" : ""}
+                onClick={() =>
+                  onSetHpVisibility
+                    ? onSetHpVisibility(nextHpVis)
+                    : void act({ action: "set-hp-visibility", hpVisibility: nextHpVis })
+                }
+                title={t(
+                  hpVis === "exact"
+                    ? "battlemap.hpVisExact"
+                    : hpVis === "tier"
+                      ? "battlemap.hpVisTier"
+                      : "battlemap.hpVisHidden",
+                )}
+              >
+                {hpVis === "hidden" ? <EyeOff size={14} /> : hpVis === "tier" ? <Shield size={14} /> : <Eye size={14} />}
+              </button>
+            </>
           )}
           <span className="battlemap-zoom">
-            <button type="button" title="Zoom out" onClick={() => zoomBy(1 / 1.25)}>
+            <button type="button" title={t("battlemap.zoomOut")} onClick={() => zoomBy(1 / 1.25)}>
               <ZoomOut size={14} />
             </button>
-            <button type="button" title="Fit to screen / Reset view" onClick={resetView}>
+            <button type="button" title={t("battlemap.resetView")} onClick={resetView}>
               <RotateCcw size={14} />
             </button>
-            <span className="battlemap-zoom-badge" title="Zoom level">
+            <span className="battlemap-zoom-badge" title={t("battlemap.zoomLevel")}>
               {Math.round(zoom * 100)}%
             </span>
-            <button type="button" title="Zoom in" onClick={() => zoomBy(1.25)}>
+            <button type="button" title={t("battlemap.zoomIn")} onClick={() => zoomBy(1.25)}>
               <ZoomIn size={14} />
             </button>
           </span>
           <button
             type="button"
             className={expanded ? "on" : ""}
-            title={expanded ? "Normal map view" : "Expand map size"}
+            title={expanded ? t("battlemap.normalView") : t("battlemap.expandView")}
             onClick={() => setExpanded((exp) => !exp)}
           >
             {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
@@ -749,7 +1168,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
           <button
             type="button"
             className={snapMode !== "none" ? "on" : ""}
-            title={`Grid snap: ${snapMode.toUpperCase()} (Click to toggle: Square -> Hex -> None)`}
+            title={t("battlemap.gridSnapTitle", { mode: snapMode.toUpperCase() })}
             onClick={() =>
               setSnapMode((prev) =>
                 prev === "square" ? "hex" : prev === "hex" ? "none" : "square",
@@ -761,23 +1180,23 @@ function onBoardPointerDown(event: React.PointerEvent) {
           <button
             type="button"
             className={initiativeOpen ? "on" : ""}
-            title="Initiative & Encounter Tracker"
+            title={t("battlemap.trackerTitle")}
             onClick={() => setInitiativeOpen((open) => !open)}
           >
             <Swords size={14} />
           </button>
           {onOpenTabletop && (
-            <button type="button" title="Open 3D Living Room Tabletop" onClick={onOpenTabletop}>
+            <button type="button" title={t("battlemap.openTabletopTitle")} onClick={onOpenTabletop}>
               <Box size={14} />
             </button>
           )}
           {onOpenCompanion && (
-            <button type="button" title="Open Tavern VTT (SSO)" onClick={onOpenCompanion}>
+            <button type="button" title={t("battlemap.openCompanionTitle")} onClick={onOpenCompanion}>
               <ExternalLink size={14} />
             </button>
           )}
           {onRollCommand && (
-            <button type="button" title="Roll 1d20 in chat" onClick={() => onRollCommand("/roll 1d20")}>
+            <button type="button" title={t("battlemap.rollD20Title")} onClick={() => onRollCommand("/roll 1d20")}>
               <Dice5 size={14} />
             </button>
           )}
@@ -789,7 +1208,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
                   type="button"
                   className={`paint-swatch ${color === option ? "on" : ""}`}
                   style={{ background: option }}
-                  aria-label={`Paint ${option}`}
+                  aria-label={t("battlemap.paintColorAria", { color: option })}
                   onClick={() => setColor(option)}
                 />
               ))}
@@ -798,13 +1217,13 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 min={1}
                 max={12}
                 value={width}
-                aria-label="Brush size"
+                aria-label={t("battlemap.brushSizeAria")}
                 onChange={(event) => setWidth(Number(event.target.value))}
               />
             </>
           )}
           {!map.tokens.some((token) => token.ownerId === userId) && (
-            <button type="button" title="Put my character on the map" onClick={onAddMyToken}>
+            <button type="button" title={t("battlemap.putCharTitle")} onClick={onAddMyToken}>
               <UserRound size={14} />
             </button>
           )}
@@ -814,7 +1233,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 <button
                   type="button"
                   className={paletteOpen ? "on" : ""}
-                  title="Add a monster or fixture"
+                  title={t("battlemap.addMonsterTitle")}
                   onClick={() => {
                     // Open towards whichever side has room, so it is never cut off.
                     const box = paletteWrapRef.current?.getBoundingClientRect();
@@ -834,7 +1253,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
                       className={`battlemap-palette ${paletteLeft ? "battlemap-palette-left" : ""}`}
                       style={{ width: 320, maxHeight: 360 }}
                     >
-                      <div className="battlemap-palette-title">Add to table</div>
+                      <div className="battlemap-palette-title">{t("battlemap.addToTable")}</div>
                       <input
                         type="text"
                         value={paletteQuery}
@@ -846,7 +1265,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
                             else addCustomMobByName(paletteQuery);
                           }
                         }}
-                        placeholder="Filter or type any 5e mob + Enter…"
+                        placeholder={t("battlemap.filterMobPlaceholder")}
                         style={{
                           width: "100%",
                           marginBottom: 8,
@@ -891,7 +1310,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
                               color: "var(--ink)",
                             }}
                           >
-                            Spawn &ldquo;{paletteQuery.trim()}&rdquo;
+                            {t("battlemap.spawnMob", { name: paletteQuery.trim() })}
                           </span>
                         </button>
                       )}
@@ -956,7 +1375,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
               </div>
               <button
                 type="button"
-                title="Clear paint"
+                title={t("battlemap.clearPaint")}
                 onClick={() => void act({ action: "clear", what: "strokes" })}
               >
                 <Eraser size={14} />
@@ -964,7 +1383,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
               <button
                 type="button"
                 className="danger"
-                title="Close the map for everyone"
+                title={t("battlemap.closeForAll")}
                 onClick={() => void act({ action: "close" })}
               >
                 <X size={14} />
@@ -972,12 +1391,125 @@ function onBoardPointerDown(event: React.PointerEvent) {
             </>
           )}
           {!gm && (
-            <button type="button" title="Hide the map for me" onClick={onClose}>
+            <button type="button" title={t("battlemap.hideForMe")} onClick={onClose}>
               <X size={14} />
             </button>
           )}
         </div>
       </div>
+
+      {gm && mode === "fog" && (
+        <div className="bm-subbar">
+          <button
+            type="button"
+            className={fogMode === "cover" ? "on" : ""}
+            onClick={() => setFogMode("cover")}
+          >
+            {t("battlemap.fogCover")}
+          </button>
+          <button
+            type="button"
+            className={fogMode === "reveal" ? "on" : ""}
+            onClick={() => setFogMode("reveal")}
+          >
+            {t("battlemap.fogReveal")}
+          </button>
+          <button type="button" onClick={() => void act({ action: "cover-all-fog" })}>
+            {t("battlemap.fogCoverAll")}
+          </button>
+          <button type="button" onClick={() => void act({ action: "clear-fog" })}>
+            {t("battlemap.fogClearAll")}
+          </button>
+        </div>
+      )}
+
+      {mode === "area" && (
+        <div className="bm-subbar">
+          {(["sphere", "cone", "cube", "line"] as const).map((shape) => (
+            <button
+              key={shape}
+              type="button"
+              className={aoeShape === shape ? "on" : ""}
+              onClick={() => setAoeShape(shape)}
+            >
+              {t(
+                shape === "sphere"
+                  ? "battlemap.aoeSphere"
+                  : shape === "cone"
+                    ? "battlemap.aoeCone"
+                    : shape === "cube"
+                      ? "battlemap.aoeCube"
+                      : "battlemap.aoeLine",
+              )}
+            </button>
+          ))}
+          <span style={{ opacity: 0.4 }}>|</span>
+          {[10, 15, 20, 30, 60].map((ft) => (
+            <button
+              key={ft}
+              type="button"
+              className={aoeSizeFt === ft ? "on" : ""}
+              onClick={() => setAoeSizeFt(ft)}
+            >
+              {t("battlemap.aoeSizeFt", { ft })}
+            </button>
+          ))}
+          <button type="button" onClick={() => void act({ action: "clear-areas" })}>
+            {t("battlemap.aoeClear")}
+          </button>
+        </div>
+      )}
+
+      {gm && mode === "ping" && (
+        <div className="bm-subbar">
+          <button
+            type="button"
+            className={pullViewNext ? "on" : ""}
+            title={t("battlemap.pullViewTitle")}
+            onClick={() => setPullViewNext((v) => !v)}
+          >
+            {t("battlemap.pullView")}
+          </button>
+        </div>
+      )}
+
+      {concentrationPrompt && (
+        <div className="bm-banner" role="status">
+          <span>
+            {t("battlemap.concCheckBanner", {
+              label: concentrationPrompt.label,
+              damage: concentrationPrompt.damage,
+              dc: concentrationPrompt.dc,
+            })}
+          </span>
+          <div className="flex items-center gap-2">
+            {onRollCommand && (
+              <button
+                type="button"
+                className="px-2 py-0.5 rounded bg-amber-500 text-black font-bold text-[11px]"
+                onClick={() => {
+                  onRollCommand("/roll 1d20");
+                  setConcentrationPrompt(null);
+                }}
+              >
+                {t("battlemap.rollConSave")}
+              </button>
+            )}
+            <button type="button" onClick={() => setConcentrationPrompt(null)}>
+              <X size={13} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {expiredNotice && (
+        <div className="bm-banner" role="status">
+          <span>{expiredNotice}</span>
+          <button type="button" onClick={() => setExpiredNotice(null)}>
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       <div
         className={`battlemap-board ${mode === "paint" ? "painting" : ""} ${mode === "fog" ? "fogging" : ""} ${panning ? "panning" : ""}`}
@@ -1030,9 +1562,61 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 strokeWidth="0.02"
               />
             </pattern>
+            {hasCoverFog && (
+              <mask id={fogMaskId}>
+                <rect x={0} y={0} width={map.grid} height={rows} fill="black" />
+                {map.fog.map((fog) => (
+                  <rect
+                    key={fog.id}
+                    x={fog.x}
+                    y={fog.y}
+                    width={fog.w}
+                    height={fog.h}
+                    fill={fog.mode === "reveal" ? "black" : "white"}
+                  />
+                ))}
+              </mask>
+            )}
           </defs>
           {snapMode === "square" && <rect width={map.grid} height={rows} fill="url(#bm-grid)" />}
           {snapMode === "hex" && <rect width={map.grid} height={rows} fill="url(#bm-hex-grid)" />}
+          {/* Persistent + draft AoE spell templates */}
+          {[...(map.areas || []), ...(areaDraft ? [areaDraft] : [])].map((area) => {
+            const geom = areaSvgGeometry(area);
+            const col = area.color || "#f97316";
+            const canDelete = area.id !== "draft" && (gm || area.ownerId === userId) && mode === "area";
+            return geom.kind === "circle" ? (
+              <circle
+                key={area.id}
+                cx={geom.cx}
+                cy={geom.cy}
+                r={geom.r}
+                fill={col}
+                fillOpacity={0.2}
+                stroke={col}
+                strokeWidth={0.08}
+                strokeDasharray="0.22 0.14"
+                style={{ pointerEvents: canDelete ? "all" : "none", cursor: canDelete ? "pointer" : undefined }}
+                onClick={() => {
+                  if (canDelete) void act({ action: "remove-area", areaId: area.id });
+                }}
+              />
+            ) : (
+              <polygon
+                key={area.id}
+                points={geom.points}
+                fill={col}
+                fillOpacity={0.2}
+                stroke={col}
+                strokeWidth={0.08}
+                strokeDasharray="0.22 0.14"
+                style={{ pointerEvents: canDelete ? "all" : "none", cursor: canDelete ? "pointer" : undefined }}
+                onClick={() => {
+                  if (canDelete) void act({ action: "remove-area", areaId: area.id });
+                }}
+              />
+            );
+          })}
           {map.strokes.map((stroke) => (
             <path
               key={stroke.id}
@@ -1054,50 +1638,116 @@ function onBoardPointerDown(event: React.PointerEvent) {
               strokeLinejoin="round"
             />
           )}
-          {/* Fog of war: opaque rectangles over the map. */}
-          {map.fog.map((fog) => (
-            <g key={fog.id}>
-              <rect
-                x={fog.x}
-                y={fog.y}
-                width={fog.w}
-                height={fog.h}
-                className="battlemap-fog"
-              />
-              {gm && (
+          {/* Fog of war via SVG <mask>: supports cover rects + reveal cutouts */}
+          {hasCoverFog && (
+            <rect
+              x={0}
+              y={0}
+              width={map.grid}
+              height={rows}
+              fill={gm ? "rgba(15, 23, 42, 0.55)" : "rgba(7, 9, 13, 0.96)"}
+              mask={`url(#${fogMaskId})`}
+            />
+          )}
+          {gm &&
+            map.fog.map((fog) => (
+              <g key={fog.id}>
+                {mode === "fog" && (
+                  <rect
+                    x={fog.x}
+                    y={fog.y}
+                    width={fog.w}
+                    height={fog.h}
+                    fill="none"
+                    stroke={fog.mode === "reveal" ? "#34d399" : "#94a3b8"}
+                    strokeWidth={0.05}
+                    strokeDasharray="0.18 0.12"
+                  />
+                )}
                 <rect
                   x={fog.x}
                   y={fog.y}
                   width={fog.w}
                   height={fog.h}
                   className="battlemap-fog-hit"
-                  onClick={() => void act({ action: "remove-fog", fogId: fog.id })}
+                  style={{ pointerEvents: mode === "fog" ? "all" : undefined }}
+                  onClick={() => {
+                    if (!fogDraggedRef.current) {
+                      void act({ action: "remove-fog", fogId: fog.id });
+                    }
+                  }}
                 />
-              )}
-            </g>
-          ))}
+              </g>
+            ))}
           {fogDraft && fogDraft.id === "draft" && (
             <rect
               x={fogDraft.x}
               y={fogDraft.y}
               width={fogDraft.w}
               height={fogDraft.h}
-              className="battlemap-fog draft"
+              fill={fogDraft.mode === "reveal" ? "rgba(52, 211, 153, 0.25)" : undefined}
+              className={fogDraft.mode === "reveal" ? "" : "battlemap-fog draft"}
+            />
+          )}
+          {rulerPts && (
+            <line
+              x1={rulerPts.sx}
+              y1={rulerPts.sy}
+              x2={rulerPts.ex}
+              y2={rulerPts.ey}
+              stroke="#38bdf8"
+              strokeWidth={0.1}
+              strokeDasharray="0.22 0.14"
             />
           )}
         </svg>
+        {rulerPts && (rulerPts.sx !== rulerPts.ex || rulerPts.sy !== rulerPts.ey) && (
+          <div
+            className="absolute -translate-x-1/2 -translate-y-1/2 bg-neutral-950/90 text-sky-300 border border-sky-400/50 rounded px-1.5 py-0.5 text-[11px] font-bold pointer-events-none z-20 whitespace-nowrap"
+            style={{
+              left: `${(((rulerPts.sx + rulerPts.ex) / 2) / map.grid) * 100}%`,
+              top: `${(((rulerPts.sy + rulerPts.ey) / 2) / rows) * 100}%`,
+            }}
+          >
+            {measureFeet(rulerPts.sx, rulerPts.sy, rulerPts.ex, rulerPts.ey)} ft
+          </div>
+        )}
+        {activePing && (
+          <div
+            className="bm-ping-ring"
+            style={{
+              left: `${(activePing.x / map.grid) * 100}%`,
+              top: `${(activePing.y / rows) * 100}%`,
+              borderColor: activePing.color,
+            }}
+            title={t("battlemap.pingedBy", { name: activePing.byName })}
+          />
+        )}
 
-        {map.tokens.map((token) => {
+        {map.tokens
+          .filter((token) => gm || !token.hidden)
+          .map((token) => {
           const mine = canMove(token);
           const renaming = renamingId === token.id;
           const isActiveTurn = currentTurnId === token.id;
+          const isSelected = selectedTokenId === token.id;
+          const canSeeExactHp = gm || token.ownerId === userId || hpVis === "exact";
+          const hpTier =
+            !canSeeExactHp && hpVis === "tier"
+              ? token.hpTier ??
+                (typeof token.hp === "number" && typeof token.maxHp === "number"
+                  ? hpTierFor(token.hp, token.maxHp)
+                  : null)
+              : null;
           return (
             <div
               key={token.id}
               data-token-id={token.id}
               className={`battlemap-token ${mine ? "movable" : ""} ${
-                dragging === token.id ? "dragging" : ""
-              } ${resizing === token.id ? "resizing" : ""}`}
+                token.hidden ? "bm-token-hidden" : ""
+              } ${dragging === token.id ? "dragging" : ""} ${
+                resizing === token.id ? "resizing" : ""
+              }`}
               style={{
                 left: `${(token.x / map.grid) * 100}%`,
                 top: `${(token.y / rows) * 100}%`,
@@ -1105,10 +1755,13 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 borderColor: token.color,
                 boxShadow: isActiveTurn
                   ? "0 0 0 3px #f59e0b, 0 0 16px rgba(245, 158, 11, 0.85)"
-                  : undefined,
+                  : isSelected
+                    ? "0 0 0 2px #38bdf8, 0 0 10px rgba(56, 189, 248, 0.65)"
+                    : undefined,
               }}
               title={token.label}
               onPointerDown={(event) => {
+                onSelectToken?.(token.id);
                 if (mode !== "move" || !mine) return;
                 event.stopPropagation();
                 event.preventDefault();
@@ -1126,22 +1779,30 @@ function onBoardPointerDown(event: React.PointerEvent) {
                   {token.conditions.map((cid) => {
                     const info = CONDITIONS.find((c) => c.id === cid);
                     if (!info) return null;
+                    const dur = token.conditionDurations?.[cid];
                     return (
                       <span
                         key={cid}
                         className="px-1 py-0.2 text-[8px] font-black rounded shadow text-white leading-tight uppercase cursor-pointer hover:opacity-80"
                         style={{ backgroundColor: info.color }}
-                        title={`${info.label}: ${info.description} (click to remove)`}
+                        title={t("battlemap.condRemoveTitle", { label: info.label, desc: info.description })}
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleCondition(token, cid);
                         }}
                       >
                         {info.badge}
+                        {dur ? ` ${t("battlemap.roundsShort", { count: dur })}` : ""}
                       </span>
                     );
                   })}
                 </div>
+              )}
+
+              {gm && token.hidden && (
+                <span className="absolute -top-2 -right-2 px-1 py-0.2 text-[8px] font-black rounded bg-neutral-950/90 text-amber-300 border border-amber-400/50 z-10 pointer-events-none">
+                  {t("battlemap.gmHiddenBadge")}
+                </span>
               )}
 
               {token.avatarUrl && !brokenImgs.has(token.avatarUrl) ? (
@@ -1160,10 +1821,18 @@ function onBoardPointerDown(event: React.PointerEvent) {
               <b>{token.label}</b>
 
               {/* HP badge below label */}
-              {typeof token.hp === "number" && (
+              {canSeeExactHp && typeof token.hp === "number" && (
                 <div className="absolute -bottom-4.5 left-1/2 -translate-x-1/2 text-[9px] font-bold text-emerald-400 whitespace-nowrap bg-black/85 px-1 rounded shadow pointer-events-none">
                   {token.hp}
                   {typeof token.maxHp === "number" ? `/${token.maxHp}` : ""}
+                </div>
+              )}
+              {!canSeeExactHp && hpTier && (
+                <div
+                  className="bm-hp-tier absolute -bottom-4.5 left-1/2 -translate-x-1/2 pointer-events-none"
+                  style={{ color: hpTier.color, borderColor: hpTier.color }}
+                >
+                  {hpTier.label}
                 </div>
               )}
 
@@ -1172,7 +1841,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 <button
                   type="button"
                   className="battlemap-rename-btn !right-auto !left-[-10px] !bg-neutral-800 hover:!bg-neutral-700"
-                  title="Conditions"
+                  title={t("battlemap.conditions")}
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1188,42 +1857,90 @@ function onBoardPointerDown(event: React.PointerEvent) {
               {/* Floating condition picker */}
               {conditionPickerTokenId === token.id && (
                 <div
-                  className="absolute left-1/2 top-full mt-4 -translate-x-1/2 bg-neutral-900 border border-white/20 rounded-lg p-2 shadow-2xl z-40 w-48 text-left text-white pointer-events-auto cursor-default"
+                  className="absolute left-1/2 top-full mt-4 -translate-x-1/2 bg-neutral-900 border border-white/20 rounded-lg p-2 shadow-2xl z-40 w-56 text-left text-white pointer-events-auto cursor-default"
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex items-center justify-between pb-1 mb-1 border-b border-white/10 text-[11px] font-semibold">
-                    <span>Conditions</span>
-                    <button
-                      type="button"
-                      className="text-white/60 hover:text-white"
-                      onClick={() => setConditionPickerTokenId(null)}
-                    >
-                      <X size={12} />
-                    </button>
+                    <span>{t("battlemap.conditions")}</span>
+                    <div className="flex items-center gap-1.5">
+                      {gm && (
+                        <button
+                          type="button"
+                          className="text-white/70 hover:text-amber-300"
+                          title={t("battlemap.toggleHidden")}
+                          onClick={() => {
+                            const nextHidden = !token.hidden;
+                            const updated = { ...token, hidden: nextHidden || undefined };
+                            onLocalToken(updated);
+                            void act({
+                              action: "update-token",
+                              tokenId: token.id,
+                              token: { hidden: nextHidden },
+                            });
+                          }}
+                        >
+                          {token.hidden ? <EyeOff size={12} /> : <Eye size={12} />}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="text-white/60 hover:text-white"
+                        onClick={() => setConditionPickerTokenId(null)}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="max-h-44 overflow-y-auto flex flex-col gap-0.5">
+                  <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5">
                     {CONDITIONS.map((c) => {
                       const active = (token.conditions || []).includes(c.id);
+                      const dur = token.conditionDurations?.[c.id];
                       return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          className={`flex items-center gap-1.5 px-1.5 py-1 rounded text-[11px] transition-colors ${
-                            active
-                              ? "bg-white/20 text-white font-medium"
-                              : "hover:bg-white/10 text-white/80"
-                          }`}
-                          onClick={() => toggleCondition(token, c.id)}
-                          title={c.description}
-                        >
-                          <span
-                            className="w-2 h-2 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: c.color }}
-                          />
-                          <span className="flex-1 truncate">{c.label}</span>
-                          {active && <Check size={11} className="text-emerald-400" />}
-                        </button>
+                        <div key={c.id} className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            className={`flex-1 flex items-center gap-1.5 px-1.5 py-1 rounded text-[11px] transition-colors ${
+                              active
+                                ? "bg-white/20 text-white font-medium"
+                                : "hover:bg-white/10 text-white/80"
+                            }`}
+                            onClick={() => toggleCondition(token, c.id)}
+                            title={c.description}
+                          >
+                            <span
+                              className="w-2 h-2 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: c.color }}
+                            />
+                            <span className="flex-1 truncate">{c.label}</span>
+                            {active && <Check size={11} className="text-emerald-400" />}
+                          </button>
+                          {active && (
+                            <div className="flex items-center gap-0.5">
+                              {([1, 3, 10] as const).map((r) => (
+                                <button
+                                  key={r}
+                                  type="button"
+                                  className={`px-1 py-0.5 rounded text-[9px] ${
+                                    dur === r ? "bg-amber-500 text-black font-bold" : "bg-white/10 text-white/70 hover:bg-white/20"
+                                  }`}
+                                  onClick={() => setConditionDuration(token, c.id, dur === r ? null : r)}
+                                >
+                                  {r}
+                                </button>
+                              ))}
+                              <button
+                                type="button"
+                                className={`px-1 py-0.5 rounded text-[9px] ${
+                                  !dur ? "bg-amber-500 text-black font-bold" : "bg-white/10 text-white/70 hover:bg-white/20"
+                                }`}
+                                onClick={() => setConditionDuration(token, c.id, null)}
+                              >
+                                {t("battlemap.roundsInfinite")}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -1234,7 +1951,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 <button
                   type="button"
                   className="battlemap-rename-btn"
-                  title="Rename token"
+                  title={t("battlemap.renameToken")}
                   onPointerDown={(event) => event.stopPropagation()}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -1262,7 +1979,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 <button
                   type="button"
                   className="battlemap-resize-btn"
-                  title="Resize token (drag)"
+                  title={t("battlemap.resizeToken")}
                   onPointerDown={(event) => startResize(event, token)}
                 >
                   ⇲
@@ -1283,13 +2000,13 @@ function onBoardPointerDown(event: React.PointerEvent) {
           <div className="flex items-center justify-between p-3 border-b border-white/10">
             <div className="flex items-center gap-2">
               <Swords size={15} className="text-amber-400" />
-              <span className="font-semibold text-sm">Initiative Tracker</span>
+              <span className="font-semibold text-sm">{t("battlemap.trackerHeading")}</span>
             </div>
             <button
               type="button"
               className="p-1 hover:bg-white/10 rounded text-white/60 hover:text-white"
               onClick={() => setInitiativeOpen(false)}
-              title="Close tracker"
+              title={t("battlemap.closeTracker")}
             >
               <X size={14} />
             </button>
@@ -1298,7 +2015,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
           {/* Turn & Round controls */}
           <div className="p-2.5 border-b border-white/10 bg-white/5 flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-amber-400">Round {round}</span>
+              <span className="text-xs font-bold text-amber-400">{t("battlemap.round", { round })}</span>
               <span
                 className={`text-[10px] px-1.5 py-0.5 rounded font-medium border ${
                   map.encounter === "combat"
@@ -1306,7 +2023,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
                     : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
                 }`}
               >
-                {map.encounter === "combat" ? "Combat" : "Exploration"}
+                {map.encounter === "combat" ? t("battlemap.combat") : t("battlemap.exploration")}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
@@ -1314,9 +2031,9 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 type="button"
                 onClick={nextTurn}
                 className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-black text-xs font-bold rounded flex items-center gap-1 transition-colors"
-                title="Advance to next turn"
+                title={t("battlemap.nextTurnTitle")}
               >
-                <span>Next Turn</span>
+                <span>{t("battlemap.nextTurn")}</span>
                 <ChevronRight size={13} />
               </button>
               {gm && (
@@ -1324,7 +2041,7 @@ function onBoardPointerDown(event: React.PointerEvent) {
                   type="button"
                   onClick={resetEncounter}
                   className="p-1 hover:bg-white/10 rounded text-white/60 hover:text-white"
-                  title="Reset encounter"
+                  title={t("battlemap.resetEncounter")}
                 >
                   <RotateCcw size={13} />
                 </button>
@@ -1332,18 +2049,24 @@ function onBoardPointerDown(event: React.PointerEvent) {
             </div>
           </div>
 
+          {currentInitToken && onDeckToken && (
+            <div className="px-3 py-1 bg-amber-500/10 border-b border-amber-500/20 text-[11px] text-amber-200 truncate">
+              {t("battlemap.nowOnDeck", { now: currentInitToken.label, next: onDeckToken.label })}
+            </div>
+          )}
+
           {/* Quick actions for GM */}
           {gm && (
             <div className="px-3 py-1.5 bg-black/20 border-b border-white/5 flex items-center justify-between text-[11px] text-white/60">
-              <span>Quick actions:</span>
+              <span>{t("battlemap.quickActions")}</span>
               <button
                 type="button"
                 onClick={() => setEncounter(map.encounter === "combat" ? "exploration" : "combat")}
                 className="hover:text-amber-300 flex items-center gap-1"
-                title="Switches the call's music when the server has combat and exploration music set (Server Settings → Integrations)"
+                title={t("battlemap.musicSwitchTitle")}
               >
                 <Music size={12} />
-                <span>{map.encounter === "combat" ? "End combat" : "Start combat"}</span>
+                <span>{map.encounter === "combat" ? t("battlemap.endCombat") : t("battlemap.startCombat")}</span>
               </button>
               <button
                 type="button"
@@ -1351,31 +2074,40 @@ function onBoardPointerDown(event: React.PointerEvent) {
                 className="hover:text-amber-300 flex items-center gap-1"
               >
                 <Dice5 size={12} />
-                <span>Roll All d20</span>
+                <span>{t("battlemap.rollAllD20")}</span>
               </button>
             </div>
           )}
 
           {/* Combatant list */}
           <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-            {map.tokens.length === 0 ? (
+            {map.tokens.filter((t) => gm || !t.hidden).length === 0 ? (
               <div className="text-center py-8 text-white/40 text-xs">
-                No tokens on the map.
+                {t("battlemap.noTokens")}
               </div>
             ) : (
               [...map.tokens]
+                .filter((t) => gm || !t.hidden)
                 .sort((a, b) => {
                   const initA = a.initiative ?? -999;
                   const initB = b.initiative ?? -999;
                   return initB - initA;
                 })
-                .map((t) => {
-                  const isActive = currentTurnId === t.id;
-                  const curHp = t.hp ?? (t.maxHp ?? 10);
-                  const maxHp = t.maxHp ?? 10;
+                .map((tok) => {
+                  const isActive = currentTurnId === tok.id;
+                  const curHp = tok.hp ?? (tok.maxHp ?? 10);
+                  const maxHp = tok.maxHp ?? 10;
+                  const canSeeExact = gm || tok.ownerId === userId || hpVis === "exact";
+                  const tokTier =
+                    !canSeeExact && hpVis === "tier"
+                      ? tok.hpTier ??
+                        (typeof tok.hp === "number" && typeof tok.maxHp === "number"
+                          ? hpTierFor(tok.hp, tok.maxHp)
+                          : null)
+                      : null;
                   return (
                     <div
-                      key={t.id}
+                      key={tok.id}
                       className={`p-2 rounded-lg border transition-all ${
                         isActive
                           ? "bg-amber-500/15 border-amber-500/60 ring-1 ring-amber-500/30"
@@ -1386,38 +2118,61 @@ function onBoardPointerDown(event: React.PointerEvent) {
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span
                             className="w-3 h-3 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: t.color }}
+                            style={{ backgroundColor: tok.color }}
                           />
-                          <span className="font-semibold text-xs truncate" title={t.label}>
-                            {t.label}
+                          <span className="font-semibold text-xs truncate" title={tok.label}>
+                            {tok.label}
                           </span>
+                          {gm && tok.hidden && (
+                            <span className="text-[8px] px-1 rounded bg-white/15 text-amber-300 font-bold">
+                              {t("battlemap.gmHiddenBadge")}
+                            </span>
+                          )}
                           {isActive && (
                             <span className="text-[9px] bg-amber-400 text-black font-extrabold px-1 rounded uppercase">
-                              Turn
+                              {t("battlemap.turn")}
                             </span>
                           )}
                         </div>
 
                         {/* Initiative score / roll */}
                         <div className="flex items-center gap-1 flex-shrink-0">
-                          {typeof t.initiative === "number" ? (
+                          {gm && (
                             <button
                               type="button"
-                              onClick={() => rollTokenInitiative(t)}
-                              className="px-1.5 py-0.5 bg-black/40 hover:bg-black/60 rounded text-xs font-bold text-amber-300 border border-amber-500/30"
-                              title="Click to re-roll initiative"
+                              onClick={() => {
+                                const nextHidden = !tok.hidden;
+                                onLocalToken({ ...tok, hidden: nextHidden || undefined });
+                                void act({
+                                  action: "update-token",
+                                  tokenId: tok.id,
+                                  token: { hidden: nextHidden },
+                                });
+                              }}
+                              className="p-1 text-white/50 hover:text-amber-300"
+                              title={t("battlemap.toggleHidden")}
                             >
-                              ⚡ {t.initiative}
+                              {tok.hidden ? <EyeOff size={12} /> : <Eye size={12} />}
+                            </button>
+                          )}
+                          {typeof tok.initiative === "number" ? (
+                            <button
+                              type="button"
+                              onClick={() => rollTokenInitiative(tok)}
+                              className="px-1.5 py-0.5 bg-black/40 hover:bg-black/60 rounded text-xs font-bold text-amber-300 border border-amber-500/30"
+                              title={t("battlemap.rerollInit")}
+                            >
+                              ⚡ {tok.initiative}
                             </button>
                           ) : (
                             <button
                               type="button"
-                              onClick={() => rollTokenInitiative(t)}
+                              onClick={() => rollTokenInitiative(tok)}
                               className="px-1.5 py-0.5 bg-white/10 hover:bg-white/20 rounded text-[10px] text-white/70 flex items-center gap-1"
-                              title="Roll 1d20 initiative"
+                              title={t("battlemap.rollInit")}
                             >
                               <Dice5 size={11} />
-                              <span>Roll</span>
+                              <span>{t("battlemap.roll")}</span>
                             </button>
                           )}
                         </div>
@@ -1427,44 +2182,52 @@ function onBoardPointerDown(event: React.PointerEvent) {
                       <div className="flex items-center justify-between text-[11px] text-white/70 bg-black/25 px-1.5 py-0.5 rounded mb-1.5">
                         <span className="flex items-center gap-1">
                           <Heart size={10} className="text-rose-400" />
-                          <span>
-                            HP: {curHp} / {maxHp}
-                          </span>
+                          {canSeeExact ? (
+                            <span>{t("battlemap.hpLine", { cur: curHp, max: maxHp })}</span>
+                          ) : tokTier ? (
+                            <span style={{ color: tokTier.color, fontWeight: 700 }}>{tokTier.label}</span>
+                          ) : (
+                            <span>{t("battlemap.hpHiddenLabel")}</span>
+                          )}
                         </span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => updateTokenHp(t, -1)}
-                            className="w-4 h-4 rounded bg-white/10 hover:bg-rose-500/30 hover:text-rose-300 flex items-center justify-center font-bold text-xs"
-                            title="-1 HP"
-                          >
-                            -
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateTokenHp(t, 1)}
-                            className="w-4 h-4 rounded bg-white/10 hover:bg-emerald-500/30 hover:text-emerald-300 flex items-center justify-center font-bold text-xs"
-                            title="+1 HP"
-                          >
-                            +
-                          </button>
-                        </div>
+                        {(gm || tok.ownerId === userId) && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => updateTokenHp(tok, -1)}
+                              className="w-4 h-4 rounded bg-white/10 hover:bg-rose-500/30 hover:text-rose-300 flex items-center justify-center font-bold text-xs"
+                              title={t("battlemap.minusHp")}
+                            >
+                              -
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateTokenHp(tok, 1)}
+                              className="w-4 h-4 rounded bg-white/10 hover:bg-emerald-500/30 hover:text-emerald-300 flex items-center justify-center font-bold text-xs"
+                              title={t("battlemap.plusHp")}
+                            >
+                              +
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {/* Conditions row */}
                       <div className="flex items-center gap-1 flex-wrap">
-                        {(t.conditions || []).map((cid) => {
+                        {(tok.conditions || []).map((cid) => {
                           const info = CONDITIONS.find((c) => c.id === cid);
                           if (!info) return null;
+                          const dur = tok.conditionDurations?.[cid];
                           return (
                             <span
                               key={cid}
                               className="px-1 py-0.2 text-[8px] font-bold rounded shadow text-white leading-tight uppercase cursor-pointer hover:opacity-80"
                               style={{ backgroundColor: info.color }}
-                              title={`${info.label} (click to remove)`}
-                              onClick={() => toggleCondition(t, cid)}
+                              title={t("battlemap.condShortRemove", { label: info.label })}
+                              onClick={() => toggleCondition(tok, cid)}
                             >
-                              {info.badge} ×
+                              {info.badge}
+                              {dur ? ` ${t("battlemap.roundsShort", { count: dur })}` : ""} ×
                             </span>
                           );
                         })}
@@ -1472,13 +2235,13 @@ function onBoardPointerDown(event: React.PointerEvent) {
                           type="button"
                           onClick={() =>
                             setConditionPickerTokenId(
-                              conditionPickerTokenId === t.id ? null : t.id,
+                              conditionPickerTokenId === tok.id ? null : tok.id,
                             )
                           }
                           className="text-[10px] text-white/40 hover:text-white/80 px-1 py-0.2 rounded hover:bg-white/10"
-                          title="Add condition"
+                          title={t("battlemap.addConditionTitle")}
                         >
-                          + Cond
+                          {t("battlemap.addCondBtn")}
                         </button>
                       </div>
                     </div>

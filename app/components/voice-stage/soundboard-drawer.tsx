@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Volume2, Volume1, VolumeX, Play, Search, X } from "lucide-react";
 import { SOUNDBOARD_PRESETS, playPresetSound } from "@/lib/soundboard-presets";
 import { apiFetch } from "../../lib/client";
+import { useI18n } from "../../lib/i18n-context";
 import type { Sound } from "./types";
 
 /** The soundboard: browse and play presets or server clips; upload new ones; adjust volume. */
@@ -24,6 +25,7 @@ export function SoundboardDrawer({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [personalUpload, setPersonalUpload] = useState(false);
+  const { t } = useI18n();
   const [volume, setVolume] = useState<number>(() => {
     if (typeof localStorage === "undefined") return 0.7;
     const v = parseFloat(localStorage.getItem("huddle_soundboard_volume") || "0.7");
@@ -135,19 +137,19 @@ export function SoundboardDrawer({
             className={`soundboard-tab-btn ${tab === "presets" ? "active" : ""}`}
             onClick={() => setTab("presets")}
           >
-            Instant Presets ({SOUNDBOARD_PRESETS.length})
+            {t("voice.soundboard.presets", { count: SOUNDBOARD_PRESETS.length })}
           </button>
           <button
             type="button"
             className={`soundboard-tab-btn ${tab === "server" ? "active" : ""}`}
             onClick={() => setTab("server")}
           >
-            Server Clips ({sounds.length})
+            {t("voice.soundboard.serverClips", { count: sounds.length })}
           </button>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="soundboard-volume-wrap flex items-center gap-1.5" title={`Soundboard Volume: ${Math.round(volume * 100)}%`}>
+          <div className="soundboard-volume-wrap flex items-center gap-1.5" title={t("voice.soundboard.volumeTitle", { percent: Math.round(volume * 100) })}>
             {volume === 0 ? <VolumeX size={14} className="text-[var(--muted)]" /> : volume < 0.5 ? <Volume1 size={14} className="text-[var(--muted)]" /> : <Volume2 size={14} className="text-[var(--muted)]" />}
             <input
               type="range"
@@ -165,7 +167,7 @@ export function SoundboardDrawer({
             <Search size={12} className="absolute left-2 text-[var(--muted)] pointer-events-none" />
             <input
               type="text"
-              placeholder="Search sounds..."
+              placeholder={t("voice.soundboard.searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="soundboard-search-input pl-6 pr-2 py-0.5 text-xs rounded-md bg-[var(--paper)] border border-[var(--line)] w-28 focus:w-36 transition-all outline-none"
@@ -177,7 +179,7 @@ export function SoundboardDrawer({
               type="button"
               className="popup-close-x"
               onClick={onClose}
-              aria-label="Close soundboard"
+              aria-label={t("voice.soundboard.closeAria")}
             >
               <X size={16} />
             </button>
@@ -194,7 +196,7 @@ export function SoundboardDrawer({
                   type="button"
                   className={`soundboard-pad ${recentlyPlayed === `preset:${preset.id}` ? "played" : ""}`}
                   onClick={() => playSoundboardItem(`preset:${preset.id}`, preset.name)}
-                  title={`${preset.name} - ${preset.description}\n(Click to play to room)`}
+                  title={`${preset.name} - ${preset.description}\n${t("voice.soundboard.clickToPlay")}`}
                 >
                   <span className="soundboard-emoji">{preset.emoji}</span>
                   <span className="soundboard-name">{preset.name}</span>
@@ -202,7 +204,7 @@ export function SoundboardDrawer({
                 <button
                   type="button"
                   className="soundboard-preview-btn"
-                  title="Preview for only you"
+                  title={t("voice.soundboard.previewOnlyYou")}
                   onClick={(e) => previewPreset(preset.id, e)}
                 >
                   <Play size={10} />
@@ -210,7 +212,7 @@ export function SoundboardDrawer({
               </div>
             ))}
             {filteredPresets.length === 0 && (
-              <p className="soundboard-empty">No preset sounds match &ldquo;{search}&rdquo;</p>
+              <p className="soundboard-empty">{t("voice.soundboard.noPresetsMatch", { query: search })}</p>
             )}
           </>
         )}
@@ -223,7 +225,7 @@ export function SoundboardDrawer({
                   type="button"
                   className={`soundboard-pad ${sound.personal ? "personal" : ""} ${recentlyPlayed === sound.id ? "played" : ""}`}
                   onClick={() => playSoundboardItem(sound.id, sound.name)}
-                  title={`${sound.name}${sound.personal ? " (your pack)" : ""}\n(Click to play to room)`}
+                  title={`${sound.name}${sound.personal ? t("voice.soundboard.yourPack") : ""}\n${t("voice.soundboard.clickToPlay")}`}
                 >
                   <span className="soundboard-emoji">{sound.emoji}</span>
                   <span className="soundboard-name">{sound.name}</span>
@@ -231,7 +233,7 @@ export function SoundboardDrawer({
                 <button
                   type="button"
                   className="soundboard-preview-btn"
-                  title="Preview for only you"
+                  title={t("voice.soundboard.previewOnlyYou")}
                   onClick={(e) => previewCustom(sound.url, e)}
                 >
                   <Play size={10} />
@@ -240,7 +242,7 @@ export function SoundboardDrawer({
                   <button
                     type="button"
                     className="soundboard-delete"
-                    title={`Delete ${sound.name}`}
+                    title={t("voice.soundboard.deleteTitle", { name: sound.name })}
                     onClick={(e) => void remove(sound, e)}
                   >
                     ×
@@ -256,15 +258,15 @@ export function SoundboardDrawer({
                 onClick={() => fileRef.current?.click()}
               >
                 <span className="soundboard-emoji">{uploading ? "…" : "＋"}</span>
-                <span className="soundboard-name">Upload</span>
+                <span className="soundboard-name">{t("voice.soundboard.upload")}</span>
               </button>
             )}
             {filteredSounds.length === 0 && sounds.length === 0 && (
-              <p className="soundboard-empty">No custom sounds yet. Click upload to add audio clips!</p>
+              <p className="soundboard-empty">{t("voice.soundboard.empty")}</p>
             )}
             {uploadError && <p className="soundboard-empty" role="alert">{uploadError}</p>}
             {filteredSounds.length === 0 && sounds.length > 0 && (
-              <p className="soundboard-empty">No server sounds match &ldquo;{search}&rdquo;</p>
+              <p className="soundboard-empty">{t("voice.soundboard.noServerMatch", { query: search })}</p>
             )}
             <div className="soundboard-upload-options w-full mt-1">
               <label className="soundboard-personal-toggle">
@@ -273,7 +275,7 @@ export function SoundboardDrawer({
                   checked={personalUpload}
                   onChange={(event) => setPersonalUpload(event.target.checked)}
                 />
-                <span>Add to my personal pack</span>
+                <span>{t("voice.soundboard.personalPack")}</span>
               </label>
             </div>
           </>

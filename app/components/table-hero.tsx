@@ -6,11 +6,12 @@
  * pawn I am holding (its hit points and how far it has gone this turn).
  */
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ExternalLink, Heart, Minus, Moon, Pencil, Plus, Shield, Skull, Sparkles, Swords, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Coffee, ExternalLink, Heart, Minus, Moon, Pencil, Plus, Shield, Skull, Sparkles, Swords, Trash2, X } from "lucide-react";
 import { CONDITIONS } from "@/lib/battlemap";
 import type { TableCharacter } from "@/lib/lounge-shared";
 import type { SpellInfo } from "@/lib/dnd-spells";
 import { getSpell, levelName } from "../lib/spell-book";
+import { useI18n } from "../lib/i18n-context";
 
 /** A spell I cast: what it cost and what to roll, and its area on the map if it has one. */
 export interface CastResult {
@@ -41,7 +42,8 @@ function useDraft(value: number, send: (next: number) => void) {
 }
 
 /** Hit points with a damage/heal box: type 7 and press − or +; empty, they step by one. */
-function HpControl({ hp, maxHp, onChange, label = "Hit points" }: { hp: number; maxHp: number; onChange: (hp: number) => void; label?: string }) {
+function HpControl({ hp, maxHp, onChange, label }: { hp: number; maxHp: number; onChange: (hp: number) => void; label?: string }) {
+  const { t } = useI18n();
   const [shown, set] = useDraft(hp, onChange);
   const [amount, setAmount] = useState("");
   const step = (sign: 1 | -1) => {
@@ -51,15 +53,15 @@ function HpControl({ hp, maxHp, onChange, label = "Hit points" }: { hp: number; 
   };
   const part = maxHp > 0 ? shown / maxHp : 0;
   return (
-    <div className="lr-hp" role="group" aria-label={label}>
-      <div className="lr-hp-bar" title={`${shown} of ${maxHp} hit points`}>
+    <div className="lr-hp" role="group" aria-label={label ?? t("tableHero.hitPoints")}>
+      <div className="lr-hp-bar" title={t("tableHero.hpOf", { shown, max: maxHp })}>
         <i style={{ width: `${Math.max(0, Math.min(1, part)) * 100}%`, background: part > 0.5 ? "#4ade80" : part > 0.25 ? "#facc15" : "#f87171" }} />
         <span><Heart size={11} /> {shown}/{maxHp}</span>
       </div>
-      <button type="button" onClick={() => step(-1)} aria-label="Take damage" title="Damage (the number in the box, or 1)"><Minus size={13} /></button>
+      <button type="button" onClick={() => step(-1)} aria-label={t("tableHero.takeDamage")} title={t("tableHero.damageTitle")}><Minus size={13} /></button>
       <input value={amount} onChange={(event) => setAmount(event.target.value.replace(/\D/g, "").slice(0, 4))} onKeyDown={(event) => { if (event.key === "Enter") step(-1); }}
-        inputMode="numeric" placeholder="0" aria-label="How much" className="lr-hp-amount" />
-      <button type="button" onClick={() => step(1)} aria-label="Heal" title="Heal (the number in the box, or 1)"><Plus size={13} /></button>
+        inputMode="numeric" placeholder="0" aria-label={t("tableHero.howMuch")} className="lr-hp-amount" />
+      <button type="button" onClick={() => step(1)} aria-label={t("tableHero.heal")} title={t("tableHero.healTitle")}><Plus size={13} /></button>
     </div>
   );
 }
@@ -83,6 +85,7 @@ function modStr(score: number): string {
 }
 
 function SpellRow({ name, character, edition, onCast }: { name: string; character: TableCharacter; edition?: "2014" | "2024"; onCast: (spell: SpellInfo, slotLevel: number) => void }) {
+  const { t } = useI18n();
   const [spell, setSpell] = useState<SpellInfo | null | undefined>(undefined);
   const [at, setAt] = useState<number | null>(null);
   useEffect(() => { let live = true; void getSpell(name, edition).then((found) => { if (live) setSpell(found); }); return () => { live = false; }; }, [name, edition]);
@@ -93,16 +96,24 @@ function SpellRow({ name, character, edition, onCast }: { name: string; characte
       <span className="lr-name" title={spell?.area ? `${spell.area.size} ft ${spell.area.shape}` : spell?.range}>{name}</span>
       <small>{spell === undefined ? "…" : spell ? levelName(spell.level) : "?"}</small>
       {levels.length > 1 && (
-        <select value={level} onChange={(event) => setAt(Number(event.target.value))} aria-label={`Slot for ${name}`} title="Cast with a higher slot">
+        <select value={level} onChange={(event) => setAt(Number(event.target.value))} aria-label={t("tableHero.slotFor", { name })} title={t("tableHero.castHigherTitle")}>
           {levels.map((l) => <option key={l} value={l}>{levelName(l)}</option>)}
         </select>
       )}
       <button type="button" disabled={!spell || level === undefined} onClick={() => spell && level !== undefined && onCast(spell, level)}
-        title={!spell ? "The compendium does not know this spell" : level === undefined ? "No slots left for it" : spell.area ? "Then click the map to aim it" : "Use a slot and roll"}>
-        Cast
+        title={!spell ? t("tableHero.unknownSpell") : level === undefined ? t("tableHero.noSlotsLeft") : spell.area ? t("tableHero.aimMapTitle") : t("tableHero.useSlotTitle")}>
+        {t("tableHero.cast")}
       </button>
     </li>
   );
+}
+
+function defaultHitDie(cls?: string): number {
+  const c = (cls || "").toLowerCase();
+  if (c.includes("barbarian")) return 12;
+  if (c.includes("fighter") || c.includes("paladin") || c.includes("ranger")) return 10;
+  if (c.includes("sorcerer") || c.includes("wizard")) return 6;
+  return 8;
 }
 
 /**
@@ -125,7 +136,10 @@ export function HeroCard({ character, onChange, onEdit, onCast, cast, onRoll, on
   aiming: { name: string; what: string } | null;
   onStopAiming: () => void;
 }) {
+  const { t } = useI18n();
   const [tab, setTab] = useState<"stats" | "spells" | "actions" | "status" | null>(null);
+  const [shortRestOpen, setShortRestOpen] = useState(false);
+  const [shortRestNote, setShortRestNote] = useState<string | null>(null);
   const toggleTab = (next: "stats" | "spells" | "actions" | "status") => setTab((cur) => (cur === next ? null : next));
   const runRoll = (expr: string, label?: string) => {
     if (onCommand) {
@@ -141,6 +155,47 @@ export function HeroCard({ character, onChange, onEdit, onCast, cast, onRoll, on
   const conditions = character.conditions ?? [];
   const death = character.deathSaves ?? { successes: 0, failures: 0 };
   const initBonus = character.initiativeBonus ?? Math.floor(((character.abilities?.[1] ?? 10) - 10) / 2);
+  const conMod = Math.floor(((character.abilities?.[2] ?? 10) - 10) / 2);
+  const hdDie = character.hitDice?.die ?? defaultHitDie(character.cls);
+  const hdTotal = character.hitDice?.total ?? character.level ?? 1;
+  const hdUsed = Math.min(hdTotal, character.hitDice?.used ?? 0);
+  const hdLeft = Math.max(0, hdTotal - hdUsed);
+
+  function spendHitDie() {
+    if (hdLeft <= 0) return;
+    const roll = Math.floor(Math.random() * hdDie) + 1;
+    const healed = Math.max(1, roll + conMod);
+    const curHp = character.hp ?? maxHp;
+    const nextHp = maxHp > 0 ? Math.min(maxHp, curHp + healed) : curHp + healed;
+    onChange({
+      ...character,
+      hp: nextHp,
+      hitDice: { die: hdDie, total: hdTotal, used: hdUsed + 1 },
+    });
+    setShortRestNote(t("tableHero.healedHitDie", { healed, die: hdDie }));
+  }
+
+  function finishShortRest() {
+    const isWarlock = /warlock/i.test(character.cls || "");
+    if (isWarlock) {
+      onChange({ ...character, used: Array(9).fill(0) });
+    }
+    setShortRestOpen(false);
+    setShortRestNote(null);
+  }
+
+  function takeLongRest() {
+    const recovered = Math.max(1, Math.floor(hdTotal / 2));
+    onChange({
+      ...character,
+      hp: maxHp || character.hp,
+      tempHp: 0,
+      used: Array(9).fill(0),
+      deathSaves: { successes: 0, failures: 0 },
+      hitDice: { die: hdDie, total: hdTotal, used: Math.max(0, hdUsed - recovered) },
+    });
+    setShortRestOpen(false);
+  }
   const setUsed = (level: number, count: number) => {
     const next = Array.from({ length: 9 }, (_, i) => used[i] ?? 0);
     next[level] = Math.max(0, Math.min(slots[level] ?? 0, count));
@@ -151,21 +206,21 @@ export function HeroCard({ character, onChange, onEdit, onCast, cast, onRoll, on
     onChange({ ...character, conditions: has ? conditions.filter((c) => c !== condId) : [...conditions, condId] });
   };
   return (
-    <div className="lr-hero" role="region" aria-label="My character">
+    <div className="lr-hero" role="region" aria-label={t("tableHero.myCharacterAria")}>
       <div className="lr-hero-head">
         <strong>{character.name}</strong>
         <small>{[character.cls, character.level && `${character.level}`].filter(Boolean).join(" ")}</small>
         <span className="lr-hero-stats">
-          {character.ac !== undefined && <span title="Armour class"><Shield size={11} /> {character.ac}</span>}
-          {character.speed !== undefined && <span title="Speed">{character.speed} ft</span>}
-          {(character.tempHp ?? 0) > 0 && <span title="Temporary HP">+{character.tempHp} THP</span>}
+          {character.ac !== undefined && <span title={t("tableHero.acTitle")}><Shield size={11} /> {character.ac}</span>}
+          {character.speed !== undefined && <span title={t("tableHero.speedTitle")}>{character.speed} ft</span>}
+          {(character.tempHp ?? 0) > 0 && <span title={t("tableHero.tempHpTitle")}>+{character.tempHp} THP</span>}
         </span>
         {onOpenCompanion && (
-          <button type="button" onClick={() => onOpenCompanion("/sheet")} aria-label="Open full sheet in Tavern" title="Open full sheet in Tavern">
+          <button type="button" onClick={() => onOpenCompanion("/sheet")} aria-label={t("tableHero.openTavern")} title={t("tableHero.openTavern")}>
             <ExternalLink size={12} />
           </button>
         )}
-        <button type="button" onClick={onEdit} aria-label="Edit my character" title="Edit my character"><Pencil size={12} /></button>
+        <button type="button" onClick={onEdit} aria-label={t("tableHero.editCharacter")} title={t("tableHero.editCharacter")}><Pencil size={12} /></button>
       </div>
       {maxHp > 0 && <HpControl hp={character.hp ?? maxHp} maxHp={maxHp} onChange={(hp) => onChange({ ...character, hp })} />}
       {conditions.length > 0 && (
@@ -173,7 +228,7 @@ export function HeroCard({ character, onChange, onEdit, onCast, cast, onRoll, on
           {conditions.map((cid) => {
             const info = CONDITIONS.find((c) => c.id === cid);
             return (
-              <button key={cid} type="button" className="active" style={info ? { borderColor: info.color } : undefined} onClick={() => toggleCondition(cid)} title="Click to remove condition">
+              <button key={cid} type="button" className="active" style={info ? { borderColor: info.color } : undefined} onClick={() => toggleCondition(cid)} title={t("tableHero.removeCondTitle")}>
                 {info?.badge ?? cid.slice(0, 3).toUpperCase()}
               </button>
             );
@@ -181,14 +236,14 @@ export function HeroCard({ character, onChange, onEdit, onCast, cast, onRoll, on
         </div>
       )}
       {slots.some((n) => n > 0) && (
-        <div className="lr-slots" aria-label="Spell slots">
+        <div className="lr-slots" aria-label={t("tableHero.spellSlotsAria")}>
           {slots.map((count, level) => count > 0 && (
-            <span key={level} className="lr-slot-level" title={`${levelName(level + 1)}-level slots: ${count - (used[level] ?? 0)} of ${count} left`}>
+            <span key={level} className="lr-slot-level" title={t("tableHero.slotsLeftTitle", { level: levelName(level + 1), left: count - (used[level] ?? 0), count })}>
               <small>{level + 1}</small>
               {Array.from({ length: count }, (_, i) => {
                 const left = i < count - (used[level] ?? 0);
                 return (
-                  <button key={i} type="button" className={left ? "full" : ""} aria-label={left ? `Spend a ${levelName(level + 1)}-level slot` : `Get a ${levelName(level + 1)}-level slot back`}
+                  <button key={i} type="button" className={left ? "full" : ""} aria-label={left ? t("tableHero.spendSlotAria", { level: levelName(level + 1) }) : t("tableHero.recoverSlotAria", { level: levelName(level + 1) })}
                     onClick={() => setUsed(level, (used[level] ?? 0) + (left ? 1 : -1))} />
                 );
               })}
@@ -197,14 +252,42 @@ export function HeroCard({ character, onChange, onEdit, onCast, cast, onRoll, on
         </div>
       )}
       <div className="lr-row lr-hero-tabs">
-        <button type="button" className={tab === "stats" ? "active" : ""} onClick={() => toggleTab("stats")}>Stats</button>
+        <button type="button" className={tab === "stats" ? "active" : ""} onClick={() => toggleTab("stats")}>{t("tableHero.tab.stats")}</button>
         {spells.length > 0 && (
-          <button type="button" className={tab === "spells" ? "active" : ""} onClick={() => toggleTab("spells")}><Sparkles size={12} /> Spells</button>
+          <button type="button" className={tab === "spells" ? "active" : ""} onClick={() => toggleTab("spells")}><Sparkles size={12} /> {t("tableHero.tab.spells")}</button>
         )}
-        <button type="button" className={tab === "actions" ? "active" : ""} onClick={() => toggleTab("actions")}><Swords size={12} /> Actions</button>
-        <button type="button" className={tab === "status" ? "active" : ""} onClick={() => toggleTab("status")}><Skull size={12} /> Status</button>
-        <button type="button" title="Long rest: hit points and spell slots back to full" onClick={() => onChange({ ...character, hp: maxHp || character.hp, tempHp: 0, used: Array(9).fill(0), deathSaves: { successes: 0, failures: 0 } })}><Moon size={12} /></button>
+        <button type="button" className={tab === "actions" ? "active" : ""} onClick={() => toggleTab("actions")}><Swords size={12} /> {t("tableHero.tab.actions")}</button>
+        <button type="button" className={tab === "status" ? "active" : ""} onClick={() => toggleTab("status")}><Skull size={12} /> {t("tableHero.tab.status")}</button>
+        <button
+          type="button"
+          className={shortRestOpen ? "active" : ""}
+          title={t("tableHero.shortRestTitle")}
+          onClick={() => {
+            setShortRestOpen((v) => !v);
+            setShortRestNote(null);
+          }}
+        >
+          <Coffee size={12} />
+        </button>
+        <button type="button" title={t("tableHero.longRestTitle")} onClick={takeLongRest}><Moon size={12} /></button>
       </div>
+      {shortRestOpen && (
+        <div className="lr-short-rest" role="region" aria-label={t("tableHero.shortRestHeading")}>
+          <div className="lr-row" style={{ justifyContent: "space-between" }}>
+            <strong>{t("tableHero.shortRestHeading")}</strong>
+            <span>{t("tableHero.hitDiceRemaining", { left: hdLeft, total: hdTotal, die: hdDie })}</span>
+          </div>
+          <div className="lr-row" style={{ justifyContent: "space-between" }}>
+            <button type="button" disabled={hdLeft <= 0} onClick={spendHitDie}>
+              {t("tableHero.spendHitDie", { die: hdDie })}
+            </button>
+            <button type="button" onClick={finishShortRest}>
+              {t("tableHero.finishShortRest")}
+            </button>
+          </div>
+          {shortRestNote && <small>{shortRestNote}</small>}
+        </div>
+      )}
       {tab === "stats" && (
         <div className="lr-hero-pane">
           <div className="lr-abilities">
@@ -216,7 +299,7 @@ export function HeroCard({ character, onChange, onEdit, onCast, cast, onRoll, on
                 <button
                   key={abil}
                   type="button"
-                  title={`${abil} ${s} (${mod}) — Click: Check · Shift+Click: Save`}
+                  title={t("tableHero.abilityTitle", { abil, score: s, mod })}
                   onClick={(e) => runRoll(`1d20${mod}`, e.shiftKey ? `${abil} Save` : abil)}
                 >
                   <small>{abil}</small>
@@ -227,12 +310,12 @@ export function HeroCard({ character, onChange, onEdit, onCast, cast, onRoll, on
           </div>
           <div className="lr-row">
             <button type="button" onClick={() => runRoll(`1d20${initBonus >= 0 ? `+${initBonus}` : initBonus}`, "Initiative")}>
-              Init {initBonus >= 0 ? `+${initBonus}` : initBonus}
+              {t("tableHero.init", { val: initBonus >= 0 ? `+${initBonus}` : initBonus })}
             </button>
             {character.skills && Object.keys(character.skills).length > 0 && (
               <select
                 value=""
-                aria-label="Roll skill"
+                aria-label={t("tableHero.rollSkill")}
                 onChange={(e) => {
                   const key = e.target.value;
                   if (!key) return;
@@ -240,7 +323,7 @@ export function HeroCard({ character, onChange, onEdit, onCast, cast, onRoll, on
                   runRoll(`1d20${bonus >= 0 ? `+${bonus}` : bonus}`, key.replace(/_/g, " "));
                 }}
               >
-                <option value="">Roll skill…</option>
+                <option value="">{t("tableHero.rollSkillOption")}</option>
                 {Object.entries(character.skills).map(([k, v]) => (
                   <option key={k} value={k}>{k.replace(/_/g, " ")} ({v >= 0 ? `+${v}` : v})</option>
                 ))}
@@ -267,8 +350,8 @@ export function HeroCard({ character, onChange, onEdit, onCast, cast, onRoll, on
             ))
           ) : (
             <li>
-              <span className="lr-name">Quick Attack</span>
-              <button type="button" onClick={() => runRoll(`1d20${modStr(character.abilities?.[0] ?? 10)}`, "Attack")}>Attack</button>
+              <span className="lr-name">{t("tableHero.quickAttack")}</span>
+              <button type="button" onClick={() => runRoll(`1d20${modStr(character.abilities?.[0] ?? 10)}`, "Attack")}>{t("tableHero.attack")}</button>
               <button type="button" onClick={() => runRoll("1d20", "Roll")}>d20</button>
             </li>
           )}
@@ -277,16 +360,16 @@ export function HeroCard({ character, onChange, onEdit, onCast, cast, onRoll, on
       {tab === "status" && (
         <div className="lr-hero-pane">
           <div className="lr-death-saves">
-            <small>Temp HP</small>
+            <small>{t("tableHero.tempHp")}</small>
             <button type="button" onClick={() => onChange({ ...character, tempHp: Math.max(0, (character.tempHp ?? 0) - 1) })}><Minus size={11} /></button>
             <b>{character.tempHp ?? 0}</b>
             <button type="button" onClick={() => onChange({ ...character, tempHp: (character.tempHp ?? 0) + 1 })}><Plus size={11} /></button>
             <span className="lr-sep" />
-            <small>Saves</small>
-            <button type="button" className="ds-ok" title="Death Save Successes (click to cycle)" onClick={() => onChange({ ...character, deathSaves: { ...death, successes: (death.successes + 1) % 4 } })}>
+            <small>{t("tableHero.saves")}</small>
+            <button type="button" className="ds-ok" title={t("tableHero.deathSuccessTitle")} onClick={() => onChange({ ...character, deathSaves: { ...death, successes: (death.successes + 1) % 4 } })}>
               ✓ {death.successes}/3
             </button>
-            <button type="button" className="ds-fail" title="Death Save Failures (click to cycle)" onClick={() => onChange({ ...character, deathSaves: { ...death, failures: (death.failures + 1) % 4 } })}>
+            <button type="button" className="ds-fail" title={t("tableHero.deathFailTitle")} onClick={() => onChange({ ...character, deathSaves: { ...death, failures: (death.failures + 1) % 4 } })}>
               ✕ {death.failures}/3
             </button>
           </div>
@@ -304,21 +387,21 @@ export function HeroCard({ character, onChange, onEdit, onCast, cast, onRoll, on
       )}
       {aiming && (
         <div className="lr-cast lr-aim">
-          <span><b>{aiming.name}</b>: {aiming.what}. Esc cancels.</span>
-          <button type="button" onClick={onStopAiming} aria-label="Stop aiming"><X size={13} /></button>
+          <span><b>{aiming.name}</b>: {aiming.what}. {t("tableHero.escCancels")}</span>
+          <button type="button" onClick={onStopAiming} aria-label={t("tableHero.stopAiming")}><X size={13} /></button>
         </div>
       )}
       {cast && !aiming && (
         <div className="lr-cast">
           <div className="lr-line">
-            <span><b>{cast.spell.name}</b>{cast.target ? ` → ${cast.target}` : ""}{cast.slotLevel ? ` · ${levelName(cast.slotLevel)} slot` : ""}{cast.spell.save ? ` · ${cast.spell.save.slice(0, 3).toUpperCase()} save` : ""}</span>
-            {cast.areaId && <small>{cast.inIt?.length ? `In it: ${cast.inIt.join(", ")}` : "Nobody in it"}</small>}
+            <span><b>{cast.spell.name}</b>{cast.target ? ` → ${cast.target}` : ""}{cast.slotLevel ? t("tableHero.slotSuffix", { level: levelName(cast.slotLevel) }) : ""}{cast.spell.save ? t("tableHero.saveSuffix", { save: cast.spell.save.slice(0, 3).toUpperCase() }) : ""}</span>
+            {cast.areaId && <small>{cast.inIt?.length ? t("tableHero.inIt", { names: cast.inIt.join(", ") }) : t("tableHero.nobodyInIt")}</small>}
             {cast.warning && <small className="lr-warn">{cast.warning}</small>}
           </div>
           <div className="lr-row">
-            {cast.dice && <button type="button" className="primary" onClick={() => onRoll(cast.dice!)}>Roll {cast.dice}{cast.spell.damageType ? ` ${cast.spell.damageType.toLowerCase()}` : ""}</button>}
-            {cast.areaId && <button type="button" onClick={() => onTakeOff(cast.areaId!)}>Take it off the map</button>}
-            <button type="button" onClick={onDismissCast} aria-label="Close"><X size={13} /></button>
+            {cast.dice && <button type="button" className="primary" onClick={() => onRoll(cast.dice!)}>{t("tableHero.rollDice", { dice: cast.dice, dmgType: cast.spell.damageType ? ` ${cast.spell.damageType.toLowerCase()}` : "" })}</button>}
+            {cast.areaId && <button type="button" onClick={() => onTakeOff(cast.areaId!)}>{t("tableHero.takeOffMap")}</button>}
+            <button type="button" onClick={onDismissCast} aria-label={t("common.close")}><X size={13} /></button>
           </div>
         </div>
       )}
@@ -367,36 +450,37 @@ export function HeldPawnCard({
   onRemove?: () => void;
   onLetGo: () => void;
 }) {
+  const { t } = useI18n();
   const [max, setMax] = useState("");
   const [showMeta, setShowMeta] = useState(false);
   return (
-    <div className="lr-held" role="region" aria-label={`Holding ${name}`}>
+    <div className="lr-held" role="region" aria-label={t("tableHero.holdingAria", { name })}>
       <div className="lr-row">
         <strong>{name}</strong>
-        {moved !== null && <small className={moved > speed ? "lr-warn" : ""}>Moved {moved} of {speed} ft</small>}
-        {offTurn && <small className="lr-warn">It&apos;s {offTurn}&apos;s turn</small>}
-        <button type="button" onClick={onLetGo} aria-label="Let go" title="Let go (Esc)"><X size={13} /></button>
+        {moved !== null && <small className={moved > speed ? "lr-warn" : ""}>{t("tableHero.movedOf", { moved, speed })}</small>}
+        {offTurn && <small className="lr-warn">{t("tableHero.offTurn", { name: offTurn })}</small>}
+        <button type="button" onClick={onLetGo} aria-label={t("tableHero.letGo")} title={t("tableHero.letGoTitle")}><X size={13} /></button>
       </div>
       {canEditHp && setHp && (maxHp ? (
-        <HpControl hp={hp ?? maxHp} maxHp={maxHp} onChange={(next) => setHp(next, maxHp)} label={`${name}'s hit points`} />
+        <HpControl hp={hp ?? maxHp} maxHp={maxHp} onChange={(next) => setHp(next, maxHp)} label={t("tableHero.pawnHpLabel", { name })} />
       ) : (
         <form className="lr-row" onSubmit={(event) => { event.preventDefault(); const n = Math.round(Number(max)); if (n > 0) setHp(n, n); setMax(""); }}>
-          <input value={max} onChange={(event) => setMax(event.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" placeholder="Hit points" aria-label="Hit points" />
-          <button type="submit" disabled={!max}>Set HP</button>
+          <input value={max} onChange={(event) => setMax(event.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" placeholder={t("tableHero.hitPoints")} aria-label={t("tableHero.hitPoints")} />
+          <button type="submit" disabled={!max}>{t("tableHero.setHp")}</button>
         </form>
       ))}
       {onUpdateMeta && (
         <>
           <div className="lr-row">
-            <button type="button" onClick={() => onUpdateMeta({ elevation: Math.max(-30, elevation - 5) })} title="Lower 5 ft"><ArrowDown size={11} /></button>
-            <small title="Elevation above board">{elevation ? `${elevation}ft` : "Ground"}</small>
-            <button type="button" onClick={() => onUpdateMeta({ elevation: Math.min(300, elevation + 5) })} title="Raise 5 ft"><ArrowUp size={11} /></button>
-            <select value={size} aria-label="Pawn footprint" onChange={(e) => onUpdateMeta({ size: Number(e.target.value) })}>
-              <option value={1}>Med</option>
-              <option value={2}>Large</option>
-              <option value={3}>Huge</option>
+            <button type="button" onClick={() => onUpdateMeta({ elevation: Math.max(-30, elevation - 5) })} title={t("tableHero.lower5")}><ArrowDown size={11} /></button>
+            <small title={t("tableHero.elevationTitle")}>{elevation ? `${elevation}ft` : t("tableHero.ground")}</small>
+            <button type="button" onClick={() => onUpdateMeta({ elevation: Math.min(300, elevation + 5) })} title={t("tableHero.raise5")}><ArrowUp size={11} /></button>
+            <select value={size} aria-label={t("tableHero.footprintAria")} onChange={(e) => onUpdateMeta({ size: Number(e.target.value) })}>
+              <option value={1}>{t("tableHero.size.med")}</option>
+              <option value={2}>{t("tableHero.size.large")}</option>
+              <option value={3}>{t("tableHero.size.huge")}</option>
             </select>
-            <button type="button" className={showMeta ? "active" : ""} onClick={() => setShowMeta(!showMeta)}>Conds{conditions.length ? ` (${conditions.length})` : ""}</button>
+            <button type="button" className={showMeta ? "active" : ""} onClick={() => setShowMeta(!showMeta)}>{t("tableHero.conds", { suffix: conditions.length ? ` (${conditions.length})` : "" })}</button>
           </div>
           {showMeta && (
             <div className="lr-cond-chips">
@@ -420,12 +504,12 @@ export function HeldPawnCard({
         </>
       )}
       <div className="lr-row">
-        <small className="lr-note">Click the map to move it.</small>
+        <small className="lr-note">{t("tableHero.clickMapMove")}</small>
         {canEditHp && !inInitiative && onAddToInitiative && (
-          <button type="button" onClick={onAddToInitiative}>+ Init</button>
+          <button type="button" onClick={onAddToInitiative}>{t("tableHero.addInit")}</button>
         )}
         {canEditHp && onRemove && (
-          <button type="button" onClick={onRemove} title="Put pawn back in cabinet"><Trash2 size={12} /></button>
+          <button type="button" onClick={onRemove} title={t("tableHero.putBackTitle")}><Trash2 size={12} /></button>
         )}
       </div>
     </div>

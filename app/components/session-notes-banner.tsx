@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ScrollText } from "lucide-react";
 import { apiFetch } from "../lib/client";
+import { useI18n } from "../lib/i18n-context";
 import type { SessionNotesState } from "@/lib/session-notes";
 
 /**
@@ -18,6 +19,7 @@ export function SessionNotesBanner({
   notes: SessionNotesState;
   onNotice: (text: string) => void;
 }) {
+  const { t } = useI18n();
   const [stopping, setStopping] = useState(false);
 
   async function stop() {
@@ -27,9 +29,9 @@ export function SessionNotesBanner({
         method: "POST",
         body: JSON.stringify({ channelId: notes.postChannelId, voiceChannelId: channelId, action: "stop" }),
       });
-      onNotice("📜 Session notes stopped; the recap is on its way.");
+      onNotice(t("chat.notes.stopped"));
     } catch (error) {
-      onNotice(error instanceof Error ? error.message : "Could not stop the notes.");
+      onNotice(error instanceof Error ? error.message : t("chat.notes.stopFailed"));
     } finally {
       setStopping(false);
     }
@@ -39,11 +41,10 @@ export function SessionNotesBanner({
     <div className="session-notes-banner" role="status">
       <ScrollText size={15} aria-hidden="true" />
       <span>
-        <strong>Session notes on</strong> · started by {notes.startedByName}. Captions people share are kept for a
-        recap.
+        <strong>{t("chat.notes.active")}</strong> · {t("chat.notes.startedBy", { name: notes.startedByName })}
       </span>
       <button type="button" onClick={() => void stop()} disabled={stopping}>
-        {stopping ? "Stopping…" : "Stop and recap"}
+        {stopping ? t("chat.notes.stopping") : t("chat.notes.stopAndRecap")}
       </button>
     </div>
   );

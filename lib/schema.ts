@@ -18,7 +18,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 30;
+export const SCHEMA_VERSION = 32;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -1111,6 +1111,12 @@ async function migrate(db: D1Database): Promise<void> {
   if (!pollColumns.has("is_private")) {
     await db.prepare("ALTER TABLE polls ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0").run();
   }
+  if (!pollColumns.has("kind")) {
+    await db.prepare("ALTER TABLE polls ADD COLUMN kind TEXT NOT NULL DEFAULT 'standard'").run();
+  }
+  if (!pollColumns.has("grid_json")) {
+    await db.prepare("ALTER TABLE polls ADD COLUMN grid_json TEXT").run();
+  }
 
   const serverColumns = await columnNames(db, "servers");
   const serverMigrations: D1PreparedStatement[] = [];
@@ -1129,6 +1135,8 @@ async function migrate(db: D1Database): Promise<void> {
     ["everyone_permissions", "ALTER TABLE servers ADD COLUMN everyone_permissions INTEGER NOT NULL DEFAULT 0"],
     // Readable on the web at hoffle.online/s/... (lib/web-public.ts); off unless the owner turns it on.
     ["web_public", "ALTER TABLE servers ADD COLUMN web_public INTEGER NOT NULL DEFAULT 0"],
+    // Public directory category for /discover (lib/server-templates.ts).
+    ["discover_category", "ALTER TABLE servers ADD COLUMN discover_category TEXT NOT NULL DEFAULT 'community'"],
   ] as const) {
     if (!serverColumns.has(column)) serverMigrations.push(db.prepare(ddl));
   }
@@ -1273,6 +1281,45 @@ async function migrate(db: D1Database): Promise<void> {
       .prepare("ALTER TABLE battlemaps ADD COLUMN encounter TEXT NOT NULL DEFAULT 'exploration'")
       .run();
   }
+  if (!battlemapColumns.has("hp_visibility")) {
+    await db
+      .prepare("ALTER TABLE battlemaps ADD COLUMN hp_visibility TEXT NOT NULL DEFAULT 'exact'")
+      .run();
+  }
+  if (!battlemapColumns.has("areas")) {
+    await db
+      .prepare("ALTER TABLE battlemaps ADD COLUMN areas TEXT NOT NULL DEFAULT '[]'")
+      .run();
+  }
+  if (!battlemapColumns.has("saved")) {
+    await db
+      .prepare("ALTER TABLE battlemaps ADD COLUMN saved INTEGER NOT NULL DEFAULT 0")
+      .run();
+  }
+
+  // Blind DM rolls: server holds the real card so only DMs can fetch or reveal it.
+  await db.batch([
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS blind_rolls (
+        seed TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        roller_id TEXT NOT NULL,
+        card_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )`,
+    ),
+    db.prepare("CREATE INDEX IF NOT EXISTS blind_rolls_server_idx ON blind_rolls(server_id, created_at)"),
+    db.prepare(
+      `CREATE TABLE IF NOT EXISTS dnd_party_state (
+        server_id TEXT PRIMARY KEY,
+        currency_json TEXT NOT NULL DEFAULT '{}',
+        items_json TEXT NOT NULL DEFAULT '[]',
+        quests_json TEXT NOT NULL DEFAULT '[]',
+        updated_at INTEGER NOT NULL
+      )`,
+    ),
+  ]);
 
   // Per-server D&D settings: rules edition for lookups, homebrew, and the
   // music a battlemap's combat and exploration switch to.
@@ -1300,7 +1347,7 @@ async function migrate(db: D1Database): Promise<void> {
     )
     .run();
   const dndColumns = await columnNames(db, "server_dnd_settings");
-  for (const column of ["combat_music", "explore_music", "game_system"]) {
+  for (const column of ["combat_music", "explore_music", "game_system", "gm_role_id"]) {
     if (!dndColumns.has(column)) {
       await db.prepare(`ALTER TABLE server_dnd_settings ADD COLUMN ${column} TEXT`).run();
     }
@@ -1609,6 +1656,33 @@ async function migrate(db: D1Database): Promise<void> {
       db.prepare("CREATE INDEX IF NOT EXISTS server_bots_application_idx ON server_bots(application_id)"),
     ]);
   }
+
+  // OAuth 2.0 linked accounts & short-lived PKCE/state nonces (lib/oauth.ts).
+  await db.batch([
+    db.prepare(`CREATE TABLE IF NOT EXISTS oauth_accounts (
+      provider TEXT NOT NULL,
+      provider_user_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      email TEXT,
+      display_name TEXT,
+      avatar_url TEXT,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (provider, provider_user_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS oauth_accounts_user_idx ON oauth_accounts(user_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS oauth_states (
+      state TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      mode TEXT NOT NULL,
+      code_verifier TEXT NOT NULL,
+      invite_code TEXT,
+      user_id TEXT,
+      redirect_to TEXT,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS oauth_states_expiry_idx ON oauth_states(expires_at)"),
+  ]);
 
   await seedDefaultServer(db);
   await backfillServerMembers(db);

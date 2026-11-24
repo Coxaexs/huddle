@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { isParticlesEnabled } from "../lib/theme-fx";
+import { useEcoMode } from "../lib/eco-mode";
 
 const THEME_ID = "star-wars";
 /** How long a hyperspace jump lasts, start to finish. */
@@ -69,7 +70,9 @@ function jumpSpeed(t: number): number {
  * still frame (and no jumps) for reduced motion, nothing under other themes.
  */
 export function Starfield({ jumpKey }: { jumpKey?: string }) {
-  const on = useStarWarsTheme();
+  const eco = useEcoMode();
+  const themeOn = useStarWarsTheme();
+  const on = themeOn && !eco;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const jumpRef = useRef<(() => void) | null>(null);
   const lastKey = useRef<string | undefined>(undefined);

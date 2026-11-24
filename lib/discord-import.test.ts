@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { layoutFromDiscord, looksLikeDiscordTemplate, permissionsFromDiscord, summarize, templateCode } from "./discord-import";
+import {
+  fetchDiscordExpressions,
+  isAllowedDiscordAssetUrl,
+  layoutFromDiscord,
+  looksLikeDiscordTemplate,
+  permissionsFromDiscord,
+  summarize,
+  templateCode,
+} from "./discord-import";
 import { Permission } from "./permissions";
 import { TEMPLATE_GUILD } from "../test/fixtures/discord-template";
 
@@ -73,5 +81,42 @@ describe("layoutFromDiscord", () => {
       { target: "role", roleRef: "3", allow: Permission.VIEW_CHANNEL, deny: 0 },
     ]);
     expect(summarize("Hero", "", layout, skipped).privateChannels).toEqual(["gm-room"]);
+  });
+});
+
+describe("Discord expression asset importer", () => {
+  it("enforces strict Discord CDN allowlist to prevent SSRF", () => {
+    expect(isAllowedDiscordAssetUrl("https://cdn.discordapp.com/emojis/12345.png")).toBe(true);
+    expect(isAllowedDiscordAssetUrl("https://media.discordapp.net/stickers/999.gif")).toBe(true);
+    expect(isAllowedDiscordAssetUrl("http://cdn.discordapp.com/emojis/123.png")).toBe(false);
+    expect(isAllowedDiscordAssetUrl("http://169.254.169.254/latest/meta-data/")).toBe(false);
+    expect(isAllowedDiscordAssetUrl("https://evil.example.com/a.png")).toBe(false);
+  });
+
+  it("maps custom emojis and raster stickers while counting skipped Lottie stickers", async () => {
+    const fakeFetch = (async (url: RequestInfo | URL) => {
+      if (String(url).endsWith("/emojis")) {
+        return Response.json([
+          { id: "111222333", name: "PartyBlob!", animated: true },
+          { id: "444555666", name: "roll20", animated: false },
+        ]);
+      }
+      return Response.json([
+        { id: "777", name: "High Five", format_type: 1 },
+        { id: "888", name: "Vector Sticker", format_type: 3 },
+        { id: "999", name: "DanceGif", format_type: 4 },
+      ]);
+    }) as unknown as typeof fetch;
+
+    const result = await fetchDiscordExpressions("123456789012345678", "bot-tok", fakeFetch);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.skippedLottie).toBe(1);
+      expect(result.emojis).toHaveLength(2);
+      expect(result.emojis[0]).toMatchObject({ name: "partyblob", animated: true, ext: "gif" });
+      expect(result.stickers).toHaveLength(2);
+      expect(result.stickers[0]).toMatchObject({ name: "high_five", ext: "png" });
+      expect(result.stickers[1]).toMatchObject({ name: "dancegif", animated: true, ext: "gif" });
+    }
   });
 });

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, basePath } from "../lib/client";
 import { Hoffy } from "./hoffy";
+import { tNow } from "../lib/i18n-context";
 
 export function DndSsoHandoff() {
   const [status, setStatus] = useState<"loading" | "error">("loading");
@@ -23,7 +24,7 @@ export function DndSsoHandoff() {
       window.location.replace(data.url);
     } catch (e) {
       setStatus("error");
-      setError(e instanceof Error ? e.message : "Could not sign in to D&D Companion.");
+      setError(e instanceof Error ? e.message : tNow("dndSso.error"));
     }
   }, []);
 
@@ -37,19 +38,19 @@ export function DndSsoHandoff() {
         <Hoffy motion="boot" size={112} id="hoffy-dnd-sso" />
         {status === "loading" ? (
           <>
-            <p className="hoffy-boot-text">Signing in to D&amp;D Companion…</p>
+            <p className="hoffy-boot-text">{tNow("dndSso.signingIn")}</p>
             <p className="hoffy-boot-about">
-              Connecting your Hoffle identity to the Tavern table.
+              {tNow("dndSso.connecting")}
             </p>
             {targetUrl && (
               <a href={targetUrl} style={{ color: "var(--lavender)", fontSize: 14 }}>
-                Continue to D&amp;D Companion
+                {tNow("dndSso.continue")}
               </a>
             )}
           </>
         ) : (
           <>
-            <p className="hoffy-boot-text">Couldn&apos;t open D&amp;D Companion</p>
+            <p className="hoffy-boot-text">{tNow("dndSso.failedTitle")}</p>
             <p className="hoffy-boot-about" style={{ color: "#f87171" }}>
               {error}
             </p>
@@ -59,14 +60,14 @@ export function DndSsoHandoff() {
                 className="btn-primary"
                 onClick={() => void start()}
               >
-                Try again
+                {tNow("music.player.tryAgain")}
               </button>
               <a
                 href={`${basePath}/`}
                 className="btn-ghost"
                 style={{ padding: "8px 14px", borderRadius: 8, textDecoration: "none" }}
               >
-                Back to Hoffle
+                {tNow("dndSso.back")}
               </a>
             </div>
           </>

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Activity, Bug, Check, Copy, Radio, ShieldCheck, Upload, Volume2, X } from "lucide-react";
+import { useI18n } from "../../lib/i18n-context";
 
 export interface VoiceConnectionModalProps {
   onClose: () => void;
@@ -42,6 +43,7 @@ export function VoiceConnectionModal({
   voiceRegion,
   onSwitchRegion,
 }: VoiceConnectionModalProps) {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<"voice" | "stream">(defaultTab);
   // 0 until the first WebRTC stats sample comes in.
   const currentPing = Math.max(0, Math.round(latency?.rttMs || 0));
@@ -161,7 +163,7 @@ export function VoiceConnectionModal({
             className={`connection-tab ${activeTab === "voice" ? "active" : ""}`}
             onClick={() => setActiveTab("voice")}
           >
-            Connection
+            {t("voice.conn.tabVoice")}
           </button>
           {streamStats && (
             <button
@@ -169,7 +171,7 @@ export function VoiceConnectionModal({
               className={`connection-tab ${activeTab === "stream" ? "active" : ""}`}
               onClick={() => setActiveTab("stream")}
             >
-              Stream
+              {t("voice.conn.tabStream")}
             </button>
           )}
         </div>
@@ -177,7 +179,7 @@ export function VoiceConnectionModal({
           type="button"
           className="connection-close-btn"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t("common.close")}
         >
           <X size={16} />
         </button>
@@ -275,9 +277,9 @@ export function VoiceConnectionModal({
             <div className="flex items-center justify-between gap-2 mb-2 pb-1 border-b border-white/5">
               <div>
                 <h4 className="connection-node-title font-bold text-[14px] text-white flex items-center gap-1.5">
-                  <span>{voiceRegion === "de" ? "🇩🇪 Germany" : voiceRegion === "nl" ? "🇳🇱 Netherlands" : serverNodeName}</span>
+                  <span>{voiceRegion === "de" ? t("voice.conn.regionDe") : voiceRegion === "nl" ? t("voice.conn.regionNl") : serverNodeName}</span>
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/10 text-white/70">
-                    {voiceRegion === "de" ? "Oracle Cloud" : voiceRegion === "nl" ? "Home Server" : isSfu ? "SFU" : "P2P"}
+                    {voiceRegion === "de" ? t("voice.conn.oracleCloud") : voiceRegion === "nl" ? t("voice.conn.homeServer") : isSfu ? "SFU" : "P2P"}
                   </span>
                 </h4>
                 <div className="text-[11px] text-white/40 font-mono">
@@ -298,49 +300,48 @@ export function VoiceConnectionModal({
                     }
                   }}
                   className="px-2.5 py-1 text-xs font-semibold rounded bg-[#5865f2] hover:bg-[#4752c4] disabled:opacity-50 text-white transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
-                  title={`Switch server region to ${voiceRegion === "de" ? "Netherlands" : "Germany"}`}
+                  title={t("voice.conn.switchTitle", { region: voiceRegion === "de" ? t("voice.conn.netherlands") : t("voice.conn.germany") })}
                 >
-                  {switching ? "Switching…" : `Switch to ${voiceRegion === "de" ? "🇳🇱 NL" : "🇩🇪 DE"}`}
+                  {switching ? t("voice.conn.switching") : t("voice.conn.switchTo", { target: voiceRegion === "de" ? "🇳🇱 NL" : "🇩🇪 DE" })}
                 </button>
               )}
             </div>
 
             <div className="connection-stats-list">
               <div className="connection-stat-row">
-                <span className="stat-label">Average ping:</span>
+                <span className="stat-label">{t("voice.conn.avgPing")}</span>
                 <span className="stat-value">{avgPing ? `${avgPing} ms` : "—"}</span>
               </div>
               <div className="connection-stat-row">
-                <span className="stat-label">Last ping:</span>
+                <span className="stat-label">{t("voice.conn.lastPing")}</span>
                 <span className="stat-value">{currentPing ? `${currentPing} ms` : "—"}</span>
               </div>
               <div className="connection-stat-row">
-                <span className="stat-label">Outbound packet loss rate:</span>
+                <span className="stat-label">{t("voice.conn.packetLoss")}</span>
                 <span className="stat-value">{packetLossPercent}%</span>
               </div>
             </div>
 
             {/* Discord Advisory Note */}
             <p className="connection-notice-text">
-              You may notice delayed audio at 250 ms or higher. You may sound robotic if your packet loss
-              rate is over 10%. If the problem persists, disconnect and try again. See our{" "}
+              {t("voice.conn.noticeBefore")}
               <a
                 href="#"
                 onClick={(e) => {
                   e.preventDefault();
-                  alert("LiveKit WebRTC troubleshooting guide: Ensure stable UDP connection, check firewall/STUN/TURN permissions.");
+                  alert(t("voice.conn.troubleshootingAlert"));
                 }}
               >
-                troubleshooting guide
-              </a>{" "}
-              for more assistance.
+                {t("voice.conn.troubleshootingLink")}
+              </a>
+              {t("voice.conn.noticeAfter")}
             </p>
 
             {/* Audio / Voice Delay Slider */}
             {onMicSettingsChange && (
               <div className="connection-delay-box">
                 <div className="flex items-center justify-between text-xs font-semibold text-white/90 mb-1">
-                  <span>Audio Buffer / Delay</span>
+                  <span>{t("voice.conn.audioDelay")}</span>
                   <span className="font-mono text-[#5865f2] font-bold">{micSettings?.delayMs || 0} ms</span>
                 </div>
                 <input
@@ -353,7 +354,7 @@ export function VoiceConnectionModal({
                   className="w-full accent-[#5865f2] h-1.5 cursor-pointer"
                 />
                 <div className="flex justify-between text-[9px] text-white/40 font-mono mt-0.5">
-                  <span>0 ms (Live)</span>
+                  <span>{t("voice.conn.liveZero")}</span>
                   <span>1000 ms</span>
                   <span>2000 ms</span>
                 </div>
@@ -364,21 +365,21 @@ export function VoiceConnectionModal({
             {debugOpen && (
               <div className="connection-debug-panel">
                 <div className="debug-row">
-                  <span>Jitter:</span>
+                  <span>{t("voice.conn.jitter")}</span>
                   <span className="font-mono">{Math.round(latency?.jitterMs || 0)} ms</span>
                 </div>
                 <div className="debug-row">
-                  <span>Protocol:</span>
+                  <span>{t("voice.conn.protocol")}</span>
                   <span className="font-mono">{isSfu ? "LiveKit SFU" : "P2P WebRTC"}</span>
                 </div>
                 <div className="debug-row">
-                  <span>Audio Codec:</span>
+                  <span>{t("voice.conn.codec")}</span>
                   <span className="font-mono">Opus (48 kHz)</span>
                 </div>
                 <div className="debug-row">
-                  <span>Quality:</span>
+                  <span>{t("voice.conn.quality")}</span>
                   <span className="font-mono uppercase text-emerald-400">
-                    {latency?.quality || "excellent"}
+                    {latency?.quality || t("voice.conn.excellent")}
                   </span>
                 </div>
               </div>
@@ -392,7 +393,7 @@ export function VoiceConnectionModal({
                 onClick={() => setDebugOpen((prev) => !prev)}
               >
                 <Bug size={14} />
-                <span>Debug</span>
+                <span>{t("voice.conn.debug")}</span>
               </button>
               <button
                 type="button"
@@ -400,7 +401,7 @@ export function VoiceConnectionModal({
                 onClick={copyDebugLogs}
               >
                 {logsCopied ? <Check size={14} className="text-emerald-400" /> : <Upload size={14} />}
-                <span>{logsCopied ? "Logs Copied!" : "Upload Logs"}</span>
+                <span>{logsCopied ? t("voice.conn.logsCopied") : t("voice.conn.uploadLogs")}</span>
               </button>
             </div>
           </div>
@@ -410,42 +411,42 @@ export function VoiceConnectionModal({
               forward it, so this must not claim end-to-end. */}
           <div
             className="connection-modal-footer"
-            title="Voice and video are encrypted between your device and the Hoffle voice server, which can read them. They are not end-to-end encrypted."
+            title={t("voice.conn.encryptedTitle")}
           >
             <ShieldCheck size={14} className="text-emerald-400" />
-            <span>Encrypted in transit</span>
+            <span>{t("voice.conn.encrypted")}</span>
           </div>
         </>
       ) : (
         /* Stream Stats View */
         <div className="connection-info-section">
           <h4 className="connection-node-title font-bold text-[14px] text-white flex items-center justify-between">
-            <span>Stream Performance</span>
+            <span>{t("voice.conn.streamPerf")}</span>
             <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold">
-              Live
+              {t("voice.conn.liveBadge")}
             </span>
           </h4>
 
           <div className="connection-stats-list">
             <div className="connection-stat-row">
-              <span className="stat-label">Resolution:</span>
+              <span className="stat-label">{t("voice.conn.resolution")}</span>
               <span className="stat-value">{streamStats?.resolution || "1080p 60fps"}</span>
             </div>
             <div className="connection-stat-row">
-              <span className="stat-label">Stream Latency:</span>
+              <span className="stat-label">{t("voice.conn.streamLatency")}</span>
               <span className="stat-value">{currentPing ? `${currentPing} ms` : "—"}</span>
             </div>
             <div className="connection-stat-row">
-              <span className="stat-label">Bitrate:</span>
+              <span className="stat-label">{t("voice.conn.bitrate")}</span>
               <span className="stat-value">{streamStats?.bitrateKbps ? `${streamStats.bitrateKbps} kbps` : "4,500 kbps"}</span>
             </div>
             <div className="connection-stat-row">
-              <span className="stat-label">Viewers:</span>
-              <span className="stat-value text-emerald-400">{streamStats?.viewersCount ?? 0} watching</span>
+              <span className="stat-label">{t("voice.conn.viewers")}</span>
+              <span className="stat-value text-emerald-400">{t("voice.conn.watchingCount", { count: streamStats?.viewersCount ?? 0 })}</span>
             </div>
             <div className="connection-stat-row">
-              <span className="stat-label">Video Codec:</span>
-              <span className="stat-value">H.264 / VP8 (Hardware Accelerated)</span>
+              <span className="stat-label">{t("voice.conn.videoCodec")}</span>
+              <span className="stat-value">{t("voice.conn.videoCodecVal")}</span>
             </div>
           </div>
 
@@ -453,7 +454,7 @@ export function VoiceConnectionModal({
           {onMicSettingsChange && (
             <div className="connection-delay-box">
               <div className="flex items-center justify-between text-xs font-semibold text-white/90 mb-1">
-                <span>Audio Sync Buffer / Delay</span>
+                <span>{t("voice.conn.syncDelay")}</span>
                 <span className="font-mono text-[#5865f2] font-bold">{micSettings?.delayMs || 0} ms</span>
               </div>
               <input
@@ -466,7 +467,7 @@ export function VoiceConnectionModal({
                 className="w-full accent-[#5865f2] h-1.5 cursor-pointer"
               />
               <div className="flex justify-between text-[9px] text-white/40 font-mono mt-0.5">
-                <span>0 ms (Real-time)</span>
+                <span>{t("voice.conn.realTimeZero")}</span>
                 <span>1000 ms</span>
                 <span>2000 ms</span>
               </div>
@@ -480,7 +481,7 @@ export function VoiceConnectionModal({
               onClick={copyDebugLogs}
             >
               {logsCopied ? <Check size={14} className="text-emerald-400" /> : <Upload size={14} />}
-              <span>{logsCopied ? "Logs Copied!" : "Diagnostic Logs"}</span>
+              <span>{logsCopied ? t("voice.conn.logsCopied") : t("voice.conn.diagLogs")}</span>
             </button>
           </div>
         </div>

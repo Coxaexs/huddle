@@ -2,6 +2,7 @@
 
 import { Tab } from "./types";
 import { useI18n } from "../../lib/i18n-context";
+import { setEcoMode, useEcoMode } from "../../lib/eco-mode";
 
 export type NameMotion = "hover" | "always" | "still";
 
@@ -42,6 +43,7 @@ export function AccessibilityTab({
   setNameMotion?: (value: NameMotion) => void;
 }) {
   const { t } = useI18n();
+  const eco = useEcoMode();
   return (
     <>
       {tab === "accessibility" && (
@@ -223,6 +225,22 @@ export function AccessibilityTab({
                       aria-label={t("accessibilitySettings.interfaceMotion")}
                       checked={motion}
                       onChange={(e) => setMotion(e.target.checked)}
+                    />
+                    <span className="toggle-slider" />
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between py-3 border-t border-white/10">
+                  <div>
+                    <div className="text-sm font-semibold text-white">{t("accessibilitySettings.ecoMode")}</div>
+                    <div className="text-xs text-gray-400">{t("accessibilitySettings.ecoModeDesc")}</div>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      aria-label={t("accessibilitySettings.ecoMode")}
+                      checked={eco}
+                      onChange={(e) => setEcoMode(e.target.checked)}
                     />
                     <span className="toggle-slider" />
                   </label>

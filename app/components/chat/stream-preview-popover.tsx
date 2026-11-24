@@ -8,6 +8,7 @@ import {
   subscribeStreamPreviews,
   type StreamPreviewData,
 } from "../../lib/stream-preview";
+import { useI18n } from "../../lib/i18n-context";
 
 export function formatStreamDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -57,6 +58,7 @@ export function StreamPreviewPopover({
   onKeep,
   onClose,
 }: StreamPreviewPopoverProps) {
+  const { t } = useI18n();
   const [preview, setPreview] = useState<StreamPreviewData | null>(() =>
     connectionId ? getStreamPreview(connectionId) : null,
   );
@@ -103,8 +105,8 @@ export function StreamPreviewPopover({
   const top = Math.min(Math.max(10, anchorRect.top - 20), window.innerHeight - 340);
 
   const heading = kind === "watch"
-    ? title || "Watch party"
-    : preview?.title || `${streamerName}'s screen`;
+    ? title || t("voice.streamPreview.watchParty")
+    : preview?.title || t("voice.streamPreview.screenOf", { name: streamerName });
   const snapshot = kind === "screen" ? preview?.snapshotUrl || null : null;
   const elapsed = startedAt ? formatStreamDuration(now - startedAt) : null;
   const Icon = kind === "watch" ? Film : Monitor;
@@ -115,16 +117,16 @@ export function StreamPreviewPopover({
       className="fixed z-[9999] bg-[#111214] text-white rounded-xl shadow-2xl border border-[#2b2d31] p-3 flex flex-col gap-2.5 backdrop-blur-md select-none animate-in fade-in zoom-in-95 duration-150"
       style={{ left: `${left}px`, top: `${top}px`, width: `${width}px` }}
       role="dialog"
-      aria-label={`${heading}, streaming now`}
+      aria-label={t("voice.streamPreview.aria", { title: heading })}
       onMouseEnter={onKeep}
       onMouseLeave={onClose}
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-between px-1 pt-0.5">
-        <span className="text-xs font-bold text-gray-300 tracking-wide">Streaming Now</span>
+        <span className="text-xs font-bold text-gray-300 tracking-wide">{t("voice.streamPreview.streamingNow")}</span>
         <span className="live-stream-badge">
           <span className="live-stream-dot" />
-          LIVE
+          {t("voice.streamPreview.live")}
         </span>
       </div>
 
@@ -132,17 +134,17 @@ export function StreamPreviewPopover({
         {snapshot ? (
           <img
             src={snapshot}
-            alt={`${streamerName}'s stream preview`}
+            alt={t("voice.streamPreview.alt", { name: streamerName })}
             className="w-full h-full object-cover"
           />
         ) : (
           <div className="flex flex-col items-center justify-center p-4 text-center text-gray-400">
             <Icon size={36} className="text-[#ed4245] opacity-80 mb-2" />
             <span className="text-xs font-semibold text-gray-200">
-              {kind === "watch" ? "Watching together" : "No preview yet"}
+              {kind === "watch" ? t("voice.streamPreview.watchingTogether") : t("voice.streamPreview.noPreview")}
             </span>
             {kind === "screen" && (
-              <span className="text-[10px] text-gray-500 mt-0.5">A preview shows up shortly after the stream starts</span>
+              <span className="text-[10px] text-gray-500 mt-0.5">{t("voice.streamPreview.noPreviewHint")}</span>
             )}
           </div>
         )}
@@ -159,7 +161,7 @@ export function StreamPreviewPopover({
             {elapsed && <span className="text-gray-600">·</span>}
             <span className="truncate">{streamerName}</span>
             {viewers > 0 && <span className="text-gray-600">·</span>}
-            {viewers > 0 && <span className="flex items-center gap-1 shrink-0"><Eye size={11} />{viewers} watching</span>}
+            {viewers > 0 && <span className="flex items-center gap-1 shrink-0"><Eye size={11} />{t("voice.streamPreview.watching", { count: viewers })}</span>}
           </div>
         </div>
       </div>
@@ -173,7 +175,7 @@ export function StreamPreviewPopover({
         }}
       >
         <Tv size={16} />
-        <span>{kind === "watch" ? "Join Watch Party" : "Watch Stream"}</span>
+        <span>{kind === "watch" ? t("voice.streamPreview.joinWatchParty") : t("voice.streamPreview.watchStream")}</span>
       </button>
     </div>
   );

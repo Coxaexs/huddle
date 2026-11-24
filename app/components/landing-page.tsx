@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Bot, Chat, Check, Coffee, Dice, Heart, Mic, Music, Palette } from "./site-icons";
 import { Hoffy } from "./hoffy";
 import { VS_DISCORD_PATH } from "./vs-discord-page";
+import { DND_LANDING_PATH } from "./dnd-landing-page";
 import { CopyButton, DownloadButton } from "./landing-client";
 import { LiveChannel, MatrixRain, ThemeTour, type JoinLinks } from "./landing-demo";
 import { LANDING_COPY, LANDING_PATH, type LandingCopy, type LandingLang } from "./landing-copy";
@@ -593,6 +594,11 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
                   <figcaption className="p-5">
                     <h3 className="text-lg font-semibold">{room.title}</h3>
                     <p className="mt-1.5 text-[15px] leading-relaxed text-(--ink-2)">{room.body}</p>
+                    {room.id === "tabletop" && (
+                      <a href={DND_LANDING_PATH[lang]} className={`${link} mt-2.5 inline-block text-sm`}>
+                        {lang === "tr" ? "D&D ve VTT özelliklerini keşfet →" : "Explore D&D & VTT features →"}
+                      </a>
+                    )}
                   </figcaption>
                 </figure>
               ))}

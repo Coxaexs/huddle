@@ -795,13 +795,48 @@ export type ServerEvent =
       /** Shared battlemap: opened, closed, a token moved, paint added. */
       t: "battlemap";
       channelId: string;
-      action: "open" | "close" | "token" | "tokens" | "fog" | "stroke" | "cleared" | "encounter";
+      action:
+        | "open"
+        | "close"
+        | "token"
+        | "tokens"
+        | "token-removed"
+        | "hp-visibility"
+        | "fog"
+        | "areas"
+        | "ping"
+        | "scenes"
+        | "stroke"
+        | "cleared"
+        | "encounter";
       encounter?: "combat" | "exploration";
       map?: unknown;
       token?: unknown;
       tokens?: unknown;
+      tokenId?: string;
+      fog?: unknown;
+      areas?: unknown;
+      ping?: unknown;
+      scenes?: unknown;
+      hpVisibility?: "exact" | "tier" | "hidden";
       stroke?: unknown;
       strokes?: unknown;
+      serverNow: number;
+    }
+  | {
+      /** Blind GM roll secret card pushed strictly to server DMs. */
+      t: "blind-roll";
+      channelId: string;
+      seed: string;
+      card: unknown;
+      serverNow: number;
+    }
+  | {
+      /** Shared party loot/currency/quest board state update. */
+      t: "dnd-stash";
+      serverId: string;
+      channelId?: string;
+      state: unknown;
       serverNow: number;
     }
   | {

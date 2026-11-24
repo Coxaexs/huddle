@@ -23,6 +23,7 @@ import { StyledName, VoiceAura } from "../../profile-style-parts";
 import type { ChatShellViewState } from "./chat-shell-view";
 import type { StageFocusRequest } from "../../../hooks/chat-shell/use-shell-state";
 import { openDndCompanion } from "../../../lib/dnd-sso";
+import { tNow } from "../../../lib/i18n-context";
 
 export type ShellRenderState = ReturnType<typeof withShellRenderers>;
 
@@ -235,16 +236,16 @@ export function withShellRenderers(s: ChatShellViewState) {
             <span className={isConnectedVoice ? "font-semibold text-[var(--accent-hi)]" : ""}>{channel.name}</span>
             {isConnectedVoice ? (
               <span className="voice-active-pill">
-                {people.length > 0 ? `${people.length} active` : "connected"}
+                {people.length > 0 ? tNow("chat.renderer.activeCount", { count: people.length }) : tNow("chat.renderer.connected")}
               </span>
             ) : people.length > 0 ? (
-              <span className="live-pill">LIVE</span>
+              <span className="live-pill">{tNow("chat.renderer.live")}</span>
             ) : null}
             {canManageChannels && (
               <span
                 className="channel-delete"
                 role="button"
-                aria-label={`Delete ${channel.name}`}
+                aria-label={tNow("chat.renderer.deleteChannelAria", { name: channel.name })}
                 onClick={(event) => {
                   event.stopPropagation();
                   void deleteChannel(channel);
@@ -327,11 +328,11 @@ export function withShellRenderers(s: ChatShellViewState) {
                     </div>
                     <span className={isSpeaking ? "font-medium text-[var(--ink)]" : ""}>
                       {person.connectionId === hub.connectionId
-                        ? "You"
+                        ? tNow("chat.overlay.you")
                         : <StyledName name={person.displayName} style={membersById.get(person.id)?.profileStyle} />}
-                      {isSpeaking && isConnectedVoice ? " (speaking)" : ""}
+                      {isSpeaking && isConnectedVoice ? tNow("chat.renderer.speakingSuffix") : ""}
                       {person.discord && (
-                        <span className="bot-tag bridge-tag bridge-discord voice-discord-tag" title="In the Discord voice channel">
+                        <span className="bot-tag bridge-tag bridge-discord voice-discord-tag" title={tNow("chat.renderer.discordVoiceTitle")}>
                           DISCORD
                         </span>
                       )}
@@ -347,7 +348,7 @@ export function withShellRenderers(s: ChatShellViewState) {
                         <span
                           className="live-stream-badge"
                           role="button"
-                          title="Streaming now: click to watch"
+                          title={tNow("chat.renderer.streamingTitle")}
                           onClick={(e) => {
                             e.stopPropagation();
                             // No hover on a touch screen: a tap shows the card instead.
@@ -360,41 +361,41 @@ export function withShellRenderers(s: ChatShellViewState) {
                           }}
                         >
                           <span className="live-stream-dot" />
-                          LIVE
+                          {tNow("chat.renderer.live")}
                         </span>
                       )}
                       {isStreaming && (person.screenViewers?.length ?? 0) > 0 && (
-                        <span className="live-viewers" title={`${person.screenViewers!.length} watching`}>
+                        <span className="live-viewers" title={tNow("chat.renderer.watchingCount", { count: person.screenViewers!.length })}>
                           <Eye size={11} aria-hidden="true" />
                           {person.screenViewers!.length}
                         </span>
                       )}
                       {isSpeaking && (
-                        <Mic size={14} className="is-speaking-icon" aria-label="Speaking" />
+                        <Mic size={14} className="is-speaking-icon" aria-label={tNow("chat.renderer.speakingAria")} />
                       )}
                       {person.muted && !person.bot && !isSpeaking && (
                         <span
                           className={`muted-pill ${person.serverMuted ? "is-server" : ""}`}
-                          title={person.serverMuted ? "Muted for everyone" : "Muted"}
+                          title={person.serverMuted ? tNow("chat.renderer.mutedForEveryone") : tNow("chat.renderer.muted")}
                         >
                           <MicOff size={14} />
                         </span>
                       )}
                       {person.deafened && !person.bot && (
-                        <span className="deafened-pill" title="Deafened">
+                        <span className="deafened-pill" title={tNow("chat.renderer.deafened")}>
                           <HeadphoneOff size={14} />
                         </span>
                       )}
                       {person.bot && playing && (
-                        <span className="speaking-bars" aria-label="Playing">
+                        <span className="speaking-bars" aria-label={tNow("chat.renderer.playingAria")}>
                           <AudioLines size={14} />
                         </span>
                       )}
                       {person.bot && person.deafened && (
                         <span
                           className="bot-deafened-pill"
-                          title="The bot sends music but cannot hear the room"
-                          aria-label="Bot deafened"
+                          title={tNow("chat.renderer.botDeafenedTitle")}
+                          aria-label={tNow("chat.renderer.botDeafenedAria")}
                         >
                           <HeadphoneOff size={14} />
                         </span>
@@ -410,7 +411,7 @@ export function withShellRenderers(s: ChatShellViewState) {
           {roomWatch && people.length > 0 && (() => {
             const watchInfo = {
               kind: "watch" as const,
-              streamerName: "Watch party",
+              streamerName: tNow("chat.renderer.watchParty"),
               title: roomWatch.title,
               startedAt: roomWatch.startedAt,
               channel,
@@ -419,7 +420,7 @@ export function withShellRenderers(s: ChatShellViewState) {
               <button
                 type="button"
                 className="voice-watch-party"
-                title={`Watch party: ${roomWatch.title}`}
+                title={tNow("chat.renderer.watchPartyTitle", { title: roomWatch.title })}
                 onMouseEnter={(event) => { if (!touchInput) queueStreamHover(watchInfo, event.currentTarget); }}
                 onMouseLeave={() => { if (!touchInput) queueStreamHover(null); }}
                 onClick={(event) => {
@@ -433,14 +434,14 @@ export function withShellRenderers(s: ChatShellViewState) {
                 <Film size={14} aria-hidden="true" />
                 <span className="voice-watch-party-title">{roomWatch.title}</span>
                 {roomWatch.viewers.length > 0 && (
-                  <span className="live-viewers" title={`${roomWatch.viewers.length} watching`}>
+                  <span className="live-viewers" title={tNow("chat.renderer.watchingCount", { count: roomWatch.viewers.length })}>
                     <Eye size={11} aria-hidden="true" />
                     {roomWatch.viewers.length}
                   </span>
                 )}
                 <span className="live-stream-badge">
                   <span className="live-stream-dot" />
-                  LIVE
+                  {tNow("chat.renderer.live")}
                 </span>
               </button>
             );
@@ -475,9 +476,9 @@ export function withShellRenderers(s: ChatShellViewState) {
         <span>{channel.name}</span>
         {channel.private && <Lock size={12} className="channel-lock" aria-hidden="true" />}
         {activeServer?.webPublic && isOnTheWeb(channel) && (
-          <span className="channel-lock" title="Readable on the web"><Globe size={12} aria-hidden="true" /></span>
+          <span className="channel-lock" title={tNow("chat.renderer.readableOnWeb")}><Globe size={12} aria-hidden="true" /></span>
         )}
-        {channel.nsfw && <span className="nsfw-badge" title="Age-restricted">18+</span>}
+        {channel.nsfw && <span className="nsfw-badge" title={tNow("chat.renderer.ageRestricted")}>18+</span>}
         {(unread[channel.id]?.mentions ?? 0) > 0 && (
           <span className="mention-badge">{unread[channel.id].mentions}</span>
         )}
@@ -485,8 +486,8 @@ export function withShellRenderers(s: ChatShellViewState) {
           <span
             className="channel-invite"
             role="button"
-            title="Create invite"
-            aria-label={`Invite people to #${channel.name}`}
+            title={tNow("chat.renderer.createInvite")}
+            aria-label={tNow("chat.renderer.inviteToChannelAria", { name: channel.name })}
             onClick={(event) => {
               event.stopPropagation();
               setInviteDialog({ channelId: channel.id });
@@ -499,7 +500,7 @@ export function withShellRenderers(s: ChatShellViewState) {
           <span
             className="channel-delete"
             role="button"
-            aria-label={`Delete ${channel.name}`}
+            aria-label={tNow("chat.renderer.deleteChannelAria", { name: channel.name })}
             onClick={(event) => {
               event.stopPropagation();
               void deleteChannel(channel);
@@ -518,30 +519,30 @@ export function withShellRenderers(s: ChatShellViewState) {
   // room's own player sits parked (often with no track at all).
   const heardPlayer = currentPlayer ? heard(currentPlayer) : null;
   const musicBotActions: BotMenuAction[] = [
-    { label: "Play something…", onSelect: () => prepareCommand("/play ") },
-    { label: "Show queue", onSelect: () => prepareCommand("/queue") },
-    { label: "Lyrics now", onSelect: () => void runCommand("/lyricsnow") },
-    { label: "Music player (full screen)", onSelect: () => openMusicPlayer({ channelId: voice.channelId }) },
+    { label: tNow("chat.renderer.musicPlay"), onSelect: () => prepareCommand("/play ") },
+    { label: tNow("chat.renderer.musicQueue"), onSelect: () => prepareCommand("/queue") },
+    { label: tNow("chat.renderer.musicLyrics"), onSelect: () => void runCommand("/lyricsnow") },
+    { label: tNow("chat.renderer.musicFullScreen"), onSelect: () => openMusicPlayer({ channelId: voice.channelId }) },
     {
-      label: "Toggle Smart Autoplay",
+      label: tNow("chat.renderer.musicAutoplay"),
       onSelect: () => void runCommand("/autoplay"),
     },
     {
-      label: "Toggle AutoMix",
+      label: tNow("chat.renderer.musicAutomix"),
       onSelect: () => void runCommand("/automix"),
     },
-    { label: "Like this track", onSelect: () => void runCommand("/like") },
+    { label: tNow("chat.renderer.musicLike"), onSelect: () => void runCommand("/like") },
     {
-      label: "Dislike this track",
+      label: tNow("chat.renderer.musicDislike"),
       onSelect: () => void runCommand("/dislike"),
     },
-    { label: "Listening stats", onSelect: () => void runCommand("/stats") },
-    { label: "Room Wrapped", onSelect: () => void runCommand("/wrapped") },
-    { label: "Music settings", onSelect: () => void runCommand("/settings") },
+    { label: tNow("chat.renderer.musicStats"), onSelect: () => void runCommand("/stats") },
+    { label: tNow("chat.renderer.musicWrapped"), onSelect: () => void runCommand("/wrapped") },
+    { label: tNow("chat.renderer.musicSettings"), onSelect: () => void runCommand("/settings") },
     ...(voice.channelId && heardPlayer?.track
       ? [
         {
-          label: heardPlayer.paused ? "Resume" : "Pause",
+          label: heardPlayer.paused ? tNow("chat.renderer.musicResume") : tNow("chat.renderer.musicPause"),
           onSelect: () =>
             hub.send({
               t: "player",
@@ -550,7 +551,7 @@ export function withShellRenderers(s: ChatShellViewState) {
             }),
         },
         {
-          label: "Skip",
+          label: tNow("chat.renderer.musicSkip"),
           onSelect: () =>
             hub.send({
               t: "player",
@@ -559,7 +560,7 @@ export function withShellRenderers(s: ChatShellViewState) {
             }),
         },
         {
-          label: liveTrack(currentPlayer) ? "Stop playing (ends the DJ set)" : "Stop playing",
+          label: liveTrack(currentPlayer) ? tNow("chat.renderer.musicStopDj") : tNow("chat.renderer.musicStop"),
           danger: true,
           onSelect: () =>
             hub.send({
@@ -573,7 +574,7 @@ export function withShellRenderers(s: ChatShellViewState) {
     ...(user?.isAdmin || canModerate
       ? [
         {
-          label: "Set room volume…",
+          label: tNow("chat.renderer.musicVolume"),
           onSelect: () => prepareCommand("/volume "),
         },
       ]
@@ -581,11 +582,11 @@ export function withShellRenderers(s: ChatShellViewState) {
     ...(musicDashboardUrl
       ? [
         {
-          label: "Open dashboard",
+          label: tNow("chat.renderer.musicDashboard"),
           onSelect: () => void openMusicDashboard(),
         },
         {
-          label: "Open DJ booth",
+          label: tNow("chat.renderer.musicDjBooth"),
           onSelect: () => void openMusicDashboard("dj"),
         },
       ]
@@ -600,7 +601,7 @@ export function withShellRenderers(s: ChatShellViewState) {
   const runMenuCommand = async (menu: PublicBotMenu, command: string) => {
     const [name, ...rest] = command.slice(1).split(" ");
     if (!(await runBotSlashCommand(name.toLowerCase(), rest.join(" ").trim(), menu.applicationId))) {
-      setNotice(`${menu.botName} can't run that right now.`);
+      setNotice(tNow("chat.renderer.botCantRun", { bot: menu.botName }));
     }
   };
   const appBotActions = (menu: PublicBotMenu, onMessageMenu?: () => void): BotMenuAction[] => [
@@ -608,17 +609,17 @@ export function withShellRenderers(s: ChatShellViewState) {
       label: item.icon ? `${item.icon} ${item.label}` : item.label,
       onSelect: () => (item.fill ? prepareCommand(`${item.command} `) : void runMenuCommand(menu, item.command)),
     })),
-    ...(onMessageMenu ? [{ label: "Message options…", onSelect: onMessageMenu }] : []),
+    ...(onMessageMenu ? [{ label: tNow("chat.renderer.messageOptions"), onSelect: onMessageMenu }] : []),
   ];
   const dndBotActions: BotMenuAction[] = [
-    { label: "Roll dice…", onSelect: () => prepareCommand("/roll ") },
-    { label: "Find a spell…", onSelect: () => prepareCommand("/spell ") },
-    { label: "Find a monster…", onSelect: () => prepareCommand("/monster ") },
+    { label: tNow("chat.renderer.dndRoll"), onSelect: () => prepareCommand("/roll ") },
+    { label: tNow("chat.renderer.dndSpell"), onSelect: () => prepareCommand("/spell ") },
+    { label: tNow("chat.renderer.dndMonster"), onSelect: () => prepareCommand("/monster ") },
     ...(dndUrl
       ? [
-        { label: "Open Character Sheet", onSelect: () => void openDndCompanion("/sheet") },
-        { label: "Open Tavern VTT", onSelect: () => void openDndCompanion("/vtt") },
-        { label: "Open Bard Audio", onSelect: () => void openDndCompanion("/bard") },
+        { label: tNow("chat.renderer.dndSheet"), onSelect: () => void openDndCompanion("/sheet", activeServer?.id ?? activeServerId ?? null) },
+        { label: tNow("chat.renderer.dndVtt"), onSelect: () => void openDndCompanion("/vtt", activeServer?.id ?? activeServerId ?? null) },
+        { label: tNow("chat.renderer.dndBard"), onSelect: () => void openDndCompanion("/bard", activeServer?.id ?? activeServerId ?? null) },
       ]
       : []),
   ];

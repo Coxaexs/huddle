@@ -26,6 +26,8 @@ import { Avatar } from "../avatar";
 import { StyledName, VoiceAura } from "../profile-style-parts";
 import { cardLook, colorsFromImage, loadAllNameFonts, ringColor, voiceTileLook } from "../../lib/profile-look";
 import { ProfilePreviewCard, type Cosmetics, type PreviewProfile } from "./profile-preview-card";
+import { useI18n } from "../../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 
 /*
  * The profile editor's style studios: Display Name, Card Theme, Voice and
@@ -35,11 +37,11 @@ import { ProfilePreviewCard, type Cosmetics, type PreviewProfile } from "./profi
 
 export type StudioKind = "name" | "card" | "voice" | "looks";
 
-const TITLES: Record<StudioKind, string> = {
-  name: "Display Name Style",
-  card: "Card Theme",
-  voice: "Voice Style",
-  looks: "Looks",
+const TITLE_KEYS: Record<StudioKind, MessageKey> = {
+  name: "settings.studio.title.name",
+  card: "settings.studio.title.card",
+  voice: "settings.studio.title.voice",
+  looks: "settings.studio.title.looks",
 };
 
 const NAME_SWATCHES = [
@@ -120,6 +122,7 @@ const HEX_INPUT = /^#?[0-9a-f]{6}$/i;
 
 /** A swatch button that opens a hue/saturation picker with hex entry, eyedropper and swatches. */
 export function ColorField({ value, onChange, label, swatches = NAME_SWATCHES, onRemove }: { value: string; onChange: (color: string) => void; label: string; swatches?: string[]; onRemove?: () => void }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -151,7 +154,7 @@ export function ColorField({ value, onChange, label, swatches = NAME_SWATCHES, o
         <ChevronDown size={14} />
       </button>
       {onRemove && (
-        <button type="button" className="ps-color-remove" onClick={onRemove} aria-label={`Remove ${label}`}>
+        <button type="button" className="ps-color-remove" onClick={onRemove} aria-label={t("settings.studio.removeLabelAria", { label })}>
           <X size={12} />
         </button>
       )}
@@ -161,6 +164,7 @@ export function ColorField({ value, onChange, label, swatches = NAME_SWATCHES, o
 }
 
 function ColorPopover({ value, onChange, swatches }: { value: string; onChange: (color: string) => void; swatches: string[] }) {
+  const { t } = useI18n();
   const [hsv, setHsv] = useState(() => hexToHsv(value));
   const [text, setText] = useState(value.toUpperCase());
   const areaRef = useRef<HTMLDivElement>(null);
@@ -182,7 +186,7 @@ function ColorPopover({ value, onChange, swatches }: { value: string; onChange: 
   };
   const eyeDropper = typeof window !== "undefined" && "EyeDropper" in window;
   return (
-    <div className="ps-pop" role="dialog" aria-label="Pick a colour">
+    <div className="ps-pop" role="dialog" aria-label={t("settings.studio.pickColourAria")}>
       <div
         ref={areaRef}
         className="ps-pop-area"
@@ -204,7 +208,7 @@ function ColorPopover({ value, onChange, swatches }: { value: string; onChange: 
         max={359}
         value={Math.round(hsv[0])}
         onChange={(event) => set([Number(event.target.value), hsv[1] || 0.85, hsv[2] || 0.9])}
-        aria-label="Hue"
+        aria-label={t("settings.studio.hueAria")}
       />
       <div className="ps-pop-row">
         <span className="ps-pop-now" style={{ background: value }} />
@@ -217,14 +221,14 @@ function ColorPopover({ value, onChange, swatches }: { value: string; onChange: 
             setText(event.target.value);
             if (HEX_INPUT.test(event.target.value)) onChange(`#${event.target.value.replace("#", "").toLowerCase()}`);
           }}
-          aria-label="Hex colour"
+          aria-label={t("settings.studio.hexColourAria")}
         />
         {eyeDropper && (
           <button
             type="button"
             className="ps-pop-icon"
-            title="Pick from the screen"
-            aria-label="Pick a colour from the screen"
+            title={t("settings.studio.pickFromScreenTitle")}
+            aria-label={t("settings.studio.pickFromScreenAria")}
             onClick={async () => {
               try {
                 const result = await new (window as unknown as { EyeDropper: new () => { open(): Promise<{ sRGBHex: string }> } }).EyeDropper().open();
@@ -246,7 +250,7 @@ function ColorPopover({ value, onChange, swatches }: { value: string; onChange: 
             className={`ps-pop-swatch${swatch === value.toLowerCase() ? " chosen" : ""}`}
             style={{ background: swatch }}
             onClick={() => onChange(swatch)}
-            aria-label={`Use ${swatch}`}
+            aria-label={t("settings.studio.useSwatchAria", { swatch })}
           />
         ))}
       </div>
@@ -332,6 +336,7 @@ export function StyleStudio({
   onApply: (style: ProfileStyle) => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState<ProfileStyle>(style);
   const dirty = JSON.stringify(draft) !== JSON.stringify(style);
   useEffect(() => {
@@ -362,19 +367,20 @@ export function StyleStudio({
   else if (kind === "voice") body = <VoiceStudio draft={draft} patch={patch} profile={preview} />;
   else body = <LooksStudio draft={draft} setDraft={setDraft} profile={preview} cosmetics={cosmetics} />;
 
+  const title = t(TITLE_KEYS[kind]);
   return createPortal(
     <div className="dp-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className={`dp-modal ps-modal ps-modal-${kind}`} role="dialog" aria-modal="true" aria-label={TITLES[kind]}>
+      <div className={`dp-modal ps-modal ps-modal-${kind}`} role="dialog" aria-modal="true" aria-label={title}>
         <header className="dp-head">
-          <h3>{TITLES[kind]}</h3>
-          <button type="button" className="dp-close" aria-label="Close" onClick={onClose}>
+          <h3>{title}</h3>
+          <button type="button" className="dp-close" aria-label={t("common.close")} onClick={onClose}>
             <X size={22} />
           </button>
         </header>
         <div className="dp-body ps-body">{body}</div>
         <footer className="dp-foot">
           <button type="button" className="dp-btn dp-btn-ghost" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -385,7 +391,7 @@ export function StyleStudio({
               onClose();
             }}
           >
-            Apply
+            {t("settings.deco.apply")}
           </button>
         </footer>
       </div>
@@ -401,6 +407,7 @@ type Patch = (next: Partial<ProfileStyle>) => void;
 /* ------------------------------------------------------------------ */
 
 function NameStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Patch; profile: PreviewProfile }) {
+  const { t } = useI18n();
   const name = profile.displayName || profile.username;
   const effect = nameEffect(draft.effect);
   const colors = draft.nameColors?.length ? draft.nameColors : effect ? [...effect.defaults] : [];
@@ -448,13 +455,13 @@ function NameStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Pat
           </button>
         </div>
 
-        <Section title="Effect" hint="Effects play in full on your card and voice tile, and when someone hovers your name in chat.">
+        <Section title={t("settings.studio.effectTitle")} hint={t("settings.studio.effectHint")}>
           {effectGroups.map(({ group, effects }) => (
             <div key={group} className="ps-shelf">
               <h5>{group}</h5>
               <div className="ps-grid ps-grid-name">
                 {group === "Classic" && (
-                  <Tile chosen={!draft.effect} onClick={() => setEffect(undefined)} label="None">
+                  <Tile chosen={!draft.effect} onClick={() => setEffect(undefined)} label={t("settings.deco.none")}>
                     <span className="ps-name-sample">{sample(draft.font, undefined)}</span>
                   </Tile>
                 )}
@@ -470,18 +477,18 @@ function NameStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Pat
 
         {max > 0 && (
           <Section
-            title="Colours"
-            hint={max > min ? `Pick ${min} to ${max} colours.` : undefined}
+            title={t("settings.studio.coloursTitle")}
+            hint={max > min ? t("settings.studio.coloursHint", { min, max }) : undefined}
             action={
               <div className="ps-inline-actions">
                 {colors.length > 1 && (
-                  <button type="button" className="ps-chip" onClick={() => setColors([...colors].reverse())} title="Swap the order">
+                  <button type="button" className="ps-chip" onClick={() => setColors([...colors].reverse())} title={t("settings.studio.swapOrderTitle")}>
                     <ArrowLeftRight size={14} />
                   </button>
                 )}
                 {avatarColors && (
                   <button type="button" className="ps-chip" onClick={() => setColors(max > 1 ? avatarColors.slice(0, Math.max(min, 2)) : [avatarColors[0]])}>
-                    <ImageIcon size={14} /> From avatar
+                    <ImageIcon size={14} /> {t("settings.studio.fromAvatar")}
                   </button>
                 )}
               </div>
@@ -491,7 +498,7 @@ function NameStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Pat
               {colors.map((color, index) => (
                 <ColorField
                   key={index}
-                  label={max === 1 ? "Colour" : `Colour ${index + 1}`}
+                  label={max === 1 ? t("settings.studio.colourSingle") : t("settings.studio.colourIndexed", { index: index + 1 })}
                   value={color}
                   onChange={(next) => setColors(colors.map((c, i) => (i === index ? next : c)))}
                   onRemove={colors.length > min ? () => setColors(colors.filter((_, i) => i !== index)) : undefined}
@@ -499,7 +506,7 @@ function NameStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Pat
               ))}
               {colors.length < max && (
                 <button type="button" className="ps-add-color" onClick={() => setColors([...colors, NAME_PALETTES[0][1]])}>
-                  <Plus size={15} /> Add colour
+                  <Plus size={15} /> {t("settings.studio.addColour")}
                 </button>
               )}
             </div>
@@ -512,7 +519,7 @@ function NameStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Pat
                     className="ps-palette"
                     style={{ background: `linear-gradient(90deg, ${palette.join(", ")})` }}
                     onClick={() => setColors(palette.slice(0, Math.max(min, palette.length)))}
-                    aria-label={`Use ${palette.join(", ")}`}
+                    aria-label={t("settings.studio.useSwatchAria", { swatch: palette.join(", ") })}
                   />
                 ))}
               </div>
@@ -520,7 +527,7 @@ function NameStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Pat
           </Section>
         )}
 
-        <Section title="Font" hint="Every font here has the letters for Turkish, Polish and other European names.">
+        <Section title={t("settings.studio.fontTitle")} hint={t("settings.studio.fontHint")}>
           {fontGroups.map(({ group, fonts }) => (
             <div key={group} className="ps-shelf">
               <h5>{group}</h5>
@@ -550,24 +557,24 @@ function NameStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Pat
                 <strong>
                   <StyledName name={name} style={draft} />
                 </strong>
-                <time>Today at 21:07</time>
+                <time>{t("settings.studio.todayAt", { time: "21:07" })}</time>
               </div>
-              <p>is this what my name looks like now?? ✨</p>
+              <p>{t("settings.studio.sampleMsg1")}</p>
             </div>
           </div>
           <div className="ps-msg">
             <span className="ps-msg-avatar ps-ghost-avatar" />
             <div>
               <div className="ps-msg-meta">
-                <strong style={{ color: "var(--lavender, #8b9cff)" }}>a friend</strong>
-                <time>Today at 21:08</time>
+                <strong style={{ color: "var(--lavender, #8b9cff)" }}>{t("settings.studio.sampleFriend")}</strong>
+                <time>{t("settings.studio.todayAt", { time: "21:08" })}</time>
               </div>
-              <p>hover it, it moves</p>
+              <p>{t("settings.studio.sampleMsg2")}</p>
             </div>
           </div>
         </div>
         <div className="ps-preview-members">
-          <span className="ps-preview-label">Member list</span>
+          <span className="ps-preview-label">{t("settings.studio.memberList")}</span>
           <div className="ps-member ps-hover">
             <Avatar className="ps-member-avatar" avatar={profile.avatar} avatarUrl={profile.avatarUrl} color={profile.color} size={32} />
             <strong>
@@ -580,8 +587,8 @@ function NameStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Pat
           </div>
         </div>
         <div className="dp-info">
-          <strong>{effect ? effect.name : "No effect"}</strong>
-          <span>{effect ? effect.desc : "Your name in your role colour, in the font you pick."}</span>
+          <strong>{effect ? effect.name : t("settings.studio.noEffect")}</strong>
+          <span>{effect ? effect.desc : t("settings.studio.noEffectDesc")}</span>
         </div>
       </div>
     </>
@@ -609,6 +616,7 @@ function MiniCard({ style, color, className = "" }: { style: ProfileStyle; color
 }
 
 function CardStudio({ draft, patch, profile, cosmetics }: { draft: ProfileStyle; patch: Patch; profile: PreviewProfile; cosmetics: Cosmetics }) {
+  const { t } = useI18n();
   const theme = draft.theme || [profile.color && /^#[0-9a-f]{6}$/i.test(profile.color) ? profile.color : "#5865f2", "#14131c"];
   const avatarColors = useAvatarColors(profile.avatarUrl);
   const [replay, setReplay] = useState(0);
@@ -628,28 +636,28 @@ function CardStudio({ draft, patch, profile, cosmetics }: { draft: ProfileStyle;
       <div className="dp-list ps-list">
         <div className="ps-toolbar">
           <button type="button" className="ps-chip" onClick={surprise}>
-            <Dices size={14} /> Surprise me
+            <Dices size={14} /> {t("settings.studio.surpriseMe")}
           </button>
           <button type="button" className="ps-chip" onClick={() => patch({ theme: undefined, finish: undefined, pattern: undefined, edge: undefined, motion: undefined, entrance: undefined })}>
-            <RotateCcw size={14} /> No theme
+            <RotateCcw size={14} /> {t("settings.studio.noTheme")}
           </button>
         </div>
 
         <Section
-          title="Colours"
-          hint="Primary sits at the top of your card, accent at the bottom. Text flips dark on pale themes."
+          title={t("settings.studio.coloursTitle")}
+          hint={t("settings.studio.cardColoursHint")}
           action={
             avatarColors && (
               <button type="button" className="ps-chip" onClick={() => withTheme({ theme: avatarColors })}>
-                <ImageIcon size={14} /> From avatar
+                <ImageIcon size={14} /> {t("settings.studio.fromAvatar")}
               </button>
             )
           }
         >
           <div className="ps-colors">
-            <ColorField label="Primary" value={theme[0]} onChange={(next) => withTheme({ theme: [next, theme[1]] })} />
-            <ColorField label="Accent" value={theme[1]} onChange={(next) => withTheme({ theme: [theme[0], next] })} />
-            <button type="button" className="ps-chip ps-swap" onClick={() => withTheme({ theme: [theme[1], theme[0]] })} title="Swap">
+            <ColorField label={t("settings.studio.primary")} value={theme[0]} onChange={(next) => withTheme({ theme: [next, theme[1]] })} />
+            <ColorField label={t("settings.studio.accent")} value={theme[1]} onChange={(next) => withTheme({ theme: [theme[0], next] })} />
+            <button type="button" className="ps-chip ps-swap" onClick={() => withTheme({ theme: [theme[1], theme[0]] })} title={t("settings.studio.swap")}>
               <ArrowLeftRight size={14} />
             </button>
           </div>
@@ -661,13 +669,13 @@ function CardStudio({ draft, patch, profile, cosmetics }: { draft: ProfileStyle;
                 className={`ps-pair${draft.theme?.join() === pair.join() ? " chosen" : ""}`}
                 style={{ background: `linear-gradient(160deg, ${pair[0]} 0 50%, ${pair[1]} 50% 100%)` }}
                 onClick={() => withTheme({ theme: pair })}
-                aria-label={`Use ${pair.join(" and ")}`}
+                aria-label={t("settings.studio.usePairAria", { a: pair[0], b: pair[1] })}
               />
             ))}
           </div>
         </Section>
 
-        <Section title="Finish">
+        <Section title={t("settings.studio.finish")}>
           <div className="ps-grid ps-grid-card">
             {CARD_FINISHES.map((finish) => (
               <Tile key={finish.id} chosen={(draft.finish || "gradient") === finish.id && Boolean(draft.theme)} onClick={() => withTheme({ finish: finish.id })} label={finish.name} title={finish.desc}>
@@ -677,7 +685,7 @@ function CardStudio({ draft, patch, profile, cosmetics }: { draft: ProfileStyle;
           </div>
         </Section>
 
-        <Section title="Pattern">
+        <Section title={t("settings.studio.pattern")}>
           <div className="ps-grid ps-grid-pattern">
             {CARD_PATTERNS.map((pattern) => (
               <Tile key={pattern.id} chosen={(draft.pattern || "none") === pattern.id && Boolean(draft.theme)} onClick={() => withTheme({ pattern: pattern.id === "none" ? undefined : pattern.id })} label={pattern.name}>
@@ -687,18 +695,18 @@ function CardStudio({ draft, patch, profile, cosmetics }: { draft: ProfileStyle;
           </div>
         </Section>
 
-        <Section title="Edge">
+        <Section title={t("settings.studio.edge")}>
           <Segmented options={CARD_EDGES} value={draft.edge || "soft"} onChange={(edge) => withTheme({ edge })} />
         </Section>
 
-        <Section title="Motion" hint="How your card reacts while someone looks at it.">
+        <Section title={t("settings.studio.motion")} hint={t("settings.studio.motionHint")}>
           <Segmented options={CARD_MOTIONS} value={draft.motion || "tilt"} onChange={(motion) => patch({ motion })} />
         </Section>
 
-        <Section title="Entrance" hint="How your card arrives when someone opens it. Pick one to watch it.">
+        <Section title={t("settings.studio.entrance")} hint={t("settings.studio.entranceHint")}>
           <div className="ps-chips">
             <button type="button" className={`ps-chip${!draft.entrance ? " on" : ""}`} onClick={() => patch({ entrance: undefined })}>
-              Default
+              {t("settings.studio.default")}
             </button>
             {CARD_ENTRANCES.map((entrance) => (
               <button
@@ -722,7 +730,7 @@ function CardStudio({ draft, patch, profile, cosmetics }: { draft: ProfileStyle;
           <ProfilePreviewCard profile={profile} cosmetics={cosmetics} bioLines={3} interactive />
         </div>
         <button type="button" className="ps-chip ps-replay" onClick={() => setReplay((n) => n + 1)}>
-          <Play size={13} /> Replay entrance
+          <Play size={13} /> {t("settings.studio.replayEntrance")}
         </button>
       </div>
     </>
@@ -752,6 +760,7 @@ function useTalking(enabled: boolean) {
 }
 
 function VoiceStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Patch; profile: PreviewProfile }) {
+  const { t } = useI18n();
   const [join, setJoin] = useState<{ id: string; n: number } | null>(null);
   const [chatter, setChatter] = useState(false);
   const speaking = useTalking(chatter);
@@ -763,13 +772,13 @@ function VoiceStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Pa
   return (
     <>
       <div className="dp-list ps-list">
-        <Section title="Speaking" hint="What everyone in the call sees around your avatar while you talk.">
+        <Section title={t("settings.studio.speaking")} hint={t("settings.studio.speakingHint")}>
           {groups.map(({ group, rings }) => (
             <div key={group} className="ps-shelf">
               <h5>{group}</h5>
               <div className="ps-grid ps-grid-voice">
                 {group === "Rings" && (
-                  <Tile chosen={!draft.ring} onClick={() => patch({ ring: undefined })} label="Default">
+                  <Tile chosen={!draft.ring} onClick={() => patch({ ring: undefined })} label={t("settings.studio.default")}>
                     <span className="ps-voice-sample ps-voice-default">
                       <Avatar className="ps-voice-avatar" avatar={profile.avatar} avatarUrl={profile.avatarUrl} color={profile.color} size={48} />
                     </span>
@@ -789,16 +798,16 @@ function VoiceStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Pa
           ))}
         </Section>
 
-        <Section title="Ring colour" action={draft.theme ? <button type="button" className="ps-chip" onClick={() => patch({ ringColor: draft.theme![0] })}>Match card</button> : undefined}>
+        <Section title={t("settings.studio.ringColour")} action={draft.theme ? <button type="button" className="ps-chip" onClick={() => patch({ ringColor: draft.theme![0] })}>{t("settings.studio.matchCard")}</button> : undefined}>
           <div className="ps-colors">
-            <ColorField label="Colour" value={color} onChange={(next) => patch({ ringColor: next })} swatches={RING_SWATCHES} />
+            <ColorField label={t("settings.studio.colourSingle")} value={color} onChange={(next) => patch({ ringColor: next })} swatches={RING_SWATCHES} />
           </div>
         </Section>
 
-        <Section title="Join flourish" hint="Plays on your tile when you hop into a call people are watching. Pick one to see it.">
+        <Section title={t("settings.studio.joinFlourish")} hint={t("settings.studio.joinFlourishHint")}>
           <div className="ps-chips">
             <button type="button" className={`ps-chip${!draft.join ? " on" : ""}`} onClick={() => patch({ join: undefined })}>
-              None
+              {t("settings.deco.none")}
             </button>
             {JOIN_FLOURISHES.map((flourish) => (
               <button
@@ -817,7 +826,7 @@ function VoiceStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Pa
           </div>
         </Section>
 
-        <Section title="Tile" hint="Without a camera, your tile can wear your card colours.">
+        <Section title={t("settings.studio.tile")} hint={t("settings.studio.tileHint")}>
           <Segmented options={VOICE_TILES} value={draft.tile || "theme"} onChange={(next) => patch({ tile: next })} />
         </Section>
       </div>
@@ -838,16 +847,16 @@ function VoiceStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Pa
         <div className="ps-voice-controls">
           <label className="ps-toggle">
             <input type="checkbox" checked={chatter} onChange={(event) => setChatter(event.target.checked)} />
-            <span>Chatter on and off</span>
+            <span>{t("settings.studio.chatterToggle")}</span>
           </label>
           {draft.join && (
             <button type="button" className="ps-chip" onClick={() => playJoin(draft.join!)}>
-              <Play size={13} /> Play join
+              <Play size={13} /> {t("settings.studio.playJoin")}
             </button>
           )}
         </div>
         <div className="ps-voice-list">
-          <span className="ps-preview-label">In the channel list</span>
+          <span className="ps-preview-label">{t("settings.studio.inChannelList")}</span>
           <div className={`ps-voice-row ps-hover${speaking ? " is-speaking" : ""}`}>
             <VoiceAura ring={draft.ring} color={color} speaking={speaking}>
               <Avatar className="ps-voice-tiny" avatar={profile.avatar} avatarUrl={profile.avatarUrl} color={profile.color} size={24} />
@@ -865,12 +874,13 @@ function VoiceStudio({ draft, patch, profile }: { draft: ProfileStyle; patch: Pa
 /* ------------------------------------------------------------------ */
 
 function LooksStudio({ draft, setDraft, profile, cosmetics }: { draft: ProfileStyle; setDraft: (style: ProfileStyle) => void; profile: PreviewProfile; cosmetics: Cosmetics }) {
+  const { t } = useI18n();
   const name = profile.displayName || profile.username;
   const current = STYLE_LOOKS.find((look) => JSON.stringify(look.style) === JSON.stringify(draft));
   return (
     <>
       <div className="dp-list ps-list">
-        <p className="ps-intro">A look sets your name, card and voice style in one go. Apply one, then tweak any part of it.</p>
+        <p className="ps-intro">{t("settings.studio.looksIntro")}</p>
         <div className="ps-looks">
           {STYLE_LOOKS.map((look) => {
             const card = cardLook({ ...look.style, motion: "still", entrance: undefined });

@@ -1,7 +1,7 @@
 FROM python:3.12-alpine
 
 WORKDIR /app
-COPY server.py /app/
+COPY server.py srd_data.json /app/
 
 EXPOSE 8732
 

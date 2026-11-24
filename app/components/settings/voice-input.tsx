@@ -6,6 +6,7 @@ import { Download, Headphones } from "lucide-react";
 import { registerMedia, saveDevice, supportsOutputSelection, unregisterMedia, type DeviceOption } from "../../lib/devices";
 import { canRecordMicTest, recordingExtension, recordMicTest, TEST_SECONDS } from "../../lib/mic-recording";
 import { GAIN_RANGE, openMicrophone, SENSITIVITY_RANGE, type MicChain, type MicSettings, type MicTelemetry } from "../../lib/mic-chain";
+import { useI18n } from "../../lib/i18n-context";
 
 /** Where the meter bottoms out. Quieter than this is indistinguishable silence. */
 export const METER_FLOOR_DB = -80;
@@ -66,6 +67,7 @@ export function MicRecordTest({
   previewChain: React.MutableRefObject<MicChain | null>;
   onTelemetry?: (telemetry: MicTelemetry) => void;
 }) {
+  const { t } = useI18n();
   type Phase = "idle" | "recording" | "ready";
   const [phase, setPhase] = useState<Phase>("idle");
   const [elapsed, setElapsed] = useState(0);
@@ -129,7 +131,7 @@ export function MicRecordTest({
       setPhase("ready");
     } catch (recordError) {
       setError(
-        recordError instanceof Error ? recordError.message : "The microphone could not be recorded.",
+        recordError instanceof Error ? recordError.message : t("settings.voice.recordError"),
       );
       setPhase("idle");
     } finally {
@@ -175,15 +177,15 @@ export function MicRecordTest({
           onClick={() => void start()}
         >
           {phase === "recording"
-            ? `Stop (${Math.ceil(TEST_SECONDS - elapsed)}s)`
+            ? t("settings.voice.stopRecord", { seconds: Math.ceil(TEST_SECONDS - elapsed) })
             : phase === "ready"
-              ? "Record again"
-              : "Record a sample"}
+              ? t("settings.voice.recordAgain")
+              : t("settings.voice.recordSample")}
         </button>
         <small className="modal-hint">
           {phase === "recording"
-            ? "Talk normally — and try a swallow, a sip or a cough too."
-            : `Records ${TEST_SECONDS} seconds you can play back or save — handy when someone says you sound odd.`}
+            ? t("settings.voice.recordingHint")
+            : t("settings.voice.recordIdleHint", { seconds: TEST_SECONDS })}
         </small>
       </div>
       {phase === "recording" && (
@@ -194,8 +196,8 @@ export function MicRecordTest({
       {result && (
         <div className="mic-record-row">
           <audio ref={audioRef} controls src={result.processed} autoPlay />
-          <button type="button" className="discord-btn secondary-gray" onClick={save} title="Saves what they hear, your raw microphone and your settings">
-            <Download size={14} /> Save
+          <button type="button" className="discord-btn secondary-gray" onClick={save} title={t("settings.voice.saveSampleTitle")}>
+            <Download size={14} /> {t("settings.voice.saveSample")}
           </button>
         </div>
       )}
@@ -256,6 +258,7 @@ export function VoiceInput({
   /** Deafen for the length of a mic check, then put back what was there. */
   onMicTestHold?: (active: boolean) => void;
 }) {
+  const { t } = useI18n();
   const [telemetry, setTelemetry] = useState<MicTelemetry | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState("");
@@ -326,7 +329,7 @@ export function VoiceInput({
       attach(chain);
     } catch (error) {
       stopCheck();
-      setCheckError(error instanceof Error ? error.message : "The microphone could not be opened.");
+      setCheckError(error instanceof Error ? error.message : t("settings.voice.micOpenError"));
     }
   };
 
@@ -369,27 +372,27 @@ export function VoiceInput({
     if (settings.gate !== (next === "activity")) change({ gate: next === "activity" });
   };
   const modes: Array<[InputMode, string]> = [
-    ["activity", "Voice activity"],
-    ...(onPushToTalk ? [["ptt", "Push to talk"] as [InputMode, string]] : []),
-    ["open", "Always on"],
+    ["activity", t("settings.voice.mode.activity")],
+    ...(onPushToTalk ? [["ptt", t("settings.voice.mode.ptt")] as [InputMode, string]] : []),
+    ["open", t("settings.voice.mode.open")],
   ];
 
   return (
     <>
-      <section className="vs-section" data-settings-anchor="devices" data-settings-label="Devices">
-        <h3 className="field-label">Devices</h3>
+      <section className="vs-section" data-settings-anchor="devices" data-settings-label={t("settings.voice.devices")}>
+        <h3 className="field-label">{t("settings.voice.devices")}</h3>
         <div className="vs-device-grid">
           <div>
-            <label htmlFor="settings-mic">Input device</label>
+            <label htmlFor="settings-mic">{t("settings.voice.inputDevice")}</label>
             <select id="settings-mic" value={micId} onChange={(event) => onMicId(event.target.value)}>
-              <option value="">System default</option>
+              <option value="">{t("settings.voice.systemDefault")}</option>
               {microphones.map((device) => (
                 <option key={device.deviceId} value={device.deviceId}>{device.label}</option>
               ))}
             </select>
           </div>
           <div>
-            <label htmlFor="settings-speaker">Output device</label>
+            <label htmlFor="settings-speaker">{t("settings.voice.outputDevice")}</label>
             {supportsOutputSelection() ? (
               <select
                 id="settings-speaker"
@@ -399,52 +402,52 @@ export function VoiceInput({
                   saveDevice("speaker", event.target.value);
                 }}
               >
-                <option value="">System default</option>
+                <option value="">{t("settings.voice.systemDefault")}</option>
                 {speakers.map((device) => (
                   <option key={device.deviceId} value={device.deviceId}>{device.label}</option>
                 ))}
               </select>
             ) : (
               <p className="modal-hint vs-device-note">
-                This browser uses whatever output your system picks — change it there.
+                {t("settings.voice.browserOutputNote")}
               </p>
             )}
           </div>
         </div>
       </section>
 
-      <section className="vs-section" data-settings-anchor="mic-test" data-settings-label="Mic test">
-        <h3 className="field-label">Mic test</h3>
+      <section className="vs-section" data-settings-anchor="mic-test" data-settings-label={t("settings.voice.micTest")}>
+        <h3 className="field-label">{t("settings.voice.micTest")}</h3>
         <div className="vs-mic-check">
           <button
             type="button"
             className={`discord-btn ${checking ? "danger-red" : "primary-indigo"}`}
             onClick={() => void startCheck()}
           >
-            {checking ? "Stop checking" : "Let's check"}
+            {checking ? t("settings.voice.stopChecking") : t("settings.voice.letsCheck")}
           </button>
           <InputMeter telemetry={telemetry} threshold={mode === "activity" ? threshold : null} />
         </div>
         <p className="modal-hint">
           {checking ? (
             <>
-              <Headphones size={13} className="vs-inline-icon" /> You&apos;re hearing yourself the way
-              others do{inCall ? " — the call is deafened until you stop" : ""}. Use headphones,
-              or speakers will feed back.
+              <Headphones size={13} className="vs-inline-icon" /> {t("settings.voice.micTestHearing")}
+              {inCall ? t("settings.voice.micTestDeafened") : ""}
+              {t("settings.voice.micTestHeadphones")}
             </>
           ) : inCall ? (
-            "The meter is your live call mic. Let's check deafens you and plays you back."
+            t("settings.voice.micTestInCall")
           ) : (
-            "Plays your mic straight back to you, with all your settings applied."
+            t("settings.voice.micTestIdle")
           )}
         </p>
         {checkError && <small className="mic-record-error">{checkError}</small>}
         <audio ref={loopbackRef} hidden />
       </section>
 
-      <section className="vs-section" data-settings-anchor="input-mode" data-settings-label="Input mode">
-        <h3 className="field-label">Input mode</h3>
-        <div className="appearance-choice-row vs-mode-row" role="radiogroup" aria-label="Input mode">
+      <section className="vs-section" data-settings-anchor="input-mode" data-settings-label={t("settings.voice.inputMode")}>
+        <h3 className="field-label">{t("settings.voice.inputMode")}</h3>
+        <div className="appearance-choice-row vs-mode-row" role="radiogroup" aria-label={t("settings.voice.inputMode")}>
           {modes.map(([id, label]) => (
             <button
               type="button"
@@ -463,8 +466,8 @@ export function VoiceInput({
           <>
             <label className="appearance-switch">
               <span>
-                <strong>Automatic sensitivity</strong>
-                <small>Works out what is you and what is the room</small>
+                <strong>{t("settings.voice.autoSensitivity")}</strong>
+                <small>{t("settings.voice.autoSensitivityDesc")}</small>
               </span>
               <input
                 type="checkbox"
@@ -475,7 +478,7 @@ export function VoiceInput({
             {manual && (
               <label className="appearance-range vs-sensitivity">
                 <span>
-                  Sensitivity <small>{threshold} dB · the red line on the meter</small>
+                  {t("settings.voice.sensitivity")} <small>{t("settings.voice.sensitivityHint", { db: threshold ?? -50 })}</small>
                 </span>
                 <input
                   type="range"
@@ -502,48 +505,48 @@ export function VoiceInput({
               setCapturingKey(false);
             }}
           >
-            {capturingKey ? "Press a key…" : `Push-to-talk key: ${pttKey.replace(/^Key/, "")}`}
+            {capturingKey ? t("settings.voice.pressKey") : t("settings.voice.pttKey", { key: pttKey.replace(/^Key/, "") })}
           </button>
         )}
 
         {mode === "open" && (
-          <p className="modal-hint">Your mic sends all the time, including the room between sentences.</p>
+          <p className="modal-hint">{t("settings.voice.alwaysOnHint")}</p>
         )}
       </section>
 
       <section className="vs-section">
-        <label htmlFor="settings-suppression" className="field-label">Noise suppression</label>
+        <label htmlFor="settings-suppression" className="field-label">{t("settings.voice.noiseSuppression")}</label>
         <select
           id="settings-suppression"
           value={settings.mode}
           onChange={(event) => change({ mode: event.target.value as MicSettings["mode"] })}
         >
-          <option value="off">Off</option>
-          <option value="browser">Standard</option>
-          <option value="rnnoise">Enhanced — removes fans, keyboards, hum</option>
-          <option value="voice">Strong — also removes voices in the background</option>
+          <option value="off">{t("settings.voice.noise.off")}</option>
+          <option value="browser">{t("settings.voice.noise.browser")}</option>
+          <option value="rnnoise">{t("settings.voice.noise.rnnoise")}</option>
+          <option value="voice">{t("settings.voice.noise.voice")}</option>
         </select>
         <p className="modal-hint">
           {settings.mode === "voice"
-            ? "Silences quieter, farther-away speech like a TV. If your first word gets cut off, use Enhanced."
+            ? t("settings.voice.noiseHint.voice")
             : settings.mode === "rnnoise"
-              ? "Runs on your own device."
+              ? t("settings.voice.noiseHint.rnnoise")
               : settings.mode === "browser"
-                ? "Your browser's built-in filter."
-                : "Everything your mic picks up is sent."}
+                ? t("settings.voice.noiseHint.browser")
+                : t("settings.voice.noiseHint.off")}
         </p>
       </section>
 
       <details className="vs-more">
-        <summary>More voice options</summary>
+        <summary>{t("settings.voice.moreOptions")}</summary>
         <div className="vs-more-body">
           <label className="appearance-switch">
             <span>
-              <strong>Automatic input volume</strong>
+              <strong>{t("settings.voice.autoGain")}</strong>
               <small>
                 {settings.autoGain
-                  ? `Levels your voice for you${telemetry ? ` (${telemetry.gainDb.toFixed(0)} dB)` : ""}`
-                  : "Set the input volume yourself"}
+                  ? `${t("settings.voice.autoGainOn")}${telemetry ? ` (${telemetry.gainDb.toFixed(0)} dB)` : ""}`
+                  : t("settings.voice.autoGainOff")}
               </small>
             </span>
             <input
@@ -555,7 +558,7 @@ export function VoiceInput({
           {!settings.autoGain && (
             <label className="appearance-range">
               <span>
-                Input volume <small>{settings.gainDb > 0 ? "+" : ""}{settings.gainDb} dB</small>
+                {t("settings.voice.inputVolume")} <small>{settings.gainDb > 0 ? "+" : ""}{settings.gainDb} dB</small>
               </span>
               <input
                 type="range"
@@ -570,8 +573,8 @@ export function VoiceInput({
 
           <label className="appearance-switch">
             <span>
-              <strong>Echo cancellation</strong>
-              <small>Keep on with speakers. On headphones, off keeps your voice fuller.</small>
+              <strong>{t("settings.voice.echoCancellation")}</strong>
+              <small>{t("settings.voice.echoCancellationDesc")}</small>
             </span>
             <input
               type="checkbox"
@@ -582,8 +585,8 @@ export function VoiceInput({
 
           <label className="appearance-switch">
             <span>
-              <strong>Voice clarity</strong>
-              <small>Cuts desk thumps, fan rumble and mic pops</small>
+              <strong>{t("settings.voice.voiceClarity")}</strong>
+              <small>{t("settings.voice.voiceClarityDesc")}</small>
             </span>
             <input
               type="checkbox"
@@ -594,10 +597,10 @@ export function VoiceInput({
 
           <label className="appearance-switch voice-effect-row">
             <span>
-              <strong>Voice effect</strong>
+              <strong>{t("settings.voice.voiceEffect")}</strong>
               <small>
                 {VOICE_EFFECTS.find((effect) => effect.id === settings.voiceEffect)?.hint}
-                {settings.voiceEffect !== "none" && " · everyone in the call hears it"}
+                {settings.voiceEffect !== "none" && t("settings.voice.voiceEffectRoom")}
               </small>
             </span>
             <select
@@ -613,7 +616,7 @@ export function VoiceInput({
 
           <label className="appearance-range">
             <span>
-              <strong>Voice delay</strong> <small>{settings.delayMs || 0} ms</small>
+              <strong>{t("settings.voice.voiceDelay")}</strong> <small>{settings.delayMs || 0} ms</small>
             </span>
             <input
               type="range"
@@ -624,7 +627,7 @@ export function VoiceInput({
               onChange={(event) => change({ delayMs: Number(event.target.value) })}
             />
           </label>
-          <p className="modal-hint">Holds your voice back to line it up with a screen share. Leave at 0 otherwise.</p>
+          <p className="modal-hint">{t("settings.voice.voiceDelayDesc")}</p>
 
           <MicRecordTest
             settings={settings}

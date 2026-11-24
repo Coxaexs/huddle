@@ -31,6 +31,12 @@ import { easy } from "./easy";
 import { layout } from "./layout";
 import { extras } from "./extras";
 import { play } from "./play";
+import { settingsMore } from "./settingsMore";
+import { chatMore } from "./chatMore";
+import { miscMore } from "./miscMore";
+import { loungeMore } from "./loungeMore";
+import { clubMore } from "./clubMore";
+import { buddyMore } from "./buddyMore";
 
 export const EN_APP = {
   ...auth,
@@ -60,4 +66,10 @@ export const EN_APP = {
   ...layout,
   ...extras,
   ...play,
+  ...settingsMore,
+  ...chatMore,
+  ...miscMore,
+  ...loungeMore,
+  ...clubMore,
+  ...buddyMore,
 } as const;

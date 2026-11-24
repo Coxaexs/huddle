@@ -74,6 +74,7 @@ import {
 import { SYNTH_SONGS } from "@/lib/synth-songs";
 import { HandTracker, type HandTrackingStatus } from "../lib/hand-tracking";
 import { jamEngine, jamSeats, sendJamPlay, subscribeJamSeats, type JamSeat } from "../lib/synth-jam";
+import { tNow } from "../lib/i18n-context";
 
 /** MediaPipe's hand skeleton. */
 const BONES: Array<[number, number]> = [
@@ -905,14 +906,14 @@ export function GestureSynth({
   }
 
   const others = seats.filter((seat) => !isSilent(seat.play) || Date.now() - seat.at < 15_000);
-  const chordHandName = chordsLeft ? "left" : "right";
-  const melodyHandName = chordsLeft ? "right" : "left";
+  const chordHandName = chordsLeft ? tNow("synth.hand.left") : tNow("synth.hand.right");
+  const melodyHandName = chordsLeft ? tNow("synth.hand.right") : tNow("synth.hand.left");
 
   return (
     <div className="gesture-synth" ref={rootRef}>
       <div className="gesture-synth-bar">
         <label>
-          <span>Key</span>
+          <span>{tNow("synth.key")}</span>
           <select value={key} onChange={(event) => update({ ...activity.state, key: event.target.value, mode })}>
             {SYNTH_KEYS.map((option) => (
               <option key={option} value={option}>
@@ -922,14 +923,14 @@ export function GestureSynth({
           </select>
         </label>
         <select
-          aria-label="Scale"
+          aria-label={tNow("synth.scaleAria")}
           value={mode}
           onChange={(event) => update({ ...activity.state, key, mode: event.target.value as SynthMode })}
         >
-          <option value="major">Major</option>
-          <option value="minor">Minor</option>
+          <option value="major">{tNow("synth.major")}</option>
+          <option value="minor">{tNow("synth.minor")}</option>
         </select>
-        <label className="gesture-synth-bpm-pill" title="The room's tempo: everyone's rhythm, the sequencer and loops follow it">
+        <label className="gesture-synth-bpm-pill" title={tNow("synth.bpmTitle")}>
           <span>BPM</span>
           <input
             type="number"
@@ -940,7 +941,7 @@ export function GestureSynth({
           />
         </label>
         <label>
-          <span>Your sound</span>
+          <span>{tNow("synth.yourSound")}</span>
           <select value={sound} onChange={(event) => chooseSound(event.target.value as SynthSound)}>
             {SYNTH_SOUNDS.map((option) => (
               <option key={option} value={option}>
@@ -950,7 +951,7 @@ export function GestureSynth({
           </select>
         </label>
         <label>
-          <span>Rhythm</span>
+          <span>{tNow("synth.rhythm")}</span>
           <select value={rhythm} onChange={(event) => chooseRhythm(event.target.value as SynthRhythm)}>
             {SYNTH_RHYTHMS.map((option) => (
               <option key={option} value={option}>
@@ -967,16 +968,16 @@ export function GestureSynth({
             setMetronome((on) => !on);
           }}
           aria-pressed={metronome}
-          title="Metronome: a click on every beat, only for you"
+          title={tNow("synth.clickTitle")}
         >
-          <Timer size={14} /> Click
+          <Timer size={14} /> {tNow("synth.click")}
         </button>
-        <button type="button" onClick={swapHands} title="Swap which hand plays chords">
-          <ArrowLeftRight size={14} /> Chords: {chordHandName} hand
+        <button type="button" onClick={swapHands} title={tNow("synth.swapHandsTitle")}>
+          <ArrowLeftRight size={14} /> {tNow("synth.chordsHand", { hand: chordHandName })}
         </button>
         <div
           className="gesture-synth-volume"
-          title={`Synth volume: ${synthMuted ? 0 : Math.round(synthVolume * 100)}%`}
+          title={tNow("synth.volumeTitle", { vol: synthMuted ? 0 : Math.round(synthVolume * 100) })}
         >
           <button
             type="button"
@@ -985,8 +986,8 @@ export function GestureSynth({
               jamEngine.warm();
               jamEngine.setMuted(!synthMuted);
             }}
-            aria-label={synthMuted ? "Unmute synth" : "Mute synth"}
-            title={synthMuted ? "Unmute synth" : "Mute synth"}
+            aria-label={synthMuted ? tNow("synth.unmuteSynth") : tNow("synth.muteSynth")}
+            title={synthMuted ? tNow("synth.unmuteSynth") : tNow("synth.muteSynth")}
           >
             {synthMuted || synthVolume === 0 ? (
               <VolumeX size={15} />
@@ -1007,7 +1008,7 @@ export function GestureSynth({
               jamEngine.setVolume(next);
               if (synthMuted && next > 0) jamEngine.setMuted(false);
             }}
-            aria-label="Synth volume"
+            aria-label={tNow("synth.volumeAria")}
           />
           <span className="gesture-synth-vol-num" aria-hidden="true">
             {synthMuted ? "0%" : `${Math.round(synthVolume * 100)}%`}
@@ -1022,15 +1023,15 @@ export function GestureSynth({
           aria-pressed={camera === "live"}
         >
           {camera === "live" ? <CameraOff size={15} /> : <Camera size={15} />}
-          {camera === "live" ? "Stop camera" : camera === "loading" ? "Starting…" : "Play with hands"}
+          {camera === "live" ? tNow("synth.stopCamera") : camera === "loading" ? tNow("synth.startingCamera") : tNow("synth.playWithHands")}
         </button>
         <button
           type="button"
           className="gesture-synth-help-toggle"
           onClick={() => setHelp((open) => !open)}
           aria-expanded={help}
-          aria-label="How to play"
-          title="How to play"
+          aria-label={tNow("synth.howToPlay")}
+          title={tNow("synth.howToPlay")}
         >
           <CircleHelp size={16} />
         </button>
@@ -1040,14 +1041,14 @@ export function GestureSynth({
         <div className="gesture-synth-subbar-group">
           <label className="gesture-synth-subbar-label">
             <Music size={13} />
-            <span>Song</span>
-            <select value={songId} onChange={(event) => chooseSong(event.target.value)} aria-label="Song">
+            <span>{tNow("synth.song")}</span>
+            <select value={songId} onChange={(event) => chooseSong(event.target.value)} aria-label={tNow("synth.song")}>
               {SYNTH_SONGS.map((entry) => (
                 <option key={entry.id} value={entry.id}>
                   {entry.name} · {entry.artist}
                 </option>
               ))}
-              <option value="custom">Your own progression…</option>
+              <option value="custom">{tNow("synth.customProg")}</option>
             </select>
           </label>
           {!song && (
@@ -1057,8 +1058,8 @@ export function GestureSynth({
               value={customText}
               onChange={(event) => setCustomText(event.target.value)}
               placeholder="1 5 6 4, or Am:2 F:2 C G"
-              aria-label="Your progression: chord numbers or names, :beats for a length"
-              title="Chord numbers 1–7 in the room's key, or chord names (Bbm, F#m7, Ab/C). Add :2 for two beats; a chord lasts a bar otherwise."
+              aria-label={tNow("synth.progAria")}
+              title={tNow("synth.progTitle")}
             />
           )}
           <button
@@ -1070,20 +1071,20 @@ export function GestureSynth({
             }}
             disabled={steps.length === 0}
             aria-pressed={seqPlaying}
-            title={seqPlaying ? "Stop the progression" : "Play the progression at the room's tempo, from the next bar"}
+            title={seqPlaying ? tNow("synth.stopProgTitle") : tNow("synth.playProgTitle")}
           >
             {seqPlaying ? <Square size={13} /> : <Play size={13} />}
-            <span>{seqPlaying ? "Stop" : "Play"}</span>
+            <span>{seqPlaying ? tNow("beatbox.stop") : tNow("beatbox.play")}</span>
           </button>
           <button
             type="button"
             className={`gesture-synth-subbar-btn guide ${guideMode ? "active" : ""}`}
             onClick={() => setGuideMode((on) => !on)}
             aria-pressed={guideMode}
-            title="Guide: lights up the next chord and moves on when you play it"
+            title={tNow("synth.guideTitle")}
           >
             <Sparkles size={13} />
-            <span>Guide</span>
+            <span>{tNow("synth.guide")}</span>
           </button>
         </div>
 
@@ -1093,10 +1094,10 @@ export function GestureSynth({
               type="button"
               className="gesture-synth-subbar-btn rec"
               onClick={startRecordLoop}
-              title="Record a loop from the next bar line; it plays for everyone, in whole bars"
+              title={tNow("synth.recordLoopTitle")}
             >
               <Disc size={13} />
-              <span>Record Loop</span>
+              <span>{tNow("synth.recordLoop")}</span>
             </button>
           )}
           {loopState === "recording" && (
@@ -1104,10 +1105,10 @@ export function GestureSynth({
               type="button"
               className="gesture-synth-subbar-btn recording"
               onClick={finishRecordLoop}
-              title="Stop recording and start looping"
+              title={tNow("synth.loopItTitle")}
             >
               <Square size={13} />
-              <span>Loop It!</span>
+              <span>{tNow("synth.loopIt")}</span>
             </button>
           )}
           {loopState === "playing" && (
@@ -1115,10 +1116,10 @@ export function GestureSynth({
               type="button"
               className="gesture-synth-subbar-btn playing"
               onClick={stopLoop}
-              title="Stop loop playback"
+              title={tNow("synth.stopLoopTitle")}
             >
               <Pause size={13} />
-              <span>Stop Loop</span>
+              <span>{tNow("synth.stopLoop")}</span>
             </button>
           )}
           {hasLoop && loopState === "idle" && (
@@ -1129,10 +1130,10 @@ export function GestureSynth({
                 jamEngine.warm();
                 setLoopState("playing");
               }}
-              title="Resume loop playback"
+              title={tNow("synth.playLoopTitle")}
             >
               <Play size={13} />
-              <span>Play Loop</span>
+              <span>{tNow("synth.playLoop")}</span>
             </button>
           )}
           {hasLoop && (
@@ -1140,8 +1141,8 @@ export function GestureSynth({
               type="button"
               className="gesture-synth-loop-clear"
               onClick={clearLoop}
-              title="Clear recorded loop"
-              aria-label="Clear loop"
+              title={tNow("synth.clearLoopTitle")}
+              aria-label={tNow("synth.clearLoopAria")}
             >
               <Trash2 size={13} />
             </button>
@@ -1150,7 +1151,7 @@ export function GestureSynth({
       </div>
 
       {steps.length > 0 && (
-        <div className="gesture-synth-sequence-strip" role="region" aria-label="Progression">
+        <div className="gesture-synth-sequence-strip" role="region" aria-label={tNow("synth.progRegionAria")}>
           {parts.map((part, partIndex) => {
             const offset = parts.slice(0, partIndex).reduce((sum, previous) => sum + previous.steps.length, 0);
             return (
@@ -1169,7 +1170,7 @@ export function GestureSynth({
                         style={{ "--step-hue": degree === null ? 0 : DEGREE_HUES[degree], flexGrow: step.beats } as CSSProperties}
                         onClick={() => tapChord(index)}
                         title={`${step.tones.name}, ${step.beats} beat${step.beats === 1 ? "" : "s"}${
-                          degree === null ? " (not one of the seven pads: the sequencer plays it)" : `: pad ${degree + 1}`
+                          degree === null ? tNow("synth.outsidePads") : tNow("synth.padIndex", { index: degree + 1 })
                         }`}
                       >
                         {step.beats > 2 && <span className="sign-icon">{degree === null ? "♪" : DEGREE_SIGNS[degree]}</span>}
@@ -1191,31 +1192,31 @@ export function GestureSynth({
         {camera !== "live" && !help && (camera !== "off" || shown.degree === null) && (
           <div className="gesture-synth-intro">
             {camera === "loading" ? (
-              <p>Starting your camera and hand tracking…</p>
+              <p>{tNow("synth.startingCamera")}</p>
             ) : camera === "denied" ? (
-              <p>Camera access is blocked. Allow it in your browser’s site settings, or play with the pads and keys 1–7 or A–G.</p>
+              <p>{tNow("synth.camBlocked")}</p>
             ) : camera === "unsupported" ? (
-              <p>Hand tracking couldn’t start here. The pads and keys 1–7 or A–G still play.</p>
+              <p>{tNow("synth.camUnsupported")}</p>
             ) : (
               <>
-                <strong>Play chords with your hands or keyboard</strong>
+                <strong>{tNow("synth.introTitle")}</strong>
                 <p>
-                  Turn on your camera and make a sign: {DEGREE_SIGNS.slice(0, 2).join(" ")} 3 4 {DEGREE_SIGNS.slice(4).join(" ")} play
-                  the seven chords of {keyName(key)} {mode}, ✊ stops. Both hands or keys (1–7 and A–G) can play chords together for rich compound harmonies!
+                  {tNow("synth.introBody1")} {DEGREE_SIGNS.slice(0, 2).join(" ")} 3 4 {DEGREE_SIGNS.slice(4).join(" ")}{" "}
+                  {tNow("synth.introBody2", { key: keyName(key), mode })}
                 </p>
               </>
             )}
           </div>
         )}
         {others.length > 0 && (
-          <ul className="gesture-synth-seats" aria-label="Also playing">
+          <ul className="gesture-synth-seats" aria-label={tNow("synth.alsoPlayingAria")}>
             {others.map((seat) => {
               const isSeatMuted = jamEngine.isSeatMuted(seat.connectionId);
               return (
                 <li key={seat.connectionId} className={isSilent(seat.play) ? "" : "on"}>
                   <strong>{seat.name}</strong>
                   <div className="gesture-synth-seat-meta">
-                    <span>{seat.play.label || (seat.play.lead !== null ? "melody" : "…")}</span>
+                    <span>{seat.play.label || (seat.play.lead !== null ? tNow("synth.melody") : "…")}</span>
                     <button
                       type="button"
                       className="gesture-synth-seat-mute"
@@ -1224,8 +1225,8 @@ export function GestureSynth({
                         jamEngine.setSeatMuted(seat.connectionId, !isSeatMuted);
                       }}
                       aria-pressed={isSeatMuted}
-                      aria-label={isSeatMuted ? `Unmute ${seat.name}'s synth` : `Mute ${seat.name}'s synth`}
-                      title={isSeatMuted ? `Unmute ${seat.name}'s synth` : `Mute ${seat.name}'s synth`}
+                      aria-label={isSeatMuted ? tNow("synth.unmuteSeat", { name: seat.name }) : tNow("synth.muteSeat", { name: seat.name })}
+                      title={isSeatMuted ? tNow("synth.unmuteSeat", { name: seat.name }) : tNow("synth.muteSeat", { name: seat.name })}
                     >
                       {isSeatMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
                     </button>
@@ -1237,14 +1238,14 @@ export function GestureSynth({
           </ul>
         )}
         {!joined && (
-          <p className="gesture-synth-note">Join this voice room so the others hear you. You can still practise here.</p>
+          <p className="gesture-synth-note">{tNow("synth.joinVoiceNote")}</p>
         )}
         {help && (
-          <div className="gesture-synth-help" role="dialog" aria-label="How to play">
-            <button type="button" onClick={() => setHelp(false)} aria-label="Close">
+          <div className="gesture-synth-help" role="dialog" aria-label={tNow("synth.howToPlay")}>
+            <button type="button" onClick={() => setHelp(false)} aria-label={tNow("common.close")}>
               <X size={14} />
             </button>
-            <strong>Your {chordHandName} hand plays chords</strong>
+            <strong>{tNow("synth.help.handChords", { hand: chordHandName })}</strong>
             <ol>
               {chords.map((chord, degree) => (
                 <li key={degree}>
@@ -1256,48 +1257,31 @@ export function GestureSynth({
               ))}
               <li>
                 <span aria-hidden="true">✊</span>
-                <em>fist</em>
-                <b>stop</b>
+                <em>{tNow("synth.help.fist")}</em>
+                <b>{tNow("synth.help.stop")}</b>
               </li>
             </ol>
-            <strong>Keyboard & Shortcuts</strong>
-            <p>
-              Press number keys <strong>1–7</strong> or note letters <strong>A–G</strong> (e.g. press <strong>A</strong> for chord A, <strong>B</strong> for B, <strong>C</strong> for C).
-              You can hold two keys at the same time to blend chords into compound harmonies!
-            </p>
-            <strong>Two Hands at the Same Time</strong>
-            <p>
-              Both of your hands can play chords simultaneously! Sign one chord with your left hand and another with your right
-              hand to blend them into rich extended compound chords.
-            </p>
-            <strong>Your {melodyHandName} hand</strong>
-            <p>☝️ Point and move it up and down to play a melody over your chords.</p>
-            <p>🖐️ Open it and raise it to brighten the sound, lower it to soften.</p>
-            <strong>Tempo and rhythm</strong>
-            <p>
-              The room shares one tempo. Pick a rhythm (pulse, arpeggio) and your chords are played in time with everyone
-              else&apos;s, on the same beats. <strong>Click</strong> turns on a metronome only you hear.
-            </p>
-            <strong>Songs</strong>
-            <p>
-              A song sets the key, tempo, sound and rhythm, and <strong>Play</strong> runs its chords from the next bar.{" "}
-              <strong>Guide</strong> lights up the next chord and waits for you to play it. Or pick{" "}
-              <em>Your own progression</em> and type chord numbers or names: <code>1 5 6 4</code>, <code>Am:2 F:2 C G</code>.
-            </p>
-            <strong>Loops</strong>
-            <p>
-              <strong>Record Loop</strong> starts on the bar line; <strong>Loop It!</strong> rounds the take to whole bars
-              and keeps it playing under whatever you play next. Everyone hears it.
-            </p>
+            <strong>{tNow("synth.help.kbdTitle")}</strong>
+            <p>{tNow("synth.help.kbdBody")}</p>
+            <strong>{tNow("synth.help.twoHandsTitle")}</strong>
+            <p>{tNow("synth.help.twoHandsBody")}</p>
+            <strong>{tNow("synth.help.melodyHand", { hand: melodyHandName })}</strong>
+            <p>{tNow("synth.help.point")}</p>
+            <p>{tNow("synth.help.open")}</p>
+            <strong>{tNow("synth.help.tempoTitle")}</strong>
+            <p>{tNow("synth.help.tempoBody")}</p>
+            <strong>{tNow("synth.help.songsTitle")}</strong>
+            <p>{tNow("synth.help.songsBody")}</p>
+            <strong>{tNow("synth.help.loopsTitle")}</strong>
+            <p>{tNow("synth.help.loopsBody")}</p>
             <p className="gesture-synth-privacy">
-              Everyone in the voice room hears what you play, each in their own sound. Your camera picture never leaves this
-              computer.
+              {tNow("synth.help.privacy")}
             </p>
           </div>
         )}
       </div>
 
-      <div className="gesture-synth-pads" role="group" aria-label={`Chords in ${keyName(key)} ${mode}`}>
+      <div className="gesture-synth-pads" role="group" aria-label={tNow("synth.chordsInAria", { key: keyName(key), mode })}>
         {chords.map((chord, degree) => {
           const isPrimary = shown.degree === degree;
           const isSecondary = shown.secondDegree === degree;
@@ -1310,7 +1294,7 @@ export function GestureSynth({
               className={`${isPrimary ? "on" : ""} ${isSecondary && !isPrimary ? "on-secondary" : ""} ${isTargetGuide ? "target-guide" : ""}`}
               style={{ "--pad-hue": DEGREE_HUES[degree] } as CSSProperties}
               aria-pressed={isPrimary || isSecondary}
-              aria-label={`${chord.name}, chord ${chord.numeral}, key ${degree + 1} or ${letter}`}
+              aria-label={tNow("synth.padAria", { name: chord.name, numeral: chord.numeral, index: degree + 1, letter })}
               onPointerDown={(event) => {
                 event.currentTarget.setPointerCapture?.(event.pointerId);
                 hold(degree);
@@ -1335,12 +1319,12 @@ export function GestureSynth({
               <strong>{chord.numeral}</strong>
               <small>{chord.name}</small>
               {isSecondary && !isPrimary && (
-                <span className="gesture-pad-dual-tag" aria-hidden="true">2nd</span>
+                <span className="gesture-pad-dual-tag" aria-hidden="true">{tNow("synth.pad2nd")}</span>
               )}
               {isTargetGuide && (
-                <span className="gesture-pad-guide-tag" aria-hidden="true">Play</span>
+                <span className="gesture-pad-guide-tag" aria-hidden="true">{tNow("beatbox.play")}</span>
               )}
-              <kbd aria-hidden="true" title={`Press ${degree + 1} or ${letter}`}>
+              <kbd aria-hidden="true" title={tNow("synth.pressKeyTitle", { index: degree + 1, letter })}>
                 <span>{degree + 1}</span>
                 <span className="gesture-kbd-sep">•</span>
                 <span>{letter}</span>

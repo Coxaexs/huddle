@@ -10,6 +10,7 @@ Runs standalone on port 8732.
 
 import http.server
 import json
+import pathlib
 import re
 import socketserver
 import urllib.parse
@@ -958,6 +959,43 @@ REVISED_2024 = {
 }
 
 
+def _merge_entries(primary: list, fallback: list) -> list:
+    seen = {str(item.get("name", "")).lower() for item in primary if item.get("name")}
+    merged = list(primary)
+    for item in fallback:
+        name = str(item.get("name", "")).lower()
+        if name and name not in seen:
+            seen.add(name)
+            merged.append(item)
+    return merged
+
+
+def _load_bundled_srd() -> None:
+    srd_path = pathlib.Path(__file__).with_name("srd_data.json")
+    if not srd_path.is_file():
+        return
+    try:
+        data = json.loads(srd_path.read_text(encoding="utf-8"))
+    except Exception:
+        return
+    data_2014 = data.get("2014")
+    if isinstance(data_2014, dict):
+        for kind, fallback in list(COLLECTIONS.items()):
+            entries = data_2014.get(kind)
+            if isinstance(entries, list) and entries:
+                COLLECTIONS[kind] = _merge_entries(entries, fallback)
+    data_2024 = data.get("2024")
+    if isinstance(data_2024, dict):
+        for kind in COLLECTIONS:
+            entries = data_2024.get(kind)
+            fallback = REVISED_2024.get(kind, [])
+            if isinstance(entries, list) and entries:
+                REVISED_2024[kind] = _merge_entries(fallback, entries)
+
+
+_load_bundled_srd()
+
+
 def _ordinal(n: int) -> str:
     if 10 <= n % 100 <= 20:
         suffix = "th"
@@ -1033,6 +1071,10 @@ def build_card(kind: str, item: dict) -> dict:
             card["sections"].append({"title": "Traits", "body": item["traits"]})
         if item.get("actions"):
             card["sections"].append({"title": "Actions", "body": item["actions"]})
+        if item.get("reactions"):
+            card["sections"].append({"title": "Reactions", "body": item["reactions"]})
+        if item.get("legendary_actions"):
+            card["sections"].append({"title": "Legendary Actions", "body": item["legendary_actions"]})
         if item.get("description") and not card["sections"]:
             card["sections"].append({"title": "Actions", "body": item["description"]})
     else:
@@ -1095,12 +1137,24 @@ class DndHandler(http.server.BaseHTTPRequestHandler):
         # Health / docs probe
         if path in ("docs", "health", ""):
             if "json" in parsed.query or path == "health":
-                return self.send_json({"status": "ok", "service": "hoffle-dnd-bot", "version": "1.2", "editions": ["2014", "2024"]})
+                counts = {k: len(v) for k, v in COLLECTIONS.items()}
+                return self.send_json({"status": "ok", "service": "hoffle-dnd-bot", "version": "1.3", "editions": ["2014", "2024"], "counts": counts})
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
             self.wfile.write(b"<h1>Hoffle D&D Companion Service</h1><p>SRD 5e API active.</p>")
             return
+
+        # /api/lookups/{kind}
+        list_match = re.match(r"^api/lookups/([^/]+)$", path)
+        if list_match:
+            kind = list_match.group(1).lower()
+            items = get_collection(kind, edition)
+            try:
+                limit = max(1, min(1000, int(params.get("limit", [str(len(items) or 100)])[0])))
+            except ValueError:
+                limit = 100
+            return self.send_json([item["name"] for item in items[:limit]])
 
         # /api/lookups/{kind}/search?q={query}
         search_match = re.match(r"^api/lookups/([^/]+)/search$", path)
@@ -1108,12 +1162,9 @@ class DndHandler(http.server.BaseHTTPRequestHandler):
             kind = search_match.group(1).lower()
             query = params.get("q", [""])[0].strip().lower()
             items = get_collection(kind, edition)
-            results = [
-                item["name"]
-                for item in items
-                if query in item["name"].lower()
-            ]
-            return self.send_json(results)
+            prefix = [item["name"] for item in items if item["name"].lower().startswith(query)]
+            substr = [item["name"] for item in items if query in item["name"].lower() and not item["name"].lower().startswith(query)]
+            return self.send_json((prefix + substr)[:30])
 
         # /api/lookups/{kind}/{query}
         lookup_match = re.match(r"^api/lookups/([^/]+)/(.+)$", path)
@@ -1127,7 +1178,12 @@ class DndHandler(http.server.BaseHTTPRequestHandler):
                 if item["name"].lower() == query_raw:
                     return self.send_json(build_card(kind, item))
 
-            # 2. Prefix / partial match
+            # 2. Prefix match
+            for item in items:
+                if item["name"].lower().startswith(query_raw):
+                    return self.send_json(build_card(kind, item))
+
+            # 3. Substring match
             for item in items:
                 if query_raw in item["name"].lower():
                     return self.send_json(build_card(kind, item))

@@ -22,6 +22,7 @@ import type { ShellRenderState } from "./chat-shell-renderers";
 import { deferred } from "./deferred";
 import { AgeGate, AgeGateHidden } from "../../age-gate";
 import { tNow } from "../../../lib/i18n-context";
+import { TabletopDock } from "../../tabletop-dock";
 
 const VoiceStage = deferred(() => import("../../voice-stage").then((m) => m.VoiceStage));
 const BattlemapBoard = deferred(() => import("../../battlemap").then((m) => m.BattlemapBoard));
@@ -85,6 +86,41 @@ export function renderChatMain(v: ShellRenderState) {
     setMobileNav(true);
   };
 
+  const tabletopDockNode =
+    !inDmHome && activeServer ? (
+      <TabletopDock
+        serverId={activeServer.id}
+        voiceChannelId={stageChannel?.id || v.voice.channelId || null}
+        isDm={v.isServerDm}
+        battlemapOpen={Boolean(battlemap) && !battlemapHidden}
+        battlemapEncounter={battlemap?.encounter}
+        onOpenCharacter={() => {
+          if (stageChannel) {
+            livingRoom.setOpen(true);
+            livingRoom.setVenue("tabletop");
+          } else {
+            void import("../../../lib/dnd-sso").then((m) =>
+              m.openDndCompanion("/sheet", activeServer.id),
+            );
+          }
+        }}
+        onToggleBattlemap={() => {
+          if (!battlemap) {
+            if (battlemapGm) void openBattlemap();
+            else setNotice("No map is on the table yet.");
+            return;
+          }
+          toggleBattlemap();
+        }}
+        onOpenTabletop={() => {
+          livingRoom.setOpen(true);
+          livingRoom.setVenue("tabletop");
+        }}
+        onOpenPartyStash={() => v.setPartyStashOpen(true)}
+        onRunCommand={(command) => void runCommand(command)}
+      />
+    ) : null;
+
   return (
     <section
       className={`chat-panel ${dragging ? "drop-target" : ""}`}
@@ -98,7 +134,7 @@ export function renderChatMain(v: ShellRenderState) {
     >
       {dragging && (
         <div className="drop-overlay" aria-hidden="true">
-          <div>Drop to attach · images and PDFs</div>
+          <div>{tNow("chat.main.dropToAttach")}</div>
         </div>
       )}
       {!stageChannel && (
@@ -191,6 +227,7 @@ export function renderChatMain(v: ShellRenderState) {
       setVoiceChatOpen={setVoiceChatOpen}
       onlineFaces={onlineMembers}
       onInvite={canCreateServerInvites ? () => setInviteDialog({ channelId: activeChannelId }) : null}
+      tabletopDock={tabletopDockNode}
     />
 
           {stageChannel ? (
@@ -222,6 +259,7 @@ export function renderChatMain(v: ShellRenderState) {
               partyViewers={hub.watching[stageChannel.id]?.viewers}
               focusRequest={stageFocusRequest?.channelId === stageChannel.id ? stageFocusRequest : null}
               onFocusRequestDone={() => setStageFocusRequest(null)}
+              tabletopDock={tabletopDockNode}
               serverId={stageChannel.serverId}
               canManageSounds={canManageChannels}
               canProject={canManageChannels}
@@ -301,8 +339,17 @@ export function renderChatMain(v: ShellRenderState) {
                       livingRoom.setOpen(true);
                       livingRoom.setVenue("tabletop");
                     }}
-                    onOpenCompanion={() => void import("../../../lib/dnd-sso").then((m) => m.openDndCompanion("/vtt"))}
+                    onOpenCompanion={() => void import("../../../lib/dnd-sso").then((m) => m.openDndCompanion("/vtt", stageChannel.serverId))}
                     myCharacter={livingRoom.roomId === stageChannel.id ? livingRoom.shared.characters[user.id] ?? null : null}
+                    scenes={v.battlemapScenes}
+                    lastPing={v.battlemapPing}
+                    selectedTokenId={v.selectedBattlemapTokenId}
+                    onSelectToken={v.setSelectedBattlemapTokenId}
+                    onPrepScene={v.prepBattlemapScene}
+                    onSwitchScene={(id) => void v.switchBattlemapScene(id)}
+                    onDeleteScene={(id) => void v.deleteBattlemapScene(id)}
+                    onSetHpVisibility={(vis) => void v.setBattlemapHpVisibility(vis)}
+                    onApplyDamage={v.applyBattlemapDamage}
                   />
                 ) : null
               }
@@ -582,7 +629,7 @@ export function renderChatMain(v: ShellRenderState) {
                     setNotice("");
                     voice.setError("");
                   }}
-                  aria-label="Dismiss notification"
+                  aria-label={tNow("chat.main.dismissNotice")}
                 >
                   {notice || voice.error}
                   <span>×</span>
@@ -677,6 +724,17 @@ export function renderChatMain(v: ShellRenderState) {
       typingNames={typingNames}
       messages={messages}
       user={user}
+      myCharacterName={!inDmHome ? livingRoom.shared.characters[user.id]?.name ?? null : null}
+      icActive={Boolean(activeChannelId && v.icModeByChannel[activeChannelId])}
+      onToggleIc={
+        activeChannelId && !inDmHome
+          ? () =>
+              v.setIcModeByChannel((prev) => ({
+                ...prev,
+                [activeChannelId]: !prev[activeChannelId],
+              }))
+          : undefined
+      }
     />
               </AgeGateHidden>
             </>

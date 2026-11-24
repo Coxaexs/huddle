@@ -198,6 +198,7 @@ export interface TableCharacter {
   actions?: TableCharacterAction[];
   skills?: Record<string, number>;
   saves?: Record<string, number>;
+  hitDice?: { die: number; total: number; used: number };
   edition?: "2014" | "2024";
   /** A Vampire: The Masquerade 5th edition sheet, on a server that plays it (lib/v5-sheet). */
   v5?: V5Sheet;
@@ -698,6 +699,18 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
         return Object.keys(out).length ? out : undefined;
       };
       const edition = value.edition === "2014" || value.edition === "2024" ? value.edition : undefined;
+      const rawHd =
+        value.hitDice && typeof value.hitDice === "object"
+          ? (value.hitDice as Record<string, unknown>)
+          : null;
+      const hdDieRaw = rawHd ? whole(rawHd.die, 6, 12) : undefined;
+      const hdDie = hdDieRaw && [6, 8, 10, 12].includes(hdDieRaw) ? hdDieRaw : undefined;
+      const hdTotal = rawHd ? whole(rawHd.total, 1, 20) : undefined;
+      const hdUsed = rawHd && hdTotal !== undefined ? whole(rawHd.used, 0, hdTotal) : undefined;
+      const hitDice =
+        hdDie !== undefined && hdTotal !== undefined
+          ? { die: hdDie, total: hdTotal, used: hdUsed ?? 0 }
+          : undefined;
       const sheet: TableCharacter = {
         name,
         portraitUrl: safeMediaUrl(value.portraitUrl),
@@ -720,6 +733,7 @@ export function sanitizeShared(key: LoungeSharedKey, raw: unknown, by: string, n
         actions,
         skills: numRecord(value.skills, 24),
         saves: numRecord(value.saves, 8),
+        hitDice,
         edition,
         v5: value.v5 && typeof value.v5 === "object" ? sanitizeV5Sheet(value.v5) : undefined,
       };

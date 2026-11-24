@@ -5,6 +5,7 @@ import { useCallback, type MouseEvent } from "react";
 import { Volume2, Music2, ExternalLink, Maximize2, Play, Pause, SkipForward } from "lucide-react";
 import { playbackPosition, type PlayerState } from "@/lib/protocol";
 import { formatDuration } from "../lib/client";
+import { useI18n } from "../lib/i18n-context";
 
 interface NowPlayingProps {
   state: PlayerState | null;
@@ -49,6 +50,7 @@ export function NowPlaying({
   voiceChannelName,
   onExpand,
 }: NowPlayingProps) {
+  const { t } = useI18n();
   const track = state?.track || null;
   const stale = Boolean(trackId && track && track.id !== trackId);
   const durationMs = track?.duration ? track.duration * 1000 : 0;
@@ -73,9 +75,9 @@ export function NowPlaying({
   if (stale || (!track && trackLabel)) {
     return (
       <div className="now-playing idle">
-        <div className="now-playing-title">{trackLabel || "That track finished."}</div>
+        <div className="now-playing-title">{trackLabel || t("music.np.trackFinished")}</div>
         <p className="now-playing-sub">
-          {track ? "Finished — the room has moved on." : "Finished."}
+          {track ? t("music.np.finishedMovedOn") : t("music.np.finished")}
         </p>
       </div>
     );
@@ -84,9 +86,9 @@ export function NowPlaying({
   if (!track) {
     return (
       <div className="now-playing idle">
-        <div className="now-playing-title">Nothing is playing right now.</div>
+        <div className="now-playing-title">{t("music.np.nothingPlaying")}</div>
         <p className="now-playing-sub">
-          Use <code>/play</code> in a voice channel to start something.
+          {t("music.np.usePlayPrefix")} <code>/play</code> {t("music.np.usePlaySuffix")}
         </p>
       </div>
     );
@@ -113,10 +115,10 @@ export function NowPlaying({
             <div className="now-playing-artist">{track.artist}</div>
           )}
           <div className="now-playing-sub">
-            {voiceChannelName ? `In ${voiceChannelName} · ` : ""}
-            added by {track.requestedBy}
+            {voiceChannelName ? t("music.np.inRoom", { room: voiceChannelName }) : ""}
+            {t("music.np.addedBy", { name: track.requestedBy })}
             {state && state.queue.length > 0
-              ? ` · ${state.queue.length} in queue`
+              ? t("music.np.inQueue", { count: state.queue.length })
               : ""}
           </div>
         </div>
@@ -126,7 +128,7 @@ export function NowPlaying({
             href={track.pageUrl}
             target="_blank"
             rel="noreferrer"
-            aria-label="Open source"
+            aria-label={t("music.np.openSource")}
           >
             <ExternalLink size={15} />
           </a>
@@ -136,8 +138,8 @@ export function NowPlaying({
             type="button"
             className="now-playing-source"
             onClick={onExpand}
-            aria-label="Open the full-screen player"
-            title="Full-screen player: lyrics, queue, search, playlists"
+            aria-label={t("music.lyrics.expandAria")}
+            title={t("music.np.expandTitle")}
           >
             <Maximize2 size={15} />
           </button>
@@ -148,11 +150,11 @@ export function NowPlaying({
         className={`now-playing-bar ${controllable ? "seekable" : ""}`}
         onClick={seekFromEvent}
         role={controllable ? "slider" : undefined}
-        aria-label={controllable ? "Seek" : undefined}
+        aria-label={controllable ? t("music.np.seek") : undefined}
         aria-valuemin={0}
         aria-valuemax={Math.round(durationMs / 1000) || undefined}
         aria-valuenow={Math.round(current / 1000)}
-        title={controllable ? "Click to jump to that spot" : undefined}
+        title={controllable ? t("music.np.seekTitle") : undefined}
       >
         <div className="now-playing-fill" style={{ width: `${progress * 100}%` }}>
           <span className="now-playing-knob" />
@@ -169,16 +171,16 @@ export function NowPlaying({
           <button
             type="button"
             onClick={onToggle}
-            aria-label={state?.paused ? "Resume" : "Pause"}
+            aria-label={state?.paused ? t("chat.renderer.musicResume") : t("chat.renderer.musicPause")}
           >
             {state?.paused ? <Play size={16} /> : <Pause size={16} />}
           </button>
-          <button type="button" onClick={onSkip} aria-label="Skip">
+          <button type="button" onClick={onSkip} aria-label={t("chat.renderer.musicSkip")}>
             <SkipForward size={16} />
           </button>
           <label
             className="now-playing-volume"
-            title={`Personal volume: ${volume ?? 100}%${state ? ` (Room general volume: ${state.volume}%)` : ""}`}
+            title={`${t("music.np.personalVolumeTitle", { vol: volume ?? 100 })}${state ? t("music.np.roomVolumeSuffix", { vol: state.volume }) : ""}`}
           >
             <Volume2 size={16} aria-hidden="true" />
             <input
@@ -186,7 +188,7 @@ export function NowPlaying({
               min={0}
               max={100}
               value={volume ?? 100}
-              aria-label="Personal volume"
+              aria-label={t("music.np.personalVolumeAria")}
               onChange={(event) => onVolume(Number(event.target.value))}
             />
           </label>
@@ -195,7 +197,7 @@ export function NowPlaying({
 
       {blocked && (
         <button type="button" className="now-playing-unblock" onClick={onUnblock}>
-          Your browser blocked autoplay — click to hear the music
+          {t("music.np.unblockAutoplay")}
         </button>
       )}
     </div>

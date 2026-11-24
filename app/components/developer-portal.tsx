@@ -7,14 +7,22 @@ import { GatewayIntent } from "@/lib/discord/protocol";
 import { BOT_PERMISSION_INFO } from "@/lib/permissions";
 import { apiFetch, basePath } from "../lib/client";
 import { SignedIn } from "./signed-in";
+import { useI18n } from "../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 
-const INTENTS = [
-  { flag: GatewayIntent.MessageContent, label: "Message Content", help: "Read what people write. Without it, messages reach your bot blank." },
-  { flag: GatewayIntent.GuildMembers, label: "Server Members", help: "See the full member list and who joins and leaves." },
-  { flag: GatewayIntent.GuildPresences, label: "Presence", help: "See who is online." },
+const INTENTS: Array<{ flag: number; labelKey: MessageKey; helpKey: MessageKey }> = [
+  { flag: GatewayIntent.MessageContent, labelKey: "dev.intent.messageContent", helpKey: "dev.intent.messageContentHelp" },
+  { flag: GatewayIntent.GuildMembers, labelKey: "dev.intent.guildMembers", helpKey: "dev.intent.guildMembersHelp" },
+  { flag: GatewayIntent.GuildPresences, labelKey: "dev.intent.guildPresences", helpKey: "dev.intent.guildPresencesHelp" },
 ];
 
 const CATEGORIES = ["General", "Membership", "Text", "Voice"] as const;
+const CATEGORY_KEYS: Record<(typeof CATEGORIES)[number], MessageKey> = {
+  General: "dev.cat.General",
+  Membership: "dev.cat.Membership",
+  Text: "dev.cat.Text",
+  Voice: "dev.cat.Voice",
+};
 
 function failed(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -22,6 +30,7 @@ function failed(error: unknown, fallback: string): string {
 
 /** The calculator: tick what the bot needs, get the link servers add it with. */
 function InviteLink({ app }: { app: PublicApplication }) {
+  const { t } = useI18n();
   const [permissions, setPermissions] = useState(app.defaultPermissions);
   const [copied, setCopied] = useState(false);
   const url = useMemo(() => {
@@ -32,11 +41,11 @@ function InviteLink({ app }: { app: PublicApplication }) {
 
   return (
     <section className="dev-card">
-      <h2>Invite link</h2>
-      <p className="dev-muted">Tick what your bot needs. Servers see this list before they add it, and it gets nothing else.</p>
+      <h2>{t("dev.inviteTitle")}</h2>
+      <p className="dev-muted">{t("dev.inviteSub")}</p>
       {CATEGORIES.map((category) => (
         <fieldset key={category} className="dev-permissions">
-          <legend>{category}</legend>
+          <legend>{t(CATEGORY_KEYS[category])}</legend>
           {BOT_PERMISSION_INFO.filter((info) => info.category === category).map((info) => (
             <label key={info.flag} title={info.description}>
               <input
@@ -52,10 +61,10 @@ function InviteLink({ app }: { app: PublicApplication }) {
         </fieldset>
       ))}
       <p className="dev-muted">
-        Permissions number: <code>{permissions}</code>
+        {t("dev.permissionsNumber")} <code>{permissions}</code>
       </p>
       <div className="dev-copy">
-        <input readOnly value={url} aria-label="Invite link" onFocus={(event) => event.target.select()} />
+        <input readOnly value={url} aria-label={t("dev.inviteAria")} onFocus={(event) => event.target.select()} />
         <button
           type="button"
           className="dev-button"
@@ -66,7 +75,7 @@ function InviteLink({ app }: { app: PublicApplication }) {
             })
           }
         >
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("dev.copied") : t("dev.copy")}
         </button>
       </div>
     </section>
@@ -84,6 +93,7 @@ function BotSettings({
   onChange: (next: PublicApplication | null) => void;
   onBack: () => void;
 }) {
+  const { t } = useI18n();
   const [name, setName] = useState(app.name);
   const [avatar, setAvatar] = useState(app.avatar);
   const [description, setDescription] = useState(app.description);
@@ -102,94 +112,94 @@ function BotSettings({
       onChange(application);
       setSaved(true);
     } catch (failure) {
-      setError(failed(failure, "That did not save."));
+      setError(failed(failure, t("dev.saveError")));
     }
   }
 
   async function resetToken() {
-    if (!window.confirm("Reset the token? The old one stops working straight away.")) return;
+    if (!window.confirm(t("dev.resetTokenConfirm"))) return;
     setError("");
     try {
       const result = await apiFetch<{ token: string }>(`/api/applications/${app.id}/token`, { method: "POST" });
       setToken(result.token);
     } catch (failure) {
-      setError(failed(failure, "The token could not be reset."));
+      setError(failed(failure, t("dev.resetTokenError")));
     }
   }
 
   async function remove() {
-    if (!window.confirm(`Delete ${app.name}? It leaves all ${app.servers} servers it is in.`)) return;
+    if (!window.confirm(t("dev.deleteConfirm", { name: app.name, count: app.servers }))) return;
     try {
       await apiFetch(`/api/applications/${app.id}`, { method: "DELETE" });
       onChange(null);
     } catch (failure) {
-      setError(failed(failure, "The bot could not be deleted."));
+      setError(failed(failure, t("dev.deleteError")));
     }
   }
 
   return (
     <>
       <button type="button" className="dev-link" onClick={onBack}>
-        ← All bots
+        {t("dev.allBots")}
       </button>
       {error && <p className="dev-error">{error}</p>}
 
       <section className="dev-card">
-        <h2>General</h2>
+        <h2>{t("dev.generalTitle")}</h2>
         <label className="dev-field">
-          <span>Name</span>
+          <span>{t("dev.nameLabel")}</span>
           <input value={name} maxLength={32} onChange={(event) => setName(event.target.value)} />
         </label>
         <label className="dev-field">
-          <span>Icon (one emoji)</span>
+          <span>{t("dev.iconLabel")}</span>
           <input value={avatar} maxLength={8} onChange={(event) => setAvatar(event.target.value)} />
         </label>
         <label className="dev-field">
-          <span>Description</span>
+          <span>{t("dev.descLabel")}</span>
           <textarea value={description} maxLength={400} rows={3} onChange={(event) => setDescription(event.target.value)} />
         </label>
         <button type="button" className="dev-button" onClick={() => void save({ name, avatar, description })}>
-          Save
+          {t("common.save")}
         </button>
-        {saved && <span className="dev-muted"> Saved.</span>}
+        {saved && <span className="dev-muted">{t("dev.savedNotice")}</span>}
         <p className="dev-muted">
-          Application id: <code>{app.id}</code> · in {app.servers} {app.servers === 1 ? "server" : "servers"}
+          {t("dev.appId")} <code>{app.id}</code> · {app.servers === 1 ? t("dev.inServersSingle") : t("dev.inServersPlural", { count: app.servers })}
         </p>
       </section>
 
       <section className="dev-card">
-        <h2>Bot token</h2>
-        <p className="dev-muted">The password your bot signs in with. It is shown once, so save it now and keep it secret.</p>
+        <h2>{t("dev.tokenTitle")}</h2>
+        <p className="dev-muted">{t("dev.tokenSub")}</p>
         {token ? (
           <div className="dev-copy">
-            <input readOnly value={token} aria-label="Bot token" onFocus={(event) => event.target.select()} />
+            <input readOnly value={token} aria-label={t("dev.tokenAria")} onFocus={(event) => event.target.select()} />
             <button type="button" className="dev-button" onClick={() => void navigator.clipboard?.writeText(token)}>
-              Copy
+              {t("dev.copy")}
             </button>
           </div>
         ) : null}
         <button type="button" className="dev-button secondary" onClick={() => void resetToken()}>
-          Reset token
+          {t("dev.resetTokenBtn")}
         </button>
       </section>
 
       <section className="dev-card">
-        <h2>Bot settings</h2>
+        <h2>{t("dev.settingsTitle")}</h2>
         <label className="dev-toggle">
           <input type="checkbox" checked={app.public} onChange={(event) => void save({ public: event.target.checked })} />
           <span>
-            <strong>Public bot</strong>
-            <small>Anyone with the invite link can add it. Turn this off and only you can.</small>
+            <strong>{t("dev.publicBot")}</strong>
+            <small>{t("dev.publicBotHelp")}</small>
           </span>
         </label>
         <label className="dev-toggle">
           <input type="checkbox" checked={app.player} onChange={(event) => void save({ player: event.target.checked })} />
           <span>
-            <strong>Room player</strong>
-            <small>Play audio in voice rooms through Hoffle's player, with its queue, controls and widgets. Servers grant it with Connect and Speak.</small>
+            <strong>{t("dev.roomPlayer")}</strong>
+            <small>{t("dev.roomPlayerHelp")}</small>
           </span>
         </label>
-        <h3>Privileged intents</h3>
+        <h3>{t("dev.privilegedIntents")}</h3>
         {INTENTS.map((intent) => (
           <label key={intent.flag} className="dev-toggle">
             <input
@@ -200,8 +210,8 @@ function BotSettings({
               }
             />
             <span>
-              <strong>{intent.label}</strong>
-              <small>{intent.help}</small>
+              <strong>{t(intent.labelKey)}</strong>
+              <small>{t(intent.helpKey)}</small>
             </span>
           </label>
         ))}
@@ -211,9 +221,9 @@ function BotSettings({
 
       {app.deletable && (
         <section className="dev-card">
-          <h2>Delete this bot</h2>
+          <h2>{t("dev.deleteSectionTitle")}</h2>
           <button type="button" className="dev-button danger" onClick={() => void remove()}>
-            Delete bot
+            {t("dev.deleteBotBtn")}
           </button>
         </section>
       )}
@@ -222,6 +232,7 @@ function BotSettings({
 }
 
 function Portal() {
+  const { t } = useI18n();
   const [apps, setApps] = useState<PublicApplication[] | null>(null);
   const [openId, setOpenId] = useState("");
   const [firstToken, setFirstToken] = useState("");
@@ -231,8 +242,8 @@ function Portal() {
   useEffect(() => {
     void apiFetch<{ applications: PublicApplication[] }>("/api/applications")
       .then((data) => setApps(data.applications))
-      .catch((failure) => setError(failed(failure, "Your bots could not be loaded.")));
-  }, []);
+      .catch((failure) => setError(failed(failure, t("dev.loadError"))));
+  }, [t]);
 
   async function create() {
     setError("");
@@ -246,7 +257,7 @@ function Portal() {
       setOpenId(application.id);
       setName("");
     } catch (failure) {
-      setError(failed(failure, "The bot could not be made."));
+      setError(failed(failure, t("dev.createError")));
     }
   }
 
@@ -256,10 +267,9 @@ function Portal() {
       <div className="dev-column">
         <header className="dev-header">
           <a href={`${basePath}/`}>Hoffle</a>
-          <h1>Developer Portal</h1>
+          <h1>{t("dev.portalTitle")}</h1>
           <p className="dev-muted">
-            Make a bot, run it anywhere, and share its invite link. Bots use the same API as Discord bots, so discord.py
-            and discord.js work.
+            {t("dev.portalSub")}
           </p>
         </header>
 
@@ -285,24 +295,24 @@ function Portal() {
           <>
             {error && <p className="dev-error">{error}</p>}
             <section className="dev-card">
-              <h2>New bot</h2>
+              <h2>{t("dev.newBotTitle")}</h2>
               <div className="dev-copy">
                 <input
                   value={name}
                   maxLength={32}
-                  placeholder="Bot name"
-                  aria-label="Bot name"
+                  placeholder={t("dev.botNamePlaceholder")}
+                  aria-label={t("dev.botNamePlaceholder")}
                   onChange={(event) => setName(event.target.value)}
                 />
                 <button type="button" className="dev-button" disabled={!name.trim()} onClick={() => void create()}>
-                  Create
+                  {t("dev.createBtn")}
                 </button>
               </div>
             </section>
             <section className="dev-card">
-              <h2>Your bots</h2>
+              <h2>{t("dev.yourBotsTitle")}</h2>
               {!apps ? null : !apps.length ? (
-                <p className="dev-muted">No bots yet.</p>
+                <p className="dev-muted">{t("dev.noBots")}</p>
               ) : (
                 <ul className="dev-bots">
                   {apps.map((app) => (
@@ -314,7 +324,7 @@ function Portal() {
                         <span>
                           <strong>{app.name}</strong>
                           <small>
-                            {app.servers} {app.servers === 1 ? "server" : "servers"}
+                            {app.servers === 1 ? t("dev.serversSingle") : t("dev.serversPlural", { count: app.servers })}
                           </small>
                         </span>
                       </button>

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { BookOpen, ChevronLeft, ChevronRight, Dices, ExternalLink, EyeOff, Footprints, Heart, History, Medal, Minus, Plus, Search, Send, Shield, ShieldHalf, Skull, Sparkles, Swords, Trash2, Users, WandSparkles, Zap } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, Coins, Dices, ExternalLink, EyeOff, Footprints, Heart, History, Medal, Minus, Plus, Search, Send, Shield, ShieldHalf, Skull, Sparkles, Swords, Trash2, Users, WandSparkles, Zap } from "lucide-react";
 import { apiFetch } from "@/app/lib/client";
 import { useI18n } from "@/app/lib/i18n-context";
 import { stepTurn, type TableCharacter } from "@/lib/lounge-shared";
+import { emptyPartyStash, totalGpValue, type PartyStashState } from "@/lib/party-stash";
 import type { WidgetSize } from "@/lib/layout-prefs";
 import type { DiceRollEvent } from "@/lib/protocol";
 import { DndCard, type DndCardProps } from "../dnd-card";
@@ -448,6 +449,69 @@ export function LookupWidget({ kind, size }: Props & { kind: Kind }) {
     <Shell size={size} tile={tile} title={t(look.title)} subtitle={busy ? "…" : t("widget.dnd.lookupHint")} right={share} note={error}>
       {box}
       {result}
+    </Shell>
+  );
+}
+
+/** Shared party treasury, loot inventory, and quest board summary widget. */
+export function PartyStashWidget({ size }: Props) {
+  const { t } = useI18n();
+  const host = useWidgetHost();
+  const [stash, setStash] = useState<PartyStashState>(() => emptyPartyStash());
+
+  useEffect(() => {
+    if (!host.serverId) return;
+    let cancelled = false;
+    apiFetch<{ state: PartyStashState }>(
+      `/api/integrations/dnd/stash?serverId=${encodeURIComponent(host.serverId)}`,
+    )
+      .then((res) => {
+        if (!cancelled && res.state) setStash(res.state);
+      })
+      .catch(() => undefined);
+    const onSocket = (event: Event) => {
+      const detail = (event as CustomEvent<{ serverId?: string; state?: PartyStashState }>).detail;
+      if (detail?.serverId === host.serverId && detail.state) setStash(detail.state);
+    };
+    window.addEventListener("hoffle:dnd-stash", onSocket);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("hoffle:dnd-stash", onSocket);
+    };
+  }, [host.serverId]);
+
+  const gp = totalGpValue(stash.currency);
+  const activeQuests = stash.quests.filter((q) => q.status === "active").length;
+  const tile = <Tile><Coins size={size === "small" ? 13 : 18} /></Tile>;
+  const openBtn = host.openPartyStash ? (
+    <button type="button" className="mw-btn" onClick={host.openPartyStash}>
+      {t("stash.openBoard")}
+    </button>
+  ) : null;
+
+  if (size === "small") {
+    return (
+      <div className="mw mw-small">
+        {tile}
+        <span className="xw-meta">{gp} gp · {stash.items.length}</span>
+        {openBtn}
+      </div>
+    );
+  }
+  return (
+    <Shell
+      size={size}
+      tile={tile}
+      title={t("widget.dndStash")}
+      subtitle={t("stash.totalValue", { gp })}
+      right={openBtn}
+    >
+      <div className="xw-rows">
+        <Row title={t("stash.itemsCount", { count: stash.items.length })} end={t("stash.activeQuestsCount", { count: activeQuests })} />
+        {stash.items.slice(0, 3).map((item) => (
+          <Row key={item.id} title={`${item.qty > 1 ? `${item.qty}× ` : ""}${item.name}`} end={item.holder || ""} />
+        ))}
+      </div>
     </Shell>
   );
 }

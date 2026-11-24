@@ -207,6 +207,18 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     group: "D&D",
   },
   {
+    name: "blindroll",
+    args: "<d20+5 | perception> [adv|dis|crit]",
+    description: "Roll blindly: only the GM sees the result (/blindroll stealth, /blindroll d20+4)",
+    group: "D&D",
+  },
+  {
+    name: "ic",
+    args: "[message]",
+    description: "Speak in character with your sheet name and portrait (or toggle IC mode)",
+    group: "D&D",
+  },
+  {
     name: "v",
     args: "<pool> [h<hunger>] [d<difficulty>] [label]",
     description: "Vampire V5 roll: d10 pool with red Hunger dice (/v 7 h2 d3 Strength + Brawl)",

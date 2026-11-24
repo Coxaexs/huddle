@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Music, Play, Sticker, Trash2 } from "lucide-react";
 import { apiFetch } from "../lib/client";
+import { useI18n } from "../lib/i18n-context";
 
 interface ConfirmRequest {
   title: string;
@@ -88,6 +89,7 @@ interface ServerSticker {
 
 /** Server Settings → Stickers: upload, rename and remove custom stickers. */
 export function StickersTab({ serverId, canManage, onRequestConfirm, onNotice }: ExpressionTabProps) {
+  const { t } = useI18n();
   const [stickers, setStickers] = useState<ServerSticker[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -99,9 +101,9 @@ export function StickersTab({ serverId, canManage, onRequestConfirm, onNotice }:
       `/api/stickers/packs?serverId=${encodeURIComponent(serverId)}`,
     )
       .then((res) => setStickers(res.stickers || []))
-      .catch(() => onNotice("Could not load stickers."))
+      .catch(() => onNotice(t("settings.expr.stickersLoadError")))
       .finally(() => setLoading(false));
-  }, [serverId, onNotice]);
+  }, [serverId, onNotice, t]);
 
   useEffect(load, [load]);
 
@@ -116,9 +118,9 @@ export function StickersTab({ serverId, canManage, onRequestConfirm, onNotice }:
           body: JSON.stringify({ serverId, key, name: baseName(file) }),
         });
       }
-      onNotice(files.length === 1 ? "Sticker added." : `${files.length} stickers added.`);
+      onNotice(files.length === 1 ? t("settings.expr.stickerAdded") : t("settings.expr.stickersAdded", { count: files.length }));
     } catch (error) {
-      onNotice(error instanceof Error ? error.message : "That sticker could not be uploaded.");
+      onNotice(error instanceof Error ? error.message : t("settings.expr.stickerUploadError"));
     } finally {
       setUploading(false);
       load();
@@ -128,10 +130,9 @@ export function StickersTab({ serverId, canManage, onRequestConfirm, onNotice }:
   return (
     <div className="tab-pane">
       <div>
-        <h1 className="pane-title">Stickers</h1>
+        <h1 className="pane-title">{t("settings.expr.stickersTitle")}</h1>
         <p className="pane-subtitle">
-          Stickers anyone in this server can send from the sticker picker. PNG, GIF and WebP
-          images up to 8 MB work best.
+          {t("settings.expr.stickersSubtitle")}
         </p>
       </div>
 
@@ -143,9 +144,9 @@ export function StickersTab({ serverId, canManage, onRequestConfirm, onNotice }:
             disabled={uploading}
             onClick={() => fileRef.current?.click()}
           >
-            {uploading ? "Uploading…" : "Upload Stickers"}
+            {uploading ? t("settings.deco.uploading") : t("settings.expr.uploadStickers")}
           </button>
-          <p className="drag-drop-note">You can pick several images at once.</p>
+          <p className="drag-drop-note">{t("settings.expr.pickImagesHint")}</p>
           <input
             ref={fileRef}
             type="file"
@@ -161,14 +162,14 @@ export function StickersTab({ serverId, canManage, onRequestConfirm, onNotice }:
       )}
 
       {loading ? (
-        <p className="loading-state">Loading stickers…</p>
+        <p className="loading-state">{t("settings.expr.loadingStickers")}</p>
       ) : stickers.length === 0 ? (
         <div className="empty-illustration-box">
           <div className="illustration-graphic">
             <Sticker size={42} />
           </div>
-          <h2>NO STICKERS</h2>
-          <p>{canManage ? "Upload an image to make the first one." : "Nobody has added any yet."}</p>
+          <h2>{t("settings.expr.noStickers")}</h2>
+          <p>{canManage ? t("settings.expr.noStickersManage") : t("settings.expr.noStickersEmpty")}</p>
         </div>
       ) : (
         <div className="sticker-settings-grid">
@@ -176,7 +177,7 @@ export function StickersTab({ serverId, canManage, onRequestConfirm, onNotice }:
             <div key={sticker.id} className="sticker-settings-card">
               <img src={sticker.url} alt={sticker.name} />
               <InlineName
-                label={`Name of sticker ${sticker.name}`}
+                label={t("settings.expr.stickerNameAria", { name: sticker.name })}
                 value={sticker.name}
                 maxLength={40}
                 disabled={!canManage}
@@ -194,19 +195,19 @@ export function StickersTab({ serverId, canManage, onRequestConfirm, onNotice }:
                 <button
                   type="button"
                   className="sticker-settings-remove"
-                  aria-label={`Remove ${sticker.name}`}
-                  title="Remove"
+                  aria-label={t("settings.expr.removeStickerAria", { name: sticker.name })}
+                  title={t("settings.expr.remove")}
                   onClick={() =>
                     onRequestConfirm({
-                      title: `Remove "${sticker.name}"?`,
-                      message: "It will disappear from the sticker picker for everyone.",
+                      title: t("settings.expr.removeTitle", { name: sticker.name }),
+                      message: t("settings.expr.removeStickerMsg"),
                       isDanger: true,
-                      confirmText: "Remove Sticker",
+                      confirmText: t("settings.expr.removeStickerConfirm"),
                       onConfirm: async () => {
                         await apiFetch(`/api/stickers/packs?id=${encodeURIComponent(sticker.id)}`, {
                           method: "DELETE",
                         }).catch((error) =>
-                          onNotice(error instanceof Error ? error.message : "Could not remove it."),
+                          onNotice(error instanceof Error ? error.message : t("settings.expr.removeError")),
                         );
                         load();
                       },
@@ -237,6 +238,7 @@ interface ServerSound {
  * rename, change emoji, remove), plus a read-only look at your personal pack.
  */
 export function SoundboardTab({ serverId, canManage, onRequestConfirm, onNotice }: ExpressionTabProps) {
+  const { t } = useI18n();
   const [sounds, setSounds] = useState<ServerSound[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -247,9 +249,9 @@ export function SoundboardTab({ serverId, canManage, onRequestConfirm, onNotice 
     setLoading(true);
     apiFetch<{ sounds: ServerSound[] }>(`/api/sounds?serverId=${encodeURIComponent(serverId)}`)
       .then((res) => setSounds(res.sounds || []))
-      .catch(() => onNotice("Could not load the soundboard."))
+      .catch(() => onNotice(t("settings.expr.soundsLoadError")))
       .finally(() => setLoading(false));
-  }, [serverId, onNotice]);
+  }, [serverId, onNotice, t]);
 
   useEffect(load, [load]);
   useEffect(() => () => playing.current?.pause(), []);
@@ -259,7 +261,7 @@ export function SoundboardTab({ serverId, canManage, onRequestConfirm, onNotice 
     const audio = new Audio(sound.url);
     audio.volume = 0.7;
     playing.current = audio;
-    void audio.play().catch(() => onNotice("That clip could not be played."));
+    void audio.play().catch(() => onNotice(t("settings.expr.clipPlayError")));
   }
 
   async function upload(files: FileList | null) {
@@ -273,9 +275,9 @@ export function SoundboardTab({ serverId, canManage, onRequestConfirm, onNotice 
           body: JSON.stringify({ serverId, key, name: baseName(file) }),
         });
       }
-      onNotice(files.length === 1 ? "Sound added." : `${files.length} sounds added.`);
+      onNotice(files.length === 1 ? t("settings.expr.soundAdded") : t("settings.expr.soundsAdded", { count: files.length }));
     } catch (error) {
-      onNotice(error instanceof Error ? error.message : "That clip could not be uploaded.");
+      onNotice(error instanceof Error ? error.message : t("settings.expr.clipUploadError"));
     } finally {
       setUploading(false);
       load();
@@ -298,7 +300,7 @@ export function SoundboardTab({ serverId, canManage, onRequestConfirm, onNotice 
       <div key={sound.id} className="table-row">
         <div className="sound-emoji-col">
           <InlineName
-            label={`Emoji for ${sound.name}`}
+            label={t("settings.expr.soundEmojiAria", { name: sound.name })}
             value={sound.emoji}
             maxLength={8}
             disabled={!editable}
@@ -307,7 +309,7 @@ export function SoundboardTab({ serverId, canManage, onRequestConfirm, onNotice 
         </div>
         <div className="emoji-name-col">
           <InlineName
-            label={`Name of sound ${sound.name}`}
+            label={t("settings.expr.soundNameAria", { name: sound.name })}
             value={sound.name}
             maxLength={40}
             disabled={!editable}
@@ -319,9 +321,9 @@ export function SoundboardTab({ serverId, canManage, onRequestConfirm, onNotice 
             type="button"
             className="table-action-btn"
             onClick={() => preview(sound)}
-            aria-label={`Play ${sound.name}`}
+            aria-label={t("settings.expr.playSoundAria", { name: sound.name })}
           >
-            <Play size={13} /> Play
+            <Play size={13} /> {t("settings.expr.play")}
           </button>
           {editable && (
             <button
@@ -329,24 +331,24 @@ export function SoundboardTab({ serverId, canManage, onRequestConfirm, onNotice 
               className="table-action-btn danger"
               onClick={() =>
                 onRequestConfirm({
-                  title: `Remove "${sound.name}"?`,
+                  title: t("settings.expr.removeTitle", { name: sound.name }),
                   message: sound.personal
-                    ? "It will be removed from your personal pack."
-                    : "It will disappear from the soundboard for everyone.",
+                    ? t("settings.expr.removePersonalSoundMsg")
+                    : t("settings.expr.removeServerSoundMsg"),
                   isDanger: true,
-                  confirmText: "Remove Sound",
+                  confirmText: t("settings.expr.removeSoundConfirm"),
                   onConfirm: async () => {
                     await apiFetch(`/api/sounds?id=${encodeURIComponent(sound.id)}`, {
                       method: "DELETE",
                     }).catch((error) =>
-                      onNotice(error instanceof Error ? error.message : "Could not remove it."),
+                      onNotice(error instanceof Error ? error.message : t("settings.expr.removeError")),
                     );
                     load();
                   },
                 })
               }
             >
-              Remove
+              {t("settings.expr.remove")}
             </button>
           )}
         </div>
@@ -357,10 +359,9 @@ export function SoundboardTab({ serverId, canManage, onRequestConfirm, onNotice 
   return (
     <div className="tab-pane">
       <div>
-        <h1 className="pane-title">Soundboard</h1>
+        <h1 className="pane-title">{t("settings.expr.soundboardTitle")}</h1>
         <p className="pane-subtitle">
-          Clips anyone in a voice channel here can play for the room. MP3, OGG, WAV or M4A
-          up to 3 MB. Click a name or emoji to change it.
+          {t("settings.expr.soundboardSubtitle")}
         </p>
       </div>
 
@@ -372,9 +373,9 @@ export function SoundboardTab({ serverId, canManage, onRequestConfirm, onNotice 
             disabled={uploading}
             onClick={() => fileRef.current?.click()}
           >
-            {uploading ? "Uploading…" : "Upload Sounds"}
+            {uploading ? t("settings.deco.uploading") : t("settings.expr.uploadSounds")}
           </button>
-          <p className="drag-drop-note">You can pick several clips at once.</p>
+          <p className="drag-drop-note">{t("settings.expr.pickClipsHint")}</p>
           <input
             ref={fileRef}
             type="file"
@@ -390,25 +391,25 @@ export function SoundboardTab({ serverId, canManage, onRequestConfirm, onNotice 
       )}
 
       {loading ? (
-        <p className="loading-state">Loading sounds…</p>
+        <p className="loading-state">{t("settings.expr.loadingSounds")}</p>
       ) : shared.length === 0 ? (
         <div className="empty-illustration-box">
           <div className="illustration-graphic">
             <Music size={42} />
           </div>
-          <h2>NO SERVER SOUNDS</h2>
+          <h2>{t("settings.expr.noSounds")}</h2>
           <p>
             {canManage
-              ? "Upload a clip to start the soundboard. The built-in sounds are always there too."
-              : "Only the built-in sounds for now."}
+              ? t("settings.expr.noSoundsManage")
+              : t("settings.expr.noSoundsEmpty")}
           </p>
         </div>
       ) : (
         <div className="custom-emojis-table sound-table">
           <div className="table-head">
-            <span>EMOJI</span>
-            <span>NAME</span>
-            <span>ACTIONS</span>
+            <span>{t("settings.expr.colEmoji")}</span>
+            <span>{t("settings.expr.colName")}</span>
+            <span>{t("settings.expr.colActions")}</span>
           </div>
           {shared.map((sound) => row(sound, canManage))}
         </div>
@@ -416,8 +417,8 @@ export function SoundboardTab({ serverId, canManage, onRequestConfirm, onNotice 
 
       {!loading && personal.length > 0 && (
         <div>
-          <h2 className="pane-section-title">Your personal pack</h2>
-          <p className="pane-subtitle">Only you can play these. They follow you to every server.</p>
+          <h2 className="pane-section-title">{t("settings.expr.personalPackTitle")}</h2>
+          <p className="pane-subtitle">{t("settings.expr.personalPackSub")}</p>
           <div className="custom-emojis-table sound-table">
             {personal.map((sound) => row(sound, true))}
           </div>

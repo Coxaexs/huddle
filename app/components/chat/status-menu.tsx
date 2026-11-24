@@ -2,12 +2,14 @@
 
 import { MSN_EXTRA_STATUSES } from "../msn-chrome";
 import { PRESENCE, type PresenceStatus } from "@/lib/users";
-import { Pencil, Settings, User } from "lucide-react";
+import { Pencil, Settings, User, Zap } from "lucide-react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { ShowCustomPrompt } from "../../lib/chat/types";
 import { useState } from "react";
 import { useI18n } from "../../lib/i18n-context";
+import { setEcoMode, useEcoMode } from "../../lib/eco-mode";
 import { readStatusClearChoice, statusClearAfterMs, STATUS_CLEAR_CHOICES, writeStatusClearChoice, type StatusClearChoice } from "../../lib/status-clear";
+import { AccountSwitcher } from "../account-switcher";
 
 /**
  * The presence menu that opens from your avatar on the rail: online / idle /
@@ -31,6 +33,7 @@ export function StatusMenu({
   setPictureOpen,
   setTodayOpen,
   setSettingsOpen,
+  onAddAccount,
 }: {
   myStatus: PresenceStatus;
   myCustomStatus: string | null;
@@ -47,8 +50,10 @@ export function StatusMenu({
   setPictureOpen: Dispatch<SetStateAction<boolean>>;
   setTodayOpen: Dispatch<SetStateAction<boolean>>;
   setSettingsOpen: Dispatch<SetStateAction<boolean>>;
+  onAddAccount?: () => void;
 }) {
   const { t } = useI18n();
+  const eco = useEcoMode();
   return (
     <div className="status-menu" role="menu">
       {(Object.keys(PRESENCE) as PresenceStatus[]).map((key) => (
@@ -225,6 +230,18 @@ export function StatusMenu({
       />
       <button
         type="button"
+        role="menuitemcheckbox"
+        aria-checked={eco}
+        className={eco ? "active" : ""}
+        onClick={() => setEcoMode(!eco)}
+      >
+        <span className="status-dot flex items-center justify-center" style={{ background: "transparent" }}>
+          <Zap size={14} />
+        </span>
+        {t("status.ecoMode")}
+      </button>
+      <button
+        type="button"
         role="menuitem"
         onClick={() => {
           setStatusOpen(false);
@@ -249,6 +266,10 @@ export function StatusMenu({
         </span>
         {t("common.settings")}
       </button>
+      <AccountSwitcher
+        onCloseMenu={() => setStatusOpen(false)}
+        onAddAccount={() => onAddAccount?.()}
+      />
     </div>
   );
 }

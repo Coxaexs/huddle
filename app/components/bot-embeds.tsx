@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { MessageBody, proxiedImage } from "./message-body";
+import { useI18n } from "../lib/i18n-context";
 
 /**
  * Discord-shaped embeds and message components, as bots running against
@@ -90,6 +91,7 @@ export function BotEmbeds({
   onImage?: (url: string) => void;
   emojis?: Record<string, string>;
 }) {
+  const { t } = useI18n();
   const [pending, setPending] = useState<string | null>(null);
   const body = (text: string) => (
     <MessageBody
@@ -199,7 +201,7 @@ export function BotEmbeds({
                     rel="noreferrer"
                     aria-disabled={component.disabled || !href}
                   >
-                    {label || "Open"} <ExternalLink size={12} aria-hidden="true" />
+                    {label || t("chat.bot.open")} <ExternalLink size={12} aria-hidden="true" />
                   </a>
                 );
               }
@@ -231,7 +233,7 @@ export function BotEmbeds({
                   }}
                 >
                   <option value="" disabled>
-                    {component.placeholder || "Choose…"}
+                    {component.placeholder || t("chat.bot.choose")}
                   </option>
                   {component.options.map((option) => (
                     <option key={option.value} value={option.value} title={option.description}>

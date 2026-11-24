@@ -70,4 +70,13 @@ export const security: Record<keyof typeof en, string> = {
   "device.script": "Bir betik ya da bot",
   "device.browser": "Bir tarayıcı",
   "security.failed": "Olmadı.",
+  "security.oauth.title": "Bağlı hesaplar",
+  "security.oauth.about": "Tek tıkla giriş yapabilmek için Google ya da Discord hesabını bağla.",
+  "security.oauth.linkedAs": "{name} olarak bağlı",
+  "security.oauth.notLinked": "Bağlı değil",
+  "security.oauth.link": "{provider} bağla",
+  "security.oauth.unlink": "Bağlantıyı kes",
+  "security.oauth.unlinked": "{provider} bağlantısı kaldırıldı.",
+  "security.oauth.linkedNotice": "{provider} hesabı bağlandı!",
+  "security.oauth.noneConfigured": "Bu sunucuda henüz harici OAuth sağlayıcısı yapılandırılmamış.",
 };

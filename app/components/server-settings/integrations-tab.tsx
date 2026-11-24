@@ -183,7 +183,7 @@ export function ServerIntegrationsTab({
         )}
       </section>
 
-      <DndSettingsPanel serverId={server.id} onNotice={setNotice} onRequestPrompt={onRequestPrompt} />
+      <DndSettingsPanel serverId={server.id} roles={server.roles} onNotice={setNotice} onRequestPrompt={onRequestPrompt} />
       <GameServerSettingsPanel serverId={server.id} onNotice={setNotice} />
 
       <details className="integration-dev">

@@ -14,6 +14,7 @@ import { clientIp } from "./rate-limit";
 import { bindings } from "./storage";
 import { activeUntil } from "./timeouts";
 import { ensureSchema } from "./schema";
+import { accountsCookieForSignIn } from "./multi-account";
 import {
   isSafeProfileImage,
   normalizePrideBadges,
@@ -439,8 +440,29 @@ export async function currentSessionId(request: Request): Promise<string | null>
 }
 
 /**
+ * Builds Set-Cookie headers for a new session, updating both the active
+ * `hoffle_session` cookie and the encrypted multi-account `hoffle_accounts` vault.
+ */
+export async function sessionResponseHeaders(
+  db: D1Database,
+  request: Request,
+  userId: string,
+  token: string,
+): Promise<Headers> {
+  const headers = new Headers();
+  headers.append("Set-Cookie", sessionCookie(request, token));
+  try {
+    const accountsCookie = await accountsCookieForSignIn(db, request, userId, token);
+    headers.append("Set-Cookie", accountsCookie);
+  } catch {
+    // Vault update failure never blocks sign-in itself.
+  }
+  return headers;
+}
+
+/**
  * Signs a user in: a new session and the cookie for it. Every way of signing
- * in (password, a second factor, a passkey, a reset link, signing up) ends here.
+ * in (password, a second factor, a passkey, a reset link, signing up, OAuth) ends here.
  */
 export async function signedInResponse(
   db: D1Database,
@@ -450,10 +472,8 @@ export async function signedInResponse(
 ): Promise<Response> {
   await touchUser(db, user.id);
   const token = await createSession(db, user.id, request);
-  return Response.json(
-    { user: publicUser(user), ...extra },
-    { headers: { "Set-Cookie": sessionCookie(request, token) } },
-  );
+  const headers = await sessionResponseHeaders(db, request, user.id, token);
+  return Response.json({ user: publicUser(user), ...extra }, { headers });
 }
 
 export async function destroySession(

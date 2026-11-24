@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { Globe, Lock, Layers } from "lucide-react";
 import type { PublicServer } from "@/lib/servers";
+import { DISCOVER_CATEGORIES, isDiscoverCategory, type DiscoverCategory } from "@/lib/server-templates";
 import { FEATURE_MODULES, FEATURE_MODULE_KEYS, normalizeDisabledModules, type FeatureModuleKey } from "@/lib/features";
 import { apiFetch } from "../../lib/client";
+import { useI18n } from "../../lib/i18n-context";
 import type { Tab } from "./types";
 
 export function ServerAccessTab({
@@ -20,9 +22,13 @@ export function ServerAccessTab({
   onServerUpdated: () => void;
   setNotice: (msg: string) => void;
 }) {
+  const { t } = useI18n();
   const [isPublic, setIsPublic] = useState<boolean>(Boolean(server.isPublic));
   const [webPublic, setWebPublic] = useState<boolean>(Boolean(server.webPublic));
   const [description, setDescription] = useState<string>(server.description || "");
+  const [discoverCategory, setDiscoverCategory] = useState<DiscoverCategory>(
+    isDiscoverCategory(server.discoverCategory) ? server.discoverCategory : "community",
+  );
   const [disabledModules, setDisabledModules] = useState<FeatureModuleKey[]>(() =>
     normalizeDisabledModules(server.disabledModules || []),
   );
@@ -32,6 +38,9 @@ export function ServerAccessTab({
     setIsPublic(Boolean(server.isPublic));
     setWebPublic(Boolean(server.webPublic));
     setDescription(server.description || "");
+    setDiscoverCategory(
+      isDiscoverCategory(server.discoverCategory) ? server.discoverCategory : "community",
+    );
     setDisabledModules(normalizeDisabledModules(server.disabledModules || []));
   }, [server]);
 
@@ -41,6 +50,7 @@ export function ServerAccessTab({
     nextPublic = isPublic,
     nextDescription = description,
     nextDisabled = disabledModules,
+    nextCategory = discoverCategory,
   ) => {
     if (!canManageServer) return;
     setSaving(true);
@@ -51,12 +61,13 @@ export function ServerAccessTab({
           isPublic: nextPublic,
           description: nextDescription,
           disabledModules: nextDisabled,
+          discoverCategory: nextCategory,
         }),
       });
       onServerUpdated();
-      setNotice("Server access and feature modules updated.");
+      setNotice(t("serverSettings.access.updated"));
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Could not save access settings.");
+      setNotice(err instanceof Error ? err.message : t("serverSettings.access.saveError"));
     } finally {
       setSaving(false);
     }
@@ -72,9 +83,9 @@ export function ServerAccessTab({
 
   return (
     <div className="tab-pane">
-      <h1 className="pane-title">Access, Community &amp; Feature Modules</h1>
+      <h1 className="pane-title">{t("serverSettings.access.title")}</h1>
       <p className="pane-subtitle">
-        Control whether anyone on this Hoffle can discover and join {server.name}, and choose which feature modules are active here.
+        {t("serverSettings.access.subtitle", { server: server.name })}
       </p>
 
       <div className="mt-6 p-4 rounded-xl bg-white/5 border border-white/10 space-y-4">
@@ -82,10 +93,10 @@ export function ServerAccessTab({
           <div>
             <h3 className="text-sm font-semibold flex items-center gap-2">
               {isPublic ? <Globe size={16} className="text-emerald-400" /> : <Lock size={16} className="text-amber-400" />}
-              Public Server Directory
+              {t("serverSettings.access.publicTitle")}
             </h3>
             <p className="text-xs opacity-75 mt-1">
-              When enabled, {server.name} appears in the Public Servers directory so new users without an invite code can discover and join it after the tutorial.
+              {t("serverSettings.access.publicDesc", { server: server.name })}
             </p>
           </div>
           <input
@@ -104,14 +115,14 @@ export function ServerAccessTab({
           <div>
             <h3 className="text-sm font-semibold flex items-center gap-2">
               <Globe size={16} className={webPublic ? "text-sky-400" : "opacity-60"} />
-              Readable on the web
+              {t("serverSettings.access.webTitle")}
             </h3>
             <p className="text-xs opacity-75 mt-1">
-              Anyone can read this server's open channels at{" "}
+              {t("serverSettings.access.webDescBefore")}
               <a href={`https://hoffle.online/s/${encodeURIComponent((server.vanityCode || server.id).toLowerCase())}`} target="_blank" rel="noopener noreferrer" className="underline">
                 hoffle.online/s/{(server.vanityCode || server.id).toLowerCase()}
               </a>
-              , and search engines can list them. Private channels, 18+ channels and any channel with its own permissions stay hidden. Tell your members before you turn this on.
+              {t("serverSettings.access.webDescAfter")}
             </p>
           </div>
           <input
@@ -124,10 +135,10 @@ export function ServerAccessTab({
               try {
                 await apiFetch(`/api/servers/${server.id}`, { method: "PATCH", body: JSON.stringify({ webPublic: next }) });
                 onServerUpdated();
-                setNotice(next ? "Open channels are now readable on the web." : "This server is no longer readable on the web.");
+                setNotice(next ? t("serverSettings.access.webOnNotice") : t("serverSettings.access.webOffNotice"));
               } catch (err) {
                 setWebPublic(!next);
-                setNotice(err instanceof Error ? err.message : "Could not change that.");
+                setNotice(err instanceof Error ? err.message : t("serverSettings.access.webError"));
               }
             }}
           />
@@ -135,7 +146,26 @@ export function ServerAccessTab({
 
         <div>
           <label className="field-label block text-xs uppercase tracking-wider opacity-75 mb-1">
-            Community Description (shown in Public Server Directory)
+            {t("discover.category.label")}
+          </label>
+          <select
+            className="discord-input w-full mb-3"
+            value={discoverCategory}
+            disabled={!canManageServer || saving}
+            onChange={(e) => {
+              const next = isDiscoverCategory(e.target.value) ? e.target.value : "community";
+              setDiscoverCategory(next);
+              void saveAccessSettings(isPublic, description, disabledModules, next);
+            }}
+          >
+            {DISCOVER_CATEGORIES.map((cat) => (
+              <option key={cat} value={cat}>
+                {t(cat === "other" ? "discover.category.misc" : (`discover.category.${cat}` as const))}
+              </option>
+            ))}
+          </select>
+          <label className="field-label block text-xs uppercase tracking-wider opacity-75 mb-1">
+            {t("serverSettings.access.descLabel")}
           </label>
           <div className="flex gap-2">
             <input
@@ -145,7 +175,7 @@ export function ServerAccessTab({
               value={description}
               disabled={!canManageServer}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What is this server about? (e.g. Cozy gaming nights, D&D campaigns, and music)"
+              placeholder={t("serverSettings.access.descPlaceholder")}
             />
             <button
               type="button"
@@ -153,7 +183,7 @@ export function ServerAccessTab({
               disabled={!canManageServer || saving}
               onClick={() => void saveAccessSettings(isPublic, description, disabledModules)}
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? t("serverSettings.access.saving") : t("common.save")}
             </button>
           </div>
         </div>
@@ -163,10 +193,10 @@ export function ServerAccessTab({
         <div>
           <h3 className="text-sm font-semibold flex items-center gap-2">
             <Layers size={16} className="text-indigo-400" />
-            Server Feature Modules (&ldquo;Simple by default, deep when you want it&rdquo;)
+            {t("serverSettings.access.modulesTitle")}
           </h3>
           <p className="text-xs opacity-75 mt-1">
-            Switch off optional modules your community doesn&apos;t use to keep slash commands and toolbars clean for everyone in {server.name}.
+            {t("serverSettings.access.modulesDesc", { server: server.name })}
           </p>
         </div>
 

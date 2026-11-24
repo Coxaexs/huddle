@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { History, X } from "lucide-react";
 import { apiFetch } from "../lib/client";
+import { useI18n } from "../lib/i18n-context";
 
 interface Version {
   content: string;
@@ -30,6 +31,7 @@ export function EditHistoryDialog({
   messageId: string;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [versions, setVersions] = useState<Version[] | null>(null);
   const [current, setCurrent] = useState<Version | null>(null);
   const [error, setError] = useState("");
@@ -46,12 +48,12 @@ export function EditHistoryDialog({
         setCurrent(data.current);
       })
       .catch((failure) => {
-        if (!cancelled) setError(failure instanceof Error ? failure.message : "Could not load the history.");
+        if (!cancelled) setError(failure instanceof Error ? failure.message : t("chat.editHistory.loadError"));
       });
     return () => {
       cancelled = true;
     };
-  }, [messageId]);
+  }, [messageId, t]);
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -73,34 +75,32 @@ export function EditHistoryDialog({
       >
         <header>
           <h2 id="edit-history-title">
-            <History size={16} /> Edit history
+            <History size={16} /> {t("chat.editHistory.title")}
           </h2>
-          <button ref={closeRef} type="button" aria-label="Close" onClick={onClose}>
+          <button ref={closeRef} type="button" aria-label={t("common.close")} onClick={onClose}>
             <X size={16} />
           </button>
         </header>
 
         {error && <p className="edit-history-empty">{error}</p>}
-        {!error && versions === null && <p className="edit-history-empty">Loading…</p>}
+        {!error && versions === null && <p className="edit-history-empty">{t("common.loading")}</p>}
         {!error && versions !== null && (
           <ol className="edit-history-list">
             {versions.length === 0 && (
-              <li className="edit-history-empty">
-                This was edited before Hoffle kept history, so the earlier text is gone.
-              </li>
+              <li className="edit-history-empty">{t("chat.editHistory.noHistory")}</li>
             )}
             {versions.map((version, index) => (
               <li key={`${version.at}-${index}`}>
                 <span className="edit-history-when">
-                  {index === 0 ? "Original" : `Edit ${index}`} · {when(version.at)}
+                  {index === 0 ? t("chat.editHistory.original") : t("chat.editHistory.editNum", { index })} · {when(version.at)}
                 </span>
-                <p>{version.content || <em>(no text)</em>}</p>
+                <p>{version.content || <em>{t("chat.editHistory.noText")}</em>}</p>
               </li>
             ))}
             {current && (
               <li className="edit-history-current">
-                <span className="edit-history-when">Now · {when(current.at)}</span>
-                <p>{current.content || <em>(no text)</em>}</p>
+                <span className="edit-history-when">{t("chat.editHistory.now")} · {when(current.at)}</span>
+                <p>{current.content || <em>{t("chat.editHistory.noText")}</em>}</p>
               </li>
             )}
           </ol>

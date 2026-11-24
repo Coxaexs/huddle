@@ -59,6 +59,34 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
       return;
     }
 
+    if (name === "ic") {
+      if (!activeChannelId || inDmHome) {
+        setNotice("In-character messages belong to a server channel.");
+        return;
+      }
+      const myChar = user ? s.livingRoom.shared.characters[user.id] : null;
+      if (!myChar?.name) {
+        setNotice("Create a tabletop character first to speak in character.");
+        return;
+      }
+      if (!value) {
+        const nextOn = !s.icModeByChannel[activeChannelId];
+        s.setIcModeByChannel((prev) => ({ ...prev, [activeChannelId]: nextOn }));
+        setNotice(
+          nextOn
+            ? `Speaking in character as ${myChar.name}.`
+            : `Stopped speaking in character as ${myChar.name}.`,
+        );
+        return;
+      }
+      await sendText(value, [], undefined, {
+        name: myChar.name,
+        portraitUrl: myChar.portraitUrl ?? null,
+        color: user?.color ?? null,
+      });
+      return;
+    }
+
     // /nick [name]: your nickname in this server; empty clears it.
     if (name === "nick") {
       const serverId = s.activeServerId;

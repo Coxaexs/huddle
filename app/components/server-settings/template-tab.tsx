@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Upload, Copy, Sparkles } from "lucide-react";
+import { Download, Upload, Copy, Sparkles, Smile, MessageSquare } from "lucide-react";
 import type { PublicServer } from "@/lib/servers";
+import { SERVER_TEMPLATES } from "@/lib/server-templates";
 import { apiFetch } from "../../lib/client";
 import type { Tab } from "./types";
 import { useI18n } from "../../lib/i18n-context";
@@ -22,6 +23,13 @@ export function ServerTemplateTab({
   const [discordLink, setDiscordLink] = useState("");
   const [discordBotToken, setDiscordBotToken] = useState("");
   const [discordGuildId, setDiscordGuildId] = useState("");
+  const [includeEmojis, setIncludeEmojis] = useState(true);
+  const [includeStickers, setIncludeStickers] = useState(true);
+  const [importingAssets, setImportingAssets] = useState(false);
+  const [archiveChannelId, setArchiveChannelId] = useState("");
+  const [archiveData, setArchiveData] = useState<unknown>(null);
+  const [archiveFileName, setArchiveFileName] = useState("");
+  const [importingArchive, setImportingArchive] = useState(false);
   const [jsonInput, setJsonInput] = useState("");
   const [importing, setImporting] = useState(false);
 
@@ -84,13 +92,8 @@ export function ServerTemplateTab({
         <p className="text-xs opacity-75">
           Add a pre-built set of categories, channels, and roles to {server.name} in one click.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-          {[
-            { id: "gaming", title: "Gaming Hangout", desc: "Announcements, clips, squad voice rooms & roles" },
-            { id: "dnd", title: "D&D Campaign Hub", desc: "Lore forum, session recaps, dice chat & GM rooms" },
-            { id: "study", title: "Study & Co-working", desc: "Daily goals, resource forum & quiet focus voice" },
-            { id: "community", title: "Public Community", desc: "Welcome & rules, say-hi, looking-for-group, questions & a bug forum" },
-          ].map((tpl) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-1">
+          {SERVER_TEMPLATES.map((tpl) => (
             <button
               key={tpl.id}
               type="button"
@@ -98,8 +101,10 @@ export function ServerTemplateTab({
               onClick={() => void runImport({ mode: "template", templateId: tpl.id })}
               className="p-3 rounded-lg bg-black/25 hover:bg-white/10 border border-white/10 text-left transition-colors"
             >
-              <strong className="block text-xs font-semibold text-indigo-300">{tpl.title}</strong>
-              <span className="block text-[11px] opacity-75 mt-1">{tpl.desc}</span>
+              <strong className="block text-xs font-semibold text-indigo-300">
+                {tpl.icon} {t(tpl.titleKey)}
+              </strong>
+              <span className="block text-[11px] opacity-75 mt-1">{t(tpl.descKey)}</span>
             </button>
           ))}
         </div>
@@ -171,6 +176,161 @@ export function ServerTemplateTab({
           }
         >
           {importing ? "Importing…" : "Import Discord Structure"}
+        </button>
+      </div>
+
+      {/* Discord Custom Emojis & Stickers Import */}
+      <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
+        <h3 className="text-sm font-semibold flex items-center gap-2">
+          <Smile size={16} className="text-amber-400" /> {t("discordImport.assetsTitle")}
+        </h3>
+        <p className="text-xs opacity-75">{t("discordImport.assetsDesc")}</p>
+        <div className="flex flex-wrap gap-4 text-xs">
+          <label className="inline-flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeEmojis}
+              onChange={(e) => setIncludeEmojis(e.target.checked)}
+            />
+            <span>{t("discordImport.includeEmojis")}</span>
+          </label>
+          <label className="inline-flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeStickers}
+              onChange={(e) => setIncludeStickers(e.target.checked)}
+            />
+            <span>{t("discordImport.includeStickers")}</span>
+          </label>
+        </div>
+        <button
+          type="button"
+          className="discord-btn primary-indigo text-xs"
+          disabled={
+            importingAssets ||
+            (!includeEmojis && !includeStickers) ||
+            !discordGuildId.trim() ||
+            !discordBotToken.trim()
+          }
+          onClick={async () => {
+            setImportingAssets(true);
+            try {
+              const res = await apiFetch<{
+                importedEmojis: number;
+                importedStickers: number;
+                skippedDuplicates: number;
+                skippedLottie: number;
+              }>(`/api/servers/${server.id}/import-assets`, {
+                method: "POST",
+                body: JSON.stringify({
+                  guildId: discordGuildId.trim(),
+                  botToken: discordBotToken.trim(),
+                  includeEmojis,
+                  includeStickers,
+                }),
+              });
+              onServerUpdated();
+              setNotice(
+                t("discordImport.assetsDone", {
+                  emojis: res.importedEmojis,
+                  stickers: res.importedStickers,
+                  dupes: res.skippedDuplicates,
+                  lottie: res.skippedLottie,
+                }),
+              );
+            } catch (err) {
+              setNotice(err instanceof Error ? err.message : "Asset import failed.");
+            } finally {
+              setImportingAssets(false);
+            }
+          }}
+        >
+          {importingAssets ? t("discordImport.assetsImporting") : t("discordImport.assetsButton")}
+        </button>
+      </div>
+
+      {/* DiscordChatExporter JSON Chat Archive Import */}
+      <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-3">
+        <h3 className="text-sm font-semibold flex items-center gap-2">
+          <MessageSquare size={16} className="text-violet-400" /> {t("discordImport.archiveTitle")}
+        </h3>
+        <p className="text-xs opacity-75">{t("discordImport.archiveDesc")}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs opacity-70 mb-1">{t("discordImport.targetChannel")}</label>
+            <select
+              className="discord-input text-xs w-full"
+              value={archiveChannelId}
+              onChange={(e) => setArchiveChannelId(e.target.value)}
+            >
+              <option value="">{t("discordImport.createNewChannel")}</option>
+              {server.channels
+                .filter((c) => c.kind === "text" || c.kind === "announcement")
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    #{c.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs opacity-70 mb-1">{t("discordImport.pickJson")}</label>
+            <input
+              type="file"
+              accept=".json,application/json"
+              className="discord-input text-xs w-full"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setArchiveFileName(file.name);
+                try {
+                  const text = await file.text();
+                  setArchiveData(JSON.parse(text));
+                } catch {
+                  setArchiveData(null);
+                  setNotice("Invalid JSON file.");
+                }
+              }}
+            />
+          </div>
+        </div>
+        {archiveFileName && (
+          <div className="text-xs opacity-70">{archiveFileName}</div>
+        )}
+        <button
+          type="button"
+          className="discord-btn primary-indigo text-xs"
+          disabled={importingArchive || !archiveData}
+          onClick={async () => {
+            setImportingArchive(true);
+            try {
+              const res = await apiFetch<{
+                channelName: string;
+                imported: number;
+                skippedDuplicates: number;
+              }>(`/api/servers/${server.id}/import-archive`, {
+                method: "POST",
+                body: JSON.stringify({
+                  targetChannelId: archiveChannelId || undefined,
+                  archive: archiveData,
+                }),
+              });
+              onServerUpdated();
+              setNotice(
+                t("discordImport.archiveDone", {
+                  count: res.imported,
+                  channel: res.channelName,
+                  dupes: res.skippedDuplicates,
+                }),
+              );
+            } catch (err) {
+              setNotice(err instanceof Error ? err.message : "Archive import failed.");
+            } finally {
+              setImportingArchive(false);
+            }
+          }}
+        >
+          {importingArchive ? t("discordImport.archiveImporting") : t("discordImport.archiveButton")}
         </button>
       </div>
 

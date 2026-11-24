@@ -6,6 +6,7 @@ import type { PublicRole, PublicServer } from "@/lib/servers";
 import { type Member } from "@/lib/users";
 import { apiFetch } from "../../lib/client";
 import { comboFromEvent, comboLabel, isModifierOnly, loadKeyboardLayout } from "../../lib/hotkeys";
+import { useI18n } from "../../lib/i18n-context";
 
 /**
  * A button that records the next key combination pressed. Modifier-only
@@ -21,6 +22,7 @@ export function ComboButton({
   combo: string;
   onChange: (combo: string) => void;
 }) {
+  const { t } = useI18n();
   const [listening, setListening] = useState(false);
   const [, setLayoutReady] = useState(false);
 
@@ -59,7 +61,7 @@ export function ComboButton({
       onClick={() => setListening(true)}
     >
       <span>{label}</span>
-      <kbd>{listening ? "Press keys… (Esc to cancel)" : comboLabel(combo)}</kbd>
+      <kbd>{listening ? t("settings.combo.pressKeys") : comboLabel(combo)}</kbd>
     </button>
   );
 }
@@ -77,6 +79,7 @@ export function RolesTab({
   members: Member[];
   onError: (message: string) => void;
 }) {
+  const { t } = useI18n();
   const roles = [...server.roles].sort((a, b) => b.position - a.position);
 
   async function createRole() {
@@ -86,30 +89,27 @@ export function RolesTab({
         body: JSON.stringify({ serverId: server.id, name: "new role" }),
       });
     } catch (failure) {
-      onError(failure instanceof Error ? failure.message : "Could not create role.");
+      onError(failure instanceof Error ? failure.message : t("settings.roles.createError"));
     }
   }
 
   return (
     <div className="roles-tab">
-      <p className="modal-hint">
-        Roles paint member names their colour and grant permissions. The highest
-        role a member holds decides their name colour.
-      </p>
+      <p className="modal-hint">{t("settings.roles.hint")}</p>
       <button type="button" className="primary" onClick={() => void createRole()}>
-        Create a role
+        {t("settings.roles.createBtn")}
       </button>
 
       <div className="roles-list">
         {roles.map((role) => (
           <RoleEditor key={role.id} role={role} onError={onError} />
         ))}
-        {!roles.length && <p className="modal-hint">No roles yet.</p>}
+        {!roles.length && <p className="modal-hint">{t("settings.roles.empty")}</p>}
       </div>
 
       {roles.length > 0 && (
         <>
-          <span className="field-label">Assign roles</span>
+          <span className="field-label">{t("settings.roles.assign")}</span>
           <div className="assign-list">
             {members.map((member) => (
               <MemberRoles
@@ -133,6 +133,7 @@ export function RoleEditor({
   role: PublicRole;
   onError: (message: string) => void;
 }) {
+  const { t } = useI18n();
   const [name, setName] = useState(role.name);
   const [color, setColor] = useState(role.color);
   const [permissions, setPermissions] = useState(role.permissions);
@@ -150,18 +151,18 @@ export function RoleEditor({
         body: JSON.stringify({ name, color, permissions }),
       });
     } catch (failure) {
-      onError(failure instanceof Error ? failure.message : "Could not save role.");
+      onError(failure instanceof Error ? failure.message : t("settings.roles.saveError"));
     } finally {
       setSaving(false);
     }
   }
 
   async function remove() {
-    if (!window.confirm(`Delete the "${role.name}" role?`)) return;
+    if (!window.confirm(t("settings.roles.deleteConfirm", { name: role.name }))) return;
     try {
       await apiFetch(`/api/roles/${role.id}`, { method: "DELETE" });
     } catch (failure) {
-      onError(failure instanceof Error ? failure.message : "Could not delete role.");
+      onError(failure instanceof Error ? failure.message : t("settings.roles.deleteError"));
     }
   }
 
@@ -174,7 +175,7 @@ export function RoleEditor({
         <input
           type="color"
           value={color}
-          aria-label="Role colour"
+          aria-label={t("settings.roles.colorAria")}
           onChange={(event) => setColor(event.target.value)}
         />
         <input
@@ -184,7 +185,7 @@ export function RoleEditor({
           style={{ color }}
         />
         <button type="button" className="role-delete" onClick={() => void remove()}>
-          Delete
+          {t("common.delete")}
         </button>
       </div>
       <div className="role-perms">
@@ -206,7 +207,7 @@ export function RoleEditor({
           disabled={saving}
           onClick={() => void save()}
         >
-          {saving ? "Saving…" : "Save changes"}
+          {saving ? t("settings.roles.saving") : t("settings.roles.saveChanges")}
         </button>
       )}
     </div>
@@ -223,6 +224,7 @@ export function MemberRoles({
   roles: PublicRole[];
   onError: (message: string) => void;
 }) {
+  const { t } = useI18n();
   const held = new Set(member.roleIds?.[serverId] || []);
 
   async function toggle(roleId: string, add: boolean) {
@@ -232,7 +234,7 @@ export function MemberRoles({
         body: JSON.stringify({ serverId, userId: member.id, roleId, add }),
       });
     } catch (failure) {
-      onError(failure instanceof Error ? failure.message : "Could not assign role.");
+      onError(failure instanceof Error ? failure.message : t("settings.roles.assignError"));
     }
   }
 

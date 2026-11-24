@@ -8,6 +8,7 @@ import {
   type OverlaySettings as Settings,
   type OverlaySettingsPatch,
 } from "../../lib/desktop-overlay";
+import { useI18n } from "../../lib/i18n-context";
 import { ComboButton } from "./roles-tab";
 
 const CORNERS: Array<[OverlayCorner, string]> = [
@@ -23,6 +24,7 @@ const CORNERS: Array<[OverlayCorner, string]> = [
  * any page has loaded).
  */
 export function OverlaySettings() {
+  const { t } = useI18n();
   const bridge = useMemo(() => mainOverlayBridge(), []);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [refused, setRefused] = useState("");
@@ -53,15 +55,12 @@ export function OverlaySettings() {
   };
 
   return (
-    <section className="vs-section" data-settings-anchor="overlay" data-settings-label="Game overlay">
-      <h3 className="field-label">Game overlay</h3>
+    <section className="vs-section" data-settings-anchor="overlay" data-settings-label={t("settings.overlay.title")}>
+      <h3 className="field-label">{t("settings.overlay.title")}</h3>
       <label className="appearance-switch">
         <span>
-          <strong>Show Hoffle over games</strong>
-          <small>
-            While you play, see who is talking and new messages in a corner. Works with games in
-            windowed or borderless mode.
-          </small>
+          <strong>{t("settings.overlay.showOverGames")}</strong>
+          <small>{t("settings.overlay.showOverGamesDesc")}</small>
         </span>
         <input
           type="checkbox"
@@ -72,7 +71,7 @@ export function OverlaySettings() {
       {settings.enabled && (
         <>
           <ComboButton
-            label="Open Hoffle over everything"
+            label={t("settings.overlay.openCombo")}
             combo={settings.combo}
             onChange={(combo) => {
               const problem = globalShortcutProblem(combo);
@@ -90,8 +89,8 @@ export function OverlaySettings() {
             {refused
               ? refused
               : settings.hotkeyOk
-              ? `Press ${settings.shortcut} anywhere, in a game or not, for a small Hoffle with your servers, channels and call. Press it again or Esc to go back.`
-              : `Another app already uses ${settings.shortcut}. Pick a different shortcut.`}
+              ? t("settings.overlay.active", { shortcut: settings.shortcut })
+              : t("settings.overlay.conflict", { shortcut: settings.shortcut })}
           </p>
           {settings.combo !== settings.defaultCombo && (
             <button
@@ -100,7 +99,7 @@ export function OverlaySettings() {
                 update({ combo: settings.defaultCombo, accelerator: comboToAccelerator(settings.defaultCombo) })
               }
             >
-              Use the default shortcut
+              {t("settings.overlay.useDefault")}
             </button>
           )}
           {/* Desktop apps before 2.3.1 do not send these and cannot change them. */}
@@ -139,7 +138,7 @@ export function OverlaySettings() {
               </div>
             </>
           )}
-          {settings.game && <p className="modal-hint">Playing now: {settings.game}.</p>}
+          {settings.game && <p className="modal-hint">{t("settings.overlay.playingNow", { game: settings.game })}</p>}
         </>
       )}
     </section>

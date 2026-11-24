@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { VOICE_SOUNDS, previewVoiceSound, setVoiceSoundOn, voiceSoundOn, type VoiceSoundId } from "../../lib/audio-cues";
+import { useI18n } from "../../lib/i18n-context";
 
 /** The sounds listed before "Show more": the ones people reach for most. */
 const ALWAYS_SHOWN = 4;
 
 /** Voice & Video → Sounds: every voice cue with a preview and an on/off switch. */
 export function VoiceSounds() {
+  const { t } = useI18n();
   const [on, setOn] = useState<Record<VoiceSoundId, boolean>>(
     () => Object.fromEntries(VOICE_SOUNDS.map(({ id }) => [id, voiceSoundOn(id)])) as Record<VoiceSoundId, boolean>,
   );
@@ -26,7 +28,7 @@ export function VoiceSounds() {
       <div className="vs-sound-text">
         <strong>{label}</strong>
         <button type="button" className="vs-sound-preview" onClick={() => previewVoiceSound(id)}>
-          Preview sound
+          {t("settings.voiceSounds.preview")}
         </button>
       </div>
       <button
@@ -43,8 +45,8 @@ export function VoiceSounds() {
   );
 
   return (
-    <section className="vs-section" data-settings-anchor="sounds" data-settings-label="Sounds">
-      <h3 className="field-label">Sounds</h3>
+    <section className="vs-section" data-settings-anchor="sounds" data-settings-label={t("settings.voiceSounds.title")}>
+      <h3 className="field-label">{t("settings.voiceSounds.title")}</h3>
       <div className="vs-sound-list">
         {VOICE_SOUNDS.slice(0, ALWAYS_SHOWN).map(row)}
         <button
@@ -53,7 +55,11 @@ export function VoiceSounds() {
           aria-expanded={expanded}
           onClick={() => setExpanded((open) => !open)}
         >
-          <strong>{expanded ? `Hide ${hiddenCount} sounds` : `Show ${hiddenCount} more sounds`}</strong>
+          <strong>
+            {expanded
+              ? t("settings.voiceSounds.hide", { count: hiddenCount })
+              : t("settings.voiceSounds.showMore", { count: hiddenCount })}
+          </strong>
           <span className="vs-sound-more-icon">
             <ChevronDown size={18} />
           </span>

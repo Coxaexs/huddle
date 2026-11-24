@@ -21,7 +21,7 @@ import type { Member } from "@/lib/users";
 import { HeaderFaces } from "./simple-parts";
 import { useToolbar } from "../../widgets/toolbar";
 import { useDismiss } from "../../../hooks/use-dismiss";
-import { SecondScreenTrigger } from "../../second-screen/second-screen-launcher";
+import { SecondScreenTrigger, type SecondScreenTriggerHandle } from "../../second-screen/second-screen-launcher";
 
 export function ChatHeader({
   setMobileNav,
@@ -77,6 +77,7 @@ export function ChatHeader({
   setVoiceChatOpen,
   onlineFaces = [],
   onInvite = null,
+  tabletopDock = null,
 }: {
   setMobileNav: Dispatch<SetStateAction<boolean>>;
   stageChannel: PublicChannel | null;
@@ -132,6 +133,7 @@ export function ChatHeader({
   /** Simple interface: a few online members' faces stand in for the member-list button. */
   onlineFaces?: Member[];
   onInvite?: (() => void) | null;
+  tabletopDock?: import("react").ReactNode;
 }) {
   const dndOn = useModuleOn("dnd");
   const achievementsOn = useModuleOn("achievements");
@@ -143,12 +145,13 @@ export function ChatHeader({
   const simpleTools = simpleUi && !inDmHome;
   // Customize → Buttons: their order, and the ones moved into "More".
   const tb = useToolbar("header");
-  const anyHidden = ["invite", "search", "mentions", "pins", "saved", ...(achievementsOn ? ["achievements"] : []), "members"].some(tb.hidden);
+  const anyHidden = ["invite", "secondScreen", "search", "mentions", "pins", "saved", ...(achievementsOn ? ["achievements"] : []), "members"].some(tb.hidden);
   // Phones keep only the essentials in the header; the rest sit behind "More".
   const [moreOpen, setMoreOpen] = useState(false);
   /** The Follow dialog of an announcement channel. */
   const [followOpen, setFollowOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
+  const secondScreenRef = useRef<SecondScreenTriggerHandle>(null);
   useDismiss(moreOpen, () => setMoreOpen(false), moreRef);
   const pick = (action: () => void) => () => {
     setMoreOpen(false);
@@ -293,7 +296,7 @@ export function ChatHeader({
                         })()
                       )}
 
-                      <SecondScreenTrigger
+              <SecondScreenTrigger
                         activeChannelId={activeChannelId}
                         activeChannelName={stageChannel.name}
                         voiceChannelId={stageChannel.id}
@@ -467,7 +470,11 @@ export function ChatHeader({
                 </span>
               )}
 
+              {tabletopDock}
+
               <SecondScreenTrigger
+                launcherRef={secondScreenRef}
+                tb={tb.item("secondScreen")}
                 activeChannelId={activeChannelId}
                 activeChannelName={stageChannel ? stageChannel.name : channelTitle}
                 voiceChannelId={stageChannel?.id || voice.channelId || null}
@@ -612,6 +619,9 @@ export function ChatHeader({
                         <UserPlus size={18} /> {t("header.findPeople")}
                       </button>
                     )}
+                    <button type="button" role="menuitem" className={tb.hidden("secondScreen") ? "tb-moved" : "tb-in-bar"} onClick={pick(() => secondScreenRef.current?.open())}>
+                      <Monitor size={18} /> {t("tb.header.secondScreen")}
+                    </button>
                     <button type="button" role="menuitem" className={tb.hidden("pins") ? "tb-moved" : "tb-in-bar"} onClick={pick(() => setPinsOpen((open) => !open))}>
                       <Pin size={18} /> {t("header.pinnedMessages")}
                     </button>

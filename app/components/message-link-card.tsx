@@ -5,6 +5,7 @@ import { MessageSquareQuote } from "lucide-react";
 import { apiFetch } from "../lib/client";
 import { formatClientDateTime } from "../lib/chat/format";
 import type { MessageLinkTarget } from "../lib/chat/message-links";
+import { useI18n } from "../lib/i18n-context";
 
 interface LinkedMessage {
   message: {
@@ -47,6 +48,7 @@ export function MessageLinkCard({
   target: MessageLinkTarget;
   onOpen?: (target: MessageLinkTarget) => void;
 }) {
+  const { t } = useI18n();
   const [linked, setLinked] = useState<LinkedMessage | null | undefined>(undefined);
 
   useEffect(() => {
@@ -65,18 +67,18 @@ export function MessageLinkCard({
       <div className="link-preview message-link-card is-missing">
         <div className="link-preview-text">
           <span className="link-preview-site">
-            <MessageSquareQuote size={13} aria-hidden="true" /> Message
+            <MessageSquareQuote size={13} aria-hidden="true" /> {t("chat.linkCard.message")}
           </span>
-          <p className="link-preview-description">This message is unavailable or you can't see it.</p>
+          <p className="link-preview-description">{t("chat.linkCard.unavailable")}</p>
         </div>
       </div>
     );
   }
 
   const { message } = linked;
-  const where = linked.serverId ? `#${linked.channelName || "channel"}` : "Direct message";
+  const where = linked.serverId ? `#${linked.channelName || t("chat.linkCard.channelFallback")}` : t("chat.linkCard.directMessage");
   const attachment = message.image || message.images?.length
-    ? "🖼️ Image"
+    ? t("chat.linkCard.image")
     : message.files?.length
       ? `📎 ${message.files[0].name}`
       : "";
@@ -92,7 +94,7 @@ export function MessageLinkCard({
       className="link-preview message-link-card"
       role="button"
       tabIndex={0}
-      title="Jump to message"
+      title={t("chat.linkCard.jumpTitle")}
       onClick={open}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
 import {
   Columns2,
   Copy,
@@ -23,6 +23,13 @@ import {
   type SecondScreenState,
 } from "@/lib/second-screen";
 import "./second-screen.css";
+import { useI18n } from "../../lib/i18n-context";
+import { Icon } from "../chat/icon-button";
+import type { ToolbarItemProps } from "../widgets/toolbar";
+
+export interface SecondScreenTriggerHandle {
+  open: () => void;
+}
 
 interface SecondScreenTriggerProps {
   activeChannelId: string | null;
@@ -33,6 +40,9 @@ interface SecondScreenTriggerProps {
   hasBattlemap: boolean;
   /** Compact stage button beside live screenshare controls. */
   stageQuickCast?: boolean;
+  /** Toolbar integration when rendered in the chat header. */
+  tb?: ToolbarItemProps;
+  launcherRef?: Ref<SecondScreenTriggerHandle>;
 }
 
 export function SecondScreenTrigger({
@@ -43,7 +53,10 @@ export function SecondScreenTrigger({
   hasActiveScreenShare,
   hasBattlemap,
   stageQuickCast = false,
+  tb,
+  launcherRef,
 }: SecondScreenTriggerProps) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<SecondScreenState>(DEFAULT_SECOND_SCREEN_STATE);
   const [pairUrl, setPairUrl] = useState("");
@@ -206,7 +219,7 @@ export function SecondScreenTrigger({
         body: JSON.stringify({ action: "revoke-pair" }),
       });
       setPairUrl("");
-      setStatusNote("Pairing link revoked.");
+      setStatusNote(t("s2.launcher.pairRevoked"));
     } finally {
       setPairBusy(false);
     }
@@ -217,6 +230,8 @@ export function SecondScreenTrigger({
     setStatusNote("");
     if (!pairUrl) void loadPairLink("pair");
   };
+
+  useImperativeHandle(launcherRef, () => ({ open: openModal }));
 
   const openSecondWindow = async () => {
     await pushPatch({
@@ -244,7 +259,7 @@ export function SecondScreenTrigger({
         channelId: activeChannelId || state.channelId,
         voiceChannelId: voiceChannelId || state.voiceChannelId,
       },
-      `Sent "${label}" to 2nd Screen.`,
+      t("s2.launcher.sentNote", { label }),
     );
   };
 
@@ -269,23 +284,22 @@ export function SecondScreenTrigger({
           type="button"
           className="voice-stage-topbar-btn"
           onClick={() => {
-            void castPreset("single", "screenshare", "chat", "Screenshare");
+            void castPreset("single", "screenshare", "chat", t("s2.launcher.screenshare"));
             openModal();
           }}
-          title="Watch screenshare on 2nd Screen (2nd monitor / iPad)"
+          title={t("s2.launcher.quickCastTitle")}
         >
           <Monitor size={15} />
         </button>
       ) : (
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="Open 2nd Screen"
-          title="2nd Screen (Screenshare, Chat, Battlemap, D&D)"
+        <Icon
+          label={t("s2.launcher.openTitle")}
+          active={open}
           onClick={openModal}
+          tb={tb}
         >
           <Monitor size={18} />
-        </button>
+        </Icon>
       )}
 
       <dialog
@@ -300,13 +314,13 @@ export function SecondScreenTrigger({
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Monitor size={18} style={{ color: "var(--lavender, #8b5cf6)" }} />
               <h2 id={titleId} style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>
-                Hoffle 2nd Screen
+                {t("s2.brand")}
               </h2>
             </div>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              aria-label="Close 2nd Screen dialog"
+              aria-label={t("s2.launcher.closeAria")}
               style={{
                 background: "transparent",
                 border: 0,
@@ -321,8 +335,7 @@ export function SecondScreenTrigger({
           </div>
 
           <p style={{ margin: 0, fontSize: 13, opacity: 0.78, lineHeight: 1.45 }}>
-            Send live screenshares, channel chat, Hoffle or D&amp;D battlemaps, or the D&amp;D Companion to another
-            monitor, iPad, or TV without leaving this call.
+            {t("s2.launcher.intro")}
           </p>
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -332,7 +345,7 @@ export function SecondScreenTrigger({
               style={{ height: 38, padding: "0 14px", borderRadius: 10, fontSize: 13 }}
               onClick={() => void openSecondWindow()}
             >
-              <ExternalLink size={14} /> Open 2nd Screen Window
+              <ExternalLink size={14} /> {t("s2.launcher.openWindow")}
             </button>
             <button
               type="button"
@@ -340,64 +353,64 @@ export function SecondScreenTrigger({
               style={{ height: 38, padding: "0 12px", borderRadius: 10, fontSize: 13 }}
               onClick={() => void copyUrl(screenUrl)}
             >
-              <Copy size={14} /> {copied ? "Copied!" : "Copy signed-in URL"}
+              <Copy size={14} /> {copied ? t("s2.launcher.copiedUrl") : t("s2.launcher.copyUrl")}
             </button>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.75, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-              Send to 2nd Screen
+              {t("s2.launcher.sendTo")}
             </div>
             <div className="s2-preset-grid">
               <button
                 type="button"
                 className={`s2-preset-btn ${state.layout === "single" && state.primary === "screenshare" ? "active" : ""}`}
-                onClick={() => void castPreset("single", "screenshare", "chat", "Screenshare")}
+                onClick={() => void castPreset("single", "screenshare", "chat", t("s2.launcher.screenshare"))}
               >
                 <Monitor size={15} />
                 <span>
-                  Screenshare{hasActiveScreenShare ? " (Live)" : ""}
+                  {t("s2.launcher.screenshare")}{hasActiveScreenShare ? t("s2.launcher.liveSuffix") : ""}
                 </span>
               </button>
               <button
                 type="button"
                 className={`s2-preset-btn ${state.layout === "single" && state.primary === "chat" ? "active" : ""}`}
-                onClick={() => void castPreset("single", "chat", "screenshare", "Channel Chat")}
+                onClick={() => void castPreset("single", "chat", "screenshare", t("s2.launcher.channelChat"))}
               >
                 <Hash size={15} />
-                <span>#{activeChannelName || "Chat"}</span>
+                <span>#{activeChannelName || t("s2.launcher.chatFallback")}</span>
               </button>
               <button
                 type="button"
                 className={`s2-preset-btn ${state.layout === "split-h" && state.primary === "screenshare" && state.secondary === "chat" ? "active" : ""}`}
-                onClick={() => void castPreset("split-h", "screenshare", "chat", "Screenshare + Chat")}
+                onClick={() => void castPreset("split-h", "screenshare", "chat", t("s2.launcher.screenshareChat"))}
               >
                 <Columns2 size={15} />
-                <span>Stream + Chat</span>
+                <span>{t("s2.launcher.streamPlusChat")}</span>
               </button>
               <button
                 type="button"
                 className={`s2-preset-btn ${state.layout === "single" && state.primary === "battlemap" ? "active" : ""}`}
-                onClick={() => void castPreset("single", "battlemap", "chat", "Battlemap")}
+                onClick={() => void castPreset("single", "battlemap", "chat", t("s2.launcher.battlemap"))}
               >
                 <MapIcon size={15} />
-                <span>D&amp;D Battlemap{hasBattlemap ? " (Active)" : ""}</span>
+                <span>{t("s2.launcher.dndBattlemap")}{hasBattlemap ? t("s2.launcher.activeSuffix") : ""}</span>
               </button>
               <button
                 type="button"
                 className={`s2-preset-btn ${state.layout === "split-h" && state.primary === "battlemap" && state.secondary === "chat" ? "active" : ""}`}
-                onClick={() => void castPreset("split-h", "battlemap", "chat", "Battlemap + Chat")}
+                onClick={() => void castPreset("split-h", "battlemap", "chat", t("s2.launcher.battlemapPlusChat"))}
               >
                 <Columns2 size={15} />
-                <span>Map + Chat</span>
+                <span>{t("s2.launcher.mapPlusChat")}</span>
               </button>
               <button
                 type="button"
                 className={`s2-preset-btn ${state.layout === "single" && state.primary === "dnd-companion" ? "active" : ""}`}
-                onClick={() => void castPreset("single", "dnd-companion", "chat", "D&D Companion")}
+                onClick={() => void castPreset("single", "dnd-companion", "chat", t("s2.launcher.dndCompanion"))}
               >
                 <Sparkles size={15} />
-                <span>D&amp;D Companion</span>
+                <span>{t("s2.launcher.dndCompanion")}</span>
               </button>
             </div>
             {statusNote && (
@@ -420,7 +433,10 @@ export function SecondScreenTrigger({
             }}
           >
             <span>
-              Auto-follow active channel ({activeChannelName || "none"}) &amp; voice call ({voiceChannelName || "none"})
+              {t("s2.launcher.followActive", {
+                channel: activeChannelName || t("s2.launcher.none"),
+                voice: voiceChannelName || t("s2.launcher.none"),
+              })}
             </span>
             <input
               type="checkbox"
@@ -445,7 +461,7 @@ export function SecondScreenTrigger({
               <div className="s2-qr-box">
                 <img
                   src={qrDataUrl}
-                  alt="Scan to open 2nd Screen on iPad or TV"
+                  alt={t("s2.launcher.qrAlt")}
                   width={120}
                   height={120}
                   style={{ width: "100%", height: "100%", aspectRatio: "1 / 1" }}
@@ -457,9 +473,9 @@ export function SecondScreenTrigger({
               </div>
             )}
             <div style={{ flex: "1 1 220px", minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-              <strong style={{ fontSize: 13 }}>Pair iPad, Tablet, or TV</strong>
+              <strong style={{ fontSize: 13 }}>{t("s2.launcher.pairHeading")}</strong>
               <span style={{ fontSize: 12, opacity: 0.72, lineHeight: 1.4 }}>
-                Scan to view only what you cast here (read-only pair link, expires in 24h) — or sign in on the other device for interactive chat &amp; sheets.
+                {t("s2.launcher.pairDesc")}
               </span>
               {pairUrl && (
                 <input
@@ -486,7 +502,7 @@ export function SecondScreenTrigger({
                   disabled={!pairUrl}
                   onClick={() => void copyUrl(pairUrl)}
                 >
-                  <Copy size={12} /> Copy pair link
+                  <Copy size={12} /> {t("s2.launcher.copyPairLink")}
                 </button>
                 <button
                   type="button"
@@ -494,7 +510,7 @@ export function SecondScreenTrigger({
                   disabled={pairBusy}
                   onClick={() => void loadPairLink("rotate-pair")}
                 >
-                  <RefreshCw size={12} /> {pairUrl ? "Rotate" : "Create link"}
+                  <RefreshCw size={12} /> {pairUrl ? t("s2.launcher.rotate") : t("s2.launcher.createLink")}
                 </button>
                 {pairUrl && (
                   <button
@@ -503,7 +519,7 @@ export function SecondScreenTrigger({
                     disabled={pairBusy}
                     onClick={() => void revokePairLink()}
                   >
-                    <ShieldOff size={12} /> Revoke
+                    <ShieldOff size={12} /> {t("s2.launcher.revoke")}
                   </button>
                 )}
               </div>

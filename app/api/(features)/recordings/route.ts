@@ -4,6 +4,7 @@ import {
   publishMessageEvent,
   publishRecordingState,
 } from "@/lib/hub-client";
+import { hasConfiguredGmRole } from "@/lib/dnd-rules";
 import { can, Permission } from "@/lib/permissions";
 import {
   activeRecording,
@@ -38,12 +39,21 @@ async function publish(db: D1Database, row: RecordingRow): Promise<RecordingStat
   return state;
 }
 
+async function canRecordServer(
+  db: D1Database,
+  userId: string,
+  serverId: string,
+): Promise<boolean> {
+  if (await can(db, userId, serverId, Permission.RECORD_SESSIONS)) return true;
+  return hasConfiguredGmRole(db, userId, serverId);
+}
+
 async function controllerAllowed(
   db: D1Database,
   userId: string,
   row: RecordingRow,
 ): Promise<boolean> {
-  return can(db, userId, row.server_id, Permission.RECORD_SESSIONS);
+  return canRecordServer(db, userId, row.server_id);
 }
 
 /** Active state for a room, or a completed-session summary by id. */
@@ -150,7 +160,7 @@ export async function POST(request: Request) {
     const channelId = body.channelId?.slice(0, 64) || "";
     const channel = await findChannel(db, channelId);
     if (!channel || channel.kind !== "voice") return error("Choose a voice room.", 400);
-    if (!(await can(db, user.id, channel.server_id, Permission.RECORD_SESSIONS))) {
+    if (!(await canRecordServer(db, user.id, channel.server_id))) {
       return error("You do not have permission to record sessions here.", 403);
     }
     if (await activeRecording(db, channelId)) {

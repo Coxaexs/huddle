@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { KeyRound, Mail } from "lucide-react";
-import { apiFetch } from "../lib/client";
+import { apiFetch, apiUrl } from "../lib/client";
+import type { AccountSummary } from "@/lib/multi-account";
 import { tNow, tRich, useI18n } from "../lib/i18n-context";
 import type { TranslatableKey, TranslateVars } from "@/lib/i18n";
 import { ACCEPTED_INVITE_KEY, extractInviteCodeFromUrl } from "../lib/chat/invites";
@@ -28,6 +29,8 @@ interface AuthGateProps {
   openSignup?: boolean;
   /** Cloudflare Turnstile site key; when set, open signup shows the challenge. */
   turnstileSiteKey?: string | null;
+  /** Configured OAuth 2.0 providers enabled on this instance. */
+  oauth?: { google: boolean; discord: boolean };
   /** `defaultTheme` is the invite's starting theme id, on signup only. */
   onSignedIn: (user: PublicUser, defaultTheme?: string | null) => void;
 }
@@ -81,7 +84,13 @@ function loadTurnstile(): Promise<TurnstileApi | null> {
   });
 }
 
-export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = null, onSignedIn }: AuthGateProps) {
+export function AuthGate({
+  bootstrap,
+  openSignup = false,
+  turnstileSiteKey = null,
+  oauth = { google: false, discord: false },
+  onSignedIn,
+}: AuthGateProps) {
   const { t } = useI18n();
   const open = openSignup && !bootstrap;
   const [mode, setMode] = useState<"signin" | "signup" | "forgot" | "reset">(
@@ -114,6 +123,7 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
   const [oldEnough, setOldEnough] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [savedAccounts, setSavedAccounts] = useState<AccountSummary[]>([]);
   // Set once the password was right on an account with two-factor on.
   const [twoFactor, setTwoFactor] = useState<{ ticket: string; passkey: boolean } | null>(null);
   const [code, setCode] = useState("");
@@ -137,6 +147,21 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
         url.searchParams.delete("reset");
         window.history.replaceState(null, "", url.toString());
         return;
+      }
+
+      const oauthError = url.searchParams.get("oauthError");
+      if (oauthError) {
+        const errorKeyMap: Record<string, TranslatableKey> = {
+          invite_required: "gate.oauth.error.invite_required",
+          invalid_state: "gate.oauth.error.invalid_state",
+          suspended: "gate.oauth.error.suspended",
+          already_linked: "gate.oauth.error.already_linked",
+          oauth_cancelled: "gate.oauth.error.oauth_cancelled",
+          oauth_failed: "gate.oauth.error.oauth_failed",
+        };
+        setError(tNow(errorKeyMap[oauthError] ?? "gate.oauth.error.oauth_failed"));
+        url.searchParams.delete("oauthError");
+        window.history.replaceState(null, "", url.toString());
       }
 
       const inviteCode = extractInviteCodeFromUrl(window.location.search || window.location.href);
@@ -171,6 +196,9 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
     } catch {
       // ignore
     }
+    void apiFetch<{ accounts: AccountSummary[] }>("/api/auth/accounts")
+      .then((res) => setSavedAccounts(res.accounts ?? []))
+      .catch(() => undefined);
   }, []);
 
   // The challenge lives only on the open Create account tab; leaving the tab
@@ -752,6 +780,62 @@ export function AuthGate({ bootstrap, openSignup = false, turnstileSiteKey = nul
           >
             <KeyRound size={16} aria-hidden /> {t("gate.button.passkey")}
           </button>
+        )}
+
+        {(mode === "signin" || mode === "signup") && (oauth.google || oauth.discord) && (
+          <div className="auth-oauth-box">
+            <div className="auth-oauth-divider">{t("gate.oauth.or")}</div>
+            <div className="auth-oauth-row">
+              {oauth.google && (
+                <a
+                  className="auth-passkey auth-oauth-btn"
+                  href={apiUrl(
+                    `/api/auth/oauth/google${invite.trim() ? `?invite=${encodeURIComponent(invite.trim())}` : ""}`,
+                  )}
+                >
+                  {t("gate.oauth.google")}
+                </a>
+              )}
+              {oauth.discord && (
+                <a
+                  className="auth-passkey auth-oauth-btn"
+                  href={apiUrl(
+                    `/api/auth/oauth/discord${invite.trim() ? `?invite=${encodeURIComponent(invite.trim())}` : ""}`,
+                  )}
+                >
+                  {t("gate.oauth.discord")}
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
+        {savedAccounts.length > 0 && (
+          <div className="auth-saved-accounts">
+            <div className="auth-oauth-divider">{t("gate.oauth.savedAccounts")}</div>
+            <div className="auth-saved-list">
+              {savedAccounts.map((acc) => (
+                <button
+                  key={acc.userId}
+                  type="button"
+                  className="auth-passkey auth-saved-btn"
+                  disabled={busy}
+                  onClick={() => {
+                    setBusy(true);
+                    void apiFetch<{ user: PublicUser }>("/api/auth/accounts", {
+                      method: "POST",
+                      body: JSON.stringify({ userId: acc.userId }),
+                    })
+                      .then((res) => onSignedIn(res.user))
+                      .catch(() => setBusy(false));
+                  }}
+                >
+                  <span>{acc.displayName}</span>
+                  <span style={{ opacity: 0.65 }}>@{acc.username}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
 
         {mode === "signin" && (

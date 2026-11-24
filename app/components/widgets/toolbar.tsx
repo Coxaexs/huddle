@@ -156,6 +156,7 @@ export function useToolbar(toolbar: ToolbarId) {
 
 const ICONS: Record<string, ReactNode> = {
   "header:invite": <UserPlus size={15} />,
+  "header:secondScreen": <Monitor size={15} />,
   "header:search": <Search size={15} />,
   "header:mentions": <AtSign size={15} />,
   "header:pins": <Pin size={15} />,

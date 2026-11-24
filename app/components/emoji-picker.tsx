@@ -17,6 +17,8 @@ import {
   Flag,
 } from "lucide-react";
 import { apiFetch } from "../lib/client";
+import { useI18n } from "../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 
 interface EmojiItem {
   id?: string;
@@ -40,22 +42,22 @@ interface EmojiPickerProps {
 interface CategoryDef {
   id: string;
   icon: React.ReactNode;
-  label: string;
+  labelKey: MessageKey;
   categoryName?: string;
 }
 
 const CATEGORIES: CategoryDef[] = [
-  { id: "favorites", icon: <Star size={16} />, label: "Favorites" },
-  { id: "server", icon: <ImageIcon size={16} />, label: "Server Emojis" },
-  { id: "smileys", icon: <Smile size={16} />, label: "Smileys & Emotion", categoryName: "Smileys & Emotion" },
-  { id: "people", icon: <User size={16} />, label: "People & Body", categoryName: "People & Body" },
-  { id: "animals", icon: <Sparkles size={16} />, label: "Animals & Nature", categoryName: "Animals & Nature" },
-  { id: "food", icon: <Utensils size={16} />, label: "Food & Drink", categoryName: "Food & Drink" },
-  { id: "activities", icon: <Trophy size={16} />, label: "Activities", categoryName: "Activities" },
-  { id: "travel", icon: <Globe size={16} />, label: "Travel & Places", categoryName: "Travel & Places" },
-  { id: "objects", icon: <Package size={16} />, label: "Objects", categoryName: "Objects" },
-  { id: "symbols", icon: <Hash size={16} />, label: "Symbols", categoryName: "Symbols" },
-  { id: "flags", icon: <Flag size={16} />, label: "Flags", categoryName: "Flags" },
+  { id: "favorites", icon: <Star size={16} />, labelKey: "chat.emoji.favorites" },
+  { id: "server", icon: <ImageIcon size={16} />, labelKey: "chat.emoji.serverEmojis" },
+  { id: "smileys", icon: <Smile size={16} />, labelKey: "chat.emoji.cat.smileys", categoryName: "Smileys & Emotion" },
+  { id: "people", icon: <User size={16} />, labelKey: "chat.emoji.cat.people", categoryName: "People & Body" },
+  { id: "animals", icon: <Sparkles size={16} />, labelKey: "chat.emoji.cat.animals", categoryName: "Animals & Nature" },
+  { id: "food", icon: <Utensils size={16} />, labelKey: "chat.emoji.cat.food", categoryName: "Food & Drink" },
+  { id: "activities", icon: <Trophy size={16} />, labelKey: "chat.emoji.cat.activities", categoryName: "Activities" },
+  { id: "travel", icon: <Globe size={16} />, labelKey: "chat.emoji.cat.travel", categoryName: "Travel & Places" },
+  { id: "objects", icon: <Package size={16} />, labelKey: "chat.emoji.cat.objects", categoryName: "Objects" },
+  { id: "symbols", icon: <Hash size={16} />, labelKey: "chat.emoji.cat.symbols", categoryName: "Symbols" },
+  { id: "flags", icon: <Flag size={16} />, labelKey: "chat.emoji.cat.flags", categoryName: "Flags" },
 ];
 
 const EMOJI_DATASET: Array<{ name: string; symbol: string; category: string }> = [
@@ -744,6 +746,7 @@ export function EmojiPicker({
   title,
   subtitle,
 }: EmojiPickerProps) {
+  const { t } = useI18n();
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("smileys");
   const [customEmojis, setCustomEmojis] = useState<
@@ -824,7 +827,7 @@ export function EmojiPicker({
       ref={pickerRef}
       className={className || "discord-emoji-picker popover-picker"}
       role="dialog"
-      aria-label="Emoji Picker"
+      aria-label={t("chat.emoji.aria")}
     >
       {title && (
         <div className="emoji-picker-banner">
@@ -839,14 +842,14 @@ export function EmojiPicker({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search emojis..."
+            placeholder={t("chat.emoji.searchPlaceholder")}
             autoFocus
           />
           <button
             type="button"
             className="picker-close-x"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <X size={16} />
           </button>
@@ -862,7 +865,7 @@ export function EmojiPicker({
               type="button"
               className={`cat-rail-btn ${activeCategory === cat.id ? "active" : ""}`}
               onClick={() => scrollToCategory(cat.id)}
-              title={cat.label}
+              title={t(cat.labelKey)}
             >
               {cat.icon}
             </button>
@@ -876,7 +879,7 @@ export function EmojiPicker({
             <div className="emoji-section">
               <div className="emoji-section-header">
                 <span className="flex items-center gap-1">
-                  <Search size={14} /> Search Results ({filteredCustom.length + filteredUnicode.length})
+                  <Search size={14} /> {t("chat.emoji.searchResults", { count: filteredCustom.length + filteredUnicode.length })}
                 </span>
               </div>
               <div className="emoji-grid">
@@ -918,7 +921,7 @@ export function EmojiPicker({
                   </button>
                 ))}
                 {!filteredCustom.length && !filteredUnicode.length && (
-                  <p className="no-emoji-hint">No emojis found matching "{search}"</p>
+                  <p className="no-emoji-hint">{t("chat.emoji.noMatch", { query: search })}</p>
                 )}
               </div>
             </div>
@@ -934,7 +937,7 @@ export function EmojiPicker({
                 >
                   <div className="emoji-section-header">
                     <span className="flex items-center gap-1">
-                      <Star size={14} /> Favorites ({favoriteItems.length})
+                      <Star size={14} /> {t("chat.emoji.favorites")} ({favoriteItems.length})
                     </span>
                   </div>
                   <div className="emoji-grid">
@@ -966,7 +969,7 @@ export function EmojiPicker({
               >
                 <div className="emoji-section-header">
                   <span className="flex items-center gap-1">
-                    <ImageIcon size={14} /> Server Emojis ({customEmojis.length})
+                    <ImageIcon size={14} /> {t("chat.emoji.serverEmojis")} ({customEmojis.length})
                   </span>
                   {canManageEmojis && onRequestUploadEmoji && (
                     <button
@@ -974,7 +977,7 @@ export function EmojiPicker({
                       className="add-server-emoji-btn"
                       onClick={onRequestUploadEmoji}
                     >
-                      + Upload
+                      {t("chat.emoji.uploadBtn")}
                     </button>
                   )}
                 </div>
@@ -1002,7 +1005,7 @@ export function EmojiPicker({
                     </button>
                   ))}
                   {!customEmojis.length && (
-                    <p className="no-emoji-hint">No custom server emojis yet.</p>
+                    <p className="no-emoji-hint">{t("chat.emoji.noCustom")}</p>
                   )}
                 </div>
               </div>
@@ -1023,7 +1026,7 @@ export function EmojiPicker({
                   >
                     <div className="emoji-section-header">
                       <span className="flex items-center gap-1">
-                        {cat.icon} {cat.label} ({items.length})
+                        {cat.icon} {t(cat.labelKey)} ({items.length})
                       </span>
                     </div>
                     <div className="emoji-grid">
@@ -1064,11 +1067,11 @@ export function EmojiPicker({
             </div>
             <div className="preview-details">
               <span className="preview-name">:{hoveredEmoji.name}:</span>
-              <span className="preview-tip">Hold Alt to favorite</span>
+              <span className="preview-tip">{t("chat.emoji.holdAltTip")}</span>
             </div>
           </div>
         ) : (
-          <span className="preview-placeholder">Select an emoji</span>
+          <span className="preview-placeholder">{t("chat.emoji.selectPlaceholder")}</span>
         )}
       </footer>
     </div>

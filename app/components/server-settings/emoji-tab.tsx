@@ -1,6 +1,7 @@
 "use client";
 
 import { MoreHorizontal, Smile, Crown, Skull } from "lucide-react";
+import { useI18n } from "../../lib/i18n-context";
 import { Tab, CustomEmoji } from "./types";
 
 export function ServerEmojiTab({
@@ -22,14 +23,20 @@ export function ServerEmojiTab({
   emojis: CustomEmoji[];
   handleDeleteEmoji: (emojiId: string, emojiName: string) => void;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {tab === "emoji" && (
           <div className="tab-pane emoji-pane">
-            <h1 className="pane-title">Emoji</h1>
+            <h1 className="pane-title">{t("serverSettings.emoji.title")}</h1>
             <p className="pane-subtitle">
-              Add up to 50 custom emoji that anyone can use in this server. Animated GIF emoji may be used by members with Discord Nitro.
+              {t("serverSettings.emoji.subtitle")}
             </p>
+            {canManageServer && (
+              <p className="modal-hint" style={{ marginBottom: 12 }}>
+                {t("discordImport.emojiTip")}
+              </p>
+            )}
 
             {canManageServer && (
               <div className="emoji-upload-row">
@@ -39,10 +46,10 @@ export function ServerEmojiTab({
                   disabled={uploadingEmoji}
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  {uploadingEmoji ? "Uploading..." : "Upload Emoji"}
+                  {uploadingEmoji ? t("serverSettings.emoji.uploading") : t("serverSettings.emoji.upload")}
                 </button>
                 <p className="drag-drop-note">
-                  If you want to upload multiple emojis or skip the editor, drag and drop the file(s) onto this page.
+                  {t("serverSettings.emoji.dragNote")}
                 </p>
               </div>
             )}
@@ -55,13 +62,13 @@ export function ServerEmojiTab({
             />
 
             {loadingEmojis ? (
-              <p className="loading-state">Loading emojis...</p>
+              <p className="loading-state">{t("serverSettings.emoji.loading")}</p>
             ) : emojis.length > 0 ? (
               <div className="custom-emojis-table">
                 <div className="table-head">
-                  <span>EMOJI</span>
-                  <span>NAME</span>
-                  <span>ACTIONS</span>
+                  <span>{t("serverSettings.emoji.colEmoji")}</span>
+                  <span>{t("serverSettings.emoji.colName")}</span>
+                  <span>{t("serverSettings.emoji.colActions")}</span>
                 </div>
                 {emojis.map((emoji) => (
                   <div key={emoji.id} className="table-row">
@@ -76,7 +83,7 @@ export function ServerEmojiTab({
                           className="table-action-btn danger"
                           onClick={() => handleDeleteEmoji(emoji.id, emoji.name)}
                         >
-                          Remove
+                          {t("common.remove")}
                         </button>
                       )}
                     </div>
@@ -94,8 +101,8 @@ export function ServerEmojiTab({
                     <span><Skull size={22} /></span>
                   </div>
                 </div>
-                <h2>NO EMOJI</h2>
-                <p>Get the party started by uploading an emoji</p>
+                <h2>{t("serverSettings.emoji.emptyTitle")}</h2>
+                <p>{t("serverSettings.emoji.emptySubtitle")}</p>
               </div>
             )}
           </div>

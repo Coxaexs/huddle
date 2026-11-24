@@ -245,4 +245,125 @@ describe("BattlemapBoard Component & Upgrades", () => {
       }),
     );
   });
+
+  it("measures feet in ruler mode, places AoE templates, and triggers concentration prompt on damage", () => {
+    vi.mocked(apiFetch).mockClear();
+    const map = mockMap({
+      tokens: [
+        {
+          id: "tok-conc",
+          label: "Wizard",
+          color: "#68a8ff",
+          x: 4,
+          y: 4,
+          ownerId: "user-alice",
+          hp: 20,
+          maxHp: 20,
+          conditions: ["concentrating"],
+        },
+        {
+          id: "tok-mob",
+          label: "Bugbear",
+          color: "#ef4444",
+          x: 8,
+          y: 8,
+          ownerId: null,
+          hp: 10,
+          maxHp: 27,
+          hpTier: { label: "Bloodied", color: "#f97316" },
+        },
+        {
+          id: "tok-hidden",
+          label: "Secret Assassin",
+          color: "#991b1b",
+          x: 12,
+          y: 12,
+          ownerId: null,
+          hidden: true,
+        },
+      ],
+    });
+    const { container } = render(
+      <BattlemapBoard
+        channelId="stage-1"
+        map={map}
+        gm={true}
+        userId="user-alice"
+        onClose={vi.fn()}
+        onLocalToken={vi.fn()}
+        onLocalStroke={vi.fn()}
+        onAddMyToken={vi.fn()}
+      />,
+    );
+
+    // Distance ruler in feet
+    fireEvent.click(screen.getByTitle("Measure distance (feet)"));
+    const board = container.querySelector(".battlemap-board") as HTMLElement;
+    board.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 150, right: 200, bottom: 150, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent.pointerDown(board, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(window, { clientX: 40, clientY: 40 });
+    fireEvent.pointerUp(window);
+    expect(screen.getByText(/ft$/)).toBeTruthy();
+
+    // AoE template placement
+    fireEvent.click(screen.getByTitle("Spell AoE templates"));
+    fireEvent.click(screen.getByRole("button", { name: "Cone" }));
+    fireEvent.pointerDown(board, { button: 0, clientX: 50, clientY: 50 });
+    fireEvent.pointerMove(window, { clientX: 90, clientY: 50 });
+    fireEvent.pointerUp(window);
+    expect(vi.mocked(apiFetch)).toHaveBeenCalledWith(
+      "/api/battlemap",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"action":"add-area"'),
+      }),
+    );
+
+    // Trigger Concentration check prompt when hurting a concentrating token
+    fireEvent.click(screen.getByTitle("Initiative & Encounter Tracker"));
+    const minusButtons = screen.getAllByTitle("-1 HP");
+    fireEvent.click(minusButtons[0]);
+    expect(screen.getByText(/CON Save DC 10/)).toBeTruthy();
+  });
+
+  it("masks monster HP to tier label and hides GM-hidden tokens for non-GMs", () => {
+    const map = mockMap({
+      hpVisibility: "tier",
+      tokens: [
+        {
+          id: "tok-mob",
+          label: "Goblin",
+          color: "#ef4444",
+          x: 6,
+          y: 6,
+          ownerId: null,
+          hpTier: { label: "Bloodied", color: "#f97316" },
+        },
+        {
+          id: "tok-hidden",
+          label: "Invisible Stalker",
+          color: "#64748b",
+          x: 10,
+          y: 10,
+          ownerId: null,
+          hidden: true,
+        },
+      ],
+    });
+    render(
+      <BattlemapBoard
+        channelId="stage-1"
+        map={map}
+        gm={false}
+        userId="user-bob"
+        onClose={vi.fn()}
+        onLocalToken={vi.fn()}
+        onLocalStroke={vi.fn()}
+        onAddMyToken={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Bloodied")).toBeTruthy();
+    expect(screen.queryByText("Invisible Stalker")).toBeNull();
+  });
 });

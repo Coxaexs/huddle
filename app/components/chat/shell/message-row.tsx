@@ -527,10 +527,14 @@ function MessageRowImpl({
                           // A webhook post (a bridged Discord message) brings its own picture,
                           // fetched through Hoffle so Discord never sees who is reading.
                           avatarUrl={
-                            author?.avatarUrl ??
-                            (message.payload?.avatarUrl ? proxiedImage(message.payload.avatarUrl) : undefined)
+                            message.payload?.ic?.portraitUrl
+                              ? (message.payload.ic.portraitUrl.startsWith("/")
+                                  ? message.payload.ic.portraitUrl
+                                  : proxiedImage(message.payload.ic.portraitUrl))
+                              : (author?.avatarUrl ??
+                                  (message.payload?.avatarUrl ? proxiedImage(message.payload.avatarUrl) : undefined))
                           }
-                          color={author?.color || message.color}
+                          color={message.payload?.ic?.color || author?.color || message.color}
                           onContextMenu={(event) => {
                             if (author) openUserMenu(event, author);
                           }}
@@ -574,7 +578,8 @@ function MessageRowImpl({
                           <div className="message-meta">
                             <strong
                               className={author ? "clickable-name" : ""}
-                              style={{ color: roleColorFor(author) || undefined }}
+                              style={{ color: message.payload?.ic?.color || roleColorFor(author) || undefined }}
+                              title={message.payload?.ic?.name ? (author?.displayName || message.author) : undefined}
                               onContextMenu={(event) => {
                                 if (author) openUserMenu(event, author);
                               }}
@@ -582,8 +587,22 @@ function MessageRowImpl({
                                 if (author) openProfile(author, event);
                               }}
                             >
-                              <StyledName name={author?.displayName || message.author} style={author?.profileStyle} />
+                              {message.payload?.ic?.name ? (
+                                message.payload.ic.name
+                              ) : (
+                                <StyledName name={author?.displayName || message.author} style={author?.profileStyle} />
+                              )}
                             </strong>
+                            {message.payload?.ic?.name && (
+                              <>
+                                <span className="bot-tag" title={author?.displayName || message.author}>
+                                  IC
+                                </span>
+                                <span style={{ fontSize: 11, opacity: 0.6 }}>
+                                  ({author?.displayName || message.author})
+                                </span>
+                              </>
+                            )}
                             {!inDmHome && <RoleIcon member={author} server={activeServer} />}
                             {/* No role tags next to names; the server owner gets a small crown. */}
                             {!inDmHome && activeServer?.ownerId && author?.id === activeServer.ownerId && (
@@ -770,6 +789,8 @@ function MessageRowImpl({
                             question={message.payload.question || message.text}
                             options={message.payload.options || []}
                             multi={message.payload.multi}
+                            pollKind={message.payload.pollKind}
+                            grid={message.payload.grid}
                             liveCounts={pollCounts[message.payload.pollId]}
                             liveVoters={pollVoters[message.payload.pollId]}
                           />

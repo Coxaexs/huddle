@@ -4,6 +4,8 @@ import { useState, useMemo } from "react";
 import { Scale, ExternalLink, ShieldCheck, Search, ChevronDown, ChevronUp, Code2, Heart, Coffee } from "lucide-react";
 import { KOFI_URL, GITHUB_SPONSORS_URL } from "./site-chrome";
 import { isNativeApp } from "../lib/native-app";
+import { useI18n } from "../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 
 interface ThirdPartyPackage {
   name: string;
@@ -126,26 +128,35 @@ const THIRD_PARTY_PACKAGES: ThirdPartyPackage[] = [
   },
 ];
 
-const AGPL_SUMMARY = [
+const AGPL_SUMMARY: Array<{ titleKey: MessageKey; descKey: MessageKey }> = [
   {
-    title: "Freedom to Run & Self-Host",
-    desc: "You can run Hoffle on your own private hardware, VPS, or cloud server for your community without paying license fees.",
+    titleKey: "settings.licenses.agpl1Title",
+    descKey: "settings.licenses.agpl1Desc",
   },
   {
-    title: "Freedom to Inspect & Modify",
-    desc: "You have complete access to the source code and can adapt it, add custom bot commands, or customize the UI.",
+    titleKey: "settings.licenses.agpl2Title",
+    descKey: "settings.licenses.agpl2Desc",
   },
   {
-    title: "Copyleft Network Clause (Section 13)",
-    desc: "If you modify Hoffle and offer it as a service over a network, you must provide your modified source code to everyone interacting with it.",
+    titleKey: "settings.licenses.agpl3Title",
+    descKey: "settings.licenses.agpl3Desc",
   },
   {
-    title: "No Warranty",
-    desc: "Hoffle is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY of merchantability or fitness for a particular purpose.",
+    titleKey: "settings.licenses.agpl4Title",
+    descKey: "settings.licenses.agpl4Desc",
   },
 ];
 
+const CATEGORY_KEY: Record<string, MessageKey> = {
+  all: "settings.licenses.cat.all",
+  "Core & UI": "settings.licenses.cat.core",
+  "Audio & Graphics": "settings.licenses.cat.audio",
+  "Documents & Tools": "settings.licenses.cat.docs",
+  "Platform & Services": "settings.licenses.cat.platform",
+};
+
 export function LicensesTab() {
+  const { t } = useI18n();
   const [showFullAgpl, setShowFullAgpl] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
@@ -177,13 +188,13 @@ export function LicensesTab() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-white">Hoffle Self-Hosted Platform</h3>
+                <h3 className="text-base font-bold text-white">{t("settings.licenses.platformTitle")}</h3>
                 <span className="rounded bg-[#5865f2]/30 px-2 py-0.5 text-xs font-semibold text-[#a5b4fc] border border-[#5865f2]/50">
                   GNU AGPLv3
                 </span>
               </div>
               <p className="text-xs text-[#949ba4] mt-0.5">
-                Copyright © 2026 coxaexs &lt;coxaexs@gmail.com&gt; · Free & Open Source
+                {t("settings.licenses.copyright")}
               </p>
             </div>
           </div>
@@ -195,7 +206,7 @@ export function LicensesTab() {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#35373c] hover:bg-[#3e4046] px-3 py-1.5 text-xs font-medium text-white transition-colors"
             >
-              <Code2 size={14} /> Source Code <ExternalLink size={12} className="opacity-70" />
+              <Code2 size={14} /> {t("settings.licenses.sourceCode")} <ExternalLink size={12} className="opacity-70" />
             </a>
             {KOFI_URL && !isNativeApp() && (
               <a
@@ -214,27 +225,25 @@ export function LicensesTab() {
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[#2b2d31] hover:bg-[#35373c] border border-[#ea4aaa]/40 text-[#ea4aaa] hover:text-[#f472b6] px-3 py-1.5 text-xs font-medium transition-colors"
               >
-                <Heart size={14} /> Sponsors <ExternalLink size={12} className="opacity-70" />
+                <Heart size={14} /> {t("settings.licenses.sponsors")} <ExternalLink size={12} className="opacity-70" />
               </a>
             )}
           </div>
         </div>
 
         <p className="mt-3 text-xs leading-relaxed text-[#c4c9ce]">
-          Hoffle is licensed under the <strong>GNU Affero General Public License Version 3 (GNU AGPLv3)</strong>.
-          As a self-hosted platform, this ensures that Hoffle remains free and open source forever, protecting user
-          freedom across both private server deployments and networked services.
+          {t("settings.licenses.introPrefix")} <strong>GNU Affero General Public License Version 3 (GNU AGPLv3)</strong>{t("settings.licenses.introSuffix")}
         </p>
 
         {/* AGPL Key Highlights */}
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2.5">
           {AGPL_SUMMARY.map((item) => (
-            <div key={item.title} className="rounded-lg bg-[#232428]/80 p-2.5 border border-[#3f4147]/40">
+            <div key={item.titleKey} className="rounded-lg bg-[#232428]/80 p-2.5 border border-[#3f4147]/40">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-[#f2f3f5]">
                 <ShieldCheck size={14} className="text-[#5865f2]" />
-                {item.title}
+                {t(item.titleKey)}
               </div>
-              <p className="mt-1 text-[11px] leading-relaxed text-[#949ba4]">{item.desc}</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-[#949ba4]">{t(item.descKey)}</p>
             </div>
           ))}
         </div>
@@ -247,7 +256,7 @@ export function LicensesTab() {
             className="flex items-center justify-between text-xs font-medium text-[#a5b4fc] hover:text-white transition-colors w-full text-left"
           >
             <span className="flex items-center gap-1.5">
-              <Scale size={14} /> {showFullAgpl ? "Hide full GNU AGPLv3 text" : "Read full GNU AGPLv3 terms and conditions"}
+              <Scale size={14} /> {showFullAgpl ? t("settings.licenses.hideFullAgpl") : t("settings.licenses.readFullAgpl")}
             </span>
             {showFullAgpl ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
@@ -296,10 +305,10 @@ repository, or online at: https://www.gnu.org/licenses/agpl-3.0.html`}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
-              <Heart size={15} className="text-red-400" /> Third-Party Open Source Attributions
+              <Heart size={15} className="text-red-400" /> {t("settings.licenses.thirdPartyTitle")}
             </h4>
             <p className="text-xs text-[#949ba4]">
-              Hoffle is made possible by these essential open source projects and libraries.
+              {t("settings.licenses.thirdPartySub")}
             </p>
           </div>
 
@@ -307,7 +316,7 @@ repository, or online at: https://www.gnu.org/licenses/agpl-3.0.html`}
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#80848e]" />
             <input
               type="text"
-              placeholder="Search dependencies..."
+              placeholder={t("settings.licenses.searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full rounded-md bg-[#1e1f22] border border-[#3f4147] py-1.5 pl-8 pr-3 text-xs text-white placeholder-[#80848e] focus:border-[#5865f2] focus:outline-none"
@@ -328,7 +337,7 @@ repository, or online at: https://www.gnu.org/licenses/agpl-3.0.html`}
                   : "bg-[#2b2d31] text-[#949ba4] hover:bg-[#35373c] hover:text-white"
               }`}
             >
-              {cat === "all" ? "All Packages" : cat}
+              {t(CATEGORY_KEY[cat])}
             </button>
           ))}
         </div>
@@ -359,14 +368,14 @@ repository, or online at: https://www.gnu.org/licenses/agpl-3.0.html`}
               </div>
 
               <div className="mt-2.5 pt-2 border-t border-[#3f4147]/30 flex items-center justify-between text-[11px]">
-                <span className="text-[#80848e]">{pkg.category}</span>
+                <span className="text-[#80848e]">{t(CATEGORY_KEY[pkg.category])}</span>
                 <a
                   href={pkg.projectUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[#949ba4] hover:text-white inline-flex items-center gap-1 transition-colors"
                 >
-                  Visit Project <ExternalLink size={11} />
+                  {t("settings.licenses.visitProject")} <ExternalLink size={11} />
                 </a>
               </div>
             </div>
@@ -374,7 +383,7 @@ repository, or online at: https://www.gnu.org/licenses/agpl-3.0.html`}
 
           {filteredPackages.length === 0 && (
             <div className="col-span-full py-8 text-center text-xs text-[#80848e]">
-              No dependencies found matching &quot;{searchQuery}&quot;.
+              {t("settings.licenses.noMatch", { query: searchQuery })}
             </div>
           )}
         </div>

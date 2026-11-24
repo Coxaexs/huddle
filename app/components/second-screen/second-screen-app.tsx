@@ -28,6 +28,8 @@ import { BattlemapPane, type BattlemapLiveSignal } from "./battlemap-pane";
 import { ChatPane, type ChatPaneLiveSignal, type SimpleChatMessage } from "./chat-pane";
 import { DndIframePane } from "./dnd-iframe-pane";
 import { ScreensharePane } from "./screenshare-pane";
+import { useI18n } from "../../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 import "./second-screen.css";
 
 interface ChannelOption {
@@ -60,15 +62,16 @@ interface SecondScreenApiPayload {
   error?: string;
 }
 
-const PANE_LABELS: Array<{ id: SecondScreenPane; label: string }> = [
-  { id: "screenshare", label: "Screenshare" },
-  { id: "chat", label: "Channel Chat" },
-  { id: "battlemap", label: "D&D Battlemap" },
-  { id: "dnd-display", label: "D&D Display" },
-  { id: "dnd-companion", label: "D&D Companion" },
+const PANE_LABELS: Array<{ id: SecondScreenPane; labelKey: MessageKey }> = [
+  { id: "screenshare", labelKey: "s2.app.pane.screenshare" },
+  { id: "chat", labelKey: "s2.app.pane.chat" },
+  { id: "battlemap", labelKey: "s2.app.pane.battlemap" },
+  { id: "dnd-display", labelKey: "s2.app.pane.dndDisplay" },
+  { id: "dnd-companion", labelKey: "s2.app.pane.dndCompanion" },
 ];
 
 export function SecondScreenApp() {
+  const { t } = useI18n();
   const [pairToken, setPairToken] = useState("");
   const [bootDone, setBootDone] = useState(false);
   const [authNeeded, setAuthNeeded] = useState(false);
@@ -349,7 +352,7 @@ export function SecondScreenApp() {
   if (!bootDone) {
     return (
       <div className="s2-shell">
-        <div className="s2-empty">Loading 2nd Screen…</div>
+        <div className="s2-empty">{t("s2.app.loading")}</div>
       </div>
     );
   }
@@ -457,28 +460,28 @@ export function SecondScreenApp() {
           type="button"
           className="s2-show-bar-fab"
           onClick={() => setHudHidden(false)}
-          title="Show 2nd Screen controls"
+          title={t("s2.app.showControlsTitle")}
         >
-          <Eye size={14} /> Controls
+          <Eye size={14} /> {t("s2.app.controlsBtn")}
         </button>
       ) : (
         <header className="s2-bar">
           <div className="s2-bar-group">
             <span className="s2-brand">
               <Monitor size={15} style={{ color: "var(--lavender, #8b5cf6)" }} />
-              <span>Hoffle 2nd Screen</span>
+              <span>{t("s2.brand")}</span>
             </span>
             {wsConnected ? (
-              <Wifi size={13} style={{ color: "#34d399" }} aria-label="Live synced" />
+              <Wifi size={13} style={{ color: "#34d399" }} aria-label={t("s2.app.liveSyncedAria")} />
             ) : (
-              <WifiOff size={13} style={{ opacity: 0.55 }} aria-label="Polling / reconnecting" />
+              <WifiOff size={13} style={{ opacity: 0.55 }} aria-label={t("s2.app.reconnectingAria")} />
             )}
 
             {!pairedReadOnly && (
               <>
                 <select
                   className="s2-select"
-                  aria-label="Primary pane"
+                  aria-label={t("s2.app.primaryPaneAria")}
                   value={state.primary}
                   onChange={(e) =>
                     void updateState({ primary: e.target.value as SecondScreenPane })
@@ -486,7 +489,7 @@ export function SecondScreenApp() {
                 >
                   {PANE_LABELS.map((p) => (
                     <option key={p.id} value={p.id}>
-                      Pane 1: {p.label}
+                      {t("s2.app.pane1Prefix", { label: t(p.labelKey) })}
                     </option>
                   ))}
                 </select>
@@ -495,7 +498,7 @@ export function SecondScreenApp() {
                   type="button"
                   className={`s2-pill-btn ${state.layout === "single" ? "active" : ""}`}
                   onClick={() => void updateState({ layout: "single" })}
-                  title="Single pane"
+                  title={t("s2.app.singlePaneTitle")}
                 >
                   <Square size={12} /> 1
                 </button>
@@ -503,23 +506,23 @@ export function SecondScreenApp() {
                   type="button"
                   className={`s2-pill-btn ${state.layout === "split-h" ? "active" : ""}`}
                   onClick={() => void updateState({ layout: "split-h" })}
-                  title="Split side-by-side"
+                  title={t("s2.app.splitSideTitle")}
                 >
-                  <Columns2 size={12} /> Split
+                  <Columns2 size={12} /> {t("s2.app.splitBtn")}
                 </button>
                 <button
                   type="button"
                   className={`s2-pill-btn ${state.layout === "split-v" ? "active" : ""}`}
                   onClick={() => void updateState({ layout: "split-v" })}
-                  title="Split stacked"
+                  title={t("s2.app.splitStackTitle")}
                 >
-                  <Rows2 size={12} /> Stack
+                  <Rows2 size={12} /> {t("s2.app.stackBtn")}
                 </button>
 
                 {state.layout !== "single" && (
                   <select
                     className="s2-select"
-                    aria-label="Secondary pane"
+                    aria-label={t("s2.app.secondaryPaneAria")}
                     value={state.secondary}
                     onChange={(e) =>
                       void updateState({
@@ -529,7 +532,7 @@ export function SecondScreenApp() {
                   >
                     {PANE_LABELS.map((p) => (
                       <option key={p.id} value={p.id}>
-                        Pane 2: {p.label}
+                        {t("s2.app.pane2Prefix", { label: t(p.labelKey) })}
                       </option>
                     ))}
                   </select>
@@ -542,13 +545,13 @@ export function SecondScreenApp() {
             {!pairedReadOnly && textChannels.length > 0 && (
               <select
                 className="s2-select"
-                aria-label="Channel for chat"
+                aria-label={t("s2.app.chatChannelAria")}
                 value={state.channelId || ""}
                 onChange={(e) =>
                   void updateState({ channelId: e.target.value || null })
                 }
               >
-                <option value="">Pick chat channel…</option>
+                <option value="">{t("s2.app.pickChatChannel")}</option>
                 {textChannels.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.group}: #{c.name}
@@ -559,31 +562,31 @@ export function SecondScreenApp() {
             {!pairedReadOnly && voiceChannels.length > 0 && (
               <select
                 className="s2-select"
-                aria-label="Voice channel for screenshare"
+                aria-label={t("s2.app.voiceChannelAria")}
                 value={effectiveVoiceId || ""}
                 onChange={(e) =>
                   void updateState({ voiceChannelId: e.target.value || null })
                 }
               >
-                <option value="">Pick voice room…</option>
+                <option value="">{t("s2.app.pickVoiceRoom")}</option>
                 {voiceChannels.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.group}: {v.name} ({v.participants}
-                    {v.hasScreenShare ? " · Live" : ""})
+                    {v.hasScreenShare ? t("s2.app.liveTag") : ""})
                   </option>
                 ))}
               </select>
             )}
             {pairedReadOnly && (
               <span className="s2-pill-btn" style={{ cursor: "default" }}>
-                <Lock size={12} /> Paired view
+                <Lock size={12} /> {t("s2.app.pairedView")}
               </span>
             )}
             <button
               type="button"
               className="s2-pill-btn"
               onClick={() => void toggleFullscreen()}
-              title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+              title={fullscreen ? t("s2.app.exitFullscreen") : t("s2.app.fullscreen")}
             >
               {fullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
             </button>
@@ -591,7 +594,7 @@ export function SecondScreenApp() {
               type="button"
               className="s2-pill-btn"
               onClick={() => setHudHidden(true)}
-              title="Hide top bar"
+              title={t("s2.app.hideTopBar")}
             >
               <EyeOff size={13} />
             </button>
@@ -618,13 +621,14 @@ export function SecondScreenApp() {
 }
 
 function AutoContinue({ onReady }: { onReady: () => void }) {
+  const { t } = useI18n();
   useEffect(() => {
     onReady();
   }, [onReady]);
 
   return (
     <div className="s2-shell">
-      <div className="s2-empty">Signing in to 2nd Screen…</div>
+      <div className="s2-empty">{t("s2.app.signingIn")}</div>
     </div>
   );
 }

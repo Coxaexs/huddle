@@ -194,5 +194,7 @@ export const userSettings = {
   "accessibilitySettings.animateNameEffectsDesc": "When styled names move in chat and the member list. Cards and voice tiles always animate.",
   "accessibilitySettings.interfaceMotion": "Interface motion",
   "accessibilitySettings.interfaceMotionDesc": "Smooth scrolling and interface micro-animations.",
+  "accessibilitySettings.ecoMode": "Eco Mode (Low power / Performance)",
+  "accessibilitySettings.ecoModeDesc": "Turns off blur, glow shadows, animated backgrounds, and 3D dice to save battery and CPU.",
 } as const;
 

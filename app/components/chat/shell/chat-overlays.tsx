@@ -632,17 +632,27 @@ export function renderChatOverlays(v: ShellRenderState) {
       <PollDialog
         open={pollDialogOpen}
         onClose={() => setPollDialogOpen(false)}
-        onSubmit={async (question, options, isPrivate) => {
+        onSubmit={async (question, options, isPrivate, grid) => {
           if (!activeChannelId) return;
           try {
             await apiFetch("/api/polls", {
               method: "POST",
-              body: JSON.stringify({
-                channelId: activeChannelId,
-                question,
-                options,
-                isPrivate,
-              }),
+              body: JSON.stringify(
+                grid
+                  ? {
+                      channelId: activeChannelId,
+                      question,
+                      kind: "when2meet",
+                      grid,
+                      isPrivate,
+                    }
+                  : {
+                      channelId: activeChannelId,
+                      question,
+                      options,
+                      isPrivate,
+                    },
+              ),
             });
           } catch (err) {
             setNotice(err instanceof Error ? err.message : "Failed to create poll");
@@ -689,12 +699,7 @@ export function renderChatOverlays(v: ShellRenderState) {
       <ToastContainer />
       <AchievementLayer userId={user?.id ?? null} />
       {user && <ListenAlong />}
-      {user && (
-        <PlayPrompts
-          channelId={activeChannelId}
-          channelLabel={v.activeChannel?.name ? `#${v.activeChannel.name}` : ""}
-        />
-      )}
+      {user && <PlayPrompts />}
       <DeviceSwitchPrompt
         inCall={Boolean(voice.channelId)}
         activeMicrophone={voice.activeMicrophone}

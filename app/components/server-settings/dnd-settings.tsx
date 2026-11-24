@@ -5,6 +5,7 @@ import { apiFetch } from "../../lib/client";
 import { useI18n } from "../../lib/i18n-context";
 import type { MessageKey } from "@/lib/i18n";
 import type { DndSettings } from "@/lib/dnd-rules";
+import type { PublicRole } from "@/lib/servers";
 import { GAME_SYSTEM_EVENT } from "../../lib/game-system";
 
 /**
@@ -15,10 +16,12 @@ import { GAME_SYSTEM_EVENT } from "../../lib/game-system";
  */
 export function DndSettingsPanel({
   serverId,
+  roles = [],
   onNotice,
   onRequestPrompt,
 }: {
   serverId: string;
+  roles?: PublicRole[];
   onNotice: (text: string) => void;
   onRequestPrompt: (options: {
     title: string;
@@ -120,6 +123,29 @@ export function DndSettingsPanel({
               {system === "dnd5e" ? "D&D 5e" : "Vampire V5"}
             </button>
           ))}
+        </div>
+      </div>
+
+      <div className="dnd-settings-row">
+        <div>
+          <strong>{tk("intg.dnd.gmRole")}</strong>
+          <p>{tk("intg.dnd.gmRoleDesc")}</p>
+        </div>
+        <div className="dnd-settings-toggle">
+          <select
+            className="discord-input text-xs"
+            aria-label={tk("intg.dnd.gmRole")}
+            disabled={saving}
+            value={settings.gmRoleId || ""}
+            onChange={(e) => void save({ gmRoleId: e.target.value || null }, tk("intg.dnd.gmRoleSaved"))}
+          >
+            <option value="">{tk("intg.dnd.gmRoleDefault")}</option>
+            {roles.map((role) => (
+              <option key={role.id} value={role.id}>
+                @{role.name}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

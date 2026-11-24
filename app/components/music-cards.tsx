@@ -116,39 +116,39 @@ export function MusicSettingsCard({
           <Settings size={18} />
         </span>
         <div>
-          <strong>Music room settings</strong>
-          <small>Configure audio, playback, and AI DJ features for this room</small>
+          <strong>{tNow("music.card.settingsTitle")}</strong>
+          <small>{tNow("music.card.settingsSub")}</small>
         </div>
         <span className={`music-live-pill ${disabled ? "" : "live"}`}>
-          {disabled ? "Join voice" : "Live Room"}
+          {disabled ? tNow("music.card.joinVoice") : tNow("music.card.liveRoom")}
         </span>
       </header>
 
-      <div className="music-card-section-label">Playback & AI Controls</div>
+      <div className="music-card-section-label">{tNow("music.card.playbackAi")}</div>
       <div className="music-toggle-grid">
         <Toggle
-          label="Smart Autoplay"
-          hint="Keep room playing related tracks"
+          label={tNow("music.card.autoplay")}
+          hint={tNow("music.card.autoplayHint")}
           enabled={Boolean(settings.autoplay)}
           onClick={() => void apply(`/autoplay ${settings.autoplay ? "off" : "on"}`)}
         />
         <Toggle
-          label="AutoMix DJ"
-          hint="Spotify-style auto transitions"
+          label={tNow("music.card.automix")}
+          hint={tNow("music.card.automixHint")}
           enabled={Boolean(settings.automix)}
           onClick={() => void apply(`/automix ${settings.automix ? "off" : "on"}`)}
         />
         <Toggle
-          label="Artist diversity"
-          hint="Avoid repeat artist tracks"
+          label={tNow("music.card.artistDiversity")}
+          hint={tNow("music.card.artistDiversityHint")}
           enabled={Boolean(settings.artist_diversity)}
           onClick={() =>
             void apply(`/artistdiversity ${settings.artist_diversity ? "off" : "on"}`)
           }
         />
         <Toggle
-          label="Vibe matching"
-          hint="Maintain mood energy"
+          label={tNow("music.card.vibeMatch")}
+          hint={tNow("music.card.vibeMatchHint")}
           enabled={Boolean(settings.vibe_match)}
           onClick={() =>
             void apply(`/vibematch ${settings.vibe_match ? "off" : "on"}`)
@@ -158,15 +158,15 @@ export function MusicSettingsCard({
 
       {(settings.radio_stations || []).some((station) => station.songs) && (
         <>
-          <div className="music-card-section-label">Mood Radio</div>
-          <div className="music-filter-row" aria-label="Mood radio">
+          <div className="music-card-section-label">{tNow("music.card.moodRadio")}</div>
+          <div className="music-filter-row" aria-label={tNow("music.card.moodRadioAria")}>
             {(settings.radio_stations || [])
               .filter((station) => station.songs)
               .map((station) => (
                 <button
                   type="button"
                   key={station.id}
-                  title={`${station.songs} songs, endless`}
+                  title={tNow("music.card.radioSongsTitle", { count: station.songs })}
                   className={settings.radio === station.id ? "active" : ""}
                   aria-pressed={settings.radio === station.id}
                   onClick={() =>
@@ -178,17 +178,17 @@ export function MusicSettingsCard({
               ))}
             {settings.radio && (
               <button type="button" onClick={() => void apply("/radio off")}>
-                Off
+                {tNow("music.card.off")}
               </button>
             )}
           </div>
         </>
       )}
 
-      <div className="music-card-section-label">Mix & Transition Timings</div>
+      <div className="music-card-section-label">{tNow("music.card.mixTimings")}</div>
       <div className="music-slider-grid">
         <label>
-          <span>Crossfade <b>{crossfade}s</b></span>
+          <span>{tNow("music.card.crossfade")} <b>{crossfade}s</b></span>
           <input
             type="range"
             min={0}
@@ -207,15 +207,15 @@ export function MusicSettingsCard({
         </label>
       </div>
 
-      <div className="music-card-section-label">Audio Effects & Filters</div>
-      <div className="music-filter-row" aria-label="Music filter">
+      <div className="music-card-section-label">{tNow("music.card.audioEffects")}</div>
+      <div className="music-filter-row" aria-label={tNow("music.card.musicFilterAria")}>
         {[
-          { id: "off", label: "Clean" },
-          { id: "bassboost", label: "Bass Boost" },
-          { id: "nightcore", label: "Nightcore" },
-          { id: "slowed", label: "Slowed" },
-          { id: "8d", label: "8D Spatial" },
-          { id: "karaoke", label: "Karaoke" },
+          { id: "off", label: tNow("music.card.filter.off") },
+          { id: "bassboost", label: tNow("music.card.filter.bassboost") },
+          { id: "nightcore", label: tNow("music.card.filter.nightcore") },
+          { id: "slowed", label: tNow("music.card.filter.slowed") },
+          { id: "8d", label: tNow("music.card.filter.8d") },
+          { id: "karaoke", label: tNow("music.card.filter.karaoke") },
         ].map((preset) => (
           <button
             type="button"
@@ -228,11 +228,11 @@ export function MusicSettingsCard({
         ))}
       </div>
 
-      <div className="music-card-section-label">Your Mic</div>
+      <div className="music-card-section-label">{tNow("music.card.yourMic")}</div>
       <div className="music-toggle-grid">
         <Toggle
-          label="Singing voice"
-          hint={filter === "karaoke" ? "Sing along with autotune" : "Autotune on your mic"}
+          label={tNow("music.card.singingVoice")}
+          hint={filter === "karaoke" ? tNow("music.card.singingKaraokeHint") : tNow("music.card.singingDefaultHint")}
           enabled={singing}
           onClick={() => {
             const next = !singing;
@@ -243,14 +243,14 @@ export function MusicSettingsCard({
         {singing && (
           <>
             <Toggle
-              label="Keep my vibrato"
-              hint={mic.tuneStyle === "natural" ? "Natural: slides and vibrato come through, centred on the note" : "Off: snapped hard onto each note"}
+              label={tNow("music.card.keepVibrato")}
+              hint={mic.tuneStyle === "natural" ? tNow("music.card.vibratoNaturalHint") : tNow("music.card.vibratoHardHint")}
               enabled={mic.tuneStyle === "natural"}
               onClick={() => changeMic({ tuneStyle: mic.tuneStyle === "natural" ? "hard" : "natural" })}
             />
             <Toggle
-              label="Sync the room to me"
-              hint="Everyone hears the song with your voice on it, in time. Wear headphones"
+              label={tNow("music.card.syncRoom")}
+              hint={tNow("music.card.syncRoomHint")}
               enabled={mic.karaokeLead}
               onClick={() => changeMic({ karaokeLead: !mic.karaokeLead })}
             />
@@ -260,14 +260,14 @@ export function MusicSettingsCard({
       {singing && mic.karaokeLead && (
         <div className="music-slider-grid">
           <label>
-            <span>Song timing <b>{mic.karaokeOffsetMs > 0 ? "+" : ""}{mic.karaokeOffsetMs} ms</b></span>
+            <span>{tNow("music.card.songTiming")} <b>{mic.karaokeOffsetMs > 0 ? "+" : ""}{mic.karaokeOffsetMs} ms</b></span>
             <input
               type="range"
               min={KARAOKE_OFFSET_RANGE.min}
               max={KARAOKE_OFFSET_RANGE.max}
               step={10}
               value={mic.karaokeOffsetMs}
-              aria-label="Delay the song under your voice: raise it if your voice comes out late, as on Bluetooth headphones"
+              aria-label={tNow("music.card.karaokeOffsetAria")}
               onChange={(event) => changeMic({ karaokeOffsetMs: Number(event.target.value) })}
             />
           </label>
@@ -275,13 +275,13 @@ export function MusicSettingsCard({
       )}
 
       <div className="music-quick-actions">
-        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/wrapped")}><Sparkles size={14} /> Wrapped</button>
-        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/stats")}><BarChart2 size={14} /> Stats</button>
-        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/like")}><Heart size={14} /> Like</button>
-        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/dislike")}><ThumbsDown size={14} /> Avoid</button>
-        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/lyricsnow")}><Music2 size={14} /> Lyrics</button>
+        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/wrapped")}><Sparkles size={14} /> {tNow("music.card.wrapped")}</button>
+        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/stats")}><BarChart2 size={14} /> {tNow("music.card.stats")}</button>
+        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/like")}><Heart size={14} /> {tNow("music.card.like")}</button>
+        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/dislike")}><ThumbsDown size={14} /> {tNow("music.card.avoid")}</button>
+        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/lyricsnow")}><Music2 size={14} /> {tNow("music.card.lyrics")}</button>
         <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/queue")}><List size={14} /> {tNow("musicCard.queue")}</button>
-        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/shuffle")}><Shuffle size={14} /> Shuffle</button>
+        <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/shuffle")}><Shuffle size={14} /> {tNow("music.card.shuffle")}</button>
       </div>
     </section>
   );
@@ -340,11 +340,11 @@ export function MusicStatsCard({
           {wrapped ? <Sparkles size={18} /> : <BarChart2 size={18} />}
         </span>
         <div>
-          <strong>{wrapped ? "Room Wrapped 2026" : "Room listening stats"}</strong>
-          <small>{label || (wrapped ? "Annual music recap & highlights" : "All time in this room")}</small>
+          <strong>{wrapped ? tNow("music.card.wrapped2026") : tNow("music.card.listeningStatsTitle")}</strong>
+          <small>{label || (wrapped ? tNow("music.card.wrappedSub") : tNow("music.card.statsSub"))}</small>
         </div>
         <span className={`music-live-pill ${wrapped ? "wrapped-pill" : "live"}`}>
-          {wrapped ? "WRAPPED" : "LIVE STATS"}
+          {wrapped ? tNow("music.card.wrappedBadge") : tNow("music.card.liveStatsBadge")}
         </span>
       </header>
 
@@ -355,7 +355,7 @@ export function MusicStatsCard({
             <div className="music-highlight-badge">
               <span className="music-highlight-icon"><Sparkles size={16} /></span>
               <div>
-                <small>Room Personality</small>
+                <small>{tNow("music.card.roomPersonality")}</small>
                 <strong>{personality}</strong>
               </div>
             </div>
@@ -364,7 +364,7 @@ export function MusicStatsCard({
             <div className="music-highlight-badge">
               <span className="music-highlight-icon"><Crown size={16} /></span>
               <div>
-                <small>Top Artist</small>
+                <small>{tNow("music.card.topArtist")}</small>
                 <strong>{topArtist}</strong>
               </div>
             </div>
@@ -373,7 +373,7 @@ export function MusicStatsCard({
             <div className="music-highlight-badge">
               <span className="music-highlight-icon"><Music2 size={16} /></span>
               <div>
-                <small>Top Genre</small>
+                <small>{tNow("music.card.topGenre")}</small>
                 <strong>{topGenre}</strong>
               </div>
             </div>
@@ -382,7 +382,7 @@ export function MusicStatsCard({
             <div className="music-highlight-badge">
               <span className="music-highlight-icon"><MoonStar size={16} /></span>
               <div>
-                <small>Peak Listening</small>
+                <small>{tNow("music.card.peakListening")}</small>
                 <strong>{peakHour}</strong>
               </div>
             </div>
@@ -394,27 +394,27 @@ export function MusicStatsCard({
       <div className="music-stat-totals">
         <div>
           <b>{plays}</b>
-          <span>Total Plays</span>
+          <span>{tNow("music.card.totalPlays")}</span>
         </div>
         <div>
           <b>{unique}</b>
-          <span>Unique Tracks</span>
+          <span>{tNow("music.card.uniqueTracks")}</span>
         </div>
         <div>
           <b>{hours}</b>
-          <span>Listening Hours</span>
+          <span>{tNow("music.card.listeningHours")}</span>
         </div>
         {streakDays ? (
           <div>
             <b>{streakDays}d</b>
-            <span>Active Streak</span>
+            <span>{tNow("music.card.activeStreak")}</span>
           </div>
         ) : null}
       </div>
 
       {/* Top Tracks Chart with Play Action */}
       <div className="music-chart">
-        <h4>Top tracks</h4>
+        <h4>{tNow("music.card.topTracks")}</h4>
         {topSongs.length ? (
           topSongs.map(([title, count], index) => {
             const isPlayingThis = requestingTrack === title;
@@ -434,27 +434,27 @@ export function MusicStatsCard({
                     className="music-play-track-btn"
                     disabled={disabled || isPlayingThis}
                     onClick={() => void handlePlayTrack(title)}
-                    title={`Play ${title}`}
+                    title={tNow("music.card.playTitle", { title })}
                   >
-                    {isPlayingThis ? <Loader2 size={13} className="animate-spin" /> : <><Play size={13} /> Play</>}
+                    {isPlayingThis ? <Loader2 size={13} className="animate-spin" /> : <><Play size={13} /> {tNow("music.card.playBtn")}</>}
                   </button>
                 )}
               </div>
             );
           })
         ) : (
-          <p className="music-empty">Play a few tracks and your top room history will appear here.</p>
+          <p className="music-empty">{tNow("music.card.statsEmpty")}</p>
         )}
       </div>
 
       {/* Top Listeners / Requesters */}
       {topRequesters.length > 0 && (
         <div className="music-requesters">
-          <h4>Top listeners</h4>
+          <h4>{tNow("music.card.topListeners")}</h4>
           <div className="music-requester-tags">
             {topRequesters.map(([name, count]) => (
               <span key={name} className="music-requester-chip">
-                <User size={13} /> {name} <b>{count} plays</b>
+                <User size={13} /> {name} <b>{tNow("music.card.playsCount", { count })}</b>
               </span>
             ))}
           </div>
@@ -466,16 +466,16 @@ export function MusicStatsCard({
         <div className="music-quick-actions">
           {!wrapped && (
             <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/wrapped")}>
-              <Sparkles size={14} /> Room Wrapped
+              <Sparkles size={14} /> {tNow("music.card.roomWrappedBtn")}
             </button>
           )}
           {wrapped && (
             <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/stats")}>
-              <BarChart2 size={14} /> Listening Stats
+              <BarChart2 size={14} /> {tNow("music.card.listeningStatsBtn")}
             </button>
           )}
           <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/settings")}>
-            <Settings size={14} /> Room Settings
+            <Settings size={14} /> {tNow("music.card.roomSettingsBtn")}
           </button>
           <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/lyricsnow")}>
             <Music2 size={14} /> Lyrics
@@ -529,10 +529,16 @@ export function MusicQueueCard({
         </span>
         <div>
           <strong>{tNow("musicCard.roomQueue")}</strong>
-          <small>{queue.length ? `${queue.length} track${queue.length === 1 ? "" : "s"} waiting in queue` : "The queue is currently empty"}</small>
+          <small>
+            {queue.length
+              ? queue.length === 1
+                ? tNow("music.card.tracksWaitingSingle")
+                : tNow("music.card.tracksWaitingPlural", { count: queue.length })
+              : tNow("music.card.queueEmptySub")}
+          </small>
         </div>
         <span className="music-live-pill live">
-          {queue.length ? `${queue.length} QUEUED` : "READY"}
+          {queue.length ? tNow("music.card.queuedBadge", { count: queue.length }) : tNow("music.card.readyBadge")}
         </span>
       </header>
 
@@ -540,7 +546,7 @@ export function MusicQueueCard({
         <div className="music-now-playing-banner">
           <span className="music-eq-icon"><Music2 size={18} /></span>
           <div className="music-np-details">
-            <small>NOW PLAYING</small>
+            <small>{tNow("music.card.nowPlayingBadge")}</small>
             <strong>{currentTrack.title}</strong>
             {currentTrack.artist && <span>{currentTrack.artist}</span>}
           </div>
@@ -552,7 +558,7 @@ export function MusicQueueCard({
                 disabled={disabled || busyAction === "/skip"}
                 onClick={() => void handleAction("/skip")}
               >
-                <SkipForward size={13} /> Skip
+                <SkipForward size={13} /> {tNow("music.card.skipBtn")}
               </button>
             </div>
           )}
@@ -560,7 +566,7 @@ export function MusicQueueCard({
       )}
 
       <div className="music-chart">
-        <h4>Up Next ({queue.length})</h4>
+        <h4>{tNow("music.card.upNext", { count: queue.length })}</h4>
         {queue.length ? (
           queue.map((item) => (
             <div className="music-chart-row queue-row" key={`${item.title}-${item.index}`}>
@@ -576,16 +582,16 @@ export function MusicQueueCard({
                     className="music-play-track-btn"
                     disabled={disabled || busyAction === `/skipto ${item.index}`}
                     onClick={() => void handleAction(`/skipto ${item.index}`)}
-                    title={`Skip directly to #${item.index}`}
+                    title={tNow("music.card.skipToTitle", { index: item.index })}
                   >
-                    <Play size={13} /> Jump
+                    <Play size={13} /> {tNow("music.card.jumpBtn")}
                   </button>
                   <button
                     type="button"
                     className="music-remove-btn"
                     disabled={disabled || busyAction === `/remove ${item.index}`}
                     onClick={() => void handleAction(`/remove ${item.index}`)}
-                    title={`Remove #${item.index}`}
+                    title={tNow("music.card.removeIndexTitle", { index: item.index })}
                   >
                     <X size={14} />
                   </button>
@@ -594,16 +600,16 @@ export function MusicQueueCard({
             </div>
           ))
         ) : (
-          <p className="music-empty">The queue is empty. Use <code>/play song name</code> to add tracks.</p>
+          <p className="music-empty">{tNow("music.card.queueEmptyPrefix")} <code>/play song name</code> {tNow("music.card.queueEmptySuffix")}</p>
         )}
       </div>
 
       {onCommand && (
         <div className="music-quick-actions">
-          <button type="button" className="flex items-center gap-1" onClick={() => void handleAction("/shuffle")}><Shuffle size={14} /> Shuffle</button>
-          <button type="button" className="flex items-center gap-1" onClick={() => void handleAction("/removedupes")}><RotateCcw size={14} /> Remove Dupes</button>
+          <button type="button" className="flex items-center gap-1" onClick={() => void handleAction("/shuffle")}><Shuffle size={14} /> {tNow("music.card.shuffle")}</button>
+          <button type="button" className="flex items-center gap-1" onClick={() => void handleAction("/removedupes")}><RotateCcw size={14} /> {tNow("music.card.removeDupes")}</button>
           <button type="button" className="flex items-center gap-1" onClick={() => void handleAction("/clear")}><Trash2 size={14} /> {tNow("musicCard.clearQueue")}</button>
-          <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/settings")}><Settings size={14} /> Settings</button>
+          <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/settings")}><Settings size={14} /> {tNow("music.card.settingsBtn")}</button>
         </div>
       )}
     </section>
@@ -679,14 +685,16 @@ export function MusicHistoryCard({
           <History size={18} />
         </span>
         <div>
-          <strong>{long ? "Long Listening History" : "Room Listening History"}</strong>
+          <strong>{long ? tNow("music.card.longHistoryTitle") : tNow("music.card.shortHistoryTitle")}</strong>
           <small>
             {long
-              ? `The last ${history.length} track${history.length === 1 ? "" : "s"} in this room`
-              : "Recently played tracks in this room"}
+              ? history.length === 1
+                ? tNow("music.card.longHistorySubSingle")
+                : tNow("music.card.longHistorySubPlural", { count: history.length })
+              : tNow("music.card.shortHistorySub")}
           </small>
         </div>
-        <span className="music-live-pill live">HISTORY</span>
+        <span className="music-live-pill live">{tNow("music.card.historyBadge")}</span>
       </header>
 
       {long && history.length > HISTORY_PAGE_SIZE && (
@@ -695,7 +703,7 @@ export function MusicHistoryCard({
           <input
             type="search"
             value={filter}
-            placeholder="Find a song, artist or who played it"
+            placeholder={tNow("music.card.historySearchPlaceholder")}
             onChange={(event) => {
               setFilter(event.target.value);
               setPage(0);
@@ -727,14 +735,14 @@ export function MusicHistoryCard({
                   disabled={disabled || requestingTrack === item.title}
                   onClick={() => void handlePlay(item.title)}
                 >
-                  {requestingTrack === item.title ? <Loader2 size={13} className="animate-spin" /> : <><Play size={13} /> Replay</>}
+                  {requestingTrack === item.title ? <Loader2 size={13} className="animate-spin" /> : <><Play size={13} /> {tNow("music.card.replayBtn")}</>}
                 </button>
               )}
             </div>
           ))
         ) : (
           <p className="music-empty">
-            {needle ? "Nothing in this room's history matches that." : "This room has not played anything yet."}
+            {needle ? tNow("music.card.historyNoMatch") : tNow("music.card.historyEmpty")}
           </p>
         )}
       </div>
@@ -747,10 +755,10 @@ export function MusicHistoryCard({
             disabled={currentPage === 0}
             onClick={() => setPage(Math.max(0, currentPage - 1))}
           >
-            <ChevronLeft size={14} /> Newer
+            <ChevronLeft size={14} /> {tNow("music.card.newer")}
           </button>
           <span>
-            Page {currentPage + 1} / {pages}
+            {tNow("music.card.pageOf", { page: currentPage + 1, pages })}
           </span>
           <button
             type="button"
@@ -758,16 +766,16 @@ export function MusicHistoryCard({
             disabled={currentPage >= pages - 1}
             onClick={() => setPage(Math.min(pages - 1, currentPage + 1))}
           >
-            Older <ChevronRight size={14} />
+            {tNow("music.card.older")} <ChevronRight size={14} />
           </button>
         </div>
       )}
 
       {onCommand && (
         <div className="music-quick-actions">
-          <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/stats")}><BarChart2 size={14} /> Stats</button>
-          <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/wrapped")}><Sparkles size={14} /> Wrapped</button>
-          <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/settings")}><Settings size={14} /> Settings</button>
+          <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/stats")}><BarChart2 size={14} /> {tNow("music.card.stats")}</button>
+          <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/wrapped")}><Sparkles size={14} /> {tNow("music.card.wrapped")}</button>
+          <button type="button" className="flex items-center gap-1" onClick={() => void onCommand("/settings")}><Settings size={14} /> {tNow("music.card.settingsBtn")}</button>
         </div>
       )}
     </section>
@@ -808,10 +816,10 @@ export function MusicSearchCard({
           <Search size={18} />
         </span>
         <div>
-          <strong>Search Result</strong>
-          <small>Top hit for "{query}"</small>
+          <strong>{tNow("music.card.searchResult")}</strong>
+          <small>{tNow("music.card.topHitFor", { query })}</small>
         </div>
-        <span className="music-live-pill live">MATCH</span>
+        <span className="music-live-pill live">{tNow("music.card.matchBadge")}</span>
       </header>
 
       <div className="music-search-result-body">
@@ -827,7 +835,7 @@ export function MusicSearchCard({
               disabled={disabled || busyAction === `/play ${track.title}`}
               onClick={() => void handleAction(`/play ${track.title}`)}
             >
-              <Play size={13} /> Play Now
+              <Play size={13} /> {tNow("music.card.playNow")}
             </button>
             <button
               type="button"
@@ -843,7 +851,7 @@ export function MusicSearchCard({
               disabled={disabled || busyAction === `/lyrics ${track.title}`}
               onClick={() => void handleAction(`/lyrics ${track.title}`)}
             >
-              <Music2 size={14} /> Lyrics
+              <Music2 size={14} /> {tNow("music.card.lyrics")}
             </button>
           </div>
         )}

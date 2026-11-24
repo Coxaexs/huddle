@@ -113,6 +113,9 @@ export function Composer({
   typingNames,
   messages,
   user,
+  myCharacterName,
+  icActive,
+  onToggleIc,
 }: {
   sendMessage: (event?: FormEvent) => Promise<void>;
   activeSlashCommand: SlashCommand | undefined;
@@ -189,6 +192,9 @@ export function Composer({
   typingNames: string[];
   messages: Message[];
   user: PublicUser;
+  myCharacterName?: string | null;
+  icActive?: boolean;
+  onToggleIc?: () => void;
 }) {
   const gamesOn = useModuleOn("games");
   const { t } = useI18n();
@@ -703,8 +709,10 @@ export function Composer({
                       hidden
                       onChange={chooseAttachment}
                     />
-                    <GameInviteButton channelId={activeChannelId} user={user} />
-                    <ListenInviteButton channelId={activeChannelId} user={user} />
+                    <div className="composer-invite-actions">
+                      <GameInviteButton channelId={activeChannelId} user={user} />
+                      <ListenInviteButton channelId={activeChannelId} user={user} />
+                    </div>
                     <DraftTextarea
                       ref={composerRef}
                       value={draft}
@@ -959,6 +967,17 @@ export function Composer({
                     >
                       /
                     </button>
+                    {myCharacterName && onToggleIc && (
+                      <button
+                        type="button"
+                        className={`gif-button ${icActive ? "active" : ""}`}
+                        aria-pressed={Boolean(icActive)}
+                        title={t("composer.icToggleTitle", { name: myCharacterName })}
+                        onClick={onToggleIc}
+                      >
+                        {t("composer.icPill", { name: myCharacterName })}
+                      </button>
+                    )}
                     {!draft.trim() && pendingFiles.length === 0 && !simpleUi ? (
                       <VoiceRecordButton
                         recorder={voiceRecorder}

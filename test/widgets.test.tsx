@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 
 vi.mock("@/app/lib/client", () => ({ apiFetch: vi.fn(), basePath: "/hangout" }));
 vi.mock("@/app/lib/i18n-context", () => ({
+  currentLocale: () => "en",
   useI18n: () => ({ t: (key: string, values?: Record<string, unknown>) => (values ? `${key} ${JSON.stringify(values)}` : key) }),
 }));
 vi.mock("@/app/lib/image-proxy", () => ({ proxiedImage: (url: string) => url }));

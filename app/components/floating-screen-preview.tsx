@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { ArrowLeft, Eye, Maximize2, Volume1, Volume2, VolumeX, X } from "lucide-react";
+import { useI18n } from "../lib/i18n-context";
 
 export interface FloatingScreenPreviewProps {
   channelName: string;
@@ -36,6 +37,7 @@ export function FloatingScreenPreview({
   onToggleMute,
   isSelf = false,
 }: FloatingScreenPreviewProps) {
+  const { t } = useI18n();
   const cardRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -265,7 +267,7 @@ export function FloatingScreenPreview({
               e.stopPropagation();
               onMaximize();
             }}
-            title="Return to channel"
+            title={t("voice.floating.returnChannel")}
           >
             <ArrowLeft size={14} />
           </button>
@@ -276,7 +278,7 @@ export function FloatingScreenPreview({
         <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
           <div
             className="preview-viewer-badge cursor-pointer"
-            title={`${viewerCount} watching`}
+            title={t("voice.floating.watchingTitle", { count: viewerCount })}
             onClick={(e) => {
               e.stopPropagation();
               setShowViewersList((prev) => !prev);
@@ -294,7 +296,7 @@ export function FloatingScreenPreview({
               onClick={(e) => e.stopPropagation()}
             >
               <div className="font-bold text-white/70 border-b border-white/10 pb-1 flex items-center justify-between">
-                <span>Viewers</span>
+                <span>{t("voice.floating.viewers")}</span>
                 <span className="text-emerald-400 font-mono">{viewers.length}</span>
               </div>
               <div className="max-h-28 overflow-y-auto flex flex-col gap-1 py-0.5">
@@ -328,7 +330,7 @@ export function FloatingScreenPreview({
                   onToggleMute?.();
                 }}
                 onMouseEnter={() => setShowVolume(true)}
-                title={muted ? "Unmute stream audio" : `Stream audio: ${volume}% (Click to mute)`}
+                title={muted ? t("voice.floating.unmuteAudio") : t("voice.floating.muteAudio", { volume })}
               >
                 {muted || volume === 0 ? (
                   <VolumeX size={13} />
@@ -346,8 +348,8 @@ export function FloatingScreenPreview({
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--ink)]">
-                    <span>Volume</span>
-                    <span className="font-mono text-[var(--lavender)]">{muted ? "Muted" : `${volume}%`}</span>
+                    <span>{t("voice.floating.volume")}</span>
+                    <span className="font-mono text-[var(--lavender)]">{muted ? t("voice.floating.muted") : `${volume}%`}</span>
                   </div>
                   <input
                     type="range"
@@ -373,7 +375,7 @@ export function FloatingScreenPreview({
               e.stopPropagation();
               onMaximize();
             }}
-            title="Expand stream"
+            title={t("voice.floating.expand")}
           >
             <Maximize2 size={13} />
           </button>
@@ -385,7 +387,7 @@ export function FloatingScreenPreview({
               e.stopPropagation();
               onClose();
             }}
-            title="Close preview"
+            title={t("voice.floating.close")}
           >
             <X size={14} />
           </button>

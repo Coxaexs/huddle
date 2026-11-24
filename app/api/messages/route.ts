@@ -539,6 +539,8 @@ export interface PostBody {
   /** When a bot message answers a slash command: the command and who ran it. */
   commandText?: string;
   commandBy?: string;
+  /** Optional in-character identity attached by the sender while keeping user_id intact. */
+  asCharacter?: { name?: string; portraitUrl?: string | null; color?: string | null };
 }
 
 export async function POST(request: Request) {
@@ -786,6 +788,24 @@ export async function postMessageAs(
   payload = withImageAlts(payload, allKeys);
   if (silent) {
     payload = { ...(payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {}), silent: true };
+  }
+  if (body.asCharacter && typeof body.asCharacter === "object" && !body.asBot) {
+    const icName = typeof body.asCharacter.name === "string" ? body.asCharacter.name.trim().slice(0, 48) : "";
+    if (icName) {
+      const rawPortrait = typeof body.asCharacter.portraitUrl === "string" ? body.asCharacter.portraitUrl.trim() : "";
+      const safePortrait =
+        rawPortrait.startsWith("/hangout/api/uploads/") ||
+        rawPortrait.startsWith("/api/uploads/") ||
+        /^https:\/\/[^\s]+$/i.test(rawPortrait)
+          ? rawPortrait.slice(0, 300)
+          : null;
+      const rawColor = typeof body.asCharacter.color === "string" ? body.asCharacter.color.trim() : "";
+      const safeColor = /^#[0-9a-fA-F]{6}$/.test(rawColor) ? rawColor : null;
+      payload = {
+        ...(payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {}),
+        ic: { name: icName, portraitUrl: safePortrait, color: safeColor },
+      };
+    }
   }
   // A forum post wears the tags its author picked from the forum's list;
   // tags anywhere else are dropped.

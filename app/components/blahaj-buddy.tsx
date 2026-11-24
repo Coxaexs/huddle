@@ -20,6 +20,8 @@ import {
   GripHorizontal,
 } from "lucide-react";
 import { showToast } from "./toast";
+import { useI18n } from "../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 
 /**
  * Sound synthesizer using Web Audio API for cozy, zero-asset audio feedback.
@@ -144,13 +146,13 @@ interface CompanionProfile {
   id: string;
   name: string;
   species: string;
-  badge: string;
+  badgeKey: MessageKey;
   accent: string;
   secondary: string;
   soundType: "chime" | "bell" | "digital" | "quill" | "synth" | "ember";
-  dialogues: string[];
-  specialActionName: string;
-  specialActionDesc: string;
+  dialogueKeys: MessageKey[];
+  specialNameKey: MessageKey;
+  specialDescKey: MessageKey;
   specialParticle: string;
 }
 
@@ -159,187 +161,138 @@ const COMPANIONS: Record<string, CompanionProfile> = {
     id: "cozy",
     name: "Blåhaj",
     species: "Plush Comfort Shark",
-    badge: "🦈 Comfort Guardian",
+    badgeKey: "buddy.cozy.badge",
     accent: "#5bcffa",
     secondary: "#f5abb9",
     soundType: "chime",
-    specialActionName: "Warm Shark Hug",
-    specialActionDesc: "Send a wave of cozy pastel hearts & sparkles across your screen",
+    specialNameKey: "buddy.cozy.specialName",
+    specialDescKey: "buddy.cozy.specialDesc",
     specialParticle: "♥",
-    dialogues: [
-      "You belong in this Hoffle.",
-      "Hydration check! Tiny sip of water for your shark friend? 💧",
-      "Having a rough day? Sending a giant, fluffy shark hug!",
-      "Your identity and journey are yours to define and celebrate.",
-      "Remember to unclench your jaw and gently drop your shoulders.",
-      "Blåhaj believes in you, even when things feel heavy.",
-      "Taking a pause is productive too. Breathe in... and out.",
-      "Swimming alongside you in this chat, always!",
-      "You've got this. Keep being your wonderful self.",
+    dialogueKeys: [
+      "buddy.cozy.d0", "buddy.cozy.d1", "buddy.cozy.d2", "buddy.cozy.d3", "buddy.cozy.d4",
+      "buddy.cozy.d5", "buddy.cozy.d6", "buddy.cozy.d7", "buddy.cozy.d8",
     ],
   },
   vampire: {
     id: "vampire",
     name: "Vlad",
     species: "Nocturnal Chibi Bat",
-    badge: "🦇 Crypt Familiar",
+    badgeKey: "buddy.vampire.badge",
     accent: "#ff3355",
     secondary: "#7b1128",
     soundType: "bell",
-    specialActionName: "Midnight Bell",
-    specialActionDesc: "Toll the gothic cathedral chime and summon a swarm of ruby bat sparks",
+    specialNameKey: "buddy.vampire.specialName",
+    specialDescKey: "buddy.vampire.specialDesc",
     specialParticle: "🦇",
-    dialogues: [
-      "The velvety shadows welcome you, mortal friend.",
-      "A warm cup of chamomile... or vintage O-negative?",
-      "Do not fear the dark; it is where our minds ponder deepest.",
-      "Midnight tolls. How fare your nocturnal endeavors?",
-      "Beware the blinding sun; embrace the screen glow.",
-      "Even creatures of the night need their full rest in the crypt.",
-      "Sharpen your wits, guard your heart, and enjoy the night.",
-      "A bite-sized friend watching over your server tonight.",
+    dialogueKeys: [
+      "buddy.vampire.d0", "buddy.vampire.d1", "buddy.vampire.d2", "buddy.vampire.d3",
+      "buddy.vampire.d4", "buddy.vampire.d5", "buddy.vampire.d6", "buddy.vampire.d7",
     ],
   },
   matrix: {
     id: "matrix",
     name: "Unit-01",
     species: "Console AI Daemon",
-    badge: "📟 [ROOT // 0x4F]",
+    badgeKey: "buddy.matrix.badge",
     accent: "#00ff66",
     secondary: "#003b14",
     soundType: "digital",
-    specialActionName: "System Glitch",
-    specialActionDesc: "Inject a digital phosphor glitch and matrix rain burst",
+    specialNameKey: "buddy.matrix.specialName",
+    specialDescKey: "buddy.matrix.specialDesc",
     specialParticle: "01",
-    dialogues: [
-      "Wake up, user... the Hoffle has you.",
-      "There is no spoon. Only CSS custom properties.",
-      "Take the red pill for focus; take the blue pill for memes.",
-      "Firewall status: impenetrable. Emotional bandwidth: nominal.",
-      "I can only show you the door. You are the one who must send the message.",
-      "Searching cyberspace... confirmed: you are among good companions.",
-      "Baud rate 9600. Decrypting good vibes for this session.",
-      "Ping 0ms to friendship protocol.",
+    dialogueKeys: [
+      "buddy.matrix.d0", "buddy.matrix.d1", "buddy.matrix.d2", "buddy.matrix.d3",
+      "buddy.matrix.d4", "buddy.matrix.d5", "buddy.matrix.d6", "buddy.matrix.d7",
     ],
   },
   "dark-academia": {
     id: "dark-academia",
     name: "Archimedes",
     species: "The Scholar Owl",
-    badge: "📜 Keeper of the Archive",
+    badgeKey: "buddy.darkAcademia.badge",
     accent: "#c9a45c",
     secondary: "#33281a",
     soundType: "quill",
-    specialActionName: "Scholarly Maxim",
-    specialActionDesc: "Flourish ancient golden dust and recite a philosophical gem",
+    specialNameKey: "buddy.darkAcademia.specialName",
+    specialDescKey: "buddy.darkAcademia.specialDesc",
     specialParticle: "✦",
-    dialogues: [
-      "Carpe noctem — seize the quiet night, gentle scholar.",
-      "Have you annotated your thoughts and reflections today?",
-      "Between the covers of a good book lies an entire universe.",
-      "A warm cup of Earl Grey is the ultimate remedy for melancholy.",
-      "Per aspera ad astra: through hardship to the stars.",
-      "Even Homer and Shakespeare rested their quills by candlelight.",
-      "Wisdom is knowing when to study, and when to listen to friends.",
-      "The library is warm, the clock is ticking, and you are doing well.",
+    dialogueKeys: [
+      "buddy.darkAcademia.d0", "buddy.darkAcademia.d1", "buddy.darkAcademia.d2", "buddy.darkAcademia.d3",
+      "buddy.darkAcademia.d4", "buddy.darkAcademia.d5", "buddy.darkAcademia.d6", "buddy.darkAcademia.d7",
     ],
   },
   cyberpunk: {
     id: "cyberpunk",
     name: "Byte",
     species: "Neon Street Kitsune",
-    badge: "⚡ Night City Runner",
+    badgeKey: "buddy.cyberpunk.badge",
     accent: "#fcee0a",
     secondary: "#00f0ff",
     soundType: "digital",
-    specialActionName: "Overclock Surge",
-    specialActionDesc: "Release high-voltage neon lightning sparks and synth resonance",
+    specialNameKey: "buddy.cyberpunk.specialName",
+    specialDescKey: "buddy.cyberpunk.specialDesc",
     specialParticle: "⚡",
-    dialogues: [
-      "Jacked into the Net. Ready to rock this server, choom!",
-      "High tech, high empathy. That's how we run this space.",
-      "Overclocking is good, but don't melt your cyberware. Hydrate!",
-      "Neon lights, synthwave beats, and top-tier banter.",
-      "Fire up your chrome, we've got memes to deploy.",
-      "Stay chrome, never fold, and drink some electrolytes.",
+    dialogueKeys: [
+      "buddy.cyberpunk.d0", "buddy.cyberpunk.d1", "buddy.cyberpunk.d2",
+      "buddy.cyberpunk.d3", "buddy.cyberpunk.d4", "buddy.cyberpunk.d5",
     ],
   },
   amber: {
     id: "amber",
     name: "Ember",
     species: "Hearth Sprite",
-    badge: "🔥 Fireplace Fox",
+    badgeKey: "buddy.amber.badge",
     accent: "#e0a56a",
     secondary: "#55402b",
     soundType: "chime",
-    specialActionName: "Campfire Glow",
-    specialActionDesc: "Kindle warm floating embers and soothing hearth crackles",
+    specialNameKey: "buddy.amber.specialName",
+    specialDescKey: "buddy.amber.specialDesc",
     specialParticle: "🔥",
-    dialogues: [
-      "Pull up a chair by the hearth. You are safe and warm here.",
-      "Listen to the crackle of the wood. All is well tonight.",
-      "A warm cup in your hands and good friends in your ears.",
-      "Take a moment to bask in this quiet warmth.",
-    ],
+    dialogueKeys: ["buddy.amber.d0", "buddy.amber.d1", "buddy.amber.d2", "buddy.amber.d3"],
   },
   midnight: {
     id: "midnight",
     name: "Luna",
     species: "Celestial Silk Moth",
-    badge: "🌙 Astral Wayfarer",
+    badgeKey: "buddy.midnight.badge",
     accent: "#60a5fa",
     secondary: "#1e293b",
     soundType: "chime",
-    specialActionName: "Starlight Dust",
-    specialActionDesc: "Scatter shimmering celestial constellations and moon dust",
+    specialNameKey: "buddy.midnight.specialName",
+    specialDescKey: "buddy.midnight.specialDesc",
     specialParticle: "⋆",
-    dialogues: [
-      "The cosmos is vast and quiet, yet you found your circle here.",
-      "Let the starlight quiet your mind from the day's noise.",
-      "Count the constellations, not your worries.",
-      "Soft luminescence for late-night wanderers.",
-    ],
+    dialogueKeys: ["buddy.midnight.d0", "buddy.midnight.d1", "buddy.midnight.d2", "buddy.midnight.d3"],
   },
   msn: {
     id: "msn",
     name: "Clippy",
     species: "Helpful Paperclip",
-    badge: "📎 Clippy!",
+    badgeKey: "buddy.msn.badge",
     accent: "#1c5ec6",
     secondary: "#fef9c3",
     soundType: "chime",
-    specialActionName: "Offer Helpful Advice!",
-    specialActionDesc: "Clippy pops up with eager assistance & a classic nostalgic chime",
+    specialNameKey: "buddy.msn.specialName",
+    specialDescKey: "buddy.msn.specialDesc",
     specialParticle: "📎",
-    dialogues: [
-      "It looks like you're writing a message! Would you like help with that? 📎",
-      "It looks like you're rolling dice. Let me calculate the optimal trajectory! 🎲",
-      "Don't forget your away message: (¯`·._.·[ Away from keyboard ]·._.·´¯)!",
-      "*tap tap on glass* Hey! Just checking in to see if you need any assistance!",
-      "It looks like you've been focused for a while. Remember to stretch & hydrate! 💧",
-      "Personal status: (8) Listening to: Evanescence - Bring Me To Life (8)",
-      "It looks like you're having an awesome time on Hoffle! 📎✨",
+    dialogueKeys: [
+      "buddy.msn.d0", "buddy.msn.d1", "buddy.msn.d2", "buddy.msn.d3",
+      "buddy.msn.d4", "buddy.msn.d5", "buddy.msn.d6",
     ],
   },
   "msn-dark": {
     id: "msn-dark",
     name: "Clippy",
     species: "Helpful Paperclip",
-    badge: "📎 Clippy!",
+    badgeKey: "buddy.msn.badge",
     accent: "#4c9dff",
     secondary: "#1e293b",
     soundType: "chime",
-    specialActionName: "Offer Helpful Advice!",
-    specialActionDesc: "Clippy pops up with eager assistance & a classic nostalgic chime",
+    specialNameKey: "buddy.msn.specialName",
+    specialDescKey: "buddy.msn.specialDesc",
     specialParticle: "📎",
-    dialogues: [
-      "It looks like you're writing a message! Would you like help with that? 📎",
-      "It looks like you're rolling dice. Let me calculate the optimal trajectory! 🎲",
-      "Don't forget your away message: (¯`·._.·[ Away from keyboard ]·._.·´¯)!",
-      "*tap tap on glass* Hey! Just checking in to see if you need any assistance!",
-      "It looks like you've been focused for a while. Remember to stretch & hydrate! 💧",
-      "Personal status: (8) Listening to: Evanescence - Bring Me To Life (8)",
-      "It looks like you're having an awesome time on Hoffle! 📎✨",
+    dialogueKeys: [
+      "buddy.msn.d0", "buddy.msn.d1", "buddy.msn.d2", "buddy.msn.d3",
+      "buddy.msn.d4", "buddy.msn.d5", "buddy.msn.d6",
     ],
   },
 };
@@ -970,6 +923,7 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
     hasMoved: boolean;
   } | null>(null);
 
+  const { t } = useI18n();
   const companion = COMPANIONS[themeId] || COMPANIONS.cozy;
 
   // 1. Theme and Enabled state observer
@@ -1078,7 +1032,7 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
       setTimerSeconds((prev) => {
         if (prev <= 1) {
           setIsTimerRunning(false);
-          setTimerAlert("Ding! Time is up! Great focus. Remember to stretch & drink water!");
+          setTimerAlert(t("buddy.timerDone"));
           playSynthSound("timer");
           return 0;
         }
@@ -1107,7 +1061,7 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
       } catch { }
       return next;
     });
-    setMessageIndex((idx) => (idx + 1) % companion.dialogues.length);
+    setMessageIndex((idx) => (idx + 1) % companion.dialogueKeys.length);
     playSynthSound(companion.soundType);
 
     window.setTimeout(() => {
@@ -1118,7 +1072,7 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
   // 7. Special Theme Action
   const handleSpecialAction = () => {
     handleBoop();
-    showToast(`✨ ${companion.name}: ${companion.specialActionName} activated!`);
+    showToast(t("buddy.specialActivated", { name: companion.name, action: t(companion.specialNameKey) }));
   };
 
   // 8. Put to sleep / Close companion from the widget
@@ -1219,7 +1173,7 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
       );
     }
     window.setTimeout(() => {
-      const res = Math.random() > 0.5 ? "Heads 🪙" : "Tails 🪙";
+      const res = Math.random() > 0.5 ? t("buddy.heads") : t("buddy.tails");
       setCoinResult(res);
       setIsFlipping(false);
     }, 350);
@@ -1293,11 +1247,11 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
 
   // Affection ranking
   const getRank = () => {
-    if (boops >= 50) return "👑 Legendary Familiar";
-    if (boops >= 30) return "💖 Inseparable Soul";
-    if (boops >= 15) return "⭐ Best Companion";
-    if (boops >= 5) return "🌸 Good Friend";
-    return "🌱 Acquired Friend";
+    if (boops >= 50) return t("buddy.rank.legendary");
+    if (boops >= 30) return t("buddy.rank.inseparable");
+    if (boops >= 15) return t("buddy.rank.best");
+    if (boops >= 5) return t("buddy.rank.good");
+    return t("buddy.rank.acquired");
   };
 
   // Timer format MM:SS
@@ -1320,18 +1274,18 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
             type="button"
             className="companion-wake-btn"
             onClick={handleWakeUp}
-            title={`Wake up ${companion.name}`}
-            aria-label={`Wake up ${companion.name}`}
+            title={t("buddy.wakeTitle", { name: companion.name })}
+            aria-label={t("buddy.wakeTitle", { name: companion.name })}
           >
             <Moon size={13} className="text-purple-300 animate-pulse" />
-            <span>Wake {companion.name}</span>
+            <span>{t("buddy.wakeBtn", { name: companion.name })}</span>
           </button>
           <button
             type="button"
             className="companion-wake-dismiss"
             onClick={() => setSleepDockVisible(false)}
-            aria-label="Dismiss wake button"
-            title="Dismiss"
+            aria-label={t("buddy.dismissWakeAria")}
+            title={t("buddy.dismiss")}
           >
             ×
           </button>
@@ -1359,25 +1313,25 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
           className={`companion-popover align-${isRightSide ? "left" : "right"} align-v-${isBottomSide ? "top" : "bottom"
             }`}
           role="dialog"
-          aria-label={`${companion.name} desktop companion`}
+          aria-label={t("buddy.dialogAria", { name: companion.name })}
         >
           {/* Card Header */}
           <header className="companion-popover-head">
             <div className="companion-head-info">
-              <span className="companion-badge-pill">{companion.badge}</span>
+              <span className="companion-badge-pill">{t(companion.badgeKey)}</span>
               <strong className="companion-name">{companion.name}</strong>
             </div>
 
             <div className="companion-head-actions">
-              <span className="drag-hint" title="Drag the buddy to move anywhere on screen">
+              <span className="drag-hint" title={t("buddy.dragHint")}>
                 <GripHorizontal size={13} />
               </span>
               <button
                 type="button"
                 className="head-icon-btn"
                 onClick={toggleSound}
-                title={soundMuted ? "Unmute sounds" : "Mute sounds"}
-                aria-label={soundMuted ? "Unmute sounds" : "Mute sounds"}
+                title={soundMuted ? t("buddy.unmute") : t("buddy.mute")}
+                aria-label={soundMuted ? t("buddy.unmute") : t("buddy.mute")}
               >
                 {soundMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
               </button>
@@ -1385,8 +1339,8 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
                 type="button"
                 className="head-icon-btn sleep-btn"
                 onClick={handlePutToSleep}
-                title="Put companion to sleep (closes widget)"
-                aria-label="Put companion to sleep"
+                title={t("buddy.sleepTitle")}
+                aria-label={t("buddy.sleepAria")}
               >
                 <Moon size={13} />
               </button>
@@ -1394,8 +1348,8 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
                 type="button"
                 className="head-icon-btn close-btn"
                 onClick={() => setIsOpen(false)}
-                title="Close dialog"
-                aria-label="Close dialog"
+                title={t("buddy.closeDialog")}
+                aria-label={t("buddy.closeDialog")}
               >
                 <X size={13} />
               </button>
@@ -1403,14 +1357,14 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
           </header>
 
           {/* Navigation Tabs */}
-          <nav className="companion-tabs" aria-label="Companion modes">
+          <nav className="companion-tabs" aria-label={t("buddy.modesAria")}>
             <button
               type="button"
               className={`companion-tab-btn${activeTab === "talk" ? " active" : ""}`}
               onClick={() => setActiveTab("talk")}
             >
               <MessageSquare size={12} />
-              <span>Talk</span>
+              <span>{t("buddy.tab.talk")}</span>
             </button>
             <button
               type="button"
@@ -1418,7 +1372,7 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
               onClick={() => setActiveTab("timer")}
             >
               <Timer size={12} />
-              <span>Focus</span>
+              <span>{t("buddy.tab.focus")}</span>
             </button>
             <button
               type="button"
@@ -1426,7 +1380,7 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
               onClick={() => setActiveTab("tools")}
             >
               <Wrench size={12} />
-              <span>Tools</span>
+              <span>{t("buddy.tab.tools")}</span>
             </button>
           </nav>
 
@@ -1435,12 +1389,12 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
             <div className="companion-tab-body talk-tab">
               <div className="companion-dialogue-box">
                 <p className="dialogue-text">
-                  &ldquo;{companion.dialogues[messageIndex % companion.dialogues.length]}&rdquo;
+                  &ldquo;{t(companion.dialogueKeys[messageIndex % companion.dialogueKeys.length])}&rdquo;
                 </p>
                 <div className="dialogue-meta">
                   <span className="affection-rank">{getRank()}</span>
                   <span className="boop-count">
-                    {boops} {boops === 1 ? "boop" : "boops"}
+                    {boops} {boops === 1 ? t("buddy.boopSingle") : t("buddy.boopPlural")}
                   </span>
                 </div>
               </div>
@@ -1452,18 +1406,18 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
                   onClick={handleBoop}
                 >
                   <Heart size={13} className="heart-icon animate-pulse" />
-                  <span>Boop {companion.name}</span>
+                  <span>{t("buddy.boopBtn", { name: companion.name })}</span>
                 </button>
                 <button
                   type="button"
                   className="companion-btn secondary"
                   onClick={() => {
-                    setMessageIndex((i) => (i + 1) % companion.dialogues.length);
+                    setMessageIndex((i) => (i + 1) % companion.dialogueKeys.length);
                     playSynthSound(companion.soundType);
                   }}
                 >
                   <Sparkles size={13} />
-                  <span>New Thought</span>
+                  <span>{t("buddy.newThought")}</span>
                 </button>
               </div>
 
@@ -1471,10 +1425,10 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
                 type="button"
                 className="companion-special-btn"
                 onClick={handleSpecialAction}
-                title={companion.specialActionDesc}
+                title={t(companion.specialDescKey)}
               >
                 <span className="special-icon">{companion.specialParticle}</span>
-                <span className="special-title">{companion.specialActionName}</span>
+                <span className="special-title">{t(companion.specialNameKey)}</span>
               </button>
             </div>
           )}
@@ -1504,21 +1458,21 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
                   className="preset-chip"
                   onClick={() => setTimerPreset(5)}
                 >
-                  5m Rest
+                  {t("buddy.preset.5m")}
                 </button>
                 <button
                   type="button"
                   className="preset-chip"
                   onClick={() => setTimerPreset(15)}
                 >
-                  15m Sprint
+                  {t("buddy.preset.15m")}
                 </button>
                 <button
                   type="button"
                   className="preset-chip active"
                   onClick={() => setTimerPreset(25)}
                 >
-                  25m Pomodoro
+                  {t("buddy.preset.25m")}
                 </button>
               </div>
 
@@ -1533,7 +1487,7 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
                   }}
                 >
                   {isTimerRunning ? <Pause size={13} /> : <Play size={13} />}
-                  <span>{isTimerRunning ? "Pause" : "Start"}</span>
+                  <span>{isTimerRunning ? t("buddy.pause") : t("buddy.start")}</span>
                 </button>
                 <button
                   type="button"
@@ -1545,13 +1499,13 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
                   }}
                 >
                   <RotateCcw size={13} />
-                  <span>Reset</span>
+                  <span>{t("buddy.reset")}</span>
                 </button>
               </div>
 
               <div className="wellness-check-row">
                 <Coffee size={13} className="text-amber-400" />
-                <span>Hydration &amp; posture check: sip some water &amp; roll shoulders</span>
+                <span>{t("buddy.wellness")}</span>
               </div>
             </div>
           )}
@@ -1562,10 +1516,10 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
               {/* Dice & Coin Row */}
               <div className="tools-card dice-card">
                 <div className="tools-card-head">
-                  <span className="tools-title">Dice &amp; Decision</span>
+                  <span className="tools-title">{t("buddy.diceDecision")}</span>
                   {isRolling ? (
                     <span className="dice-badge rolling">
-                      🎲 Rolling 3D dice...
+                      {t("buddy.rolling3d")}
                     </span>
                   ) : diceResult !== null ? (
                     <span
@@ -1573,8 +1527,8 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
                         }`}
                     >
                       {diceType}: <strong>{diceResult}</strong>
-                      {diceResult === 20 ? " ✨ Nat 20!" : ""}
-                      {diceResult === 1 ? " 💀 Nat 1" : ""}
+                      {diceResult === 20 ? t("buddy.nat20") : ""}
+                      {diceResult === 1 ? t("buddy.nat1") : ""}
                     </span>
                   ) : null}
                   {coinResult && <span className="coin-badge">{coinResult}</span>}
@@ -1586,36 +1540,36 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
                     className="tool-btn"
                     disabled={isRolling}
                     onClick={() => rollDice(20)}
-                    aria-label="Roll d20"
+                    aria-label={t("buddy.rollD20Aria")}
                   >
-                    🎲 Roll d20
+                    {t("buddy.rollD20")}
                   </button>
                   <button
                     type="button"
                     className="tool-btn"
                     disabled={isRolling}
                     onClick={() => rollDice(6)}
-                    aria-label="Roll d6"
+                    aria-label={t("buddy.rollD6Aria")}
                   >
-                    🎲 Roll d6
+                    {t("buddy.rollD6")}
                   </button>
                   <button
                     type="button"
                     className="tool-btn"
                     disabled={isRolling}
                     onClick={() => rollDice(100)}
-                    aria-label="Roll d100"
+                    aria-label={t("buddy.rollD100Aria")}
                   >
-                    🎲 Roll d100
+                    {t("buddy.rollD100")}
                   </button>
                   <button
                     type="button"
                     className="tool-btn"
                     disabled={isFlipping}
                     onClick={flipCoin}
-                    aria-label="Flip Coin"
+                    aria-label={t("buddy.flipCoinAria")}
                   >
-                    🪙 Flip Coin
+                    {t("buddy.flipCoin")}
                   </button>
                 </div>
 
@@ -1634,17 +1588,17 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
                     className="companion-roll-input"
                     value={customNotation}
                     onChange={(e) => setCustomNotation(e.target.value)}
-                    placeholder="e.g. 2d6+3 or d20 adv"
-                    aria-label="Custom dice expression"
+                    placeholder={t("buddy.customRollPlaceholder")}
+                    aria-label={t("buddy.customRollAria")}
                     disabled={isRolling}
                   />
                   <button
                     type="submit"
                     className="companion-roll-submit"
                     disabled={isRolling || !customNotation.trim()}
-                    aria-label="Submit custom roll"
+                    aria-label={t("buddy.submitRollAria")}
                   >
-                    Roll
+                    {t("buddy.rollBtn")}
                   </button>
                 </form>
               </div>
@@ -1652,7 +1606,7 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
               {/* Sticky Memo / Scratchpad */}
               <div className="tools-card memo-card">
                 <div className="tools-card-head">
-                  <span className="tools-title">Quick Scratchpad</span>
+                  <span className="tools-title">{t("buddy.scratchpad")}</span>
                   <div className="memo-actions">
                     <button
                       type="button"
@@ -1664,10 +1618,10 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
                           window.setTimeout(() => setCopiedMemo(false), 1400);
                         }
                       }}
-                      title="Copy memo to clipboard"
+                      title={t("buddy.copyTitle")}
                     >
                       {copiedMemo ? <Check size={11} /> : <Copy size={11} />}
-                      <span>{copiedMemo ? "Copied" : "Copy"}</span>
+                      <span>{copiedMemo ? t("buddy.copied") : t("buddy.copy")}</span>
                     </button>
                     {scratchpad && (
                       <button
@@ -1680,7 +1634,7 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
                           } catch { }
                         }}
                       >
-                        Clear
+                        {t("buddy.clear")}
                       </button>
                     )}
                   </div>
@@ -1697,7 +1651,7 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
                       window.localStorage.setItem("huddle-buddy-memo", text);
                     } catch { }
                   }}
-                  placeholder="Jot room codes, notes, or links..."
+                  placeholder={t("buddy.scratchpadPlaceholder")}
                   spellCheck={false}
                 />
               </div>
@@ -1710,9 +1664,9 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
               type="button"
               className="companion-sleep-link"
               onClick={handlePutToSleep}
-              title="Hide this desktop buddy widget"
+              title={t("buddy.hideWidgetTitle")}
             >
-              <span>💤 Put {companion.name} to sleep</span>
+              <span>{t("buddy.putToSleep", { name: companion.name })}</span>
             </button>
           </footer>
         </div>
@@ -1726,8 +1680,8 @@ export function BlahajBuddy({ onRollCommand }: BlahajBuddyProps = {}) {
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        aria-label={`Boop ${companion.name} or drag to reposition`}
-        title={`Click to open ${companion.name} · Drag to move anywhere`}
+        aria-label={t("buddy.avatarAria", { name: companion.name })}
+        title={t("buddy.avatarTitle", { name: companion.name })}
       >
         <span className="blahaj-spark one" aria-hidden="true">
           <Sparkles size={14} />

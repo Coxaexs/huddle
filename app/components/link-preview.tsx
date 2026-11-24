@@ -5,6 +5,7 @@ import { Play } from "lucide-react";
 import { youtubeId, type LinkPreview as Preview } from "@/lib/unfurl";
 import { apiFetch } from "../lib/client";
 import { playerFor, type EmbedPlayer } from "../lib/embed-players";
+import { useI18n } from "../lib/i18n-context";
 
 /** One request per URL per page load, shared by every message that links it. */
 const previewCache = new Map<string, Promise<Preview | null>>();
@@ -37,9 +38,10 @@ function youtubeStart(raw: string): number {
 }
 
 function YouTubeEmbed({ url, videoId, preview }: { url: string; videoId: string; preview: Preview | null }) {
+  const { t } = useI18n();
   const [playing, setPlaying] = useState(false);
   const start = youtubeStart(url);
-  const title = preview?.title || "YouTube video";
+  const title = preview?.title || t("chat.link.youtubeFallback");
   return (
     <div className="link-preview link-preview-video" style={{ borderColor: "#ff0033" }}>
       <span className="link-preview-site">YouTube</span>
@@ -67,7 +69,7 @@ function YouTubeEmbed({ url, videoId, preview }: { url: string; videoId: string;
             type="button"
             className="link-preview-play"
             onClick={() => setPlaying(true)}
-            aria-label={`Play ${title}`}
+            aria-label={t("chat.link.playAria", { title })}
           >
             {/* The thumbnail comes through our image proxy with the preview. */}
             {preview?.image && <img src={preview.image} alt="" loading="lazy" />}
@@ -86,8 +88,9 @@ function YouTubeEmbed({ url, videoId, preview }: { url: string; videoId: string;
  * button, swapped for the site's own player when pressed.
  */
 function PlayerCard({ url, player, preview }: { url: string; player: EmbedPlayer; preview: Preview | null }) {
+  const { t } = useI18n();
   const [playing, setPlaying] = useState(false);
-  const title = preview?.title || `${player.site} link`;
+  const title = preview?.title || t("chat.link.siteLinkFallback", { site: player.site });
   const frameStyle = player.height ? { height: player.height } : undefined;
   return (
     <div
@@ -109,7 +112,7 @@ function PlayerCard({ url, player, preview }: { url: string; player: EmbedPlayer
           <div className="link-preview-audio-text">
             {preview?.description && <p className="link-preview-description">{preview.description}</p>}
             <button type="button" className="link-preview-listen" onClick={() => setPlaying(true)}>
-              <Play size={14} fill="currentColor" /> Play here
+              <Play size={14} fill="currentColor" /> {t("chat.link.playHere")}
             </button>
           </div>
         </div>
@@ -119,7 +122,7 @@ function PlayerCard({ url, player, preview }: { url: string; player: EmbedPlayer
             type="button"
             className="link-preview-play"
             onClick={() => setPlaying(true)}
-            aria-label={`Play ${title}`}
+            aria-label={t("chat.link.playAria", { title })}
           >
             {preview?.image && <img src={preview.image} alt="" loading="lazy" />}
             <span>

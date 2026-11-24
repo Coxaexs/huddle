@@ -27,6 +27,7 @@ const DesktopOverlayBridge = deferred(() =>
 );
 import { openDndCompanion } from "../../../lib/dnd-sso";
 import { addInitiative } from "@/lib/lounge-shared";
+import { PartyStashPanel } from "../../party-stash-panel";
 
 export type ChatShellViewState = Omit<ReturnType<typeof useShellComposer>, "user"> & { user: PublicUser };
 
@@ -77,6 +78,16 @@ export function renderChatShell(s: ChatShellViewState) {
     musicBot: inDmHome || activeServer?.musicBot !== false,
     playerBot: inDmHome || activeServer?.playerBot !== false,
     userId: user.id,
+    isDm: v.isServerDm,
+    openPartyStash: !inDmHome && activeServer ? () => v.setPartyStashOpen(true) : undefined,
+    battlemap: v.battlemap
+      ? {
+          tokens: v.battlemap.tokens,
+          gm: v.battlemapGm,
+          selectedTokenId: v.selectedBattlemapTokenId,
+          applyDamage: v.applyBattlemapDamage,
+        }
+      : undefined,
     runCommand: v.runCommand,
     table: {
       initiative: v.livingRoom.shared.initiative,
@@ -113,7 +124,7 @@ export function renderChatShell(s: ChatShellViewState) {
             );
           }
         : undefined,
-      openCompanion: (route = "/") => void openDndCompanion(route),
+      openCompanion: (route = "/") => void openDndCompanion(route, activeServer?.id ?? null),
     },
   };
 
@@ -467,6 +478,13 @@ export function renderChatShell(s: ChatShellViewState) {
         onVolume={(volume) => void v.saveVoicePref("bot:music", { volume })}
         prime={player.prime}
       />
+      {v.partyStashOpen && !inDmHome && activeServer && (
+        <PartyStashPanel
+          serverId={activeServer.id}
+          channelId={activeChannelId}
+          onClose={() => v.setPartyStashOpen(false)}
+        />
+      )}
     </main>
     </WidgetHostProvider>
   );

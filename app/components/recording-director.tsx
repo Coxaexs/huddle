@@ -20,6 +20,8 @@ import type {
   VoiceParticipant,
 } from "@/lib/protocol";
 import { apiFetch } from "../lib/client";
+import { tNow } from "../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 
 interface Props {
   channelId: string;
@@ -31,12 +33,12 @@ interface Props {
   onNotice: (message: string) => void;
 }
 
-const SCENES: Array<{ id: RecordingScene; label: string }> = [
-  { id: "party", label: "Party" },
-  { id: "speaker", label: "Speaker" },
-  { id: "battlemap", label: "Battlemap" },
-  { id: "split", label: "Split" },
-  { id: "intermission", label: "Intermission" },
+const SCENES: Array<{ id: RecordingScene; labelKey: MessageKey }> = [
+  { id: "party", labelKey: "rec.scene.party" },
+  { id: "speaker", labelKey: "rec.scene.speaker" },
+  { id: "battlemap", labelKey: "rec.scene.battlemap" },
+  { id: "split", labelKey: "rec.scene.split" },
+  { id: "intermission", labelKey: "rec.scene.intermission" },
 ];
 
 function formatTime(milliseconds: number): string {
@@ -499,13 +501,13 @@ export function RecordingDirector({
               >
                 <Clapperboard size={15} />
                 {["completed", "failed", "cancelled"].includes(recording.status)
-                  ? "New session"
-                  : "Director"}
+                  ? tNow("rec.newSession")
+                  : tNow("rec.director")}
               </button>
             )}
             {["completed", "failed"].includes(recording.status) && (
               <button type="button" onClick={() => setSummaryOpen(true)}>
-                Summary
+                {tNow("rec.summary")}
               </button>
             )}
             {canControl &&
@@ -517,19 +519,19 @@ export function RecordingDirector({
                   onClick={() => {
                     if (
                       window.confirm(
-                        "Move this recording's local media to the recorder trash?",
+                        tNow("rec.deleteConfirm"),
                       )
                     ) {
                       void act("delete");
                     }
                   }}
                 >
-                  Delete media
+                  {tNow("rec.deleteMedia")}
                 </button>
               )}
             {myConsent && (
               <button type="button" onClick={() => setCharacterOpen(true)}>
-                Character presentation
+                {tNow("rec.charPresentation")}
               </button>
             )}
           </>
@@ -539,10 +541,10 @@ export function RecordingDirector({
             className="record-session-button"
             onClick={() => setSetupOpen(true)}
           >
-            <Circle size={15} /> Record D&amp;D Session
+            <Circle size={15} /> {tNow("rec.recordSession")}
           </button>
         ) : (
-          <span>No session is being recorded.</span>
+          <span>{tNow("rec.noneActive")}</span>
         )}
       </div>
 
@@ -552,10 +554,9 @@ export function RecordingDirector({
           <section className="recording-consent" role="alertdialog" aria-live="assertive">
             <ShieldCheck size={24} />
             <div>
-              <strong>Consent to be recorded?</strong>
+              <strong>{tNow("rec.consentTitle")}</strong>
               <p>
-                “{recording.title}” will include your room audio and public character
-                presentation. You can withdraw later; recording will pause immediately.
+                {tNow("rec.consentBody", { title: recording.title })}
               </p>
             </div>
             <button
@@ -563,7 +564,7 @@ export function RecordingDirector({
               disabled={busy}
               onClick={() => void act("consent", { decision: "accepted" })}
             >
-              I consent
+              {tNow("rec.iConsent")}
             </button>
             <button
               type="button"
@@ -571,7 +572,7 @@ export function RecordingDirector({
               disabled={busy}
               onClick={() => void act("consent", { decision: "declined" })}
             >
-              Decline
+              {tNow("rec.decline")}
             </button>
           </section>
         )}
@@ -583,7 +584,7 @@ export function RecordingDirector({
           disabled={busy}
           onClick={() => void act("consent", { decision: "withdrawn" })}
         >
-          Withdraw recording consent
+          {tNow("rec.withdrawConsent")}
         </button>
       )}
 
@@ -592,55 +593,55 @@ export function RecordingDirector({
           <form className="recording-setup" onSubmit={setup}>
             <header>
               <div>
-                <span className="eyebrow">Virtual production</span>
-                <h2>Record D&amp;D Session</h2>
+                <span className="eyebrow">{tNow("rec.virtualProduction")}</span>
+                <h2>{tNow("rec.recordSession")}</h2>
               </div>
-              <button type="button" onClick={() => setSetupOpen(false)} aria-label="Close">
+              <button type="button" onClick={() => setSetupOpen(false)} aria-label={tNow("common.close")}>
                 ×
               </button>
             </header>
             <label>
-              Session title
+              {tNow("rec.sessionTitle")}
               <input required maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} />
             </label>
             <div className="recording-form-row">
               <label>
-                Campaign
+                {tNow("rec.campaign")}
                 <input maxLength={120} value={campaign} onChange={(e) => setCampaign(e.target.value)} />
               </label>
               <label>
-                Episode
+                {tNow("rec.episode")}
                 <input type="number" min={0} max={9999} value={episodeNumber} onChange={(e) => setEpisodeNumber(e.target.value)} />
               </label>
             </div>
             <div className="recording-form-row">
               <label>
-                Resolution
+                {tNow("rec.resolution")}
                 <select value={resolution} onChange={(e) => setResolution(e.target.value)}>
                   <option value="1920x1080">1080p</option>
                   <option value="1280x720">720p</option>
                 </select>
               </label>
               <label>
-                Frame rate
+                {tNow("rec.frameRate")}
                 <select value={frameRate} onChange={(e) => setFrameRate(e.target.value)}>
                   <option value="30">30 fps</option>
                   <option value="60">60 fps</option>
                 </select>
               </label>
               <label>
-                Theme
+                {tNow("rec.theme")}
                 <select value={theme} onChange={(e) => setTheme(e.target.value)}>
-                  <option value="tavern">Tavern</option>
-                  <option value="parchment">Parchment</option>
-                  <option value="minimal">Minimal</option>
-                  <option value="arcane">Arcane</option>
-                  <option value="noir">Noir</option>
+                  <option value="tavern">{tNow("rec.theme.tavern")}</option>
+                  <option value="parchment">{tNow("rec.theme.parchment")}</option>
+                  <option value="minimal">{tNow("rec.theme.minimal")}</option>
+                  <option value="arcane">{tNow("rec.theme.arcane")}</option>
+                  <option value="noir">{tNow("rec.theme.noir")}</option>
                 </select>
               </label>
             </div>
             <fieldset>
-              <legend>Participants to record</legend>
+              <legend>{tNow("rec.participantsToRecord")}</legend>
               {people.map((person) => (
                 <label key={person.id} className="recording-person">
                   <input
@@ -661,10 +662,10 @@ export function RecordingDirector({
             </fieldset>
             <label className="recording-checkbox">
               <input type="checkbox" checked={separateAudio} onChange={(e) => setSeparateAudio(e.target.checked)} />
-              Save separate participant audio tracks
+              {tNow("rec.separateAudio")}
             </label>
             <label>
-              Local retention (days)
+              {tNow("rec.retentionDays")}
               <input
                 type="number"
                 min={1}
@@ -674,9 +675,9 @@ export function RecordingDirector({
               />
             </label>
             <footer>
-              <button type="button" onClick={() => setSetupOpen(false)}>Cancel</button>
+              <button type="button" onClick={() => setSetupOpen(false)}>{tNow("common.cancel")}</button>
               <button type="submit" disabled={busy || !selected.size}>
-                Request consent
+                {tNow("rec.requestConsent")}
               </button>
             </footer>
           </form>
@@ -688,41 +689,41 @@ export function RecordingDirector({
           <section className="recording-setup character-presentation-editor">
             <header>
               <div>
-                <span className="eyebrow">Viewer-safe profile</span>
-                <h2>Character presentation</h2>
+                <span className="eyebrow">{tNow("rec.viewerSafeProfile")}</span>
+                <h2>{tNow("rec.charPresentation")}</h2>
               </div>
               <button type="button" onClick={() => setCharacterOpen(false)}>×</button>
             </header>
             <div className="recording-form-row">
               <label>
-                Character name
+                {tNow("rec.charName")}
                 <input value={characterName} onChange={(event) => setCharacterName(event.target.value)} />
               </label>
               <label>
-                Class
+                {tNow("rec.class")}
                 <input value={className} onChange={(event) => setClassName(event.target.value)} />
               </label>
               <label>
-                Level
+                {tNow("rec.level")}
                 <input type="number" min={1} max={30} value={characterLevel} onChange={(event) => setCharacterLevel(event.target.value)} />
               </label>
             </div>
             <div className="recording-form-row">
               <label>
-                Portrait
+                {tNow("rec.portrait")}
                 <input type="file" accept="image/png,image/webp,image/jpeg" onChange={(event) => void uploadCharacterImage(event.target.files?.[0] || null, "portrait")} />
               </label>
               <label>
-                Full-body artwork
+                {tNow("rec.fullBodyArt")}
                 <input type="file" accept="image/png,image/webp,image/jpeg" onChange={(event) => void uploadCharacterImage(event.target.files?.[0] || null, "artwork")} />
               </label>
               <label>
-                Accent
+                {tNow("rec.accent")}
                 <input type="color" value={accentColor} onChange={(event) => setAccentColor(event.target.value)} />
               </label>
             </div>
             <label>
-              Approved public fields
+              {tNow("rec.approvedFields")}
               <textarea
                 rows={6}
                 value={publicCard}
@@ -732,32 +733,31 @@ export function RecordingDirector({
             </label>
             <label className="recording-checkbox">
               <input type="checkbox" checked={showPlayerName} onChange={(event) => setShowPlayerName(event.target.checked)} />
-              Show my player name
+              {tNow("rec.showPlayerName")}
             </label>
             <p className="privacy-note">
-              Only fields entered here are available to the production canvas.
-              Inventory, private notes, spells and GM secrets are never imported.
+              {tNow("rec.privacyNote")}
             </p>
             <footer>
-              <button type="button" onClick={() => setCharacterOpen(false)}>Cancel</button>
-              <button type="button" disabled={busy || !characterName.trim()} onClick={() => void saveCharacter()}>Save public profile</button>
+              <button type="button" onClick={() => setCharacterOpen(false)}>{tNow("common.cancel")}</button>
+              <button type="button" disabled={busy || !characterName.trim()} onClick={() => void saveCharacter()}>{tNow("rec.savePublicProfile")}</button>
             </footer>
             <section className="one-off-reveal">
-              <h3>Show a viewer-approved card now</h3>
+              <h3>{tNow("rec.showCardNow")}</h3>
               <div className="recording-form-row">
                 <label>
-                  Card type
+                  {tNow("rec.cardType")}
                   <select value={revealMode} onChange={(event) => setRevealMode(event.target.value as CharacterReveal["mode"])}>
-                    <option value="portrait">Portrait</option>
-                    <option value="compact">Compact stats</option>
-                    <option value="sheet">Approved sheet</option>
-                    <option value="spell">Spell</option>
-                    <option value="ability">Ability</option>
-                    <option value="item">Item</option>
+                    <option value="portrait">{tNow("rec.cardType.portrait")}</option>
+                    <option value="compact">{tNow("rec.cardType.compact")}</option>
+                    <option value="sheet">{tNow("rec.cardType.sheet")}</option>
+                    <option value="spell">{tNow("rec.cardType.spell")}</option>
+                    <option value="ability">{tNow("rec.cardType.ability")}</option>
+                    <option value="item">{tNow("rec.cardType.item")}</option>
                   </select>
                 </label>
                 <label>
-                  Title
+                  {tNow("rec.title")}
                   <input value={revealTitle} onChange={(event) => setRevealTitle(event.target.value)} />
                 </label>
               </div>
@@ -767,7 +767,7 @@ export function RecordingDirector({
                 placeholder={"Range: 150 feet\nDamage: 8d6 fire"}
                 onChange={(event) => setRevealFields(event.target.value)}
               />
-              <button type="button" disabled={busy} onClick={() => void showReveal(revealMode, currentUserId)}>Reveal for 8 seconds</button>
+              <button type="button" disabled={busy} onClick={() => void showReveal(revealMode, currentUserId)}>{tNow("rec.reveal8s")}</button>
             </section>
           </section>
         </div>
@@ -778,18 +778,18 @@ export function RecordingDirector({
           <section className="recording-setup recording-summary">
             <header>
               <div>
-                <span className="eyebrow">Recording summary</span>
+                <span className="eyebrow">{tNow("rec.recordingSummary")}</span>
                 <h2>{recording.title}</h2>
               </div>
               <button type="button" onClick={() => setSummaryOpen(false)}>×</button>
             </header>
             <dl>
-              <div><dt>Status</dt><dd>{recording.status}</dd></div>
-              <div><dt>Recorded duration</dt><dd>{formatTime(recording.elapsedMs)}</dd></div>
-              <div><dt>Timeline events</dt><dd>{summary?.events.length || 0}</dd></div>
-              <div><dt>Output size</dt><dd>{formatBytes(summary?.outputs.reduce((total, output) => total + output.bytes, 0) || 0)}</dd></div>
+              <div><dt>{tNow("rec.status")}</dt><dd>{recording.status}</dd></div>
+              <div><dt>{tNow("rec.recordedDuration")}</dt><dd>{formatTime(recording.elapsedMs)}</dd></div>
+              <div><dt>{tNow("rec.timelineEvents")}</dt><dd>{summary?.events.length || 0}</dd></div>
+              <div><dt>{tNow("rec.outputSize")}</dt><dd>{formatBytes(summary?.outputs.reduce((total, output) => total + output.bytes, 0) || 0)}</dd></div>
             </dl>
-            <h3>Review files</h3>
+            <h3>{tNow("rec.reviewFiles")}</h3>
             <ul className="recording-output-list">
               {(summary?.outputs || []).map((output) => (
                 <li key={`${output.kind}:${output.filename}`}>
@@ -801,7 +801,7 @@ export function RecordingDirector({
             </ul>
             {summary?.diagnostics.length ? (
               <>
-                <h3>Diagnostics</h3>
+                <h3>{tNow("rec.diagnostics")}</h3>
                 <ul className="recording-diagnostics">
                   {summary.diagnostics.map((entry, index) => (
                     <li key={`${entry.code}:${index}`} className={entry.level}>
@@ -812,8 +812,7 @@ export function RecordingDirector({
               </>
             ) : null}
             <p className="privacy-note">
-              Files remain on recorder storage for {recording.retentionDays} days.
-              Hoffle shows filenames and diagnostics, never host paths.
+              {tNow("rec.retentionNotice", { days: recording.retentionDays })}
             </p>
           </section>
         </div>
@@ -823,32 +822,32 @@ export function RecordingDirector({
         <aside className="recording-director">
           <header>
             <div>
-              <span className="eyebrow">Director panel</span>
+              <span className="eyebrow">{tNow("rec.directorPanel")}</span>
               <strong>{recording.title}</strong>
             </div>
-            <button type="button" onClick={() => setDirectorOpen(false)} aria-label="Close">×</button>
+            <button type="button" onClick={() => setDirectorOpen(false)} aria-label={tNow("common.close")}>×</button>
           </header>
           <div className="director-health">
-            <span><Gauge size={14} /> {recording.recorderHealthy ? "Recorder healthy" : "Recorder waiting"}</span>
-            <span><HardDrive size={14} /> {formatBytes(recording.estimatedBytes)} · {formatBytes(recording.diskFreeBytes)} free</span>
+            <span><Gauge size={14} /> {recording.recorderHealthy ? tNow("rec.healthy") : tNow("rec.waiting")}</span>
+            <span><HardDrive size={14} /> {formatBytes(recording.estimatedBytes)} · {tNow("rec.freeSpace", { free: formatBytes(recording.diskFreeBytes) })}</span>
             <time>{formatTime(activeElapsed)}</time>
           </div>
           <div className="director-primary">
             {recording.status === "awaiting-consent" && (
-              <button disabled={busy} onClick={() => void act("start")}><CirclePlay size={17} /> Start</button>
+              <button disabled={busy} onClick={() => void act("start")}><CirclePlay size={17} /> {tNow("rec.start")}</button>
             )}
             {(recording.status === "recording" || recording.status === "countdown") && (
-              <button disabled={busy} onClick={() => void act("pause")}><CirclePause size={17} /> Pause for LARP / break</button>
+              <button disabled={busy} onClick={() => void act("pause")}><CirclePause size={17} /> {tNow("rec.pauseLarp")}</button>
             )}
             {recording.status === "paused" && (
-              <button disabled={busy} onClick={() => void act("resume")}><CirclePlay size={17} /> Resume with countdown</button>
+              <button disabled={busy} onClick={() => void act("resume")}><CirclePlay size={17} /> {tNow("rec.resumeCountdown")}</button>
             )}
             {["awaiting-consent", "countdown", "recording", "paused"].includes(recording.status) && (
-              <button className="danger" disabled={busy} onClick={() => void act("stop")}><Square size={16} /> Stop</button>
+              <button className="danger" disabled={busy} onClick={() => void act("stop")}><Square size={16} /> {tNow("rec.stop")}</button>
             )}
           </div>
           <section>
-            <h3>Scenes</h3>
+            <h3>{tNow("rec.scenes")}</h3>
             <div className="director-scenes">
               {SCENES.map((scene) => (
                 <button
@@ -857,13 +856,13 @@ export function RecordingDirector({
                   disabled={busy}
                   onClick={() => void act("scene", { scene: scene.id })}
                 >
-                  {scene.label}
+                  {tNow(scene.labelKey)}
                 </button>
               ))}
             </div>
           </section>
           <section>
-            <h3>Direction</h3>
+            <h3>{tNow("rec.direction")}</h3>
             <label className="recording-checkbox">
               <input
                 type="checkbox"
@@ -872,16 +871,16 @@ export function RecordingDirector({
                   void act("direction", { automaticDirection: event.target.checked })
                 }
               />
-              Automatic scene selection
+              {tNow("rec.autoScene")}
             </label>
             <select
-              aria-label="Lock current speaker"
+              aria-label={tNow("rec.lockSpeakerAria")}
               value={recording.lockedSpeakerId || ""}
               onChange={(event) =>
                 void act("direction", { lockedSpeakerId: event.target.value || null })
               }
             >
-              <option value="">No speaker lock</option>
+              <option value="">{tNow("rec.noSpeakerLock")}</option>
               {people.map((person) => (
                 <option key={person.id} value={person.id}>
                   {person.displayName}
@@ -890,9 +889,9 @@ export function RecordingDirector({
             </select>
           </section>
           <section>
-            <h3>Character reveal</h3>
+            <h3>{tNow("rec.charReveal")}</h3>
             <select
-              aria-label="Character to reveal"
+              aria-label={tNow("rec.charToRevealAria")}
               value={revealUserId}
               onChange={(event) => setRevealUserId(event.target.value)}
             >
@@ -903,27 +902,27 @@ export function RecordingDirector({
               ))}
             </select>
             <div className="director-primary">
-              <button disabled={busy || !revealUserId} onClick={() => void showReveal("portrait")}>Portrait</button>
-              <button disabled={busy || !revealUserId} onClick={() => void showReveal("compact")}>Compact</button>
-              <button disabled={busy || !revealUserId} onClick={() => void showReveal("sheet")}>Approved sheet</button>
-              <button disabled={busy} onClick={() => void apiFetch("/api/recordings/presentation", { method: "POST", body: JSON.stringify({ action: "clear", sessionId: recording.id }) })}>Clear</button>
+              <button disabled={busy || !revealUserId} onClick={() => void showReveal("portrait")}>{tNow("rec.cardType.portrait")}</button>
+              <button disabled={busy || !revealUserId} onClick={() => void showReveal("compact")}>{tNow("rec.compact")}</button>
+              <button disabled={busy || !revealUserId} onClick={() => void showReveal("sheet")}>{tNow("rec.cardType.sheet")}</button>
+              <button disabled={busy} onClick={() => void apiFetch("/api/recordings/presentation", { method: "POST", body: JSON.stringify({ action: "clear", sessionId: recording.id }) })}>{tNow("rec.clear")}</button>
             </div>
           </section>
           <section>
-            <h3>Timeline</h3>
+            <h3>{tNow("rec.timeline")}</h3>
             <div className="director-primary">
               <button disabled={busy} onClick={() => void act("marker", { kind: "chapter", name: "Chapter" })}>
-                <Flag size={15} /> Chapter
+                <Flag size={15} /> {tNow("rec.chapter")}
               </button>
               <button disabled={busy} onClick={() => void act("marker", { kind: "highlight", name: "Highlight" })}>
-                <Flag size={15} /> Highlight
+                <Flag size={15} /> {tNow("rec.highlight")}
               </button>
             </div>
             <ul className="editable-timeline">
               {timeline.map((event) => (
                 <li key={event.id}>
                   <input
-                    aria-label="Event time in seconds"
+                    aria-label={tNow("rec.eventTimeAria")}
                     type="number"
                     min={0}
                     step={1}
@@ -945,7 +944,7 @@ export function RecordingDirector({
                     }
                   />
                   <input
-                    aria-label="Event name"
+                    aria-label={tNow("rec.eventNameAria")}
                     value={String(
                       event.payload.name ||
                         event.payload.scene ||
@@ -972,10 +971,10 @@ export function RecordingDirector({
                       })
                     }
                   />
-                  <span>{event.automatic ? "auto" : event.kind}</span>
+                  <span>{event.automatic ? tNow("rec.auto") : event.kind}</span>
                   <button
                     type="button"
-                    aria-label="Delete timeline event"
+                    aria-label={tNow("rec.deleteEventAria")}
                     onClick={() => void deleteTimelineEvent(event.id)}
                   >
                     ×
@@ -985,7 +984,7 @@ export function RecordingDirector({
             </ul>
           </section>
           <section>
-            <h3>Consent &amp; tracks</h3>
+            <h3>{tNow("rec.consentAndTracks")}</h3>
             <ul className="director-participants">
               {recording.consents.map((consent) => {
                 const person = people.find((entry) => entry.id === consent.userId);

@@ -3,6 +3,7 @@
 import { Check, Copy, Link2, RefreshCw, Unlink } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../../lib/client";
+import { useI18n } from "../../lib/i18n-context";
 
 interface AccountState {
   link: { discordUserId: string; discordName: string | null; linkedAt: string } | null;
@@ -17,6 +18,7 @@ interface AccountState {
  * under your Discord name there (lib/discord-accounts.ts).
  */
 export function DiscordAccountLink() {
+  const { t, locale } = useI18n();
   const [state, setState] = useState<AccountState | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -27,9 +29,9 @@ export function DiscordAccountLink() {
     try {
       setState(await apiFetch<AccountState>("/api/settings/discord", init));
     } catch (problem) {
-      setError(problem instanceof Error ? problem.message : "Something went wrong.");
+      setError(problem instanceof Error ? problem.message : t("settings.discordLink.genericError"));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void call();
@@ -54,7 +56,7 @@ export function DiscordAccountLink() {
   return (
     <div className="pe-field discord-account-link">
       <div className="pe-field-head">
-        <span>Discord account</span>
+        <span>{t("settings.discordLink.title")}</span>
       </div>
       {state.link ? (
         <div className="discord-account-row">
@@ -62,21 +64,21 @@ export function DiscordAccountLink() {
             <Link2 size={14} />
           </span>
           <div className="discord-account-text">
-            <strong>{state.link.discordName || "Your Discord account"}</strong>
+            <strong>{state.link.discordName || t("settings.discordLink.fallbackName")}</strong>
             <small>
-              Linked {new Date(state.link.linkedAt).toLocaleDateString()}. What you write in bridged channels shows as you on
-              both sides.
+              {t("settings.discordLink.linkedDesc", {
+                date: new Date(state.link.linkedAt).toLocaleDateString(locale),
+              })}
             </small>
           </div>
           <button type="button" className="pe-btn" disabled={busy} onClick={() => void run({ method: "DELETE" })}>
-            <Unlink size={14} /> Unlink
+            <Unlink size={14} /> {t("settings.discordLink.unlink")}
           </button>
         </div>
       ) : state.code ? (
         <div className="discord-account-steps">
           <p className="pe-field-hint">
-            In any Discord server with the {state.botName ? <strong>{state.botName}</strong> : "Hoffle"} bot (or a DM with it),
-            run:
+            {t("settings.discordLink.runInDiscord", { bot: state.botName || "Hoffle" })}
           </p>
           <div className="discord-account-command">
             <code>{command}</code>
@@ -90,32 +92,29 @@ export function DiscordAccountLink() {
                 });
               }}
             >
-              {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy"}
+              {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? t("common.copied") : t("common.copy")}
             </button>
           </div>
           <p className="pe-field-hint">
-            Waiting for it… The code works for 15 minutes.{" "}
+            {t("settings.discordLink.waiting")}{" "}
             <button type="button" className="pe-link-btn" disabled={busy} onClick={() => void run({ method: "POST" })}>
-              <RefreshCw size={12} /> New code
+              <RefreshCw size={12} /> {t("settings.discordLink.newCode")}
             </button>
           </p>
         </div>
       ) : (
         <div className="discord-account-row">
           <div className="discord-account-text">
-            <small>
-              On a server bridged with Discord, link your accounts so your Discord messages, reactions and typing show as
-              you here, and your Hoffle messages show under your Discord name there.
-            </small>
+            <small>{t("settings.discordLink.unlinkedDesc")}</small>
           </div>
           <button
             type="button"
             className="pe-btn pe-btn-primary"
             disabled={busy || !state.available}
-            title={state.available ? undefined : "The Discord bridge isn't running on this Hoffle."}
+            title={state.available ? undefined : t("settings.discordLink.unavailable")}
             onClick={() => void run({ method: "POST" })}
           >
-            <Link2 size={14} /> Link Discord
+            <Link2 size={14} /> {t("settings.discordLink.linkBtn")}
           </button>
         </div>
       )}

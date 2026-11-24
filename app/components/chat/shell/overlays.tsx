@@ -21,6 +21,7 @@ import type { MsnContacts } from "@/lib/msn-contacts";
 import type { WhatsNewEntry } from "../../../hooks/use-msn-extras";
 import type { ClientEvent, VoiceParticipant, RecordingState } from "@/lib/protocol";
 import { deferred } from "./deferred";
+import { useI18n } from "../../../lib/i18n-context";
 
 const UserProfileCard = deferred(() => import("../../user-profile-card").then((m) => m.UserProfileCard));
 
@@ -181,6 +182,7 @@ export function ImageLightbox({
   lightbox: { images: string[]; index: number; } | null;
   setLightbox: Dispatch<SetStateAction<{ images: string[]; index: number; } | null>>;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {lightbox && lightbox.images[lightbox.index] && (
@@ -193,7 +195,7 @@ export function ImageLightbox({
           <button
             type="button"
             className="lightbox-close"
-            aria-label="Close image"
+            aria-label={t("chat.overlay.closeImage")}
             onClick={() => setLightbox(null)}
           >
             ×
@@ -203,7 +205,7 @@ export function ImageLightbox({
               <button
                 type="button"
                 className="lightbox-nav lightbox-prev"
-                aria-label="Previous image"
+                aria-label={t("chat.overlay.prevImage")}
                 onClick={(e) => {
                   e.stopPropagation();
                   setLightbox((prev) =>
@@ -223,7 +225,7 @@ export function ImageLightbox({
               <button
                 type="button"
                 className="lightbox-nav lightbox-next"
-                aria-label="Next image"
+                aria-label={t("chat.overlay.nextImage")}
                 onClick={(e) => {
                   e.stopPropagation();
                   setLightbox((prev) =>
@@ -259,7 +261,7 @@ export function ImageLightbox({
             rel="noreferrer"
             onClick={(event) => event.stopPropagation()}
           >
-            Open original ↗
+            {t("chat.overlay.openOriginal")}
           </a>
         </div>
       )}
@@ -399,10 +401,11 @@ export function IncomingDmCall({
   declineIncomingCall: () => void;
   acceptIncomingCall: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {incomingDmCall && (
-        <div className="incoming-call-overlay" role="alertdialog" aria-modal="true" aria-label="Incoming Call">
+        <div className="incoming-call-overlay" role="alertdialog" aria-modal="true" aria-label={t("chat.overlay.incomingCallAria")}>
           <div className="incoming-call-card">
             <div className="incoming-call-avatar-wrapper">
               <Avatar
@@ -417,7 +420,7 @@ export function IncomingDmCall({
               <span className="incoming-call-name">{incomingDmCall.fromDisplayName}</span>
               <span className="incoming-call-subtitle">
                 {incomingDmCall.isVideo ? <Video size={13} /> : <PhoneCall size={13} />}
-                Incoming {incomingDmCall.isVideo ? "Video" : "Voice"} Call...
+                {incomingDmCall.isVideo ? t("chat.overlay.incomingVideoCall") : t("chat.overlay.incomingVoiceCall")}
               </span>
             </div>
             <div className="incoming-call-actions">
@@ -425,8 +428,8 @@ export function IncomingDmCall({
                 type="button"
                 className="incoming-call-btn decline"
                 onClick={declineIncomingCall}
-                title="Decline Call"
-                aria-label="Decline Call"
+                title={t("chat.overlay.declineCall")}
+                aria-label={t("chat.overlay.declineCall")}
               >
                 <PhoneOff size={20} />
               </button>
@@ -434,8 +437,8 @@ export function IncomingDmCall({
                 type="button"
                 className="incoming-call-btn accept"
                 onClick={acceptIncomingCall}
-                title="Accept Call"
-                aria-label="Accept Call"
+                title={t("chat.overlay.acceptCall")}
+                aria-label={t("chat.overlay.acceptCall")}
               >
                 {incomingDmCall.isVideo ? <Video size={20} /> : <PhoneCall size={20} />}
               </button>
@@ -458,6 +461,7 @@ export function MarkdownGuideModal({
   setDraft: (valueOrFn: string | ((prev: string) => string)) => void;
   composerRef: RefObject<HTMLTextAreaElement | null>;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {markdownModalOpen && (
@@ -471,28 +475,28 @@ export function MarkdownGuideModal({
           >
             <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-[var(--ink)]">Markdown & Code Snippets</span>
+                <span className="text-sm font-bold text-[var(--ink)]">{t("chat.overlay.mdTitle")}</span>
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full border border-purple-500/40 bg-purple-500/10 text-purple-300">
-                  Active
+                  {t("chat.overlay.mdActive")}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => setMarkdownModalOpen(false)}
                 className="popup-close-x"
-                aria-label="Close markdown guide"
+                aria-label={t("chat.overlay.mdCloseAria")}
               >
                 <X size={18} />
               </button>
             </div>
 
             <p className="text-xs text-[#b8b0cf] leading-relaxed">
-              Hoffle natively formats your messages with Discord-flavoured Markdown. Send code snippets with syntax highlighting using triple backticks.
+              {t("chat.overlay.mdDesc")}
             </p>
 
             <div className="space-y-2">
               <div className="text-[11px] font-bold text-[var(--lavender)] uppercase tracking-wider">
-                Code Blocks (C++, Python, JS, Bash):
+                {t("chat.overlay.mdCodeBlocks")}
               </div>
               <div className="rounded-xl border border-[#28223e] bg-[#0f0d19] p-3 font-mono text-[11px] text-[var(--accent-hi)]">
                 <div>```cpp</div>
@@ -507,16 +511,16 @@ export function MarkdownGuideModal({
 
             <div className="grid grid-cols-2 gap-2 text-xs text-[var(--muted)]">
               <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
-                <strong className="text-white">**bold**</strong> → <strong>bold</strong>
+                <strong className="text-white">**{t("chat.overlay.mdBold")}**</strong> → <strong>{t("chat.overlay.mdBold")}</strong>
               </div>
               <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
-                <em className="text-white">*italic*</em> → <em>italic</em>
+                <em className="text-white">*{t("chat.overlay.mdItalic")}*</em> → <em>{t("chat.overlay.mdItalic")}</em>
               </div>
               <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
-                <code className="text-purple-300">`code`</code> → <code className="text-xs">code</code>
+                <code className="text-purple-300">`{t("chat.overlay.mdCode")}`</code> → <code className="text-xs">{t("chat.overlay.mdCode")}</code>
               </div>
               <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
-                <span className="text-white">||spoiler||</span> → spoiler
+                <span className="text-white">||{t("chat.overlay.mdSpoiler")}||</span> → {t("chat.overlay.mdSpoiler")}
               </div>
             </div>
 
@@ -530,14 +534,14 @@ export function MarkdownGuideModal({
                 }}
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-[var(--accent-strong)] hover:brightness-110 text-[var(--on-accent)] transition-colors cursor-pointer"
               >
-                Insert C++ Code Template
+                {t("chat.overlay.mdInsertCpp")}
               </button>
               <button
                 type="button"
                 onClick={() => setMarkdownModalOpen(false)}
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-[#b8b0cf] transition-colors cursor-pointer"
               >
-                Got it
+                {t("chat.overlay.mdGotIt")}
               </button>
             </div>
           </div>
@@ -564,6 +568,7 @@ export function ReactionPickerLayer({
   addQuickReaction: (emojiToAdd: string) => void;
   toggleReaction: (messageId: string | number, emoji: string) => Promise<void>;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {reactionPicker && (
@@ -588,12 +593,12 @@ export function ReactionPickerLayer({
               canManageEmojis={canManageChannels}
               title={
                 reactionPicker.mode === "addToQuickReactions"
-                  ? "Add to Quick Reactions"
+                  ? t("chat.overlay.quickReactTitle")
                   : undefined
               }
               subtitle={
                 reactionPicker.mode === "addToQuickReactions"
-                  ? "Click any emoji to add to your message actions bar"
+                  ? t("chat.overlay.quickReactSub")
                   : undefined
               }
               onPickEmoji={(codeOrUrl, _isCustom, e) => {
@@ -635,6 +640,7 @@ export function ReactionViewerLayer({
   openProfile: (member: Member, e?: React.MouseEvent) => void;
   user: PublicUser;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {reactionViewer && (
@@ -679,14 +685,13 @@ export function ReactionViewerLayer({
                       )}
                     </span>
                     <span className="reaction-viewer-title">
-                      {users.length}{" "}
-                      {users.length === 1 ? "reaction" : "reactions"}
+                      {users.length === 1 ? t("chat.overlay.reactionSingle") : t("chat.overlay.reactionPlural", { count: users.length })}
                     </span>
                     <button
                       type="button"
                       className="popup-close-x"
                       onClick={() => setReactionViewer(null)}
-                      aria-label="Close reactions"
+                      aria-label={t("chat.overlay.closeReactions")}
                     >
                       <X size={16} />
                     </button>
@@ -694,7 +699,7 @@ export function ReactionViewerLayer({
                   <div className="reaction-viewer-list">
                     {users.length === 0 && (
                       <div className="reaction-viewer-empty">
-                        No one has reacted yet.
+                        {t("chat.overlay.noReactions")}
                       </div>
                     )}
                     {users.map((u) => (
@@ -722,7 +727,7 @@ export function ReactionViewerLayer({
                           @{u.username}
                         </span>
                         {u.id === user?.id && (
-                          <span className="reaction-viewer-you">You</span>
+                          <span className="reaction-viewer-you">{t("chat.overlay.you")}</span>
                         )}
                       </button>
                     ))}
@@ -766,6 +771,7 @@ export function FloatingStreamPreview({
   setStageChannelId: Dispatch<SetStateAction<string | null>>;
   setPipDismissed: Dispatch<SetStateAction<boolean>>;
 }) {
+  const { t } = useI18n();
   // Who is watching this share: the hub counts seats that tuned in.
   const streamer = floatingStream && !floatingStream.isSelf
     ? voiceParticipants.find((p) => p.id === floatingStream.participantId && p.screenStreamId)
@@ -782,7 +788,7 @@ export function FloatingStreamPreview({
           channelName={
             servers
               .flatMap((s) => s.channels)
-              .find((c) => c.id === voice.channelId)?.name || "Voice Room"
+              .find((c) => c.id === voice.channelId)?.name || t("chat.overlay.voiceRoomFallback")
           }
           stream={floatingStream.stream}
           streamerName={floatingStream.streamerName}
@@ -792,7 +798,7 @@ export function FloatingStreamPreview({
             const p = voiceParticipants.find((vp) => vp.connectionId === connId);
             return {
               id: p?.id,
-              displayName: p?.displayName || "Viewer",
+              displayName: p?.displayName || t("chat.overlay.viewerFallback"),
               avatar: p?.avatar,
               avatarUrl: p?.avatarUrl,
             };

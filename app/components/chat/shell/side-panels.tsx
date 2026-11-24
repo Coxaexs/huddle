@@ -6,6 +6,7 @@ import { DM_HOME } from "../../../lib/chat/constants";
 import { formatClientDateTime } from "../../../lib/chat/format";
 import { SavedEntry } from "../../../lib/chat/shell-helpers";
 import type { Dispatch, SetStateAction } from "react";
+import { useI18n } from "../../../lib/i18n-context";
 
 export function SearchPanel({
   searchOpen,
@@ -28,6 +29,7 @@ export function SearchPanel({
   searchResults: { id: string; channelId: string; channelName: string; author: string; snippet: string; }[];
   jumpToMessage: (channelId: string, messageId: string) => void;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {searchOpen && (
@@ -35,9 +37,9 @@ export function SearchPanel({
                     <div className="search-head">
                       <input
                         value={searchQuery}
-                        placeholder={`Search #${channelTitle}'s server…`}
+                        placeholder={t("chat.search.placeholder", { channel: channelTitle })}
                         onChange={(event) => void runSearch(event.target.value)}
-                        aria-label="Search messages"
+                        aria-label={t("chat.search.aria")}
                       />
                       <button
                         type="button"
@@ -46,7 +48,7 @@ export function SearchPanel({
                           setSearchQuery("");
                           setSearchResults([]);
                         }}
-                        aria-label="Close search"
+                        aria-label={t("chat.search.closeAria")}
                       >
                         ×
                       </button>
@@ -107,7 +109,7 @@ export function SearchPanel({
                         </button>
                       ))}
                       {searchQuery.length >= 2 && !searchResults.length && (
-                        <p className="pins-empty">Nothing matched that.</p>
+                        <p className="pins-empty">{t("chat.search.empty")}</p>
                       )}
                     </div>
                   </div>
@@ -131,26 +133,27 @@ export function SavedPanel({
   jumpToMessage: (channelId: string, messageId: string) => void;
   toggleSaved: (messageId: string) => Promise<void>;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {savedOpen && (
                   <div className="pins-panel saved-panel">
                     <div className="pins-head">
-                      <strong>Saved messages</strong>
+                      <strong>{t("chat.saved.title")}</strong>
                       <button
                         type="button"
                         className="popup-close-x"
                         onClick={() => setSavedOpen(false)}
-                        aria-label="Close saved messages"
+                        aria-label={t("chat.saved.closeAria")}
                       >
                         <X size={16} />
                       </button>
                     </div>
                     {!savedList ? (
-                      <p className="pins-empty">Loading…</p>
+                      <p className="pins-empty">{t("chat.saved.loading")}</p>
                     ) : !savedList.length ? (
                       <p className="pins-empty">
-                        Nothing saved yet. Hover a message and press the bookmark to keep it here.
+                        {t("chat.saved.empty")}
                       </p>
                     ) : (
                       savedList.map((entry) => (
@@ -171,7 +174,7 @@ export function SavedPanel({
                                   {entry.channelName}
                                 </>
                               ) : (
-                                "Direct message"
+                                t("chat.saved.dmLabel")
                               )}
                               {" · "}
                               {formatClientDateTime(entry.createdAt)}
@@ -185,7 +188,7 @@ export function SavedPanel({
                             type="button"
                             className="saved-remove"
                             onClick={() => void toggleSaved(entry.messageId)}
-                            aria-label="Remove from saved"
+                            aria-label={t("chat.saved.removeAria")}
                           >
                             <X size={14} />
                           </button>
@@ -215,17 +218,18 @@ export function MentionsPanel({
   mentionInbox: MentionEntry[] | null;
   openMention: (entry: MentionEntry) => void;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {mentionsOpen && (
                   <div className="pins-panel mentions-panel">
                     <div className="pins-head">
-                      <strong>Mentions</strong>
+                      <strong>{t("chat.mentions.title")}</strong>
                       <button
                         type="button"
                         className="popup-close-x"
                         onClick={() => setMentionsOpen(false)}
-                        aria-label="Close mentions"
+                        aria-label={t("chat.mentions.closeAria")}
                       >
                         <X size={16} />
                       </button>
@@ -240,12 +244,12 @@ export function MentionsPanel({
                           className={mentionsTab === tab ? "active" : ""}
                           onClick={() => setMentionsTab(tab)}
                         >
-                          {tab === "all" ? "All" : `Unread${unreadMentionTotal ? ` (${unreadMentionTotal})` : ""}`}
+                          {tab === "all" ? t("chat.mentions.all") : `${t("chat.mentions.unread")}${unreadMentionTotal ? ` (${unreadMentionTotal})` : ""}`}
                         </button>
                       ))}
                     </div>
                     {(() => {
-                      if (!mentionInbox) return <p className="pins-empty">Loading…</p>;
+                      if (!mentionInbox) return <p className="pins-empty">{t("chat.saved.loading")}</p>;
                       const shown =
                         mentionsTab === "unread"
                           ? mentionInbox.filter((entry) => !entry.read)
@@ -254,8 +258,8 @@ export function MentionsPanel({
                         return (
                           <p className="pins-empty">
                             {mentionsTab === "unread"
-                              ? "You're all caught up."
-                              : "Nobody has mentioned you yet."}
+                              ? t("chat.mentions.emptyUnread")
+                              : t("chat.mentions.emptyAll")}
                           </p>
                         );
                       }
@@ -273,7 +277,7 @@ export function MentionsPanel({
                                 {entry.channelName}
                               </>
                             ) : (
-                              "Direct message"
+                              t("chat.saved.dmLabel")
                             )}
                             {" · "}
                             {formatClientDateTime(entry.message.createdAt)}
@@ -310,17 +314,18 @@ export function PinsPanel({
   canPin: boolean;
   togglePin: (message: Message) => Promise<void>;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {pinsOpen && (
                   <div className="pins-panel">
                     <div className="pins-head">
-                      <strong>Pinned in {channelTitle}</strong>
+                      <strong>{t("chat.pins.title", { channel: channelTitle })}</strong>
                       <button
                         type="button"
                         className="popup-close-x"
                         onClick={() => setPinsOpen(false)}
-                        aria-label="Close pinned messages"
+                        aria-label={t("chat.pins.closeAria")}
                       >
                         <X size={16} />
                       </button>
@@ -334,7 +339,7 @@ export function PinsPanel({
                             // Works for pins older than what is loaded, too.
                             if (activeChannelId) jumpToMessage(activeChannelId, String(pin.id));
                           }}
-                          title="Click to jump to message"
+                          title={t("chat.pins.jumpTitle")}
                         >
                           <div className="flex items-center justify-between mb-1">
                             <strong className="text-xs text-white">{pin.author}</strong>
@@ -347,7 +352,7 @@ export function PinsPanel({
                                   void togglePin(pin);
                                 }}
                               >
-                                Unpin
+                                {t("chat.pins.unpin")}
                               </button>
                             )}
                           </div>
@@ -356,7 +361,7 @@ export function PinsPanel({
                       ))
                     ) : (
                       <p className="pins-empty">
-                        Nothing pinned yet. Hover a message and press the pin.
+                        {t("chat.pins.empty")}
                       </p>
                     )}
                   </div>

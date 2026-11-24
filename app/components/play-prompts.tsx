@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useI18n } from "../lib/i18n-context";
 import { apiFetch } from "../lib/client";
 import { opensGamesDirectly } from "../lib/game-links";
-import { useModuleOn } from "../lib/modules";
 import { playSound } from "../lib/msn-sounds";
-import { MOD_GAMES, PLAY_GAMES, playGameForActivity, type PlayGameId } from "@/lib/play-together";
+import { MOD_GAMES } from "@/lib/play-together";
 import type { PlayEvent } from "@/lib/protocol";
-import type { ProfileActivity } from "@/lib/users";
 import { stripTextStyle } from "@/lib/text-style";
 import { JoinHelp, joinPlayInvite, type JoinResult } from "./play-card";
 
@@ -16,48 +14,17 @@ type Prompt =
   | { id: string; type: "ask"; messageId: string; game: string; from: { id: string; name: string } }
   | { id: string; type: "listen"; name: string; on: boolean }
   | { id: string; type: "accepted"; messageId: string; game: string; host: string; result?: JoinResult; error?: string }
-  | { id: string; type: "declined"; game: string; host: string }
-  | { id: string; type: "invite"; game: PlayGameId };
-
-const NO_ASK_KEY = "hoffle-play-no-ask";
-
-function noAskGames(): string[] {
-  try {
-    return JSON.parse(window.localStorage.getItem(NO_ASK_KEY) || "[]") as string[];
-  } catch {
-    return [];
-  }
-}
-
-function stopAsking(game: string): void {
-  try {
-    window.localStorage.setItem(NO_ASK_KEY, JSON.stringify([...new Set([...noAskGames(), game])]));
-  } catch {
-    // This session only.
-  }
-}
+  | { id: string; type: "declined"; game: string; host: string };
 
 /**
  * Play together pop-ups, Discord-style:
- * - you start a game Hoffle can invite to → "Invite people here?";
  * - someone asks to join your game → Let in / Not now;
  * - the host lets you in → the game opens (straight away in the desktop app,
  *   with a Join button in the browser, which needs a click to open Steam).
  */
-export function PlayPrompts({
-  channelId,
-  channelLabel,
-}: {
-  /** The conversation an invite from the "you're playing" prompt goes to. */
-  channelId: string | null;
-  channelLabel: string;
-}) {
+export function PlayPrompts() {
   const { t } = useI18n();
-  const gamesOn = useModuleOn("games");
   const [prompts, setPrompts] = useState<Prompt[]>([]);
-  const offered = useRef(new Set<string>());
-  const channelRef = useRef(channelId);
-  channelRef.current = channelId;
 
   const drop = (id: string) => setPrompts((list) => list.filter((p) => p.id !== id));
   const patch = (id: string, change: Partial<Prompt>) =>
@@ -132,34 +99,11 @@ export function PlayPrompts({
     return () => window.removeEventListener("hoffle:play-state", onState);
   }, []);
 
-  // The desktop app spotted a game we can invite to: offer once per game per session.
-  useEffect(() => {
-    if (!gamesOn) return;
-    const onActivity = (event: Event) => {
-      const activity = (event as CustomEvent<ProfileActivity | null>).detail;
-      const game = playGameForActivity(activity?.name);
-      if (!game || offered.current.has(game) || noAskGames().includes(game) || !channelRef.current) return;
-      offered.current.add(game);
-      setPrompts((list) => [...list, { id: crypto.randomUUID(), type: "invite", game }]);
-    };
-    window.addEventListener("hoffle:activity-detected", onActivity);
-    return () => window.removeEventListener("hoffle:activity-detected", onActivity);
-  }, [gamesOn]);
-
   async function answer(prompt: Extract<Prompt, { type: "ask" }>, accept: boolean) {
     drop(prompt.id);
     await apiFetch("/api/play", {
       method: "POST",
       body: JSON.stringify({ action: "answer", messageId: prompt.messageId, userId: prompt.from.id, accept }),
-    }).catch(() => undefined);
-  }
-
-  async function invite(prompt: Extract<Prompt, { type: "invite" }>) {
-    drop(prompt.id);
-    if (!channelRef.current) return;
-    await apiFetch("/api/play", {
-      method: "POST",
-      body: JSON.stringify({ action: "start", channelId: channelRef.current, game: prompt.game }),
     }).catch(() => undefined);
   }
 
@@ -203,29 +147,6 @@ export function PlayPrompts({
             <p>{t(prompt.on ? "listen.prompt.on" : "listen.prompt.off", { name: stripTextStyle(prompt.name) })}</p>
           )}
           {prompt.type === "declined" && <p>{t("play.prompt.declined", { host: stripTextStyle(prompt.host), game: prompt.game })}</p>}
-          {prompt.type === "invite" && (
-            <>
-              <p>{t("play.prompt.invite", { game: PLAY_GAMES[prompt.game].name, where: channelLabel || t("play.prompt.here") })}</p>
-              <div className="play-actions">
-                <button type="button" className="primary" onClick={() => void invite(prompt)}>
-                  {t("play.action.invite")}
-                </button>
-                <button type="button" onClick={() => drop(prompt.id)}>
-                  {t("play.action.notNow")}
-                </button>
-                <button
-                  type="button"
-                  className="play-link"
-                  onClick={() => {
-                    stopAsking(prompt.game);
-                    drop(prompt.id);
-                  }}
-                >
-                  {t("play.action.dontAsk")}
-                </button>
-              </div>
-            </>
-          )}
         </div>
       ))}
     </div>

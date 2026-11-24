@@ -31,6 +31,7 @@ import { WidgetArea } from "../../widgets/widget-area";
 import { useLayoutPrefs } from "@/app/lib/layout-store";
 import { RailQuickDms } from "../rail";
 import { StatusMenu } from "../status-menu";
+import { AddAccountModal } from "../../account-switcher";
 import { UserFooter } from "../../user-footer";
 import { type UserMenuTarget, type VoicePref } from "../../user-menu";
 import { screenQualityLabel } from "../../../hooks/use-voice";
@@ -123,8 +124,10 @@ export function ServerRail({
   setSettingsOpen: Dispatch<SetStateAction<boolean>>;
 }) {
   const { t } = useI18n();
+  const [addAccountOpen, setAddAccountOpen] = useState(false);
   return (
-    <aside className="rail" aria-label={t("rail.servers")}>
+    <>
+      <aside className="rail" aria-label={t("rail.servers")}>
       <div className="rail-item">
         {inDmHome && <span className="rail-active-pill" />}
         <button
@@ -207,6 +210,7 @@ export function ServerRail({
           setPictureOpen={setPictureOpen}
           setTodayOpen={setTodayOpen}
           setSettingsOpen={setSettingsOpen}
+          onAddAccount={() => setAddAccountOpen(true)}
         />
       )}
       {/* 
@@ -235,6 +239,8 @@ export function ServerRail({
         />
       </Avatar> */}
     </aside>
+    <AddAccountModal open={addAccountOpen} onClose={() => setAddAccountOpen(false)} />
+    </>
   );
 }
 

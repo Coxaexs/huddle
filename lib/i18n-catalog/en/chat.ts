@@ -97,6 +97,8 @@ export const chat = {
   "composer.openEmojiPicker": "Open Emoji Picker",
   "composer.addGif": "Add a GIF",
   "composer.showCommands": "Show commands",
+  "composer.icPill": "IC: {name}",
+  "composer.icToggleTitle": "Speak in character as {name}",
   "composer.sendMessage": "Send message",
   "composer.formatTooltip": "Colours, fonts and effects",
   "composer.playGameTooltip": "Play a game",

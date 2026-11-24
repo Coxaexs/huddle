@@ -560,6 +560,8 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const [drawingFog, setDrawingFog] = useState(false);
   const fogCornerRef = useRef<{ x: number; y: number } | null>(null);
   const [dndEdition, setDndEdition] = useState<"2014" | "2024" | undefined>(undefined);
+  const [hasDmRole, setHasDmRole] = useState(false);
+  const autoClaimedGmRef = useRef<string | null>(null);
   useEffect(() => {
     if (venueId !== "tabletop") {
       setPingMode(false);
@@ -568,13 +570,19 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
     }
   }, [venueId]);
   useEffect(() => {
-    if (venueId !== "tabletop" || !serverId) return;
+    if (venueId !== "tabletop" || !serverId) {
+      setHasDmRole(false);
+      return;
+    }
     let alive = true;
-    void apiFetch<{ settings?: { edition?: string } }>(`/api/integrations/dnd/settings?serverId=${encodeURIComponent(serverId)}`)
+    void apiFetch<{ edition?: string; isDm?: boolean; settings?: { edition?: string } }>(`/api/integrations/dnd/settings?serverId=${encodeURIComponent(serverId)}`)
       .then((data) => {
-        if (alive && (data.settings?.edition === "2014" || data.settings?.edition === "2024")) {
-          setDndEdition(data.settings.edition);
+        if (!alive) return;
+        const edition = data.edition ?? data.settings?.edition;
+        if (edition === "2014" || edition === "2024") {
+          setDndEdition(edition);
         }
+        setHasDmRole(Boolean(data.isDm));
       })
       .catch(() => {});
     return () => { alive = false; };
@@ -2077,6 +2085,12 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   const gmPresent = Boolean(room.shared.gm && participants.some((p) => p.connectionId === room.shared.gm?.connectionId));
   const canEditMap = isGm || !gmPresent;
   const inGmChair = Boolean(connectionId && room.poses.get(connectionId)?.seat === GM_SEAT_ID);
+  useEffect(() => {
+    if (venueId !== "tabletop" || !hasDmRole || !connectionId || !serverId || gmPresent) return;
+    if (autoClaimedGmRef.current === serverId) return;
+    autoClaimedGmRef.current = serverId;
+    room.setShared("gm", { connectionId, name: myName });
+  }, [venueId, hasDmRole, connectionId, serverId, gmPresent, myName, room]);
 
   // Pawns: mine to move, and anyone's for the game master (the hub holds everyone to the same).
   const myUserId = myPerson?.id ?? null;
@@ -2575,51 +2589,51 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
       <style>{LIVING_ROOM_CSS}</style>
       <div ref={mountRef} className="living-room-canvas" />
       {controlsHidden && (
-        <button type="button" className="living-room-reveal" onClick={() => setControlsHidden(false)} title="Show controls (H)" aria-label="Show controls"><Eye size={16} /></button>
+        <button type="button" className="living-room-reveal" onClick={() => setControlsHidden(false)} title={tNow("lr.showControlsTitle")} aria-label={tNow("lr.showControlsAria")}><Eye size={16} /></button>
       )}
       {!controlsHidden && <div className="living-room-top">
         <div className="living-room-title">
           {(() => { const Icon = VENUE_ICONS[venueId]; return <Icon size={16} />; })()}
           <span>{VENUE_NAMES[venueId]}</span>
-          {atDecks ? <small>· at the decks</small> : seatName ? <small>· {venueId === "cinema" ? seatName : `on the ${seatName.toLowerCase()}`}</small> : me?.seat === "floor" ? <small>· on the floor</small> : null}
-          {tvShowing && <small>· {venueId === "lounge" ? "TV" : "Screen"}: {tvShowing}</small>}
+          {atDecks ? <small>{tNow("lr.atDecks")}</small> : seatName ? <small>{venueId === "cinema" ? `· ${seatName}` : tNow("lr.onSeat", { seat: seatName.toLowerCase() })}</small> : me?.seat === "floor" ? <small>{tNow("lr.onFloor")}</small> : null}
+          {tvShowing && <small>· {venueId === "lounge" ? tNow("lr.tvLabel") : tNow("lr.screenLabel")}: {tvShowing}</small>}
         </div>
         <div className="living-room-tools">
           {VENUE_IDS.map((id) => {
             const Icon = VENUE_ICONS[id];
             return (
-              <button key={id} type="button" className={venueId === id ? "active" : ""} onClick={() => room.setVenue(id)} title={VENUE_NAMES[id]} aria-label={`Go to the ${VENUE_NAMES[id].toLowerCase()}`} aria-pressed={venueId === id}>
+              <button key={id} type="button" className={venueId === id ? "active" : ""} onClick={() => room.setVenue(id)} title={VENUE_NAMES[id]} aria-label={tNow("lr.goToVenueAria", { venue: VENUE_NAMES[id].toLowerCase() })} aria-pressed={venueId === id}>
                 <Icon size={16} />
               </button>
             );
           })}
           <span className="living-room-sep" aria-hidden="true" />
           {/* A film plays on whichever screen the room is in, so anyone can start or stop it from any room. */}
-          <button type="button" className={panel === "watch" || room.shared.watch ? "active" : ""} onClick={() => setPanel(panel === "watch" ? null : "watch")} title="Watch together" aria-label="Watch together" aria-expanded={panel === "watch"}><Film size={16} /></button>
+          <button type="button" className={panel === "watch" || room.shared.watch ? "active" : ""} onClick={() => setPanel(panel === "watch" ? null : "watch")} title={tNow("lr.watchTogether")} aria-label={tNow("lr.watchTogether")} aria-expanded={panel === "watch"}><Film size={16} /></button>
           {venueId === "cinema" && canProject && (inBooth
-            ? <button type="button" className={panel === "booth" ? "active" : ""} onClick={() => setPanel(panel === "booth" ? null : "booth")} title="Projection booth controls" aria-label="Projection booth controls" aria-expanded={panel === "booth"}><SlidersHorizontal size={16} /></button>
-            : <button type="button" onClick={goToBooth} title="Go to the projection booth (the door at the back of the hall)" aria-label="Go to the projection booth"><DoorOpen size={16} /></button>)}
+            ? <button type="button" className={panel === "booth" ? "active" : ""} onClick={() => setPanel(panel === "booth" ? null : "booth")} title={tNow("lr.boothControls")} aria-label={tNow("lr.boothControls")} aria-expanded={panel === "booth"}><SlidersHorizontal size={16} /></button>
+            : <button type="button" onClick={goToBooth} title={tNow("lr.goToBoothTitle")} aria-label={tNow("lr.goToBoothAria")}><DoorOpen size={16} /></button>)}
           {venueId === "cinema" && (
-            <button type="button" className={panel === "seats" ? "active" : ""} onClick={() => setPanel(panel === "seats" ? null : "seats")} title="Who is where" aria-label="Who is where" aria-expanded={panel === "seats"}><Users size={16} /></button>
+            <button type="button" className={panel === "seats" ? "active" : ""} onClick={() => setPanel(panel === "seats" ? null : "seats")} title={tNow("lr.whoIsWhere")} aria-label={tNow("lr.whoIsWhere")} aria-expanded={panel === "seats"}><Users size={16} /></button>
           )}
           {venueId === "club" && (atDecks
-            ? <button type="button" className={panel === "decks" ? "active" : ""} onClick={() => setPanel(panel === "decks" ? null : "decks")} title="The decks: mix, remix, sampler" aria-label="The decks" aria-expanded={panel === "decks"}><Disc3 size={16} /></button>
-            : !djHolder && <button type="button" onClick={takeDecks} title="Take the decks" aria-label="Take the decks"><Disc3 size={16} /></button>)}
+            ? <button type="button" className={panel === "decks" ? "active" : ""} onClick={() => setPanel(panel === "decks" ? null : "decks")} title={tNow("lr.theDecksTitle")} aria-label={tNow("lr.theDecksAria")} aria-expanded={panel === "decks"}><Disc3 size={16} /></button>
+            : !djHolder && <button type="button" onClick={takeDecks} title={tNow("lr.takeDecks")} aria-label={tNow("lr.takeDecks")}><Disc3 size={16} /></button>)}
           {venueId === "tabletop" && (
             <>
-              <button type="button" className={panel === "initiative" || room.shared.initiative ? "active" : ""} onClick={() => setPanel(panel === "initiative" ? null : "initiative")} title="Initiative" aria-label="Initiative" aria-expanded={panel === "initiative"}><Swords size={16} /></button>
+              <button type="button" className={panel === "initiative" || room.shared.initiative ? "active" : ""} onClick={() => setPanel(panel === "initiative" ? null : "initiative")} title={tNow("lr.initiative")} aria-label={tNow("lr.initiative")} aria-expanded={panel === "initiative"}><Swords size={16} /></button>
               <button type="button" className={panel === "character" ? "active" : ""} onClick={() => setPanel(panel === "character" ? null : "character")} title={tNow("livingRoom.myCharacter")} aria-label={tNow("livingRoom.myCharacter")} aria-expanded={panel === "character"}><UserRound size={16} /></button>
-              <button type="button" className={panel === "gm" || isGm ? "active" : ""} onClick={() => setPanel(panel === "gm" ? null : "gm")} title="Game master: the GM's chair, the battle map and your screen" aria-label={tNow("livingRoom.gameMaster")} aria-expanded={panel === "gm"}><Crown size={16} /></button>
-              <button type="button" className={panel === "pawns" || heldPawn ? "active" : ""} onClick={() => setPanel(panel === "pawns" ? null : "pawns")} title="Miniatures: take a pawn to the table" aria-label={tNow("livingRoom.miniatures")} aria-expanded={panel === "pawns"}><ChessPawn size={16} /></button>
-              <button type="button" className={pingMode ? "active" : ""} onClick={() => { setPingMode(!pingMode); if (!pingMode) flashHint("Click anywhere on the map to ping (or Shift+Click anytime).", 4000); }} title="Ping map (or Shift+Click)" aria-label="Ping map" aria-pressed={pingMode}><Crosshair size={16} /></button>
-              <button type="button" className={panel === "bard" ? "active" : ""} onClick={() => setPanel(panel === "bard" ? null : "bard")} title="Bard & atmosphere" aria-label="Bard & atmosphere" aria-expanded={panel === "bard"}><Music size={16} /></button>
-              <button type="button" onClick={() => void openDndCompanion("/vtt")} title="Open Tavern D&D Companion (SSO)" aria-label="Open Tavern D&D Companion"><ExternalLink size={16} /></button>
+              <button type="button" className={panel === "gm" || isGm ? "active" : ""} onClick={() => setPanel(panel === "gm" ? null : "gm")} title={tNow("lr.gmTitle")} aria-label={tNow("livingRoom.gameMaster")} aria-expanded={panel === "gm"}><Crown size={16} /></button>
+              <button type="button" className={panel === "pawns" || heldPawn ? "active" : ""} onClick={() => setPanel(panel === "pawns" ? null : "pawns")} title={tNow("lr.miniaturesTitle")} aria-label={tNow("livingRoom.miniatures")} aria-expanded={panel === "pawns"}><ChessPawn size={16} /></button>
+              <button type="button" className={pingMode ? "active" : ""} onClick={() => { setPingMode(!pingMode); if (!pingMode) flashHint(tNow("lr.pingHint"), 4000); }} title={tNow("lr.pingMapTitle")} aria-label={tNow("lr.pingMapAria")} aria-pressed={pingMode}><Crosshair size={16} /></button>
+              <button type="button" className={panel === "bard" ? "active" : ""} onClick={() => setPanel(panel === "bard" ? null : "bard")} title={tNow("lr.bardAtmosphere")} aria-label={tNow("lr.bardAtmosphere")} aria-expanded={panel === "bard"}><Music size={16} /></button>
+              <button type="button" onClick={() => void openDndCompanion("/vtt", serverId)} title={tNow("lr.openTavernTitle")} aria-label={tNow("lr.openTavernAria")}><ExternalLink size={16} /></button>
             </>
           )}
           {venueId === "boardhall" && (
             <>
-              <button type="button" className="living-room-play" onClick={() => onPlayBoardGame?.()} disabled={!onPlayBoardGame} title={boardGameId ? "Open the game to play" : "Start a DeepPixel game for the room"} aria-label={boardGameId ? "Open the game" : "Start a game"}><Gamepad2 size={16} /><span>{tNow("livingRoom.play")}</span></button>
-              <button type="button" className={followPawn ? "active" : ""} onClick={() => setFollowPawn((on) => !on)} title="Walk with my pawn: when it moves, you walk over to it" aria-label={tNow("livingRoom.walkWithPawn")} aria-pressed={followPawn}><Footprints size={16} /></button>
+              <button type="button" className="living-room-play" onClick={() => onPlayBoardGame?.()} disabled={!onPlayBoardGame} title={boardGameId ? tNow("lr.openGameTitle") : tNow("lr.startGameTitle")} aria-label={boardGameId ? tNow("lr.openGameAria") : tNow("lr.startGameAria")}><Gamepad2 size={16} /><span>{tNow("livingRoom.play")}</span></button>
+              <button type="button" className={followPawn ? "active" : ""} onClick={() => setFollowPawn((on) => !on)} title={tNow("lr.walkWithPawnTitle")} aria-label={tNow("livingRoom.walkWithPawn")} aria-pressed={followPawn}><Footprints size={16} /></button>
             </>
           )}
           <span className="living-room-sep" aria-hidden="true" />
@@ -2633,13 +2647,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         </div>
       </div>}
       {!controlsHidden && venueId === "tabletop" && combat && combat.entries.length > 0 && turnEntry && (
-        <div className="lr-combat-banner" role="region" aria-label="Combat turn">
-          <small>Round {combat.round}</small>
+        <div className="lr-combat-banner" role="region" aria-label={tNow("lr.combatTurnAria")}>
+          <small>{tNow("lr.round", { round: combat.round })}</small>
           <strong>▶ {turnEntry.name} ({turnEntry.value})</strong>
           {(!room.shared.gm || isGm || turnEntry.connectionId === connectionId) && (
             <span className="lr-row">
-              <button type="button" onClick={() => room.setShared("initiative", stepTurn(combat, -1))} title="Previous turn" aria-label="Previous turn"><SkipBack size={13} /></button>
-              <button type="button" className="primary" onClick={() => room.setShared("initiative", stepTurn(combat, 1))} title="Next turn" aria-label="Next turn"><SkipForward size={13} /></button>
+              <button type="button" onClick={() => room.setShared("initiative", stepTurn(combat, -1))} title={tNow("lr.prevTurn")} aria-label={tNow("lr.prevTurn")}><SkipBack size={13} /></button>
+              <button type="button" className="primary" onClick={() => room.setShared("initiative", stepTurn(combat, 1))} title={tNow("lr.nextTurn")} aria-label={tNow("lr.nextTurn")}><SkipForward size={13} /></button>
             </span>
           )}
         </div>
@@ -2722,7 +2736,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
                   return !v;
                 });
               }}
-              onOpenCompanion={openDndCompanion}
+              onOpenCompanion={(route) => void openDndCompanion(route, serverId)}
               choice={gmPages} setChoice={setScreenChoice} notes={gmNotes} setNotes={setGmNotes} system={gameSystem}
               folded={Boolean(room.shared.gm?.folded)} setFolded={(folded) => room.shared.gm && room.setShared("gm", { ...room.shared.gm, folded })}
               onClose={() => setPanel(null)}
@@ -2767,7 +2781,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
                 const cur = switchesOf(room.shared.lounge);
                 room.setShared("lounge", { ...cur, mood });
               }}
-              onOpenCompanion={openDndCompanion}
+              onOpenCompanion={(route) => void openDndCompanion(route, serverId)}
               onClose={() => setPanel(null)}
             />
           )}
@@ -2784,7 +2798,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               setMine={(value) => room.setShared("character", value)} onClose={() => setPanel(null)}
               legacy={legacySheet}
               edition={dndEdition}
-              onOpenCompanion={openDndCompanion}
+              onOpenCompanion={(route) => void openDndCompanion(route, serverId)}
               screen={{ open: playerScreenOpen, setOpen: setPlayerScreenOpen, choice: playerChoice, setChoice: setPlayerChoice, notes: playerNotes, setNotes: setPlayerNotes }}
             />
           )}
@@ -2844,7 +2858,7 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
             onCast={castSpell} onStopAiming={() => { setAimingState(null); setTargeting(null); }}
             aiming={aiming ? { name: aiming.spell.name, what: "click the map where it goes" } : targeting ? { name: targeting.spell.name, what: /^(misty step|dimension door|thunder step)$/i.test(targeting.spell.name) ? "click where you go" : "click a pawn or a spot" } : null}
             cast={cast ? { ...cast, areaId: cast.areaId && room.shared.areas[cast.areaId] ? cast.areaId : null, inIt: cast.areaId ? areaHits.byArea.get(cast.areaId) : undefined } : null}
-            onRoll={(dice) => onCommand?.(`/roll ${dice}`)} onCommand={onCommand} onOpenCompanion={openDndCompanion} edition={dndEdition}
+            onRoll={(dice) => onCommand?.(`/roll ${dice}`)} onCommand={onCommand} onOpenCompanion={(route) => void openDndCompanion(route, serverId)} edition={dndEdition}
             onTakeOff={(id) => sendArea({ op: "remove", id })} onDismissCast={() => setCast(null)}
           />
         ) : !isGm && panel !== "character" ? (
@@ -2855,13 +2869,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         <div className="living-room-hint" onClick={() => setHint(null)}>{hint}</div>
       )}
       {settingsOpen && !controlsHidden && (
-        <div className="living-room-settings" role="dialog" aria-label="Living Room settings">
+        <div className="living-room-settings" role="dialog" aria-label={tNow("lr.settingsAria")}>
           <label className="living-room-switch">
-            <span><strong>Spatial voices</strong><small>{venueId === "cinema" ? "Hear people from where they sit. Off by default here, so everyone is one volume while you watch." : "Hear people from where they are in the room. Off: everyone sounds like a normal call."}</small></span>
+            <span><strong>{tNow("lr.spatialVoices")}</strong><small>{venueId === "cinema" ? tNow("lr.spatialCinemaDesc") : tNow("lr.spatialRoomDesc")}</small></span>
             <input type="checkbox" checked={room.settings.spatial} onChange={(event) => room.setSettings({ spatial: event.target.checked })} />
           </label>
           <label className="living-room-slider">
-            <span>Room echo: {Math.round((room.settings.echo ?? 0.5) * 100)}%</span>
+            <span>{tNow("lr.roomEcho", { pct: Math.round((room.settings.echo ?? 0.5) * 100) })}</span>
             <input
               type="range"
               min={0}
@@ -2869,60 +2883,65 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
               step={0.01}
               value={room.settings.echo ?? 0.5}
               disabled={!room.settings.spatial}
-              aria-label="Room echo"
+              aria-label={tNow("lr.roomEchoAria")}
               onChange={(event) => room.setSettings({ echo: Number(event.target.value) })}
             />
           </label>
           <div className="living-room-slider">
-            <span>Graphics{(room.settings.graphics ?? "auto") === "auto" ? ` · now ${graphicsNow}` : ""}</span>
-            <div className="lr-graphics" role="group" aria-label="Graphics">
-              {(["auto", "high", "medium", "low"] as const).map((choice) => (
+            <span>{tNow("lr.graphics")}{(room.settings.graphics ?? "auto") === "auto" ? tNow("lr.graphicsNow", { now: graphicsNow }) : ""}</span>
+            <div className="lr-graphics" role="group" aria-label={tNow("lr.graphics")}>
+              {([
+                ["auto", "lr.graphicsAuto"],
+                ["high", "lr.graphicsHigh"],
+                ["medium", "lr.graphicsMedium"],
+                ["low", "lr.graphicsLow"],
+              ] as const).map(([choice, key]) => (
                 <button key={choice} type="button" aria-pressed={(room.settings.graphics ?? "auto") === choice} onClick={() => room.setSettings({ graphics: choice })}>
-                  {choice[0].toUpperCase() + choice.slice(1)}
+                  {tNow(key)}
                 </button>
               ))}
             </div>
           </div>
           <label className="living-room-switch">
-            <span><strong>Music from the TV</strong><small>{venueId === "lounge" ? "The music bot plays from the TV over the fireplace." : "The music bot plays from the screen."}</small></span>
+            <span><strong>{tNow("lr.musicFromTv")}</strong><small>{venueId === "lounge" ? tNow("lr.musicTvLoungeDesc") : tNow("lr.musicTvRoomDesc")}</small></span>
             <input type="checkbox" checked={room.settings.tvMusic} onChange={(event) => room.setSettings({ tvMusic: event.target.checked })} />
           </label>
           {venueId === "lounge" && <label className="living-room-switch">
-            <span><strong>Room sounds</strong><small>Recorded fire, rain, wind or city, depending on the theme. Only you hear them.</small></span>
+            <span><strong>{tNow("lr.roomSounds")}</strong><small>{tNow("lr.roomSoundsDesc")}</small></span>
             <input type="checkbox" checked={room.settings.ambience} onChange={(event) => room.setSettings({ ambience: event.target.checked })} />
           </label>}
           {venueId === "lounge" && <label className="living-room-slider">
-            <span>Room sound volume</span>
+            <span>{tNow("lr.roomSoundVolume")}</span>
             <input type="range" min={0} max={1} step={0.01} value={room.settings.ambienceVolume} disabled={!room.settings.ambience}
               onChange={(event) => room.setSettings({ ambienceVolume: Number(event.target.value) })} />
           </label>}
           {venueId === "club" && (
             <>
               <label className="living-room-switch">
-                <span><strong>Strobes</strong><small>The flashes on drops and builds (never more than three a second). Off for no flashing at all.</small></span>
+                <span><strong>{tNow("lr.strobes")}</strong><small>{tNow("lr.strobesDesc")}</small></span>
                 <input type="checkbox" checked={clubLightSettings.strobes} onChange={(event) => setClubLightSettings({ strobes: event.target.checked })} />
               </label>
               <label className="living-room-slider">
-                <span>Light brightness: {Math.round(clubLightSettings.brightness * 100)}%</span>
-                <input type="range" min={0.3} max={1.5} step={0.05} value={clubLightSettings.brightness} aria-label="Light brightness"
+                <span>{tNow("lr.lightBrightness", { pct: Math.round(clubLightSettings.brightness * 100) })}</span>
+                <input type="range" min={0.3} max={1.5} step={0.05} value={clubLightSettings.brightness} aria-label={tNow("lr.lightBrightnessAria")}
                   onChange={(event) => setClubLightSettings({ brightness: Number(event.target.value) })} />
               </label>
               <label className="living-room-slider">
-                <span>Light timing: {clubLightSettings.nudgeMs > 0 ? `${clubLightSettings.nudgeMs} ms later` : clubLightSettings.nudgeMs < 0 ? `${-clubLightSettings.nudgeMs} ms sooner` : "as sent"}</span>
-                <input type="range" min={-150} max={400} step={10} value={clubLightSettings.nudgeMs} aria-label="Light timing"
+                <span>{tNow("lr.lightTiming", { val: clubLightSettings.nudgeMs > 0 ? tNow("lr.timingLater", { ms: clubLightSettings.nudgeMs }) : clubLightSettings.nudgeMs < 0 ? tNow("lr.timingSooner", { ms: -clubLightSettings.nudgeMs }) : tNow("lr.timingAsSent") })}</span>
+                <input type="range" min={-150} max={400} step={10} value={clubLightSettings.nudgeMs} aria-label={tNow("lr.lightTimingAria")}
                   onChange={(event) => setClubLightSettings({ nudgeMs: Number(event.target.value) })} />
-                <small className="lr-note">Bluetooth headphones play late: slide right until the floor hits with the kick.</small>
+                <small className="lr-note">{tNow("lr.bluetoothHint")}</small>
               </label>
             </>
           )}
           {venueId === "cinema" && (
             <>
               <label className="living-room-switch">
-                <span><strong>Auto-dim lights</strong><small>Lights dim automatically when a video or screen share plays.</small></span>
+                <span><strong>{tNow("lr.autoDimLights")}</strong><small>{tNow("lr.autoDimDesc")}</small></span>
                 <input type="checkbox" checked={cinemaLightsRef.current?.autoDim ?? true} onChange={(event) => cinemaLightsRef.current?.setAutoDim(event.target.checked)} />
               </label>
               <label className="living-room-slider">
-                <span>Light level: {Math.round((cinemaLightsRef.current?.level ?? 1) * 100)}%</span>
+                <span>{tNow("lr.lightLevel", { pct: Math.round((cinemaLightsRef.current?.level ?? 1) * 100) })}</span>
                 <input type="range" min={0} max={1} step={0.01} value={cinemaLightsRef.current?.level ?? 1}
                   onChange={(event) => cinemaLightsRef.current?.setLevel(Number(event.target.value))} />
               </label>
@@ -2931,25 +2950,25 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
         </div>
       )}
       {!controlsHidden && venueId === "tabletop" && (
-        <div className="living-room-dice" role="group" aria-label="Dice tray">
+        <div className="living-room-dice" role="group" aria-label={tNow("lr.diceTrayAria")}>
           <div className="living-room-dice-row">
             {[4, 6, 8, 10, 12, 20, 100].map((sides) => (
-              <button key={sides} type="button" onClick={() => rollNow(`/roll 1d${sides}${sides === 20 ? rollMode : ""}`)} title={`Roll a d${sides}${sides === 20 && rollMode ? (rollMode === " adv" ? " with advantage" : " with disadvantage") : ""}`}>d{sides}</button>
+              <button key={sides} type="button" onClick={() => rollNow(`/roll 1d${sides}${sides === 20 ? rollMode : ""}`)} title={tNow("lr.rollDieTitle", { sides, suffix: sides === 20 && rollMode ? (rollMode === " adv" ? tNow("lr.withAdv") : tNow("lr.withDis")) : "" })}>d{sides}</button>
             ))}
-            <button type="button" className={rollMode === " adv" ? "active" : ""} aria-pressed={rollMode === " adv"} onClick={() => setRollMode(rollMode === " adv" ? "" : " adv")} title="Advantage: d20 rolls take the better of two">{tNow("livingRoom.adv")}</button>
-            {isGm && <button type="button" className={hiddenMode ? "active" : ""} aria-pressed={hiddenMode} onClick={() => setHiddenMode(!hiddenMode)} title="Game master: roll behind your screen, so only you see the faces">{tNow("livingRoom.hidden")}</button>}
-            <button type="button" className={rollMode === " dis" ? "active" : ""} aria-pressed={rollMode === " dis"} onClick={() => setRollMode(rollMode === " dis" ? "" : " dis")} title="Disadvantage: d20 rolls take the worse of two">{tNow("livingRoom.dis")}</button>
+            <button type="button" className={rollMode === " adv" ? "active" : ""} aria-pressed={rollMode === " adv"} onClick={() => setRollMode(rollMode === " adv" ? "" : " adv")} title={tNow("lr.advTitle")}>{tNow("livingRoom.adv")}</button>
+            {isGm && <button type="button" className={hiddenMode ? "active" : ""} aria-pressed={hiddenMode} onClick={() => setHiddenMode(!hiddenMode)} title={tNow("lr.hiddenTitle")}>{tNow("livingRoom.hidden")}</button>}
+            <button type="button" className={rollMode === " dis" ? "active" : ""} aria-pressed={rollMode === " dis"} onClick={() => setRollMode(rollMode === " dis" ? "" : " dis")} title={tNow("lr.disTitle")}>{tNow("livingRoom.dis")}</button>
           </div>
           {rollNote && <small className="living-room-dice-note">{rollNote}</small>}
           <form className="living-room-dice-row" onSubmit={(event) => { event.preventDefault(); runTyped(); }}>
-            <input value={rollText} onChange={(event) => setRollText(event.target.value)} placeholder="2d6+3  ·  /spell fireball  ·  /monster goblin (floats over the table)" aria-label="Roll dice or look something up" maxLength={120} />
+            <input value={rollText} onChange={(event) => setRollText(event.target.value)} placeholder={tNow("lr.diceInputPlaceholder")} aria-label={tNow("lr.diceInputAria")} maxLength={120} />
             <button type="submit" disabled={!rollText.trim()}>{tNow("livingRoom.go")}</button>
           </form>
         </div>
       )}
-      {!controlsHidden && <div className="living-room-emotes" role="toolbar" aria-label="Emotes">
+      {!controlsHidden && <div className="living-room-emotes" role="toolbar" aria-label={tNow("lr.emotesAria")}>
         {LOUNGE_EMOTES.map((emoji) => (
-          <button key={emoji} type="button" onClick={() => room.emote(emoji)} aria-label={`Emote ${emoji}`}>{emoji}</button>
+          <button key={emoji} type="button" onClick={() => room.emote(emoji)} aria-label={tNow("lr.emoteAria", { emoji })}>{emoji}</button>
         ))}
         {me && (me.seat && me.seat !== "floor" ? (
           <button type="button" className="living-room-stand" onClick={() => (atDecks ? leaveDecks() : room.move({ ...stepTo(me, { x: me.x + Math.sin(me.facing) * 0.6, z: me.z - Math.cos(me.facing) * 0.6 }, venue, canProject), facing: me.facing }))}>{atDecks ? tNow("livingRoom.leaveDecks") : tNow("livingRoom.standUp")}</button>
@@ -2961,7 +2980,13 @@ export function LivingRoomView({ room, participants, connectionId, speaking, scr
   );
 }
 
-const RARITY_LABEL: Record<string, string> = { junk: "Junk", common: "Common", uncommon: "Uncommon", rare: "Rare", legendary: "Legendary" };
+const RARITY_LABEL_KEYS = {
+  junk: "lr.rarity.junk",
+  common: "lr.rarity.common",
+  uncommon: "lr.rarity.uncommon",
+  rare: "lr.rarity.rare",
+  legendary: "lr.rarity.legendary",
+} as const;
 const RARITY_ORDER = ["legendary", "rare", "uncommon", "common", "junk"];
 
 /** The meadow's fishing: cast, wait, reel in when it bites; the last catch and the tackle box. */
@@ -2976,13 +3001,13 @@ function FishingPanel({ phase, canFish, lastCatch, tackle, onCast, onReel, onTac
 }) {
   const entries = tackle ? Object.values(tackle).sort((a, b) => RARITY_ORDER.indexOf(a.rarity) - RARITY_ORDER.indexOf(b.rarity) || b.best - a.best) : [];
   return (
-    <div className="lr-fish" role="group" aria-label="Fishing">
+    <div className="lr-fish" role="group" aria-label={tNow("lr.fishingAria")}>
       {phase.phase === "bite" ? (
         <button type="button" className="lr-fish-reel bite" onClick={onReel}>🎣 {tNow("livingRoom.reelIn")} <kbd>F</kbd></button>
       ) : phase.phase === "waiting" ? (
         <>
-          <span className="lr-fish-note">Line's out. Wait for the float to dip…</span>
-          <button type="button" className="lr-fish-reel" onClick={onReel}>Reel in <kbd>F</kbd></button>
+          <span className="lr-fish-note">{tNow("lr.linesOut")}</span>
+          <button type="button" className="lr-fish-reel" onClick={onReel}>{tNow("lr.reelInBtn")} <kbd>F</kbd></button>
         </>
       ) : (
         <>
@@ -2991,24 +3016,24 @@ function FishingPanel({ phase, canFish, lastCatch, tackle, onCast, onReel, onTac
               <span className="lr-fish-emoji">{lastCatch.emoji}</span>
               <span>
                 <strong>{lastCatch.name}</strong>
-                <small>{lastCatch.rarity === "junk" ? "Not a fish." : `${lastCatch.weight.toFixed(2)} kg`} · {RARITY_LABEL[lastCatch.rarity]}{lastCatch.record ? " · new best!" : ""}</small>
+                <small>{lastCatch.rarity === "junk" ? tNow("lr.notAFish") : `${lastCatch.weight.toFixed(2)} kg`} · {RARITY_LABEL_KEYS[lastCatch.rarity as keyof typeof RARITY_LABEL_KEYS] ? tNow(RARITY_LABEL_KEYS[lastCatch.rarity as keyof typeof RARITY_LABEL_KEYS]) : lastCatch.rarity}{lastCatch.record ? tNow("lr.newBest") : ""}</small>
               </span>
             </div>
           )}
           {phase.phase === "lost" && <span className="lr-fish-note">{phase.reason}</span>}
           {canFish
-            ? <button type="button" className="lr-fish-reel" onClick={onCast}>🎣 Cast <kbd>F</kbd></button>
-            : <span className="lr-fish-note">Fish from the jetty or the pond's edge.</span>}
+            ? <button type="button" className="lr-fish-reel" onClick={onCast}>🎣 {tNow("lr.castBtn")} <kbd>F</kbd></button>
+            : <span className="lr-fish-note">{tNow("lr.fishEdgeNote")}</span>}
         </>
       )}
-      <button type="button" className="lr-fish-box" onClick={onTackle} aria-expanded={Boolean(tackle)}>{tackle ? "Close tackle box" : "Tackle box"}</button>
+      <button type="button" className="lr-fish-box" onClick={onTackle} aria-expanded={Boolean(tackle)}>{tackle ? tNow("lr.closeTackleBox") : tNow("lr.tackleBox")}</button>
       {tackle && (
         <ul className="lr-fish-log">
-          {entries.length === 0 && <li>Nothing yet. Go catch something!</li>}
+          {entries.length === 0 && <li>{tNow("lr.tackleEmpty")}</li>}
           {entries.map((entry) => (
             <li key={entry.name} className={entry.rarity}>
               <span>{entry.emoji} {entry.name}</span>
-              <small>×{entry.count}{entry.rarity !== "junk" ? ` · best ${entry.best.toFixed(2)} kg` : ""}</small>
+              <small>×{entry.count}{entry.rarity !== "junk" ? tNow("lr.bestWeight", { weight: entry.best.toFixed(2) }) : ""}</small>
             </li>
           ))}
         </ul>

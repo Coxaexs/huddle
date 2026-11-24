@@ -11,6 +11,7 @@ import {
   type RemoteTrackPublication,
 } from "livekit-client";
 import { apiFetch } from "../../lib/client";
+import { useI18n } from "../../lib/i18n-context";
 
 interface RemoteMediaEntry {
   id: string;
@@ -40,6 +41,7 @@ export function ScreensharePane({
   pairToken: string;
   pairedReadOnly: boolean;
 }) {
+  const { t } = useI18n();
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [error, setError] = useState("");
   const [entries, setEntries] = useState<RemoteMediaEntry[]>([]);
@@ -222,7 +224,7 @@ export function ScreensharePane({
         <div className="s2-bar-group">
           <Monitor size={14} style={{ color: "var(--lavender, #8b5cf6)" }} />
           <strong style={{ fontSize: 13 }}>
-            {voiceChannelName ? `${voiceChannelName} · Stream` : "Screenshare"}
+            {voiceChannelName ? t("s2.screen.titleNamed", { name: voiceChannelName }) : t("s2.launcher.screenshare")}
           </strong>
         </div>
         <div className="s2-bar-group">
@@ -232,10 +234,10 @@ export function ScreensharePane({
               className={`s2-pill-btn ${!audioMuted ? "active" : ""}`}
               style={{ height: 24, padding: "0 8px", fontSize: 11 }}
               onClick={() => setAudioMuted((m) => !m)}
-              title={audioMuted ? "Play stream audio on 2nd screen" : "Mute stream audio on 2nd screen (prevents echo)"}
+              title={audioMuted ? t("s2.screen.playAudioTitle") : t("s2.screen.muteAudioTitle")}
             >
               {audioMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
-              <span>{audioMuted ? "Audio muted" : "Audio on"}</span>
+              <span>{audioMuted ? t("s2.screen.audioMuted") : t("s2.screen.audioOn")}</span>
             </button>
           )}
           {activeVideo && (
@@ -244,7 +246,7 @@ export function ScreensharePane({
               className="s2-pill-btn"
               style={{ height: 24, padding: "0 8px" }}
               onClick={enterFullscreen}
-              title="Fullscreen video"
+              title={t("s2.screen.fullscreenVideo")}
             >
               <Maximize2 size={12} />
             </button>
@@ -257,13 +259,13 @@ export function ScreensharePane({
         {!voiceChannelId ? (
           <div className="s2-empty">
             <MonitorOff size={32} style={{ opacity: 0.55 }} />
-            <p style={{ margin: 0 }}>Pick a voice channel above or join a call in Hoffle.</p>
+            <p style={{ margin: 0 }}>{t("s2.screen.pickVoiceHint")}</p>
           </div>
         ) : !ownerSeatedInVoice ? (
           <div className="s2-empty">
             <MonitorOff size={32} style={{ opacity: 0.55 }} />
             <p style={{ margin: 0, maxWidth: 340 }}>
-              Join <strong>{voiceChannelName || "the voice room"}</strong> in your main Hoffle window to watch its screenshares here without moving your microphone.
+              {t("s2.screen.joinVoiceHintPrefix")} <strong>{voiceChannelName || t("s2.screen.voiceRoomFallback")}</strong> {t("s2.screen.joinVoiceHintSuffix")}
             </p>
           </div>
         ) : status === "error" ? (
@@ -274,7 +276,7 @@ export function ScreensharePane({
               className="s2-pill-btn active"
               onClick={() => setRetryKey((k) => k + 1)}
             >
-              <RefreshCw size={13} /> Retry stream
+              <RefreshCw size={13} /> {t("s2.screen.retryStream")}
             </button>
           </div>
         ) : activeVideo ? (
@@ -283,7 +285,7 @@ export function ScreensharePane({
             <div className="s2-video-overlay">
               <div className="s2-overlay-chip">
                 <span>
-                  {activeVideo.source === "screen" ? "Screen" : "Camera"}: <strong>{activeVideo.participantName}</strong>
+                  {activeVideo.source === "screen" ? t("s2.screen.sourceScreen") : t("s2.screen.sourceCamera")}: <strong>{activeVideo.participantName}</strong>
                 </span>
               </div>
               {videoEntries.length > 1 && (
@@ -295,7 +297,7 @@ export function ScreensharePane({
                       className={`s2-pill-btn ${activeVideo.id === entry.id ? "active" : ""}`}
                       onClick={() => setSelectedVideoId(entry.id)}
                     >
-                      {entry.participantName} ({entry.source === "screen" ? "Screen" : "Cam"})
+                      {entry.participantName} ({entry.source === "screen" ? t("s2.screen.sourceScreen") : t("s2.screen.sourceCamShort")})
                     </button>
                   ))}
                 </div>
@@ -307,8 +309,8 @@ export function ScreensharePane({
             <Monitor size={32} style={{ opacity: 0.55 }} />
             <p style={{ margin: 0 }}>
               {status === "connecting"
-                ? "Connecting receive-only viewer to voice room…"
-                : "Connected — waiting for someone in the room to share their screen or camera."}
+                ? t("s2.screen.connecting")
+                : t("s2.screen.waiting")}
             </p>
           </div>
         )}

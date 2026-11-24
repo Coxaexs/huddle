@@ -17,6 +17,7 @@ import {
   type V5Sheet, type V5Track, type V5Trait,
 } from "@/lib/v5-sheet";
 import { ScreenPagesPicker, upload, type PlayerScreenSettings } from "./lounge-panels";
+import { useI18n } from "../lib/i18n-context";
 
 /**
  * My character as I change it: on screen at once, sent to the table once the
@@ -57,17 +58,18 @@ function Dots({ value, max = V5_MAX_DOTS, onChange, label }: { value: number; ma
 
 /** Health or Willpower: a box per point, each empty, superficial (/) or aggravated (X); click to turn it. */
 function TrackBoxes({ track, boxes, onChange, label }: { track: V5Track; boxes: number; onChange: (next: V5Track) => void; label: string }) {
+  const { t } = useI18n();
   const marks = trackBoxes(track, boxes);
   const down = impaired(track, boxes);
   return (
-    <div className="lr-v5-track" role="group" aria-label={`${label}: ${track.superficial} superficial, ${track.aggravated} aggravated of ${boxes}`}>
-      <small>{label}{down && <b className="lr-warn"> · Impaired</b>}</small>
+    <div className="lr-v5-track" role="group" aria-label={t("v5Sheet.trackAria", { label, sup: track.superficial, agg: track.aggravated, boxes })}>
+      <small>{label}{down && <b className="lr-warn">{t("v5Sheet.impaired")}</b>}</small>
       <span>
         {marks.map((mark, i) => (
-          <button key={i} type="button" className={`lr-v5-box ${mark}`} title="Empty → superficial → aggravated" aria-label={`${label} box ${i + 1}: ${mark === "agg" ? "aggravated" : mark === "sup" ? "superficial" : "empty"}`}
+          <button key={i} type="button" className={`lr-v5-box ${mark}`} title={t("v5Sheet.boxTitle")} aria-label={t("v5Sheet.boxAria", { label, num: i + 1, state: mark === "agg" ? t("v5Sheet.markAgg") : mark === "sup" ? t("v5Sheet.markSup") : t("v5Sheet.markEmpty") })}
             onClick={() => onChange(cycleBox(track, boxes, i))}>{mark === "agg" ? "✕" : mark === "sup" ? "╱" : ""}</button>
         ))}
-        {!boxes && <em className="lr-note">Set the Attributes first.</em>}
+        {!boxes && <em className="lr-note">{t("v5Sheet.setAttributesFirst")}</em>}
       </span>
     </div>
   );
@@ -75,10 +77,11 @@ function TrackBoxes({ track, boxes, onChange, label }: { track: V5Track; boxes: 
 
 /** Hunger, 0 to 5, in red: click a drop to set it. */
 function HungerPips({ hunger, onChange }: { hunger: number; onChange: (value: number) => void }) {
+  const { t } = useI18n();
   return (
-    <span className="lr-v5-hunger" role="group" aria-label={`Hunger ${hunger}`} style={{ "--hunger": HUNGER_DIE_COLOR } as React.CSSProperties}>
+    <span className="lr-v5-hunger" role="group" aria-label={t("v5Sheet.hungerAria", { val: hunger })} style={{ "--hunger": HUNGER_DIE_COLOR } as React.CSSProperties}>
       {Array.from({ length: V5_MAX_HUNGER }, (_, i) => (
-        <button key={i} type="button" className={i < hunger ? "on" : ""} aria-label={`Hunger ${i + 1}`} onClick={() => onChange(hunger === i + 1 ? i : i + 1)}><Droplet size={13} /></button>
+        <button key={i} type="button" className={i < hunger ? "on" : ""} aria-label={t("v5Sheet.hungerAria", { val: i + 1 })} onClick={() => onChange(hunger === i + 1 ? i : i + 1)}><Droplet size={13} /></button>
       ))}
     </span>
   );
@@ -86,19 +89,20 @@ function HungerPips({ hunger, onChange }: { hunger: number; onChange: (value: nu
 
 /** Humanity: filled boxes up to it, stains marked in from the far end. */
 function HumanityTrack({ humanity, stains, onChange }: { humanity: number; stains: number; onChange: (humanity: number, stains: number) => void }) {
+  const { t } = useI18n();
   return (
-    <div className="lr-v5-track" role="group" aria-label={`Humanity ${humanity}, ${stains} stains`}>
-      <small>Humanity {humanity}{stains ? ` · ${stains} stain${stains === 1 ? "" : "s"}` : ""}</small>
+    <div className="lr-v5-track" role="group" aria-label={t("v5Sheet.humanityAria", { humanity, stains })}>
+      <small>{t("v5Sheet.humanity", { humanity })}{stains ? ` · ${stains} ${stains === 1 ? t("v5Sheet.stainSingle") : t("v5Sheet.stainPlural")}` : ""}</small>
       <span>
         {Array.from({ length: V5_MAX_HUMANITY }, (_, i) => {
           const stained = i >= V5_MAX_HUMANITY - stains;
           return (
-            <button key={i} type="button" className={`lr-v5-box ${i < humanity ? "full" : stained ? "stain" : ""}`} aria-label={`Humanity ${i + 1}`}
+            <button key={i} type="button" className={`lr-v5-box ${i < humanity ? "full" : stained ? "stain" : ""}`} aria-label={t("v5Sheet.humanityItem", { num: i + 1 })}
               onClick={() => { const next = humanity === i + 1 ? i : i + 1; onChange(next, Math.min(stains, V5_MAX_HUMANITY - next)); }}>{stained && i >= humanity ? "╱" : ""}</button>
           );
         })}
-        <button type="button" className="lr-v5-step" aria-label="Add a stain" title="Add a stain" disabled={humanity + stains >= V5_MAX_HUMANITY} onClick={() => onChange(humanity, stains + 1)}><Plus size={11} /></button>
-        <button type="button" className="lr-v5-step" aria-label="Clear a stain" title="Clear a stain" disabled={!stains} onClick={() => onChange(humanity, stains - 1)}><Minus size={11} /></button>
+        <button type="button" className="lr-v5-step" aria-label={t("v5Sheet.addStain")} title={t("v5Sheet.addStain")} disabled={humanity + stains >= V5_MAX_HUMANITY} onClick={() => onChange(humanity, stains + 1)}><Plus size={11} /></button>
+        <button type="button" className="lr-v5-step" aria-label={t("v5Sheet.clearStain")} title={t("v5Sheet.clearStain")} disabled={!stains} onClick={() => onChange(humanity, stains - 1)}><Minus size={11} /></button>
       </span>
     </div>
   );
@@ -106,20 +110,22 @@ function HumanityTrack({ humanity, stains, onChange }: { humanity: number; stain
 
 /** A number with − and + beside it. */
 function Stepper({ value, min, max, onChange, label }: { value: number; min: number; max: number; onChange: (value: number) => void; label: string }) {
+  const { t } = useI18n();
   return (
     <span className="lr-v5-stepper" role="group" aria-label={label}>
-      <button type="button" aria-label={`Less ${label}`} disabled={value <= min} onClick={() => onChange(value - 1)}><Minus size={11} /></button>
+      <button type="button" aria-label={t("v5Sheet.less", { label })} disabled={value <= min} onClick={() => onChange(value - 1)}><Minus size={11} /></button>
       <b>{value}</b>
-      <button type="button" aria-label={`More ${label}`} disabled={value >= max} onClick={() => onChange(value + 1)}><Plus size={11} /></button>
+      <button type="button" aria-label={t("v5Sheet.more", { label })} disabled={value >= max} onClick={() => onChange(value + 1)}><Plus size={11} /></button>
     </span>
   );
 }
 
 /** A trait's row: its name picks it for a pool, its dots set it. */
 function TraitRow({ name, value, picked, onPick, onChange }: { name: string; value: number; picked: boolean; onPick: () => void; onChange: (value: number) => void }) {
+  const { t } = useI18n();
   return (
     <div className={`lr-v5-trait${picked ? " picked" : ""}`}>
-      <button type="button" className="lr-v5-name" aria-pressed={picked} onClick={onPick} title={picked ? `Take ${name} out of the pool` : `Add ${name} to the pool`}>{name}</button>
+      <button type="button" className="lr-v5-name" aria-pressed={picked} onClick={onPick} title={picked ? t("v5Sheet.removeFromPool", { name }) : t("v5Sheet.addToPool", { name })}>{name}</button>
       <Dots value={value} onChange={onChange} label={name} />
     </div>
   );
@@ -140,6 +146,7 @@ export function V5CharacterPanel({ character, fallbackName, onChange, onClear, o
   screen: PlayerScreenSettings;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const sheet = v5Of(character);
   const [name, setName] = useState(character?.name ?? "");
   const [portrait, setPortrait] = useState(character?.portraitUrl ?? "");
@@ -173,7 +180,7 @@ export function V5CharacterPanel({ character, fallbackName, onChange, onClear, o
       const url = await upload(chosen);
       setPortrait(url);
       onChange({ ...base(), portraitUrl: url, v5: sheet });
-    } catch (error) { setProblem(error instanceof Error ? error.message : "That upload failed."); }
+    } catch (error) { setProblem(error instanceof Error ? error.message : t("v5Sheet.uploadFailed")); }
     finally { setBusy(false); if (file.current) file.current.value = ""; }
   };
 
@@ -193,24 +200,24 @@ export function V5CharacterPanel({ character, fallbackName, onChange, onClear, o
     set({ disciplines: sheet.disciplines.map((d, i) => (i === index ? { ...d, ...change } : d)) });
 
   return (
-    <div className="living-room-panel lr-v5" role="dialog" aria-label="My Vampire">
+    <div className="living-room-panel lr-v5" role="dialog" aria-label={t("v5Sheet.title")}>
       <style>{V5_SHEET_CSS}</style>
-      <div className="living-room-panel-head"><strong>My Vampire</strong><button type="button" onClick={() => { commitText(); onClose(); }} aria-label="Close"><X size={14} /></button></div>
+      <div className="living-room-panel-head"><strong>{t("v5Sheet.title")}</strong><button type="button" onClick={() => { commitText(); onClose(); }} aria-label={t("common.close")}><X size={14} /></button></div>
       <div className="lr-sheet">
-        <label className="lr-field"><small>Name</small><input value={name} onChange={(e) => setName(e.target.value)} onBlur={commitText} placeholder={fallbackName} maxLength={40} /></label>
-        <label className="lr-field"><small>Clan</small><input value={notes.clan} onChange={(e) => setNotes({ ...notes, clan: e.target.value })} onBlur={commitText} placeholder="Your clan" maxLength={40} /></label>
-        <label className="lr-field"><small>Predator type</small><input value={notes.predator} onChange={(e) => setNotes({ ...notes, predator: e.target.value })} onBlur={commitText} placeholder="How you feed" maxLength={40} /></label>
+        <label className="lr-field"><small>{t("v5Sheet.name")}</small><input value={name} onChange={(e) => setName(e.target.value)} onBlur={commitText} placeholder={fallbackName} maxLength={40} /></label>
+        <label className="lr-field"><small>{t("v5Sheet.clan")}</small><input value={notes.clan} onChange={(e) => setNotes({ ...notes, clan: e.target.value })} onBlur={commitText} placeholder={t("v5Sheet.clanPlaceholder")} maxLength={40} /></label>
+        <label className="lr-field"><small>{t("v5Sheet.predator")}</small><input value={notes.predator} onChange={(e) => setNotes({ ...notes, predator: e.target.value })} onBlur={commitText} placeholder={t("v5Sheet.predatorPlaceholder")} maxLength={40} /></label>
       </div>
 
       <div className="lr-v5-status">
-        <div className="lr-v5-track"><small>Hunger {sheet.hunger}</small><HungerPips hunger={sheet.hunger} onChange={(hunger) => set({ hunger })} /></div>
-        <div className="lr-v5-track"><small>Blood Potency</small><Stepper value={sheet.bloodPotency} min={0} max={V5_MAX_BLOOD_POTENCY} onChange={(bloodPotency) => set({ bloodPotency })} label="Blood Potency" /></div>
+        <div className="lr-v5-track"><small>{t("v5Sheet.hungerAria", { val: sheet.hunger })}</small><HungerPips hunger={sheet.hunger} onChange={(hunger) => set({ hunger })} /></div>
+        <div className="lr-v5-track"><small>{t("v5Sheet.bloodPotency")}</small><Stepper value={sheet.bloodPotency} min={0} max={V5_MAX_BLOOD_POTENCY} onChange={(bloodPotency) => set({ bloodPotency })} label={t("v5Sheet.bloodPotency")} /></div>
       </div>
-      <TrackBoxes track={sheet.health} boxes={hp} label={`Health (${hp})`} onChange={(health) => set({ health })} />
-      <TrackBoxes track={sheet.willpower} boxes={wp} label={`Willpower (${wp})`} onChange={(willpower) => set({ willpower })} />
+      <TrackBoxes track={sheet.health} boxes={hp} label={t("v5Sheet.healthCount", { count: hp })} onChange={(health) => set({ health })} />
+      <TrackBoxes track={sheet.willpower} boxes={wp} label={t("v5Sheet.willpowerCount", { count: wp })} onChange={(willpower) => set({ willpower })} />
       <HumanityTrack humanity={sheet.humanity} stains={sheet.stains} onChange={(humanity, stains) => set({ humanity, stains })} />
 
-      <small className="lr-heading">Attributes</small>
+      <small className="lr-heading">{t("v5Sheet.attributes")}</small>
       <div className="lr-v5-cols">
         {V5_ATTRIBUTE_GROUPS.map((group, g) => (
           <div key={group} className="lr-v5-col">
@@ -222,7 +229,7 @@ export function V5CharacterPanel({ character, fallbackName, onChange, onClear, o
           </div>
         ))}
       </div>
-      <small className="lr-heading">Skills</small>
+      <small className="lr-heading">{t("v5Sheet.skills")}</small>
       <div className="lr-v5-cols">
         {V5_ATTRIBUTE_GROUPS.map((group, g) => (
           <div key={group} className="lr-v5-col">
@@ -233,65 +240,65 @@ export function V5CharacterPanel({ character, fallbackName, onChange, onClear, o
           </div>
         ))}
       </div>
-      <small className="lr-heading">Disciplines</small>
+      <small className="lr-heading">{t("v5Sheet.disciplines")}</small>
       <div className="lr-v5-disciplines">
         {sheet.disciplines.map((d, i) => (
           <div key={i} className={`lr-v5-trait${picked.includes(d.name) ? " picked" : ""}`}>
-            <button type="button" className="lr-v5-name" aria-pressed={picked.includes(d.name)} onClick={() => pick(d.name)} title={`Add ${d.name} to the pool`}>{d.name}</button>
+            <button type="button" className="lr-v5-name" aria-pressed={picked.includes(d.name)} onClick={() => pick(d.name)} title={t("v5Sheet.addToPool", { name: d.name })}>{d.name}</button>
             <Dots value={d.dots} onChange={(dots) => setDiscipline(i, { dots })} label={d.name} />
-            <button type="button" className="lr-v5-step" aria-label={`Remove ${d.name}`} onClick={() => set({ disciplines: sheet.disciplines.filter((_, j) => j !== i) })}><Trash2 size={11} /></button>
+            <button type="button" className="lr-v5-step" aria-label={t("v5Sheet.removeTrait", { name: d.name })} onClick={() => set({ disciplines: sheet.disciplines.filter((_, j) => j !== i) })}><Trash2 size={11} /></button>
           </div>
         ))}
         {sheet.disciplines.length < V5_MAX_DISCIPLINES && <DisciplineAdder taken={sheet.disciplines.map((d) => d.name.toLowerCase())} onAdd={(discipline) => set({ disciplines: [...sheet.disciplines, { name: discipline, dots: 1 }] })} />}
       </div>
 
-      <label className="lr-field"><small>Convictions</small>
-        <textarea value={notes.convictions} onChange={(e) => setNotes({ ...notes, convictions: e.target.value })} onBlur={commitText} rows={2} maxLength={600} placeholder="What you will not do, even now." />
+      <label className="lr-field"><small>{t("v5Sheet.convictions")}</small>
+        <textarea value={notes.convictions} onChange={(e) => setNotes({ ...notes, convictions: e.target.value })} onBlur={commitText} rows={2} maxLength={600} placeholder={t("v5Sheet.convictionsPlaceholder")} />
       </label>
-      <label className="lr-field"><small>Touchstones</small>
-        <textarea value={notes.touchstones} onChange={(e) => setNotes({ ...notes, touchstones: e.target.value })} onBlur={commitText} rows={2} maxLength={600} placeholder="The mortals who keep you human." />
+      <label className="lr-field"><small>{t("v5Sheet.touchstones")}</small>
+        <textarea value={notes.touchstones} onChange={(e) => setNotes({ ...notes, touchstones: e.target.value })} onBlur={commitText} rows={2} maxLength={600} placeholder={t("v5Sheet.touchstonesPlaceholder")} />
       </label>
       <div className="lr-row">
-        {character && <button type="button" onClick={() => { onClear(); onClose(); }}>Clear</button>}
+        {character && <button type="button" onClick={() => { onClear(); onClose(); }}>{t("v5Sheet.clear")}</button>}
       </div>
 
       <details className="lr-more">
-        <summary>More: portrait, extra Health, my screen</summary>
-        <label className="lr-field"><small>Portrait</small><input value={portrait} onChange={(e) => setPortrait(e.target.value)} onBlur={commitText} placeholder="https://… or upload" maxLength={600} /></label>
+        <summary>{t("v5Sheet.moreSummary")}</summary>
+        <label className="lr-field"><small>{t("v5Sheet.portrait")}</small><input value={portrait} onChange={(e) => setPortrait(e.target.value)} onBlur={commitText} placeholder={t("v5Sheet.portraitPlaceholder")} maxLength={600} /></label>
         <div className="lr-row">
-          <button type="button" disabled={busy} onClick={() => file.current?.click()}><Upload size={14} /> {busy ? "Uploading…" : "Upload a portrait"}</button>
+          <button type="button" disabled={busy} onClick={() => file.current?.click()}><Upload size={14} /> {busy ? t("v5Sheet.uploading") : t("v5Sheet.uploadPortrait")}</button>
           <input ref={file} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={(e) => void chooseFile(e.target.files?.[0])} />
         </div>
         {problem && <p className="lr-note">{problem}</p>}
-        <div className="lr-row"><small>Extra Health boxes</small><Stepper value={sheet.extraHealth} min={0} max={V5_MAX_EXTRA_HEALTH} onChange={(extraHealth) => set({ extraHealth })} label="extra Health" /></div>
-        <small className="lr-heading">My screen (only you see it)</small>
+        <div className="lr-row"><small>{t("v5Sheet.extraHealth")}</small><Stepper value={sheet.extraHealth} min={0} max={V5_MAX_EXTRA_HEALTH} onChange={(extraHealth) => set({ extraHealth })} label={t("v5Sheet.extraHealthLabel")} /></div>
+        <small className="lr-heading">{t("v5Sheet.myScreen")}</small>
         <div className="lr-row">
           <button type="button" className={screen.open ? "active" : ""} aria-pressed={screen.open} onClick={() => screen.setOpen(!screen.open)}>
-            {screen.open ? "Put my screen away" : "Stand my screen up"}
+            {screen.open ? t("v5Sheet.putScreenAway") : t("v5Sheet.standScreenUp")}
           </button>
         </div>
         {screen.open && (
           <>
             <ScreenPagesPicker role="player" choice={screen.choice} setChoice={screen.setChoice} system="vtm5" />
             <label className="lr-field">
-              <small>My notes</small>
-              <textarea value={screen.notes} onChange={(e) => screen.setNotes(e.target.value)} rows={3} maxLength={2000} placeholder="Who owes whom a boon." />
+              <small>{t("v5Sheet.myNotes")}</small>
+              <textarea value={screen.notes} onChange={(e) => screen.setNotes(e.target.value)} rows={3} maxLength={2000} placeholder={t("v5Sheet.notesPlaceholder")} />
             </label>
           </>
         )}
       </details>
 
-      <div className="lr-v5-pool" role="group" aria-label="Dice pool">
+      <div className="lr-v5-pool" role="group" aria-label={t("v5Sheet.dicePoolAria")}>
         <span className="lr-v5-pool-what">
           {pool.length
-            ? <><b>{pool.map((t) => `${t.name} ${t.dots}`).join(" + ")}</b>{penalty ? <em className="lr-warn"> −{penalty} Impaired</em> : null} = {v5PoolSize(pool, -penalty)} dice{sheet.hunger ? `, ${Math.min(sheet.hunger, v5PoolSize(pool, -penalty))} Hunger` : ""}</>
-            : <>Click an Attribute and a Skill to build a pool.</>}
+            ? <><b>{pool.map((p) => `${p.name} ${p.dots}`).join(" + ")}</b>{penalty ? <em className="lr-warn">{t("v5Sheet.impairedPenalty", { penalty })}</em> : null}{t("v5Sheet.poolDice", { dice: v5PoolSize(pool, -penalty) })}{sheet.hunger ? t("v5Sheet.poolHunger", { hunger: Math.min(sheet.hunger, v5PoolSize(pool, -penalty)) }) : ""}</>
+            : <>{t("v5Sheet.poolHint")}</>}
         </span>
         <span className="lr-row">
-          <small>Difficulty</small>
-          <Stepper value={difficulty} min={0} max={10} onChange={setDifficulty} label="Difficulty" />
-          <button type="button" className="primary" disabled={!pool.length || !onCommand} onClick={roll}><Dices size={13} /> Roll</button>
-          <button type="button" disabled={!onCommand} onClick={() => onCommand?.(rouseCommand(sheet.hunger))} title="Rouse the Blood: 6+ keeps Hunger, else it rises"><Droplet size={13} /> Rouse</button>
+          <small>{t("v5Sheet.difficulty")}</small>
+          <Stepper value={difficulty} min={0} max={10} onChange={setDifficulty} label={t("v5Sheet.difficulty")} />
+          <button type="button" className="primary" disabled={!pool.length || !onCommand} onClick={roll}><Dices size={13} /> {t("v5Sheet.roll")}</button>
+          <button type="button" disabled={!onCommand} onClick={() => onCommand?.(rouseCommand(sheet.hunger))} title={t("v5Sheet.rouseTitle")}><Droplet size={13} /> {t("v5Sheet.rouse")}</button>
         </span>
       </div>
     </div>
@@ -300,13 +307,14 @@ export function V5CharacterPanel({ character, fallbackName, onChange, onClear, o
 
 /** A new discipline by name (whatever the player's book calls it). */
 function DisciplineAdder({ taken, onAdd }: { taken: string[]; onAdd: (name: string) => void }) {
+  const { t } = useI18n();
   const [name, setName] = useState("");
   const clean = name.trim();
   const add = () => { if (clean && !taken.includes(clean.toLowerCase())) { onAdd(clean.slice(0, 40)); setName(""); } };
   return (
     <form className="lr-row" onSubmit={(event) => { event.preventDefault(); add(); }}>
-      <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Add a discipline" aria-label="Discipline name" maxLength={40} />
-      <button type="submit" disabled={!clean || taken.includes(clean.toLowerCase())} aria-label="Add discipline"><Plus size={13} /></button>
+      <input value={name} onChange={(event) => setName(event.target.value)} placeholder={t("v5Sheet.addDisciplinePlaceholder")} aria-label={t("v5Sheet.disciplineNameAria")} maxLength={40} />
+      <button type="submit" disabled={!clean || taken.includes(clean.toLowerCase())} aria-label={t("v5Sheet.addDisciplineAria")}><Plus size={13} /></button>
     </form>
   );
 }
@@ -322,28 +330,29 @@ export function V5HeroCard({ character, onChange, onEdit, onCommand }: {
   onEdit: () => void;
   onCommand?: (command: string) => void;
 }) {
+  const { t } = useI18n();
   const sheet = v5Of(character);
   const set = (change: Partial<V5Sheet>) => onChange({ ...character, v5: sanitizeV5Sheet({ ...sheet, ...change }) });
   const hp = healthBoxes(sheet);
   const wp = willpowerBoxes(sheet);
   return (
-    <div className="lr-hero lr-v5" role="region" aria-label="My Vampire">
+    <div className="lr-hero lr-v5" role="region" aria-label={t("v5Sheet.title")}>
       <style>{V5_SHEET_CSS}</style>
       <div className="lr-hero-head">
         <strong>{character.name}</strong>
         <small>{[sheet.clan, sheet.bloodPotency ? `BP ${sheet.bloodPotency}` : ""].filter(Boolean).join(" · ")}</small>
         <span className="lr-hero-stats" />
-        <button type="button" onClick={onEdit} aria-label="Open my sheet" title="Open my sheet (roll from it)"><Pencil size={12} /></button>
+        <button type="button" onClick={onEdit} aria-label={t("v5Sheet.openSheet")} title={t("v5Sheet.openSheetTitle")}><Pencil size={12} /></button>
       </div>
       <div className="lr-v5-status">
-        <div className="lr-v5-track"><small>Hunger {sheet.hunger}</small><HungerPips hunger={sheet.hunger} onChange={(hunger) => set({ hunger })} /></div>
+        <div className="lr-v5-track"><small>{t("v5Sheet.hungerAria", { val: sheet.hunger })}</small><HungerPips hunger={sheet.hunger} onChange={(hunger) => set({ hunger })} /></div>
         <span className="lr-row">
-          <button type="button" disabled={sheet.hunger >= V5_MAX_HUNGER} onClick={() => set({ hunger: sheet.hunger + 1 })} title="Hunger +1">+1</button>
-          <button type="button" disabled={!onCommand} onClick={() => onCommand?.(rouseCommand(sheet.hunger))} title="Rouse check: Hunger rises on a fail by itself"><Droplet size={13} /> Rouse</button>
+          <button type="button" disabled={sheet.hunger >= V5_MAX_HUNGER} onClick={() => set({ hunger: sheet.hunger + 1 })} title={t("v5Sheet.hungerPlusOne")}>+1</button>
+          <button type="button" disabled={!onCommand} onClick={() => onCommand?.(rouseCommand(sheet.hunger))} title={t("v5Sheet.rouseCardTitle")}><Droplet size={13} /> {t("v5Sheet.rouse")}</button>
         </span>
       </div>
-      <TrackBoxes track={sheet.health} boxes={hp} label="Health" onChange={(health) => set({ health })} />
-      <TrackBoxes track={sheet.willpower} boxes={wp} label="Willpower" onChange={(willpower) => set({ willpower })} />
+      <TrackBoxes track={sheet.health} boxes={hp} label={t("v5Sheet.health")} onChange={(health) => set({ health })} />
+      <TrackBoxes track={sheet.willpower} boxes={wp} label={t("v5Sheet.willpower")} onChange={(willpower) => set({ willpower })} />
       <HumanityTrack humanity={sheet.humanity} stains={sheet.stains} onChange={(humanity, stains) => set({ humanity, stains })} />
     </div>
   );

@@ -32,6 +32,7 @@ import {
   type BeatboxWave,
 } from "@/lib/beatbox";
 import { TIMER_WORKER_SOURCE } from "../lib/worker-timers";
+import { tNow } from "../lib/i18n-context";
 
 /* ------------------------------------------------------------------ */
 /* Sound                                                               */
@@ -682,10 +683,10 @@ export function BeatboxActivity({
           onClick={() => void togglePlay()}
         >
           {playing ? <Square size={14} /> : <Play size={14} />}
-          {playing ? "Stop" : "Play"}
+          {playing ? tNow("beatbox.stop") : tNow("beatbox.play")}
         </button>
         <label className="beatbox-knob">
-          Tempo
+          {tNow("beatbox.tempo")}
           <input
             type="range"
             min={BEATBOX_BPM_MIN}
@@ -697,13 +698,13 @@ export function BeatboxActivity({
           <output>{state.bpm} BPM</output>
         </label>
         <button type="button" onClick={() => setPattern(randomBeatboxPattern())}>
-          <Dices size={14} /> Randomize
+          <Dices size={14} /> {tNow("beatbox.randomize")}
         </button>
         <button type="button" onClick={() => setPattern(emptyBeatboxPattern())}>
-          <Trash2 size={14} /> Clear
+          <Trash2 size={14} /> {tNow("beatbox.clear")}
         </button>
         <span className="beatbox-spacer" />
-        <label className="beatbox-knob beatbox-volume" title="Your volume: only you hear this change">
+        <label className="beatbox-knob beatbox-volume" title={tNow("study.volumeTitle")}>
           <Volume2 size={14} aria-hidden="true" />
           <input
             type="range"
@@ -711,7 +712,7 @@ export function BeatboxActivity({
             max={1}
             step={0.01}
             value={volume}
-            aria-label="Your volume"
+            aria-label={tNow("study.volumeAria")}
             onChange={(event) => changeVolume(Number(event.target.value))}
           />
         </label>
@@ -719,7 +720,7 @@ export function BeatboxActivity({
 
       {blocked && (
         <p className="beatbox-note" role="status">
-          Your browser didn’t let the sound start. Press Play again.
+          {tNow("beatbox.blockedHint")}
         </p>
       )}
 
@@ -743,15 +744,15 @@ export function BeatboxActivity({
                   key={step}
                   className={cellClass(step, pattern[row.lane][step])}
                   aria-pressed={pattern[row.lane][step]}
-                  aria-label={`${row.name}, step ${step + 1}`}
+                  aria-label={tNow("beatbox.stepAria", { name: row.name, step: step + 1 })}
                   onClick={() => toggleDrum(row.lane, step)}
                 />
               ))}
             </div>
           ))}
 
-          <div className="beatbox-row beatbox-bass" style={lane("var(--lavender)")} role="group" aria-label="Bass notes">
-            <span className="beatbox-label">Bass</span>
+          <div className="beatbox-row beatbox-bass" style={lane("var(--lavender)")} role="group" aria-label={tNow("beatbox.bassNotesAria")}>
+            <span className="beatbox-label">{tNow("beatbox.bassLabel")}</span>
             {STEPS.map((step) => {
               const note = pattern.bassNotes[step];
               return (
@@ -760,7 +761,7 @@ export function BeatboxActivity({
                   key={step}
                   className={`${cellClass(step, note > 0)} beatbox-note-cell`}
                   aria-pressed={note > 0}
-                  aria-label={`Bass, step ${step + 1}: ${note ? beatboxNoteName(note) : "rest"}. Arrow keys change the note.`}
+                  aria-label={tNow("beatbox.bassStepAria", { step: step + 1, note: note ? beatboxNoteName(note) : tNow("beatbox.rest") })}
                   onPointerDown={(event) => noteDown(event, step)}
                   onPointerMove={noteMove}
                   onClick={() => noteClick(step)}
@@ -773,8 +774,8 @@ export function BeatboxActivity({
           </div>
           {(
             [
-              { lane: "bassSlides", name: "Slide" },
-              { lane: "bassAccents", name: "Accent" },
+              { lane: "bassSlides", name: tNow("beatbox.slide") },
+              { lane: "bassAccents", name: tNow("beatbox.accent") },
             ] as const
           ).map((row) => (
             <div
@@ -782,7 +783,7 @@ export function BeatboxActivity({
               key={row.lane}
               style={lane("var(--lavender)")}
               role="group"
-              aria-label={`Bass ${row.name.toLowerCase()}`}
+              aria-label={tNow("beatbox.bassFlagAria", { name: row.name.toLowerCase() })}
             >
               <span className="beatbox-label">{row.name}</span>
               {STEPS.map((step) => (
@@ -791,7 +792,7 @@ export function BeatboxActivity({
                   key={step}
                   className={cellClass(step, pattern[row.lane][step])}
                   aria-pressed={pattern[row.lane][step]}
-                  aria-label={`${row.name}, step ${step + 1}`}
+                  aria-label={tNow("beatbox.stepAria", { name: row.name, step: step + 1 })}
                   disabled={!pattern.bassNotes[step]}
                   onClick={() => setLane(row.lane, step, !pattern[row.lane][step])}
                 />
@@ -802,7 +803,7 @@ export function BeatboxActivity({
       </div>
 
       <div className="beatbox-bar beatbox-bass-bar">
-        <div className="beatbox-wave" role="group" aria-label="Bass waveform">
+        <div className="beatbox-wave" role="group" aria-label={tNow("beatbox.waveAria")}>
           {(["sawtooth", "square"] as const).map((wave: BeatboxWave) => (
             <button
               type="button"
@@ -811,12 +812,12 @@ export function BeatboxActivity({
               aria-pressed={state.wave === wave}
               onClick={() => edit("wave", (current) => ({ ...current, wave }))}
             >
-              {wave === "sawtooth" ? "Saw" : "Square"}
+              {wave === "sawtooth" ? tNow("beatbox.saw") : tNow("beatbox.square")}
             </button>
           ))}
         </div>
         <label className="beatbox-knob">
-          Cutoff
+          {tNow("beatbox.cutoff")}
           <input
             type="range"
             min={0}
@@ -828,7 +829,7 @@ export function BeatboxActivity({
           <output>{state.filterCutoff} Hz</output>
         </label>
         <label className="beatbox-knob">
-          Resonance
+          {tNow("beatbox.resonance")}
           <input
             type="range"
             min={BEATBOX_RESONANCE_MIN}
@@ -840,7 +841,7 @@ export function BeatboxActivity({
           <output>{state.filterResonance}</output>
         </label>
         <label className="beatbox-knob">
-          Env mod
+          {tNow("beatbox.envMod")}
           <input
             type="range"
             min={0}
@@ -854,8 +855,7 @@ export function BeatboxActivity({
       </div>
 
       <p className="beatbox-hint">
-        Everyone in the room edits this pattern. Play and volume are yours alone. Drag a bass note up or down to
-        change its pitch.
+        {tNow("beatbox.hint")}
       </p>
     </div>
   );

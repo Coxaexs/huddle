@@ -6,6 +6,7 @@ import { BUILTIN_THEMES, findThemeById } from "@/lib/themes";
 import type { PublicServer } from "@/lib/servers";
 import { type PublicUser } from "@/lib/users";
 import { buildUserInviteLink } from "../../lib/chat/invites";
+import { useI18n } from "../../lib/i18n-context";
 import { Invite, Tab } from "./types";
 
 export function InvitesTab({
@@ -47,22 +48,22 @@ export function InvitesTab({
   toggleInvitePermission: (targetUserId: string, currentCanInvite: boolean) => Promise<void>;
   updatingPermission: string | null;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {tab === "invites" && (
             <>
               <p className="modal-hint">
-                Anyone with a code can create an account here. Pick the theme
-                they start with and a server they join right away.
+                {t("settings.invites.intro")}
               </p>
               <div className="invite-defaults">
                 <label>
-                  Default theme
+                  {t("settings.invites.defaultTheme")}
                   <select
                     value={inviteTheme}
                     onChange={(event) => setInviteTheme(event.target.value)}
                   >
-                    <option value="">Their own choice</option>
+                    <option value="">{t("settings.invites.theirChoice")}</option>
                     {BUILTIN_THEMES.map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.name}
@@ -71,12 +72,12 @@ export function InvitesTab({
                   </select>
                 </label>
                 <label>
-                  Default server
+                  {t("settings.invites.defaultServer")}
                   <select
                     value={inviteServer}
                     onChange={(event) => setInviteServer(event.target.value)}
                   >
-                    <option value="">None</option>
+                    <option value="">{t("settings.invites.none")}</option>
                     {inviteServers.map((server) => (
                       <option key={server.id} value={server.id}>
                         {server.name}
@@ -85,21 +86,21 @@ export function InvitesTab({
                   </select>
                 </label>
                 <label>
-                  Uses
+                  {t("settings.invites.uses")}
                   <select
                     value={inviteUses}
                     onChange={(event) => setInviteUses(Number(event.target.value))}
                   >
                     {INVITE_USE_CHOICES.map((uses) => (
                       <option key={uses} value={uses}>
-                        {uses === 1 ? "1 person" : `${uses} people`}
+                        {uses === 1 ? t("settings.invites.onePerson") : t("settings.invites.manyPeople", { count: uses })}
                       </option>
                     ))}
                   </select>
                 </label>
               </div>
               <button type="button" className="primary" onClick={createInvite}>
-                Create an invite code
+                {t("settings.invites.createBtn")}
               </button>
               <ul className="invite-list">
                 {invites.map((invite) => (
@@ -122,10 +123,10 @@ export function InvitesTab({
                     )}
                     <span>
                       {invite.revoked
-                        ? "revoked"
+                        ? t("settings.invites.revoked")
                         : invite.spent
-                          ? "used"
-                          : `${invite.uses}/${invite.maxUses || "∞"} used`}
+                          ? t("settings.invites.used")
+                          : t("settings.invites.usesCount", { used: invite.uses, max: invite.maxUses || "∞" })}
                     </span>
                     <div className="invite-actions">
                       <button
@@ -135,13 +136,13 @@ export function InvitesTab({
                           void navigator.clipboard
                             ?.writeText(link)
                             .then(() => {
-                              setStatus("Invite link copied to clipboard.");
+                              setStatus(t("settings.invites.linkCopied"));
                               window.setTimeout(() => setStatus(""), 2500);
                             })
                             .catch(() => undefined);
                         }}
                       >
-                        Copy Link
+                        {t("settings.invites.copyLink")}
                       </button>
                       <button
                         type="button"
@@ -149,27 +150,27 @@ export function InvitesTab({
                           void navigator.clipboard
                             ?.writeText(invite.code)
                             .then(() => {
-                              setStatus("Invite code copied to clipboard.");
+                              setStatus(t("settings.invites.codeCopied"));
                               window.setTimeout(() => setStatus(""), 2500);
                             })
                             .catch(() => undefined);
                         }}
                       >
-                        Copy Code
+                        {t("settings.invites.copyCode")}
                       </button>
                       {!invite.revoked && !invite.spent && (
                         <button
                           type="button"
                           onClick={() => revokeInvite(invite.code)}
                         >
-                          Revoke
+                          {t("settings.invites.revoke")}
                         </button>
                       )}
                     </div>
                   </li>
                 ))}
                 {!invites.length && (
-                  <li className="empty">No codes yet.</li>
+                  <li className="empty">{t("settings.invites.empty")}</li>
                 )}
               </ul>
 
@@ -190,16 +191,14 @@ export function InvitesTab({
                       marginBottom: "4px",
                     }}
                   >
-                    Invite Creation Permissions
+                    {t("settings.invites.permsTitle")}
                   </h3>
                   <p className="modal-hint" style={{ marginBottom: "12px" }}>
-                    Only you (the first created user/owner) and selected members can
-                    create invite codes. Choose who else is authorized to create
-                    invites below.
+                    {t("settings.invites.permsDesc")}
                   </p>
                   <input
                     type="text"
-                    placeholder="Filter members by name..."
+                    placeholder={t("settings.invites.filterPlaceholder")}
                     value={permissionSearch}
                     onChange={(e) => setPermissionSearch(e.target.value)}
                     style={{ marginBottom: "12px", width: "100%" }}
@@ -280,7 +279,7 @@ export function InvitesTab({
                                 fontWeight: 600,
                               }}
                             >
-                              Owner (Always Allowed)
+                              {t("settings.invites.ownerAlways")}
                             </span>
                           ) : (
                             <button
@@ -305,17 +304,17 @@ export function InvitesTab({
                               }}
                             >
                               {updatingPermission === u.id
-                                ? "Updating…"
+                                ? t("settings.invites.updating")
                                 : u.canInvite
-                                  ? "✓ Can Invite"
-                                  : "+ Allow Invite"}
+                                  ? t("settings.invites.canInvite")
+                                  : t("settings.invites.allowInvite")}
                             </button>
                           )}
                         </div>
                       ))}
                     {permissionUsers.length === 0 && (
                       <p className="modal-hint" style={{ textAlign: "center" }}>
-                        Loading members…
+                        {t("settings.invites.loadingMembers")}
                       </p>
                     )}
                   </div>

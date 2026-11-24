@@ -80,6 +80,7 @@ export interface ServerRow {
   vanity_code?: string | null;
   everyone_permissions?: number;
   web_public?: number;
+  discover_category?: string | null;
 }
 
 export interface PublicChannel {
@@ -145,6 +146,7 @@ export interface PublicServer {
   description?: string;
   disabledModules?: string[];
   raidMode?: boolean;
+  discoverCategory?: string;
   /** 0 none, 1 verified email, 2 + account 5 min old, 3 + member 10 min (lib/verification-level.ts). */
   verificationLevel?: number;
   /** The server's custom invite code, if it set one. */
@@ -406,6 +408,7 @@ export async function listServers(
       ...(server.vanity_code !== undefined ? { vanityCode: server.vanity_code || null } : {}),
       ...(server.everyone_permissions !== undefined ? { everyonePermissions: server.everyone_permissions || 0 } : {}),
       ...(server.web_public !== undefined ? { webPublic: Boolean(server.web_public) } : {}),
+      ...(server.discover_category ? { discoverCategory: server.discover_category } : {}),
       musicBot: musicBotServers.has(server.id),
       playerBot: playerBotServers.has(server.id),
       channels: channelsByServer.get(server.id) || [],

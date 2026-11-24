@@ -1,6 +1,9 @@
+"use client";
+
 import { useEffect, useRef, useState } from "react";
 import { Maximize2, Music2 } from "lucide-react";
 import { lyricsSource } from "@/app/lib/lyrics-source";
+import { useI18n } from "../lib/i18n-context";
 
 interface LyricsNowLine {
   at: number;
@@ -53,6 +56,7 @@ export function LyricsNow({
   onExpand,
   onFix,
 }: LyricsNowProps) {
+  const { t } = useI18n();
   const storeKey = `lyricsOffset:${trackKey || `${artist || ""}|${track || ""}`}`;
   // Seconds the lyrics run ahead (+) or behind (-); only this song's card has it.
   const [offset, setOffset] = useState(0);
@@ -110,11 +114,11 @@ export function LyricsNow({
     onSeek?.(Math.max(0, Math.round((at - offset) * 1000)));
 
   return (
-    <section className="lyrics-now" aria-label="Lyrics playing now">
+    <section className="lyrics-now" aria-label={t("music.lyrics.aria")}>
       <header>
         <span className="lyrics-now-icon" aria-hidden="true"><Music2 size={16} /></span>
         <div>
-          <strong>Lyrics now</strong>
+          <strong>{t("music.lyrics.title")}</strong>
           {(track || artist) && (
             <small>
               {[track, artist].filter(Boolean).join(" — ")}
@@ -126,8 +130,8 @@ export function LyricsNow({
             type="button"
             className="lyrics-now-expand"
             onClick={onExpand}
-            aria-label="Open the full-screen player"
-            title="Full-screen player"
+            aria-label={t("music.lyrics.expandAria")}
+            title={t("music.lyrics.expandTitle")}
           >
             <Maximize2 size={15} />
           </button>
@@ -135,13 +139,13 @@ export function LyricsNow({
       </header>
       {loose && (
         <p className="lyrics-now-loose">
-          Matched by song name only. Is this the right song?
+          {t("music.lyrics.looseHint")}
           {lines.slice(0, 2).map((item) => ` “${item.line}”`).join(" /")}
           {live && onFix && (
             <>
               {" "}
               <button type="button" className="lyrics-now-fix" onClick={onFix}>
-                Pick the right one
+                {t("music.lyrics.pickRightOne")}
               </button>
             </>
           )}
@@ -149,8 +153,7 @@ export function LyricsNow({
       )}
       {!loose && versionLength ? (
         <p className="lyrics-now-loose">
-          These lyrics follow a {timestamp(versionLength)} version of the song, so the
-          timing may drift. Nudge it with −1s / +1s.
+          {t("music.lyrics.versionDrift", { duration: timestamp(versionLength) })}
         </p>
       ) : null}
       <div className="lyrics-now-lines" ref={listRef}>
@@ -161,7 +164,7 @@ export function LyricsNow({
               className={`lyrics-now-line seekable ${item.active ? "active" : ""}`}
               key={`${item.at}-${index}`}
               onClick={() => seekTo(item.at)}
-              title={`Play from ${timestamp(item.at)}`}
+              title={t("music.lyrics.playFromTitle", { time: timestamp(item.at) })}
               aria-current={item.active ? "true" : undefined}
             >
               <time>{timestamp(item.at)}</time>
@@ -180,23 +183,23 @@ export function LyricsNow({
       </div>
       {lines.length > 0 && (
         <p className="lyrics-now-source">
-          Lyrics from{" "}
+          {t("music.lyrics.fromPrefix")}{" "}
           <a href={lyricsSource(source, sourceUrl).url} target="_blank" rel="noreferrer">
             {lyricsSource(source, sourceUrl).label}
           </a>
         </p>
       )}
       {live && lines.length > 0 && (
-        <div className="lyrics-now-sync" aria-label="Lyrics timing">
-          <button type="button" onClick={() => nudge(-1)} title="Show lyrics 1 second later">−1s</button>
-          <span>{offset ? `${offset > 0 ? "+" : ""}${offset}s` : "in sync"}</span>
-          <button type="button" onClick={() => nudge(1)} title="Show lyrics 1 second earlier">+1s</button>
+        <div className="lyrics-now-sync" aria-label={t("music.lyrics.timingAria")}>
+          <button type="button" onClick={() => nudge(-1)} title={t("music.lyrics.laterTitle")}>−1s</button>
+          <span>{offset ? `${offset > 0 ? "+" : ""}${offset}s` : t("music.lyrics.inSync")}</span>
+          <button type="button" onClick={() => nudge(1)} title={t("music.lyrics.earlierTitle")}>+1s</button>
           {offset !== 0 && (
-            <button type="button" onClick={() => nudge(0)} title="Reset timing">reset</button>
+            <button type="button" onClick={() => nudge(0)} title={t("music.lyrics.resetTitle")}>{t("music.lyrics.reset")}</button>
           )}
           {onFix && (
-            <button type="button" onClick={onFix} title="Pick the right lyrics from songs with this name">
-              Wrong lyrics?
+            <button type="button" onClick={onFix} title={t("music.lyrics.wrongTitle")}>
+              {t("music.lyrics.wrong")}
             </button>
           )}
           {playing && lines.length > 5 && (
@@ -206,7 +209,7 @@ export function LyricsNow({
               onClick={() => setShowAll((open) => !open)}
               aria-expanded={showAll}
             >
-              {showAll ? "Fewer lines" : "Whole song"}
+              {showAll ? t("music.lyrics.fewerLines") : t("music.lyrics.wholeSong")}
             </button>
           )}
         </div>

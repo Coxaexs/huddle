@@ -333,7 +333,7 @@ export function MusicPlayer({
       className="music-player"
       role="dialog"
       aria-modal="true"
-      aria-label="Music player"
+      aria-label={tNow("music.player.aria")}
       style={art ? ({ "--mp-art": `url("${art}")` } as CSSProperties) : undefined}
     >
       <div className="mp-backdrop" aria-hidden="true" />
@@ -342,16 +342,16 @@ export function MusicPlayer({
           type="button"
           className="mp-icon-btn"
           onClick={closeMusicPlayer}
-          aria-label="Close the player"
-          title="Close (Esc)"
+          aria-label={tNow("music.player.closeAria")}
+          title={tNow("music.player.closeTitle")}
         >
           <ChevronDown size={22} />
         </button>
         <div className="mp-where">
-          <small>{track ? (paused ? "Paused in" : "Playing in") : "Music in"}</small>
-          <strong>{roomId ? roomName : "No voice room"}</strong>
+          <small>{track ? (paused ? tNow("music.player.pausedIn") : tNow("music.player.playingIn")) : tNow("music.player.musicIn")}</small>
+          <strong>{roomId ? roomName : tNow("music.player.noVoiceRoom")}</strong>
         </div>
-        <nav className="mp-tabs" role="tablist" aria-label="Player views">
+        <nav className="mp-tabs" role="tablist" aria-label={tNow("music.player.viewsAria")}>
           {TABS.filter((item) => musicBot || item.id === "queue").map((item) => (
             <button
               key={item.id}
@@ -374,7 +374,7 @@ export function MusicPlayer({
       </header>
 
       <div className="mp-body" inert={sheet !== null}>
-        <section className="mp-now" aria-label="Now playing">
+        <section className="mp-now" aria-label={tNow("music.player.nowPlayingAria")}>
           <div className="mp-art">
             {art ? <img src={art} alt="" /> : <Music2 size={56} aria-hidden="true" />}
           </div>
@@ -382,15 +382,15 @@ export function MusicPlayer({
             <h2 title={track?.title}>{track?.title ?? tNow("music.nothingPlaying")}</h2>
             <p>
               {track
-                ? track.artist || "Unknown artist"
+                ? track.artist || tNow("music.player.unknownArtist")
                 : roomId
-                  ? `Search for a song or pick a playlist to start ${roomName}.`
-                  : "Join a voice room to play music."}
+                  ? tNow("music.player.emptyRoomHint", { room: roomName })
+                  : tNow("music.player.joinRoomHint")}
             </p>
             {track?.requestedBy && (
               <small>
-                Added by {track.requestedBy}
-                {track.playlist?.name ? ` · from ${track.playlist.name}` : ""}
+                {tNow("music.player.addedBy", { name: track.requestedBy })}
+                {track.playlist?.name ? tNow("music.player.fromPlaylist", { name: track.playlist.name }) : ""}
               </small>
             )}
             {track && musicBot && (
@@ -399,7 +399,7 @@ export function MusicPlayer({
                 className="mp-button ghost small mp-add-song"
                 onClick={() => openSheet({ title: track.title, query: songQuery(track) })}
               >
-                <CirclePlus size={14} /> Add to playlist
+                <CirclePlus size={14} /> {tNow("music.player.addToPlaylist")}
               </button>
             )}
           </div>
@@ -412,11 +412,11 @@ export function MusicPlayer({
                 onKeyDown={seekByKey}
                 role="slider"
                 tabIndex={controls ? 0 : -1}
-                aria-label="Song position"
+                aria-label={tNow("music.player.songPosition")}
                 aria-valuemin={0}
                 aria-valuemax={Math.round(durationMs / 1000) || undefined}
                 aria-valuenow={Math.round(positionMs / 1000)}
-                aria-valuetext={`${clock(positionMs / 1000)} of ${clock(track.duration)}`}
+                aria-valuetext={tNow("music.player.posOf", { current: clock(positionMs / 1000), total: clock(track.duration) })}
               >
                 <div className="mp-progress-fill" style={{ width: `${progress * 100}%` }} />
               </div>
@@ -443,8 +443,8 @@ export function MusicPlayer({
               className="mp-icon-btn"
               onClick={() => void run("/replay")}
               disabled={!controls || busy}
-              aria-label="Start the song again"
-              title="Start the song again"
+              aria-label={tNow("music.player.replay")}
+              title={tNow("music.player.replay")}
             >
               <RotateCcw size={19} />
             </button>
@@ -453,8 +453,8 @@ export function MusicPlayer({
               className="mp-play"
               onClick={toggle}
               disabled={!controls || busy}
-              aria-label={paused ? "Play" : "Pause"}
-              title={paused ? "Play (Space)" : "Pause (Space)"}
+              aria-label={paused ? tNow("beatbox.play") : tNow("chat.renderer.musicPause")}
+              title={paused ? tNow("music.player.playTitle") : tNow("music.player.pauseTitle")}
             >
               {paused ? <Play size={26} /> : <Pause size={26} />}
             </button>
@@ -463,8 +463,8 @@ export function MusicPlayer({
               className="mp-icon-btn"
               onClick={() => void run("/skip")}
               disabled={!controls || busy}
-              aria-label="Skip"
-              title="Skip"
+              aria-label={tNow("music.card.skipBtn")}
+              title={tNow("music.card.skipBtn")}
             >
               <SkipForward size={19} />
             </button>
@@ -473,34 +473,34 @@ export function MusicPlayer({
               className="mp-icon-btn"
               onClick={() => void run("/shuffle", true)}
               disabled={!inRoom || busy || !state?.queue.length}
-              aria-label="Shuffle what is up next"
-              title="Shuffle what is up next"
+              aria-label={tNow("music.player.shuffleNext")}
+              title={tNow("music.player.shuffleNext")}
             >
               <Shuffle size={19} />
             </button>
           </div>
 
           {inRoom && onVolume && (
-            <label className="mp-volume" title="Your volume: only you hear this change">
+            <label className="mp-volume" title={tNow("study.volumeTitle")}>
               <Volume2 size={16} aria-hidden="true" />
               <input
                 type="range"
                 min={0}
                 max={100}
                 value={volume ?? 100}
-                aria-label="Your volume"
+                aria-label={tNow("study.volumeAria")}
                 onChange={(event) => onVolume(Number(event.target.value))}
               />
             </label>
           )}
           {!inRoom && roomId && (
             <button type="button" className="mp-join" onClick={() => joinVoice(roomId)}>
-              Join {roomName} to listen and control
+              {tNow("music.player.joinToControl", { room: roomName })}
             </button>
           )}
         </section>
 
-        <section className="mp-pane" aria-label="Player views">
+        <section className="mp-pane" aria-label={tNow("music.player.viewsAria")}>
           <div role="tabpanel" id="mp-pane-lyrics" aria-labelledby="mp-tab-lyrics" hidden={tab !== "lyrics"} className="mp-pane-inner">
             <LyricsPane
               roomId={roomId}
@@ -632,24 +632,23 @@ function WordsBorrow({
   return (
     <div className="mp-list-wrap mp-picker">
       <header className="mp-list-head">
-        <strong>Word by word from another version</strong>
-        <button type="button" className="mp-icon-btn small" onClick={onClose} aria-label="Back to the lyrics" title="Back to the lyrics">
+        <strong>{tNow("music.player.wordByWordTitle")}</strong>
+        <button type="button" className="mp-icon-btn small" onClick={onClose} aria-label={tNow("music.player.backToLyrics")} title={tNow("music.player.backToLyrics")}>
           <X size={16} />
         </button>
       </header>
       <p className="mp-lyrics-note">
-        These versions of the song have every word timed. Pick one: its timing is used for this song, starting where
-        the lyrics put each line. If it's off, line it up with the timing buttons and save it.
+        {tNow("music.player.wordByWordDesc")}
       </p>
       {error && <p className="mp-error">{error}</p>}
       {!donors && !error && (
-        <Empty icon={<LoaderCircle size={28} className="mp-spin" />} title="Looking for timed versions…" />
+        <Empty icon={<LoaderCircle size={28} className="mp-spin" />} title={tNow("music.player.lookingTimed")} />
       )}
       {donors && !donors.length && (
         <Empty
           icon={<MicVocal size={28} />}
-          title="No timed version yet"
-          text="None of the songs timed so far has these words. More get timed every hour; try again later."
+          title={tNow("music.player.noTimedTitle")}
+          text={tNow("music.player.noTimedText")}
         />
       )}
       {donors && donors.length > 0 && (
@@ -659,7 +658,7 @@ function WordsBorrow({
               <div className="mp-row-main static">
                 <span className="mp-row-text">
                   <strong>{donor.title}</strong>
-                  <small>{Math.round(donor.match * 100)}% of the words match</small>
+                  <small>{tNow("music.player.matchPct", { pct: Math.round(donor.match * 100) })}</small>
                 </span>
                 <span className="mp-row-time">{donor.duration ? clock(donor.duration) : ""}</span>
               </div>
@@ -670,7 +669,7 @@ function WordsBorrow({
                   disabled={busy !== null}
                   onClick={() => void pick(donor)}
                 >
-                  {busy === donor.id ? <LoaderCircle size={14} className="mp-spin" /> : null} Use this
+                  {busy === donor.id ? <LoaderCircle size={14} className="mp-spin" /> : null} {tNow("music.player.useThis")}
                 </button>
               </span>
             </li>
@@ -1142,7 +1141,7 @@ function LyricsPane({
     if (error) {
       return (
         <Empty icon={<MicVocal size={28} />} title={tNow("music.noLyrics")} text={error}>
-          <button type="button" className="mp-button" onClick={() => void load(retrySearch)}>Try again</button>
+          <button type="button" className="mp-button" onClick={() => void load(retrySearch)}>{tNow("music.player.tryAgain")}</button>
         </Empty>
       );
     }
@@ -1150,13 +1149,13 @@ function LyricsPane({
       return (
         <div className="mp-lyrics plain">
           <p className="mp-lyrics-note">
-            {data.checked ? "Only unsynced lyrics exist for this song." : "These lyrics are not synced to the song."}
+            {data.checked ? tNow("music.player.onlyUnsynced") : tNow("music.player.notSynced")}
             {findButton}
-            {pickButton("Wrong song?")}
+            {pickButton(tNow("music.player.wrongSong"))}
           </p>
           <div className="mp-plain">{data.plain}</div>
           <p className="mp-source">
-            Lyrics from{" "}
+            {tNow("music.lyrics.fromPrefix")}{" "}
             <a href={lyricsSource(data.source, data.sourceUrl).url} target="_blank" rel="noreferrer">
               {lyricsSource(data.source, data.sourceUrl).label}
             </a>
@@ -1170,12 +1169,12 @@ function LyricsPane({
         title={data?.checked ? tNow("music.noLyricsFound") : tNow("music.wantLyrics")}
         text={
           data?.checked
-            ? "Nobody has synced this one yet. Another version of the song might have them."
-            : "They aren't saved for this song yet. Search for them and they scroll along with the song."
+            ? tNow("music.player.nobodySynced")
+            : tNow("music.player.notSavedLyrics")
         }
       >
         {findButton}
-        {pickButton(data?.checked ? "Search by hand" : "Or pick them by hand")}
+        {pickButton(data?.checked ? tNow("music.player.searchByHand") : tNow("music.player.pickByHand"))}
       </Empty>
     );
   }
@@ -1183,28 +1182,28 @@ function LyricsPane({
   return (
     <div className="mp-lyrics-wrap">
       {tapLine !== null && lines[tapLine] && (
-        <div className="mp-tap" role="group" aria-label="Correct the timing">
+        <div className="mp-tap" role="group" aria-label={tNow("music.player.correctTimingAria")}>
           <p>
-            Tap <b>Now</b> the moment you hear:
+            {tNow("music.player.tapNowPrompt")}
             <span className="mp-tap-line">“{lines[tapLine].line}”</span>
           </p>
           <div className="mp-tap-actions">
             <button type="button" className="mp-button" onClick={tapNow} disabled={!playing}>
-              Now
+              {tNow("music.player.nowBtn")}
             </button>
             <button type="button" className="mp-link" onClick={() => setTapLine(null)}>
-              Cancel
+              {tNow("common.cancel")}
             </button>
           </div>
-          {!playing && <small>Play the song first.</small>}
+          {!playing && <small>{tNow("music.player.playSongFirst")}</small>}
         </div>
       )}
       {(data?.loose || data?.versionLength) && (
         <p className="mp-lyrics-note">
           {data.loose
-            ? "Matched by song name only. Is this the right song?"
-            : `These lyrics follow a ${clock(data.versionLength)} version of the song, so the timing may drift. Nudge it below.`}
-          {pickButton(data.loose ? "Pick the right one" : "Pick another version")}
+            ? tNow("music.lyrics.looseHint")
+            : tNow("music.player.driftNote", { duration: clock(data.versionLength) })}
+          {pickButton(data.loose ? tNow("music.lyrics.pickRightOne") : tNow("music.player.pickAnotherVersion"))}
         </p>
       )}
       <div
@@ -1256,59 +1255,59 @@ function LyricsPane({
               type="button"
               className="mp-link"
               onClick={() => void confirmTiming()}
-              title="The words light up in time with the singing: stop showing this note, for everyone"
+              title={tNow("music.player.timingRightTitle")}
             >
-              Timing is right
+              {tNow("music.player.timingRight")}
             </button>
           )}
           <button type="button" className="mp-link" onClick={() => void stopBorrowing()}>
-            Remove word timing
+            {tNow("music.player.removeWordTiming")}
           </button>
         </p>
       )}
-      <div className="mp-lyrics-bar" aria-label="Lyrics timing">
-        <button type="button" onClick={() => nudge(-0.5)} title="Show the lyrics half a second later">
+      <div className="mp-lyrics-bar" aria-label={tNow("music.lyrics.timingAria")}>
+        <button type="button" onClick={() => nudge(-0.5)} title={tNow("music.player.nudgeHalfLater")}>
           −0.5s
         </button>
         {timedWords && (
-          <button type="button" onClick={() => nudge(-0.1)} title="Show the lyrics a tenth of a second later">
+          <button type="button" onClick={() => nudge(-0.1)} title={tNow("music.player.nudgeTenthLater")}>
             −0.1s
           </button>
         )}
-        <span>{offset ? `${offset > 0 ? "+" : ""}${offset}s` : "In sync"}</span>
+        <span>{offset ? `${offset > 0 ? "+" : ""}${offset}s` : tNow("music.player.inSyncCap")}</span>
         {timedWords && (
-          <button type="button" onClick={() => nudge(0.1)} title="Show the lyrics a tenth of a second earlier">
+          <button type="button" onClick={() => nudge(0.1)} title={tNow("music.player.nudgeTenthEarlier")}>
             +0.1s
           </button>
         )}
-        <button type="button" onClick={() => nudge(0.5)} title="Show the lyrics half a second earlier">
+        <button type="button" onClick={() => nudge(0.5)} title={tNow("music.player.nudgeHalfEarlier")}>
           +0.5s
         </button>
         {offset !== 0 && (
           <button type="button" onClick={() => nudge(0)}>
-            Reset
+            {tNow("music.player.reset")}
           </button>
         )}
         {timedWords && tapLine === null && (
-          <button type="button" onClick={startTapping} title="Tap along once to line the words up with the singing">
-            Correct timing
+          <button type="button" onClick={startTapping} title={tNow("music.player.tapAlongTitle")}>
+            {tNow("music.player.correctTiming")}
           </button>
         )}
         {!timedWords && trackId && roomId && (
           <button
             type="button"
             onClick={() => setBorrowing(true)}
-            title="Use word-by-word timing from another version of this song"
+            title={tNow("music.player.wordByWordTitleTip")}
           >
-            Word by word…
+            {tNow("music.player.wordByWordBtn")}
           </button>
         )}
-        <button type="button" onClick={() => setPicking(true)} title="Pick the right lyrics from songs with this name">
-          Wrong lyrics?
+        <button type="button" onClick={() => setPicking(true)} title={tNow("music.lyrics.wrongTitle")}>
+          {tNow("music.lyrics.wrong")}
         </button>
         <small>
-          {canSeek ? "Click a line to jump there" : "Join the room to jump around"}
-          {" · Lyrics from "}
+          {canSeek ? tNow("music.player.clickToJump") : tNow("music.player.joinToJump")}
+          {tNow("music.player.lyricsFromSep")}
           <a href={lyricsSource(data?.source, data?.sourceUrl).url} target="_blank" rel="noreferrer">
             {lyricsSource(data?.source, data?.sourceUrl).label}
           </a>
@@ -1336,7 +1335,7 @@ function QueuePane({
     return (
       <Empty icon={<ListMusic size={28} />} title={tNow("music.nothingUpNext")} text={tNow("music.nothingUpNextText")}>
         <button type="button" className="mp-button" onClick={onSearch}>
-          <Search size={16} /> Find a song
+          <Search size={16} /> {tNow("music.player.findASong")}
         </button>
       </Empty>
     );
@@ -1345,9 +1344,9 @@ function QueuePane({
   return (
     <div className="mp-list-wrap">
       <header className="mp-list-head">
-        <strong>Up next</strong>
+        <strong>{tNow("music.player.upNext")}</strong>
         <span>
-          {queue.length} {queue.length === 1 ? "song" : "songs"}
+          {queue.length === 1 ? tNow("music.player.songSingle") : tNow("music.player.songPlural", { count: queue.length })}
           {total ? ` · ${clock(total)}` : ""}
         </span>
       </header>
@@ -1359,13 +1358,13 @@ function QueuePane({
               className="mp-row-main"
               disabled={!inRoom}
               onClick={() => void run(`/skipto ${index + 1}`)}
-              title={inRoom ? "Play this now" : undefined}
+              title={inRoom ? tNow("music.player.playThisNow") : undefined}
             >
               <span className="mp-row-index">{index + 1}</span>
               <Thumb src={item.thumbnail} />
               <span className="mp-row-text">
                 <strong>{item.title}</strong>
-                <small>{item.artist || `Added by ${item.requestedBy}`}</small>
+                <small>{item.artist || tNow("music.player.addedBy", { name: item.requestedBy })}</small>
               </span>
               <span className="mp-row-time">{item.duration ? clock(item.duration) : ""}</span>
             </button>
@@ -1374,8 +1373,8 @@ function QueuePane({
                 type="button"
                 className="mp-icon-btn small"
                 onClick={() => void run(`/remove ${index + 1}`)}
-                aria-label={`Remove ${item.title} from the queue`}
-                title="Remove from the queue"
+                aria-label={tNow("music.player.removeFromQueueAria", { title: item.title })}
+                title={tNow("music.player.removeFromQueueTitle")}
               >
                 <X size={15} />
               </button>
@@ -1459,18 +1458,18 @@ function SearchPane({
           ref={inputRef}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Songs, artists, or a YouTube / Spotify link"
-          aria-label="Search for music"
+          placeholder={tNow("music.player.searchPlaceholder")}
+          aria-label={tNow("music.player.searchAria")}
           maxLength={200}
         />
         <button type="submit" className="mp-button" disabled={!query.trim() || searching}>
-          {searching ? <LoaderCircle size={16} className="mp-spin" /> : "Search"}
+          {searching ? <LoaderCircle size={16} className="mp-spin" /> : tNow("settings.appearance.searchBtn")}
         </button>
       </form>
-      {!inRoom && <p className="mp-lyrics-note">Join the voice room to play songs, or press + to save one to a playlist.</p>}
+      {!inRoom && <p className="mp-lyrics-note">{tNow("music.player.joinOrAddHint")}</p>}
       {error && <p className="mp-error">{error}</p>}
       {results && !results.length && !error && (
-        <Empty icon={<Search size={28} />} title={`Nothing found for “${searched}”`} text="Try other words, or paste a link." />
+        <Empty icon={<Search size={28} />} title={tNow("music.player.nothingFoundFor", { query: searched })} text={tNow("music.player.tryOtherWords")} />
       )}
       {results && results.length > 0 && (
         <ol className="mp-list">
@@ -1485,8 +1484,8 @@ function SearchPane({
                       <span
                         className="mp-words-mark"
                         role="img"
-                        aria-label="Lyrics light up word by word"
-                        title="Lyrics light up word by word"
+                        aria-label={tNow("music.player.wordsLightUp")}
+                        title={tNow("music.player.wordsLightUp")}
                       >
                         <MicVocal size={13} aria-hidden="true" />
                       </span>
@@ -1497,7 +1496,7 @@ function SearchPane({
                 <span className="mp-row-time">{result.duration ? clock(result.duration) : ""}</span>
               </div>
               {added[result.url] ? (
-                <span className="mp-added">{added[result.url] === "next" ? "Plays next" : "Added"}</span>
+                <span className="mp-added">{added[result.url] === "next" ? tNow("music.player.playsNext") : tNow("music.player.added")}</span>
               ) : (
                 <span className="mp-row-actions">
                   <button
@@ -1505,9 +1504,9 @@ function SearchPane({
                     className="mp-button small"
                     disabled={!inRoom}
                     onClick={() => void add(result, "next")}
-                    title={playing ? "Play this after the current song" : "Play this now"}
+                    title={playing ? tNow("music.player.playAfterCurrent") : tNow("music.player.playThisNow")}
                   >
-                    <Play size={14} /> {playing ? "Next" : "Play"}
+                    <Play size={14} /> {playing ? tNow("music.player.nextBtn") : tNow("beatbox.play")}
                   </button>
                   {playing && (
                     <button
@@ -1515,8 +1514,8 @@ function SearchPane({
                       className="mp-icon-btn small"
                       disabled={!inRoom}
                       onClick={() => void add(result, "queue")}
-                      aria-label={`Add ${result.title} to the end of the queue`}
-                      title="Add to the end of the queue"
+                      aria-label={tNow("music.player.addEndQueueAria", { title: result.title })}
+                      title={tNow("music.player.addEndQueueTitle")}
                     >
                       <ListPlus size={16} />
                     </button>
@@ -1527,8 +1526,8 @@ function SearchPane({
                 type="button"
                 className="mp-icon-btn small"
                 onClick={() => onAddToPlaylist({ title: result.title, query: result.url })}
-                aria-label={`Add ${result.title} to a playlist`}
-                title="Add to playlist"
+                aria-label={tNow("music.player.addPlaylistAria", { title: result.title })}
+                title={tNow("music.player.addToPlaylist")}
               >
                 <CirclePlus size={16} />
               </button>
@@ -1539,8 +1538,8 @@ function SearchPane({
       {!results && !error && (
         <Empty
           icon={<Search size={28} />}
-          title="Find something to play"
-          text="Search YouTube, or paste a YouTube or Spotify link (playlists too)."
+          title={tNow("music.player.findSomething")}
+          text={tNow("music.player.findSomethingText")}
         />
       )}
     </div>
@@ -1629,27 +1628,27 @@ function PlaylistsPane({
   onFindSongs: () => void;
 }) {
   if (!roomId) {
-    return <Empty icon={<Library size={28} />} title="No voice room" text="Playlists belong to a voice room." />;
+    return <Empty icon={<Library size={28} />} title={tNow("music.player.noVoiceRoom")} text={tNow("music.player.playlistsBelong")} />;
   }
   if (error) {
     return (
-      <Empty icon={<Library size={28} />} title="Could not load the playlists" text={error}>
-        <button type="button" className="mp-button" onClick={() => void onRetry()}>Try again</button>
+      <Empty icon={<Library size={28} />} title={tNow("music.player.couldNotLoadPlaylists")} text={error}>
+        <button type="button" className="mp-button" onClick={() => void onRetry()}>{tNow("music.player.tryAgain")}</button>
       </Empty>
     );
   }
   if (!lists) {
-    return <Empty icon={<LoaderCircle size={28} className="mp-spin" />} title="Loading playlists…" />;
+    return <Empty icon={<LoaderCircle size={28} className="mp-spin" />} title={tNow("music.player.loadingPlaylists")} />;
   }
   if (!lists.length) {
     return (
       <Empty
         icon={<Library size={28} />}
-        title="No playlists yet"
-        text="Make the first one, then add songs to it."
+        title={tNow("music.player.noPlaylistsYet")}
+        text={tNow("music.player.makeFirstPlaylist")}
       >
         <button type="button" className="mp-button" onClick={onNew}>
-          <Plus size={16} /> New playlist
+          <Plus size={16} /> {tNow("music.player.newPlaylist")}
         </button>
       </Empty>
     );
@@ -1660,48 +1659,48 @@ function PlaylistsPane({
     return (
       <div className="mp-list-wrap">
         <header className="mp-playlist-head">
-          <button type="button" className="mp-icon-btn" onClick={() => onOpen(null)} aria-label="All playlists" title="All playlists">
+          <button type="button" className="mp-icon-btn" onClick={() => onOpen(null)} aria-label={tNow("music.player.allPlaylists")} title={tNow("music.player.allPlaylists")}>
             <ArrowLeft size={18} />
           </button>
           <Thumb src={chosen.cover} />
           <div className="mp-row-text">
             <strong>{chosen.name}</strong>
             <small>
-              {chosen.count} {chosen.count === 1 ? "song" : "songs"}
+              {chosen.count === 1 ? tNow("music.player.songSingle") : tNow("music.player.songPlural", { count: chosen.count })}
               {chosen.description ? ` · ${chosen.description}` : ""}
             </small>
           </div>
           <span className="mp-row-actions">
             <button type="button" className="mp-button" disabled={!inRoom || !chosen.count} onClick={() => void onPlay(chosen.name, "play")}>
-              <Play size={15} /> Play
+              <Play size={15} /> {tNow("beatbox.play")}
             </button>
             <button
               type="button"
               className="mp-icon-btn"
               disabled={!inRoom || !chosen.count}
               onClick={() => void onPlay(chosen.name, "queue")}
-              aria-label={`Add ${chosen.name} to the queue`}
-              title="Add to the queue"
+              aria-label={tNow("music.player.addToQueueAria", { name: chosen.name })}
+              title={tNow("music.player.addToQueue")}
             >
               <ListPlus size={18} />
             </button>
             {chosen.canEdit && (
-              <button type="button" className="mp-icon-btn" onClick={onFindSongs} aria-label="Find songs to add" title="Find songs to add">
+              <button type="button" className="mp-icon-btn" onClick={onFindSongs} aria-label={tNow("music.player.findSongsToAdd")} title={tNow("music.player.findSongsToAdd")}>
                 <Search size={18} />
               </button>
             )}
           </span>
         </header>
-        {!inRoom && <p className="mp-lyrics-note">Join the voice room to play a playlist.</p>}
+        {!inRoom && <p className="mp-lyrics-note">{tNow("music.player.joinToPlayPlaylist")}</p>}
         {!chosen.count && (
           <Empty
             icon={<Music2 size={28} />}
-            title="Nothing in here yet"
-            text={chosen.canEdit ? "Search for a song, then press + to add it here." : undefined}
+            title={tNow("music.player.nothingInHere")}
+            text={chosen.canEdit ? tNow("music.player.searchAndAddHint") : undefined}
           >
             {chosen.canEdit && (
               <button type="button" className="mp-button" onClick={onFindSongs}>
-                <Search size={16} /> Find songs
+                <Search size={16} /> {tNow("music.player.findSongs")}
               </button>
             )}
           </Empty>
@@ -1714,7 +1713,7 @@ function PlaylistsPane({
                 className="mp-row-main"
                 disabled={!inRoom}
                 onClick={() => void onPlay(chosen.name, "play", index, item.title)}
-                title={inRoom ? "Play the playlist from this song" : undefined}
+                title={inRoom ? tNow("music.player.playFromSongTitle") : undefined}
               >
                 <span className="mp-row-index">{index + 1}</span>
                 <Thumb src={item.thumbnail} />
@@ -1733,9 +1732,9 @@ function PlaylistsPane({
   return (
     <div className="mp-list-wrap">
       <header className="mp-list-head">
-        <strong>Playlists</strong>
+        <strong>{tNow("music.player.playlists")}</strong>
         <button type="button" className="mp-button small" onClick={onNew}>
-          <Plus size={14} /> New playlist
+          <Plus size={14} /> {tNow("music.player.newPlaylist")}
         </button>
       </header>
       <div className="mp-grid">
@@ -1846,27 +1845,27 @@ function PlaylistSheet({
         className="mp-sheet"
         role="dialog"
         aria-modal="true"
-        aria-label={song ? `Add ${song.title} to a playlist` : "New playlist"}
+        aria-label={song ? tNow("music.player.addPlaylistAria", { title: song.title }) : tNow("music.player.newPlaylist")}
         tabIndex={-1}
       >
         <header className="mp-sheet-head">
           <span className="mp-row-text">
-            <strong>{song ? "Add to playlist" : "New playlist"}</strong>
+            <strong>{song ? tNow("music.player.addToPlaylist") : tNow("music.player.newPlaylist")}</strong>
             {song && <small>{song.title}</small>}
           </span>
-          <button type="button" className="mp-icon-btn small" onClick={onClose} aria-label="Close" title="Close">
+          <button type="button" className="mp-icon-btn small" onClick={onClose} aria-label={tNow("common.close")} title={tNow("common.close")}>
             <X size={16} />
           </button>
         </header>
         {song && error && (
           <p className="mp-error">
             {error}{" "}
-            <button type="button" className="mp-button ghost small" onClick={() => void onRetry()}>Try again</button>
+            <button type="button" className="mp-button ghost small" onClick={() => void onRetry()}>{tNow("music.player.tryAgain")}</button>
           </p>
         )}
-        {song && !error && !lists && <p className="mp-sheet-note">Loading playlists…</p>}
+        {song && !error && !lists && <p className="mp-sheet-note">{tNow("music.player.loadingPlaylists")}</p>}
         {song && lists && !mine.length && (
-          <p className="mp-sheet-note">You can add songs to playlists you made. Make one here.</p>
+          <p className="mp-sheet-note">{tNow("music.player.makeOneHere")}</p>
         )}
         {song && mine.length > 0 && (
           <ul className="mp-list mp-sheet-list">
@@ -1876,7 +1875,7 @@ function PlaylistSheet({
                   <Thumb src={list.cover} />
                   <span className="mp-row-text">
                     <strong>{list.name}</strong>
-                    <small>{list.count} {list.count === 1 ? "song" : "songs"}</small>
+                    <small>{list.count === 1 ? tNow("music.player.songSingle") : tNow("music.player.songPlural", { count: list.count })}</small>
                   </span>
                   {saving === list.name && <LoaderCircle size={16} className="mp-spin" />}
                 </button>
@@ -1888,12 +1887,12 @@ function PlaylistSheet({
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder={mine.length && song ? "Or a new playlist" : "Playlist name"}
-            aria-label="New playlist name"
+            placeholder={mine.length && song ? tNow("music.player.orNewPlaylist") : tNow("music.player.playlistName")}
+            aria-label={tNow("music.player.newPlaylistNameAria")}
             maxLength={50}
           />
           <button type="submit" className="mp-button" disabled={!name.trim() || saving !== null}>
-            {saving === "" ? <LoaderCircle size={16} className="mp-spin" /> : "Create"}
+            {saving === "" ? <LoaderCircle size={16} className="mp-spin" /> : tNow("dev.createBtn")}
           </button>
         </form>
         {problem && <p className="mp-error">{problem}</p>}
@@ -2110,7 +2109,7 @@ function DjPane({
               <p>{tNow("music.djIntro")}</p>
             </div>
           </header>
-          <div className="mp-choice" role="radiogroup" aria-label="Who picks the songs">
+          <div className="mp-choice" role="radiogroup" aria-label={tNow("music.player.djWhoPicks")}>
             {DJ_MODES.map((item) => (
               <button
                 key={item.id}
@@ -2125,7 +2124,7 @@ function DjPane({
               </button>
             ))}
           </div>
-          <div className="mp-chips" role="radiogroup" aria-label="Vibe">
+          <div className="mp-chips" role="radiogroup" aria-label={tNow("music.player.djVibeAria")}>
             <span className="mp-chips-label">{tNow("music.djVibe")}</span>
             {VIBES.map((item) => (
               <button
@@ -2175,7 +2174,7 @@ function DjPane({
                   <strong>{deck.title || deck.loading || "Loading…"}</strong>
                   <small>{[deck.artist, deck.bpm ? `${deck.bpm} BPM` : null, deck.key].filter(Boolean).join(" · ")}</small>
                 </span>
-                {deck.playing && <span className="mp-deck-live" title="Playing" aria-label="Playing" />}
+                {deck.playing && <span className="mp-deck-live" title={tNow("chat.renderer.playingAria")} aria-label={tNow("chat.renderer.playingAria")} />}
               </div>
             ))}
           </div>
@@ -2189,7 +2188,7 @@ function DjPane({
           )}
           <div className="mp-dj-row">
             <label className="mp-select">
-              <span>Next transition</span>
+              <span>{tNow("music.player.djNextTransition")}</span>
               <select value={style} onChange={(event) => setStyle(event.target.value)}>
                 {MIX_STYLES.map(([id, label]) => (
                   <option key={id} value={id}>{label}</option>
@@ -2197,19 +2196,19 @@ function DjPane({
               </select>
             </label>
             <button type="button" className="mp-button" disabled={locked} onClick={() => void booth({ op: "skip", style })}>
-              <SkipForward size={15} /> Mix into the next song
+              <SkipForward size={15} /> {tNow("music.player.djMixNext")}
             </button>
           </div>
-          <div className="mp-chips" aria-label="Moves">
-            <span className="mp-chips-label">Moves</span>
+          <div className="mp-chips" aria-label={tNow("music.player.djMoves")}>
+            <span className="mp-chips-label">{tNow("music.player.djMoves")}</span>
             {MOVES.map(([id, label]) => (
               <button key={id} type="button" className="mp-chip" disabled={locked} onClick={() => void booth({ op: "club_move", move: id })}>
                 {label}
               </button>
             ))}
           </div>
-          <div className="mp-chips" role="radiogroup" aria-label="Who picks the songs">
-            <span className="mp-chips-label">Picks</span>
+          <div className="mp-chips" role="radiogroup" aria-label={tNow("music.player.djWhoPicks")}>
+            <span className="mp-chips-label">{tNow("music.player.djPicks")}</span>
             {DJ_MODES.map((item) => (
               <button
                 key={item.id}

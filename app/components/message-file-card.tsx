@@ -8,6 +8,7 @@ import {
   getFileExtensionBadge,
 } from "@/lib/upload-sniff";
 import { bigUploadExpiryFromUrl, describeBigUploadExpiry } from "@/lib/big-upload-key";
+import { useI18n } from "../lib/i18n-context";
 
 export interface MessageFileItem {
   url: string;
@@ -50,6 +51,7 @@ export function isSpoilerFile(f: MessageFileItem): boolean {
  * Inline playable audio card for MP3, WAV, OGG, FLAC, M4A attachments.
  */
 export function InlineAudioAttachment({ url, name }: { url: string; name: string }) {
+  const { t } = useI18n();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -125,8 +127,8 @@ export function InlineAudioAttachment({ url, name }: { url: string; name: string
           href={url}
           download={cleanName}
           className="text-white/50 hover:text-white p-1 rounded transition-colors flex-shrink-0"
-          title="Download audio"
-          aria-label={`Download ${cleanName}`}
+          title={t("chat.file.downloadAudio")}
+          aria-label={t("chat.file.downloadNamed", { name: cleanName })}
         >
           <Download size={14} />
         </a>
@@ -137,7 +139,7 @@ export function InlineAudioAttachment({ url, name }: { url: string; name: string
           type="button"
           onClick={togglePlay}
           className="w-8 h-8 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center flex-shrink-0 transition-transform active:scale-95 shadow-md cursor-pointer"
-          aria-label={isPlaying ? "Pause" : "Play"}
+          aria-label={isPlaying ? t("chat.file.pause") : t("chat.file.play")}
         >
           {isPlaying ? <Pause size={14} fill="white" /> : <Play size={14} fill="white" className="ml-0.5" />}
         </button>
@@ -180,6 +182,7 @@ export function InlineVideoAttachment({
   isSpoiler?: boolean;
   onHideSpoiler?: () => void;
 }) {
+  const { t } = useI18n();
   const [hasError, setHasError] = useState(false);
   const cleanName = name.replace(/^spoiler[_-]/i, "");
 
@@ -201,8 +204,8 @@ export function InlineVideoAttachment({
               type="button"
               onClick={onHideSpoiler}
               className="text-white/50 hover:text-white p-1 rounded transition-colors cursor-pointer"
-              title="Hide spoiler"
-              aria-label="Hide spoiler"
+              title={t("chat.file.hideSpoiler")}
+              aria-label={t("chat.file.hideSpoiler")}
             >
               <EyeOff size={13} />
             </button>
@@ -211,11 +214,11 @@ export function InlineVideoAttachment({
             href={url}
             download={cleanName}
             className="text-white/50 hover:text-white p-1 rounded transition-colors flex items-center gap-1 text-[11px] hover:bg-white/10"
-            title="Download video"
-            aria-label={`Download ${cleanName}`}
+            title={t("chat.file.downloadVideo")}
+            aria-label={t("chat.file.downloadNamed", { name: cleanName })}
           >
             <Download size={13} />
-            <span className="hidden sm:inline">Download</span>
+            <span className="hidden sm:inline">{t("common.download")}</span>
           </a>
         </div>
       </div>
@@ -223,13 +226,13 @@ export function InlineVideoAttachment({
       {hasError ? (
         <div className="flex flex-col items-center justify-center p-6 text-center text-white/60 bg-black/40 rounded-xl border border-white/10 gap-2">
           <Film size={26} className="text-white/40 mb-0.5" />
-          <span className="text-xs font-medium text-white/80">Video playback unavailable in browser</span>
+          <span className="text-xs font-medium text-white/80">{t("chat.file.videoUnavailable")}</span>
           <a
             href={url}
             download={cleanName}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors"
           >
-            <Download size={13} /> Download {cleanName}
+            <Download size={13} /> {t("chat.file.downloadNamed", { name: cleanName })}
           </a>
         </div>
       ) : (
@@ -241,7 +244,7 @@ export function InlineVideoAttachment({
             preload="metadata"
             className="w-full max-h-[380px] object-contain rounded-xl block bg-black"
             onError={() => setHasError(true)}
-            aria-label={`Video player: ${cleanName}`}
+            aria-label={t("chat.file.videoPlayerAria", { name: cleanName })}
           />
         </div>
       )}
@@ -256,6 +259,7 @@ export function MessageAttachmentFiles({
   files?: MessageFileItem[] | MessageFileItem | null;
   onPdf?: (pdf: { url: string; name: string }) => void;
 }) {
+  const { t } = useI18n();
   const [revealedSpoilers, setRevealedSpoilers] = useState<Record<string, boolean>>({});
 
   const list = Array.isArray(files) ? files : files ? [files] : [];
@@ -278,18 +282,20 @@ export function MessageAttachmentFiles({
               type="button"
               className="message-file-card group relative cursor-pointer"
               onClick={() => setRevealedSpoilers((prev) => ({ ...prev, [fileKey]: true }))}
-              title={`Click to reveal spoiler ${isVideo ? "video" : isAudio ? "audio" : "attachment"}`}
+              title={t("chat.file.revealSpoilerTitle", {
+                kind: isVideo ? t("chat.file.kindVideo") : isAudio ? t("chat.file.kindAudio") : t("chat.file.kindAttachment"),
+              })}
             >
               <span className="message-file-icon bg-amber-500/20 text-amber-300">
                 <EyeOff size={14} />
               </span>
               <span>
                 <strong className="text-amber-200">
-                  {isVideo ? "Spoiler Video" : isAudio ? "Spoiler Audio" : "Spoiler Attachment"}
+                  {isVideo ? t("chat.file.spoilerVideo") : isAudio ? t("chat.file.spoilerAudio") : t("chat.file.spoilerAttachment")}
                 </strong>
-                <small>Hidden content · click to reveal {cleanName}</small>
+                <small>{t("chat.file.hiddenClickReveal", { name: cleanName })}</small>
               </span>
-              <b aria-hidden="true" className="text-amber-300">Reveal</b>
+              <b aria-hidden="true" className="text-amber-300">{t("chat.file.reveal")}</b>
             </button>
           );
         }
@@ -306,10 +312,10 @@ export function MessageAttachmentFiles({
               <span>
                 <strong>{f.name}</strong>
                 <small>
-                  {gone ? "Deleted after 12 hours" : `Big file · ${describeBigUploadExpiry(expiresAt)}`}
+                  {gone ? t("chat.file.expired12h") : t("chat.file.bigFile", { expiry: describeBigUploadExpiry(expiresAt) })}
                 </small>
               </span>
-              {!gone && <b aria-hidden="true">Download</b>}
+              {!gone && <b aria-hidden="true">{t("common.download")}</b>}
             </>
           );
           return gone ? (
@@ -354,9 +360,9 @@ export function MessageAttachmentFiles({
               <span className={`message-file-icon file-badge-${colorClass}`}>PDF</span>
               <span>
                 <strong>{f.name}</strong>
-                <small>PDF document · view and fill in Hoffle</small>
+                <small>{t("chat.file.pdfDesc")}</small>
               </span>
-              <b aria-hidden="true">Open</b>
+              <b aria-hidden="true">{t("chat.file.open")}</b>
             </button>
           );
         }
@@ -375,7 +381,7 @@ export function MessageAttachmentFiles({
               <strong>{f.name}</strong>
               <small>{getFileDescription(f.name)}</small>
             </span>
-            <b aria-hidden="true">Download</b>
+            <b aria-hidden="true">{t("common.download")}</b>
           </a>
         );
       })}

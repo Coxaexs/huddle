@@ -10,6 +10,7 @@ interface Session {
   bootstrap: boolean;
   openSignup?: boolean;
   turnstileSiteKey?: string | null;
+  oauth?: { google: boolean; discord: boolean };
 }
 
 /** For pages outside the chat app: shows the sign-in screen until there is a user. */
@@ -30,6 +31,7 @@ export function SignedIn({ children }: { children: ReactNode }) {
           bootstrap={session.bootstrap}
           openSignup={session.openSignup}
           turnstileSiteKey={session.turnstileSiteKey}
+          oauth={session.oauth}
           onSignedIn={(user) => setSession({ user, bootstrap: false })}
         />
       </main>

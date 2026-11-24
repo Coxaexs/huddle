@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { basePath } from "../../lib/client";
+import { useI18n } from "../../lib/i18n-context";
 import {
   overlayPageBridge,
   type OverlayDm,
@@ -46,6 +47,7 @@ const CLOSED: OverlayState = { open: false, game: null, shortcut: "", platform: 
  * is a small Hoffle: servers, channels, chat and the call buttons.
  */
 export function OverlayApp() {
+  const { t } = useI18n();
   // undefined until mounted, so the server render and the first client render agree.
   const [bridge, setBridge] = useState<OverlayPageBridge | null | undefined>(undefined);
   const [state, setState] = useState<OverlayState>(CLOSED);
@@ -120,8 +122,8 @@ export function OverlayApp() {
   if (!bridge) {
     return (
       <main className="ov-elsewhere">
-        <p>This page is Hoffle&apos;s game overlay. It opens from the Hoffle desktop app.</p>
-        <a href={basePath}>Open Hoffle</a>
+        <p>{t("overlay.elsewhere")}</p>
+        <a href={basePath}>{t("overlay.openHoffle")}</a>
       </main>
     );
   }
@@ -176,6 +178,7 @@ function Avatar({ name, avatar, avatarUrl, color, size = 28 }: { name: string; a
 }
 
 function PersonRow({ person, speaking }: { person: OverlayPerson; speaking: boolean }) {
+  const { t } = useI18n();
   return (
     <li className={`ov-person ${speaking ? "is-speaking" : ""}`}>
       <span className="ov-person-face">
@@ -183,9 +186,9 @@ function PersonRow({ person, speaking }: { person: OverlayPerson; speaking: bool
       </span>
       <span className="ov-person-name">{person.name}</span>
       {person.deafened ? (
-        <HeadphoneOff size={13} aria-label="Deafened" />
+        <HeadphoneOff size={13} aria-label={t("overlay.deafened")} />
       ) : person.muted ? (
-        <MicOff size={13} aria-label="Muted" />
+        <MicOff size={13} aria-label={t("overlay.muted")} />
       ) : null}
     </li>
   );
@@ -247,6 +250,7 @@ function MiniHoffle({
   onChannel: (id: string) => void;
   signal: ChatPaneLiveSignal | null;
 }) {
+  const { t } = useI18n();
   const server = shell?.servers.find((item) => item.id === serverId) || null;
   const inDms = serverId === DM_HOME;
   const textChannel = useMemo(() => {
@@ -279,15 +283,15 @@ function MiniHoffle({
       <div className="ov-panel" role="dialog" aria-label="Hoffle">
         <header className="ov-head">
           <strong className="ov-brand">Hoffle</strong>
-          {state.game && <span className="ov-chip">Playing {state.game}</span>}
-          <span className="ov-head-hint">{state.shortcut ? `${state.shortcut} or Esc to close` : "Esc to close"}</span>
+          {state.game && <span className="ov-chip">{t("overlay.playing", { game: state.game })}</span>}
+          <span className="ov-head-hint">{state.shortcut ? t("overlay.closeHint", { shortcut: state.shortcut }) : t("overlay.escClose")}</span>
           <button type="button" className="ov-text-btn" onClick={() => bridge.action({ type: "open-main", channelId: textChannel?.id })}>
-            <ExternalLink size={14} aria-hidden="true" /> Open in Hoffle
+            <ExternalLink size={14} aria-hidden="true" /> {t("overlay.openInHoffle")}
           </button>
-          <IconButton label="Overlay settings" onClick={() => bridge.action({ type: "settings" })}>
+          <IconButton label={t("overlay.settingsLabel")} onClick={() => bridge.action({ type: "settings" })}>
             <Settings size={16} />
           </IconButton>
-          <IconButton label="Close" onClick={() => bridge.action({ type: "close" })}>
+          <IconButton label={t("common.close")} onClick={() => bridge.action({ type: "close" })}>
             <X size={16} />
           </IconButton>
         </header>
@@ -295,19 +299,19 @@ function MiniHoffle({
           <div className="ov-loading">
             {slow ? (
               <>
-                <p>Your servers show up here once Hoffle is open and you are signed in.</p>
+                <p>{t("overlay.slowHint")}</p>
                 <button type="button" className="ov-text-btn" onClick={() => bridge.action({ type: "open-main" })}>
-                  <ExternalLink size={14} aria-hidden="true" /> Open Hoffle
+                  <ExternalLink size={14} aria-hidden="true" /> {t("overlay.openHoffle")}
                 </button>
               </>
             ) : (
-              "Loading your servers…"
+              t("overlay.loadingServers")
             )}
           </div>
         ) : (
           <div className="ov-body">
-            <nav className="ov-rail" aria-label="Servers">
-              <button type="button" className={`ov-rail-item ${inDms ? "is-active" : ""}`} onClick={() => onServer(DM_HOME)} title="Direct messages" aria-label="Direct messages">
+            <nav className="ov-rail" aria-label={t("overlay.servers")}>
+              <button type="button" className={`ov-rail-item ${inDms ? "is-active" : ""}`} onClick={() => onServer(DM_HOME)} title={t("overlay.directMessages")} aria-label={t("overlay.directMessages")}>
                 <MessageCircle size={18} />
                 {dmUnread && <span className="ov-dot" />}
               </button>
@@ -317,13 +321,13 @@ function MiniHoffle({
               ))}
             </nav>
             <aside className="ov-channels">
-              <h2>{inDms ? "Direct messages" : server?.name || "Servers"}</h2>
+              <h2>{inDms ? t("overlay.directMessages") : server?.name || t("overlay.servers")}</h2>
               <div className="ov-channel-list">
                 {inDms ? (
                   shell.dms.length ? (
                     shell.dms.map((dm) => <DmButton key={dm.channelId} dm={dm} active={dm.channelId === channelId} onClick={() => onChannel(dm.channelId)} />)
                   ) : (
-                    <p className="ov-empty-note">No direct messages yet.</p>
+                    <p className="ov-empty-note">{t("overlay.noDms")}</p>
                   )
                 ) : server ? (
                   <ChannelList
@@ -335,25 +339,25 @@ function MiniHoffle({
                     onVoice={(id) => bridge.action({ type: "join", channelId: id })}
                   />
                 ) : (
-                  <p className="ov-empty-note">You are not in a server yet.</p>
+                  <p className="ov-empty-note">{t("overlay.noServers")}</p>
                 )}
               </div>
               {voice && (
                 <div className="ov-call">
                   <div className="ov-call-where">
-                    <strong>In voice</strong>
+                    <strong>{t("overlay.inVoiceBadge")}</strong>
                     <span>
                       {voice.channelName}
                       {voice.serverName ? ` · ${voice.serverName}` : ""}
                     </span>
                   </div>
-                  <IconButton label={voice.muted ? "Unmute" : "Mute"} active={voice.muted} onClick={() => bridge.action({ type: "mute" })}>
+                  <IconButton label={voice.muted ? t("voice.dmCall.unmute") : t("voice.dmCall.mute")} active={voice.muted} onClick={() => bridge.action({ type: "mute" })}>
                     {voice.muted ? <MicOff size={16} /> : <Mic size={16} />}
                   </IconButton>
-                  <IconButton label={voice.deafened ? "Undeafen" : "Deafen"} active={voice.deafened} onClick={() => bridge.action({ type: "deafen" })}>
+                  <IconButton label={voice.deafened ? t("voice.dmCall.undeafen") : t("voice.dmCall.deafen")} active={voice.deafened} onClick={() => bridge.action({ type: "deafen" })}>
                     {voice.deafened ? <HeadphoneOff size={16} /> : <Headphones size={16} />}
                   </IconButton>
-                  <IconButton label="Leave call" danger onClick={() => bridge.action({ type: "leave" })}>
+                  <IconButton label={t("voice.dmCall.leaveCall")} danger onClick={() => bridge.action({ type: "leave" })}>
                     <PhoneOff size={16} />
                   </IconButton>
                 </div>
@@ -365,7 +369,7 @@ function MiniHoffle({
               ) : (
                 <div className="ov-pick">
                   <Hash size={28} aria-hidden="true" />
-                  <p>Pick a channel to read and reply. Click a voice room to join it.</p>
+                  <p>{t("overlay.pickChannel")}</p>
                 </div>
               )}
             </main>
@@ -422,6 +426,7 @@ function ChannelList({
   onText: (id: string) => void;
   onVoice: (id: string) => void;
 }) {
+  const { t } = useI18n();
   // Grouped by category in the server's own order; uncategorised first.
   const groups: Array<{ name: string | null; channels: OverlayServer["channels"] }> = [];
   for (const channel of server.channels) {
@@ -457,11 +462,11 @@ function ChannelList({
                   type="button"
                   className={`ov-channel ${voice?.channelId === channel.id ? "is-here" : ""}`}
                   onClick={() => onVoice(channel.id)}
-                  title={voice?.channelId === channel.id ? "You are here" : `Join ${channel.name}`}
+                  title={voice?.channelId === channel.id ? t("overlay.youAreHere") : t("overlay.joinRoom", { channel: channel.name })}
                 >
                   <Volume2 size={15} aria-hidden="true" />
                   <span className="ov-channel-name">{channel.name}</span>
-                  {voice?.channelId !== channel.id && <span className="ov-join">Join</span>}
+                  {voice?.channelId !== channel.id && <span className="ov-join">{t("common.join")}</span>}
                 </button>
                 {(rooms[channel.id] || []).length > 0 && (
                   <ul className="ov-room-people">

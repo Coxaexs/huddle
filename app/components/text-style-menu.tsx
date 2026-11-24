@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useI18n } from "../lib/i18n-context";
 import {
   HIGHLIGHT_COLORS,
   PER_LETTER_EFFECTS,
@@ -51,54 +52,55 @@ export function TextStyleMenu({
   title?: string;
   onClose?: () => void;
 }) {
+  const { t } = useI18n();
   const [custom, setCustom] = useState("#3e7bfa");
   const tag = (name: string, arg?: string) =>
     onWrap(arg ? `[${name}=${arg}]` : `[${name}]`, `[/${name}]`);
 
   return (
-    <div className={className} role="dialog" aria-label="Text formatting">
+    <div className={className} role="dialog" aria-label={t("chat.textStyle.aria")}>
       {title && (
         <div className="msn-popover-title">
           {title}
           {onClose && (
-            <button type="button" onClick={onClose} aria-label="Close">
+            <button type="button" onClick={onClose} aria-label={t("common.close")}>
               ×
             </button>
           )}
         </div>
       )}
-      <h4>Style</h4>
+      <h4>{t("chat.textStyle.style")}</h4>
       <div className="text-style-row">
-        <button type="button" title="Bold (Ctrl+B)" onClick={() => onWrap("**", "**")}>
+        <button type="button" title={t("chat.textStyle.bold")} onClick={() => onWrap("**", "**")}>
           <b>B</b>
         </button>
-        <button type="button" title="Italic (Ctrl+I)" onClick={() => onWrap("*", "*")}>
+        <button type="button" title={t("chat.textStyle.italic")} onClick={() => onWrap("*", "*")}>
           <i>I</i>
         </button>
-        <button type="button" title="Underline (Ctrl+U)" onClick={() => onWrap("__", "__")}>
+        <button type="button" title={t("chat.textStyle.underline")} onClick={() => onWrap("__", "__")}>
           <u>U</u>
         </button>
-        <button type="button" title="Strikethrough" onClick={() => onWrap("~~", "~~")}>
+        <button type="button" title={t("chat.textStyle.strikethrough")} onClick={() => onWrap("~~", "~~")}>
           <s>S</s>
         </button>
-        <button type="button" title="Spoiler" onClick={() => onWrap("||", "||")}>
+        <button type="button" title={t("chat.textStyle.spoiler")} onClick={() => onWrap("||", "||")}>
           ▒
         </button>
-        <button type="button" title="Inline code" onClick={() => onWrap("`", "`")}>
+        <button type="button" title={t("chat.textStyle.inlineCode")} onClick={() => onWrap("`", "`")}>
           <code>{"</>"}</code>
         </button>
-        <button type="button" title="Small print (-#)" onClick={() => onWrap("-# ", "")}>
+        <button type="button" title={t("chat.textStyle.smallPrint")} onClick={() => onWrap("-# ", "")}>
           <small>-#</small>
         </button>
-        <button type="button" title="Superscript" onClick={() => tag("sup")}>
+        <button type="button" title={t("chat.textStyle.superscript")} onClick={() => tag("sup")}>
           x<sup>2</sup>
         </button>
-        <button type="button" title="Subscript" onClick={() => tag("sub")}>
+        <button type="button" title={t("chat.textStyle.subscript")} onClick={() => tag("sub")}>
           x<sub>2</sub>
         </button>
       </div>
 
-      <h4>Colour</h4>
+      <h4>{t("chat.textStyle.colour")}</h4>
       <div className="text-style-row">
         {Object.entries(TEXT_COLORS).map(([name, value]) => (
           <button
@@ -107,24 +109,24 @@ export function TextStyleMenu({
             className="text-style-swatch"
             style={{ background: value }}
             title={name}
-            aria-label={`Colour ${name}`}
+            aria-label={t("chat.textStyle.colourAria", { name })}
             onClick={() => tag("c", name)}
           />
         ))}
-        <label className="text-style-swatch text-style-custom" title="Any colour">
+        <label className="text-style-swatch text-style-custom" title={t("chat.textStyle.anyColour")}>
           <input
             type="color"
             value={custom}
-            aria-label="Pick any colour"
+            aria-label={t("chat.textStyle.pickAnyColour")}
             onChange={(event) => setCustom(event.target.value)}
           />
         </label>
-        <button type="button" title="Use the colour you picked" onClick={() => tag("c", custom)}>
+        <button type="button" title={t("chat.textStyle.usePickedColour")} onClick={() => tag("c", custom)}>
           <span style={{ color: custom, fontWeight: 700 }}>{custom}</span>
         </button>
       </div>
 
-      <h4>Gradient</h4>
+      <h4>{t("chat.textStyle.gradient")}</h4>
       <div className="text-style-row">
         {GRADIENTS.map((g) => (
           <button
@@ -145,7 +147,7 @@ export function TextStyleMenu({
         ))}
       </div>
 
-      <h4>Highlight</h4>
+      <h4>{t("chat.textStyle.highlight")}</h4>
       <div className="text-style-row">
         {Object.entries(HIGHLIGHT_COLORS).map(([name, value]) => (
           <button
@@ -153,14 +155,14 @@ export function TextStyleMenu({
             type="button"
             className="text-style-swatch"
             style={{ background: value }}
-            title={`${name} highlighter`}
-            aria-label={`Highlight ${name}`}
+            title={t("chat.textStyle.highlighterTitle", { name })}
+            aria-label={t("chat.textStyle.highlightAria", { name })}
             onClick={() => tag("a", name)}
           />
         ))}
       </div>
 
-      <h4>Font</h4>
+      <h4>{t("chat.textStyle.font")}</h4>
       <div className="text-style-row text-style-fonts">
         {TEXT_FONTS.map((font) => (
           <button
@@ -174,7 +176,7 @@ export function TextStyleMenu({
         ))}
       </div>
 
-      <h4>Size</h4>
+      <h4>{t("chat.textStyle.size")}</h4>
       <div className="text-style-row">
         {Object.entries(TEXT_SIZES).map(([name, size]) => (
           <button key={name} type="button" onClick={() => tag("size", name)}>
@@ -183,7 +185,7 @@ export function TextStyleMenu({
         ))}
       </div>
 
-      <h4>Effects</h4>
+      <h4>{t("chat.textStyle.effects")}</h4>
       <div className="text-style-row">
         {TEXT_EFFECTS.filter((e) => e.id !== "sup" && e.id !== "sub").map((effect) => (
           <button key={effect.id} type="button" onClick={() => tag(effect.id)}>
@@ -195,8 +197,8 @@ export function TextStyleMenu({
       </div>
 
       <p className="text-style-hint">
-        Or type them: <code>[c=red]hi[/c]</code> <code>[f=comic]hi[/f]</code>{" "}
-        <code>[c=pink]hi[/c=blue]</code> <code>[wave]hi[/wave]</code> — Messenger Plus! style.
+        {t("chat.textStyle.hintLead")} <code>[c=red]hi[/c]</code> <code>[f=comic]hi[/f]</code>{" "}
+        <code>[c=pink]hi[/c=blue]</code> <code>[wave]hi[/wave]</code> {t("chat.textStyle.hintTail")}
       </p>
     </div>
   );

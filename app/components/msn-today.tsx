@@ -7,6 +7,8 @@ import { apiFetch } from "../lib/client";
 import type { PublicEvent } from "@/lib/events";
 import { WhatsNewLine } from "./msn-chrome";
 import type { WhatsNewEntry } from "../hooks/use-msn-extras";
+import { useI18n } from "../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 
 /**
  * MSN Today: the little news window Messenger opened once a day at sign-in.
@@ -17,17 +19,17 @@ import type { WhatsNewEntry } from "../hooks/use-msn-extras";
 const TODAY_KEY = "huddle-msn-today";
 const TODAY_OFF_KEY = "huddle-msn-today-off";
 
-const TIPS = [
-  "Type [c=red]words[/c] to colour them, or [c=pink]words[/c=blue] for a gradient, just like Messenger Plus!.",
-  "The A button above the typing box picks the font and colour every message goes out in.",
-  "Winkies play a full-window animation for everyone in the conversation. Try the Kiss.",
-  "Send a nudge to shake your friend's window. You can only nudge every few seconds!",
-  "Type (Y) for 👍, (L) for ❤️ or (co) for 💻. Hover the ☺ menu to learn the rest.",
-  "Bored? The Games button invites the conversation to Minesweeper Flags, Tic-Tac-Toe and more.",
-  "Turn on \"Show what I'm listening to\" in your status menu to share the song in your voice room.",
-  "Put [rainbow]effects[/rainbow] in your name or status: they show in everyone's contact list.",
-  "Drag a picture into the typing box, or draw one with Handwriting.",
-  "Each conversation remembers its own background. Pick one from Backgrounds.",
+const TIP_KEYS: readonly MessageKey[] = [
+  "msnToday.tip.1",
+  "msnToday.tip.2",
+  "msnToday.tip.3",
+  "msnToday.tip.4",
+  "msnToday.tip.5",
+  "msnToday.tip.6",
+  "msnToday.tip.7",
+  "msnToday.tip.8",
+  "msnToday.tip.9",
+  "msnToday.tip.10",
 ];
 
 export interface TodayPerson {
@@ -63,11 +65,11 @@ export function shouldShowMsnToday(): boolean {
   }
 }
 
-function greeting(hour: number): string {
-  if (hour < 5) return "Up late";
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
+function greetingKey(hour: number): MessageKey {
+  if (hour < 5) return "msnToday.greeting.late";
+  if (hour < 12) return "msnToday.greeting.morning";
+  if (hour < 18) return "msnToday.greeting.afternoon";
+  return "msnToday.greeting.evening";
 }
 
 export function MsnToday({
@@ -92,10 +94,11 @@ export function MsnToday({
   onOpenEvent: (event: PublicEvent) => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [events, setEvents] = useState<PublicEvent[] | null>(null);
   const [showAtStart, setShowAtStart] = useState(true);
   const now = useMemo(() => new Date(), []);
-  const tip = useMemo(() => TIPS[Math.floor(Math.random() * TIPS.length)], []);
+  const tipKey = useMemo(() => TIP_KEYS[Math.floor(Math.random() * TIP_KEYS.length)], []);
 
   useEffect(() => {
     try {
@@ -150,7 +153,7 @@ export function MsnToday({
       <div
         className="msn-today"
         role="dialog"
-        aria-label="Y2K Today"
+        aria-label={t("msnToday.title")}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="msn-today-titlebar">
@@ -159,16 +162,16 @@ export function MsnToday({
               <i />
               <i />
             </span>
-            Y2K Today
+            {t("msnToday.title")}
           </span>
-          <button type="button" onClick={onClose} aria-label="Close">
+          <button type="button" onClick={onClose} aria-label={t("common.close")}>
             ×
           </button>
         </div>
         <div className="msn-today-masthead">
           <div>
             <strong>
-              {greeting(now.getHours())}, <StyledText text={userName} />!
+              {t(greetingKey(now.getHours()))}, <StyledText text={userName} />!
             </strong>
             <span>
               {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
@@ -179,18 +182,18 @@ export function MsnToday({
 
         <div className="msn-today-body">
           <section>
-            <h3>Your contacts</h3>
+            <h3>{t("msnToday.contacts")}</h3>
             {online.length ? (
               <>
                 <p>
-                  {online.length === 1 ? "1 contact is" : `${online.length} contacts are`} online right now.
+                  {online.length === 1 ? t("msnToday.onlineSingle") : t("msnToday.onlinePlural", { count: online.length })}
                 </p>
                 <div className="msn-today-people">
                   {online.slice(0, 12).map((person) => (
                     <button
                       key={person.id}
                       type="button"
-                      title={`Send ${person.name} a message`}
+                      title={t("msnToday.sendMsgTitle", { name: person.name })}
                       onClick={() => onOpenPerson(person.id)}
                     >
                       <Avatar
@@ -207,12 +210,12 @@ export function MsnToday({
                 </div>
               </>
             ) : (
-              <p>None of your contacts are online yet. They&apos;ll pop up in the corner when they sign in.</p>
+              <p>{t("msnToday.noneOnline")}</p>
             )}
           </section>
 
           <section>
-            <h3>Waiting for you</h3>
+            <h3>{t("msnToday.waiting")}</h3>
             {waiting.length ? (
               <ul className="msn-today-list">
                 {waiting.slice(0, 6).map((item) => (
@@ -221,21 +224,21 @@ export function MsnToday({
                       {item.label}
                     </button>
                     <span>
-                      {item.count} new
-                      {item.mentions ? `, ${item.mentions} for you` : ""}
+                      {t("msnToday.newCount", { count: item.count })}
+                      {item.mentions ? t("msnToday.forYouCount", { count: item.mentions }) : ""}
                     </span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p>You&apos;re all caught up. 🎉</p>
+              <p>{t("msnToday.caughtUp")}</p>
             )}
           </section>
 
           <section>
-            <h3>Coming up this week</h3>
+            <h3>{t("msnToday.comingUp")}</h3>
             {events === null ? (
-              <p>Looking…</p>
+              <p>{t("msnToday.looking")}</p>
             ) : events.length ? (
               <ul className="msn-today-list">
                 {events.map((event) => (
@@ -254,13 +257,13 @@ export function MsnToday({
                 ))}
               </ul>
             ) : (
-              <p>Nothing scheduled. Plan something in Events!</p>
+              <p>{t("msnToday.nothingScheduled")}</p>
             )}
           </section>
 
           {playing.length > 0 && (
             <section>
-              <h3>♫ Playing now</h3>
+              <h3>{t("msnToday.playingNow")}</h3>
               <ul className="msn-today-list">
                 {playing.slice(0, 4).map((item) => (
                   <li key={item.room}>
@@ -268,7 +271,7 @@ export function MsnToday({
                       {item.title}
                       {item.artist ? ` - ${item.artist}` : ""}
                     </button>
-                    <span>in {item.room}</span>
+                    <span>{t("msnToday.inRoom", { room: item.room })}</span>
                   </li>
                 ))}
               </ul>
@@ -277,7 +280,7 @@ export function MsnToday({
 
           {whatsNew.length > 0 && (
             <section className="msn-today-news">
-              <h3>What&apos;s new with your contacts</h3>
+              <h3>{t("msnToday.whatsNew")}</h3>
               <ul className="msn-today-list msn-today-news-list">
                 {whatsNew.slice(0, 4).map((entry) => (
                   <li key={entry.id}>
@@ -291,18 +294,18 @@ export function MsnToday({
           )}
 
           <section className="msn-today-tip">
-            <h3>Did you know?</h3>
-            <p>{tip}</p>
+            <h3>{t("msnToday.didYouKnow")}</h3>
+            <p>{t(tipKey)}</p>
           </section>
         </div>
 
         <div className="msn-today-footer">
           <label>
             <input type="checkbox" checked={showAtStart} onChange={(e) => toggleAtStart(e.target.checked)} />
-            Show Y2K Today when I sign in
+            {t("msnToday.showAtStart")}
           </label>
           <button type="button" onClick={onClose}>
-            Close
+            {t("common.close")}
           </button>
         </div>
       </div>

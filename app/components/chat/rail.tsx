@@ -9,6 +9,7 @@ import type { PublicServer } from "@/lib/servers";
 import type { PresenceStatus } from "@/lib/users";
 import { Avatar } from "../avatar";
 import type { DmSummary } from "../../lib/chat/types";
+import { useI18n } from "../../lib/i18n-context";
 
 /** Unread state by channel id, as the shell keeps it. */
 export type UnreadMap = Record<string, { unread: boolean; count: number; mentions: number }>;
@@ -143,6 +144,7 @@ export function RailFolder({
   /** Draws one server of an open folder. */
   renderServer: (server: PublicServer) => ReactNode;
 }) {
+  const { t } = useI18n();
   const containsActive = folderServers.some((server) => server.id === activeServerId);
   const hasUnread = folderServers.some(
     (server) => server.id !== activeServerId && server.channels.some((c) => unread[c.id]?.unread),
@@ -170,7 +172,7 @@ export function RailFolder({
         <button
           type="button"
           className="rail-folder-mark"
-          aria-label={`${label} folder, ${open ? "open" : "closed"}`}
+          aria-label={open ? t("chat.rail.folderOpenAria", { label }) : t("chat.rail.folderClosedAria", { label })}
           aria-expanded={open}
           title={label}
           onClick={onToggle}
@@ -223,6 +225,7 @@ export function RailQuickDms({
   presenceOf: (member: DmSummary["user"]) => PresenceStatus | "offline";
   onOpen: (channelId: string) => void;
 }) {
+  const { t } = useI18n();
   return (
     <>
       {dms.slice(0, 4).map((dm) => {
@@ -236,8 +239,8 @@ export function RailQuickDms({
             )}
             <button
               className={`rail-dm ${isActive ? "active-space" : ""}`}
-              title={`${dm.user.displayName}${count > 0 ? ` · ${count} new` : ""}`}
-              aria-label={`${dm.user.displayName}, ${count} unread`}
+              title={count > 0 ? t("chat.rail.dmNewTitle", { name: dm.user.displayName, count }) : dm.user.displayName}
+              aria-label={t("chat.rail.dmUnreadAria", { name: dm.user.displayName, count })}
               onClick={() => onOpen(dm.channelId)}
             >
               <div className="relative flex-shrink-0">
@@ -253,7 +256,7 @@ export function RailQuickDms({
                   />
                 )}
                 {voiceRooms[dm.channelId]?.length > 0 && (
-                  <span className="dm-call-active-indicator" title="Active voice call" />
+                  <span className="dm-call-active-indicator" title={t("chat.rail.activeVoiceCall")} />
                 )}
               </div>
               {count > 0 && <span className="rail-badge">{count}</span>}

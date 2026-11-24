@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/client";
+import { useI18n } from "../lib/i18n-context";
 
 type Mode = "off" | "notes" | "email";
 
@@ -10,6 +11,7 @@ type Mode = "off" | "notes" | "email";
  * Sunday, in your Notes (with a push), and by email if you want.
  */
 export function DigestSettings() {
+  const { t, locale } = useI18n();
   const [mode, setMode] = useState<Mode | null>(null);
   const [hasEmail, setHasEmail] = useState(false);
   const [nextAt, setNextAt] = useState<string | null>(null);
@@ -41,7 +43,7 @@ export function DigestSettings() {
       await apiFetch("/api/digest", { method: "POST", body: JSON.stringify({ mode: next }) });
     } catch (error) {
       setMode(previous);
-      setStatus(error instanceof Error ? error.message : "Could not save that.");
+      setStatus(error instanceof Error ? error.message : t("settings.digest.saveError"));
     }
   };
 
@@ -53,9 +55,9 @@ export function DigestSettings() {
         method: "POST",
         body: JSON.stringify({ preview: true }),
       });
-      setStatus(result.sent ? "Sent. It's in your Notes." : result.reason || "Nothing to send.");
+      setStatus(result.sent ? t("settings.digest.sent") : result.reason || t("settings.digest.nothingToSend"));
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not send it.");
+      setStatus(error instanceof Error ? error.message : t("settings.digest.sendError"));
     } finally {
       setBusy(false);
     }
@@ -65,18 +67,22 @@ export function DigestSettings() {
   return (
     <div className="appearance-switch digest-settings" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
       <span>
-        <strong>Weekly digest</strong>
+        <strong>{t("settings.digest.title")}</strong>
         <small>
-          Every Sunday: the messages people reacted to most, events coming up and who joined, on each of your servers.
-          {next && mode !== "off" ? ` Next one: ${next.toLocaleString(undefined, { weekday: "long", hour: "numeric", minute: "2-digit" })}.` : ""}
+          {t("settings.digest.desc")}
+          {next && mode !== "off"
+            ? t("settings.digest.nextOne", {
+                date: next.toLocaleString(locale, { weekday: "long", hour: "numeric", minute: "2-digit" }),
+              })
+            : ""}
         </small>
       </span>
-      <div className="digest-modes" role="radiogroup" aria-label="Weekly digest">
+      <div className="digest-modes" role="radiogroup" aria-label={t("settings.digest.title")}>
         {(
           [
-            ["off", "Off"],
-            ["notes", "In my Notes"],
-            ["email", "Notes + email"],
+            ["off", t("settings.digest.mode.off")],
+            ["notes", t("settings.digest.mode.notes")],
+            ["email", t("settings.digest.mode.email")],
           ] as Array<[Mode, string]>
         ).map(([value, label]) => (
           <label key={value} className={mode === value ? "active" : undefined}>
@@ -92,10 +98,10 @@ export function DigestSettings() {
           </label>
         ))}
       </div>
-      {!hasEmail && <small>Add an email address to your account to get it by email.</small>}
+      {!hasEmail && <small>{t("settings.digest.needEmail")}</small>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button type="button" className="secondary" disabled={busy} onClick={() => void preview()}>
-          Send me this week's now
+          {t("settings.digest.sendNow")}
         </button>
       </div>
       {status && <small role="status">{status}</small>}

@@ -75,7 +75,7 @@ export const WIDGET_SIZES: WidgetSize[] = ["small", "medium", "large"];
  */
 export const TOOLBARS: Record<ToolbarId, { items: readonly string[]; hidden: readonly string[]; locked: readonly string[] }> = {
   header: {
-    items: ["invite", "search", "mentions", "pins", "saved", "achievements", "members"],
+    items: ["invite", "secondScreen", "search", "mentions", "pins", "saved", "achievements", "members"],
     hidden: [],
     locked: [],
   },

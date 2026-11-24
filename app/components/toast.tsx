@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, AlertCircle, Info, X } from "lucide-react";
 
 import { isRetroSoundThemeEnabled, playRetroSound } from "../lib/msn-sounds";
+import { useI18n } from "../lib/i18n-context";
 
 export interface ToastMessage {
   id: string;
@@ -45,6 +46,7 @@ export function showToast(text: string, type: "info" | "success" | "warning" | "
 }
 
 export function ToastContainer() {
+  const { t } = useI18n();
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   useEffect(() => {
@@ -81,7 +83,7 @@ export function ToastContainer() {
             type="button"
             className="toast-close"
             onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
-            aria-label="Dismiss"
+            aria-label={t("chat.toast.dismiss")}
           >
             <X size={14} />
           </button>

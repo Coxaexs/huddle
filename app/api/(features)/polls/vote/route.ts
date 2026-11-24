@@ -18,8 +18,10 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     pollId?: string;
     choice?: number;
+    choices?: number[];
   };
   const pollId = body.pollId?.slice(0, 64) || "";
+  const hasBatch = Array.isArray(body.choices);
   const choice = Number(body.choice);
 
   const poll = await db
@@ -39,38 +41,65 @@ export async function POST(request: Request) {
   if (timedOut) return timedOut;
 
   const options = JSON.parse(poll.options) as string[];
-  if (!Number.isInteger(choice) || choice < 0 || choice >= options.length) {
-    return Response.json({ error: "No such option." }, { status: 400 });
-  }
 
-  const existing = await db
-    .prepare(
-      "SELECT choice FROM poll_votes WHERE poll_id = ? AND user_id = ? AND choice = ?",
-    )
-    .bind(pollId, user.id, choice)
-    .first();
-
-  if (existing) {
-    // Clicking your own choice again takes the vote back.
+  if (hasBatch) {
+    if (!poll.multi) {
+      return Response.json({ error: "Batch selection is only valid for multi-choice polls." }, { status: 400 });
+    }
+    const cleanChoices = Array.from(
+      new Set(
+        (body.choices || [])
+          .map((c) => Number(c))
+          .filter((c) => Number.isInteger(c) && c >= 0 && c < options.length),
+      ),
+    );
     await db
+      .prepare("DELETE FROM poll_votes WHERE poll_id = ? AND user_id = ?")
+      .bind(pollId, user.id)
+      .run();
+    if (cleanChoices.length > 0) {
+      await db.batch(
+        cleanChoices.map((c) =>
+          db
+            .prepare("INSERT OR IGNORE INTO poll_votes (poll_id, user_id, choice) VALUES (?, ?, ?)")
+            .bind(pollId, user.id, c),
+        ),
+      );
+    }
+  } else {
+    if (!Number.isInteger(choice) || choice < 0 || choice >= options.length) {
+      return Response.json({ error: "No such option." }, { status: 400 });
+    }
+
+    const existing = await db
       .prepare(
-        "DELETE FROM poll_votes WHERE poll_id = ? AND user_id = ? AND choice = ?",
+        "SELECT choice FROM poll_votes WHERE poll_id = ? AND user_id = ? AND choice = ?",
       )
       .bind(pollId, user.id, choice)
-      .run();
-  } else {
-    if (!poll.multi) {
+      .first();
+
+    if (existing) {
+      // Clicking your own choice again takes the vote back.
       await db
-        .prepare("DELETE FROM poll_votes WHERE poll_id = ? AND user_id = ?")
-        .bind(pollId, user.id)
+        .prepare(
+          "DELETE FROM poll_votes WHERE poll_id = ? AND user_id = ? AND choice = ?",
+        )
+        .bind(pollId, user.id, choice)
+        .run();
+    } else {
+      if (!poll.multi) {
+        await db
+          .prepare("DELETE FROM poll_votes WHERE poll_id = ? AND user_id = ?")
+          .bind(pollId, user.id)
+          .run();
+      }
+      await db
+        .prepare(
+          "INSERT OR IGNORE INTO poll_votes (poll_id, user_id, choice) VALUES (?, ?, ?)",
+        )
+        .bind(pollId, user.id, choice)
         .run();
     }
-    await db
-      .prepare(
-        "INSERT OR IGNORE INTO poll_votes (poll_id, user_id, choice) VALUES (?, ?, ?)",
-      )
-      .bind(pollId, user.id, choice)
-      .run();
   }
 
   const rows = await db

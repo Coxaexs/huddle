@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { EyeOff } from "lucide-react";
+import { useI18n } from "../lib/i18n-context";
 
 interface ImageGalleryProps {
   images: string[];
@@ -33,9 +34,11 @@ export function isSpoilerUrl(src: string): boolean {
 export function ImageGallery({
   images,
   onOpenLightbox,
-  altPrefix = "Shared image",
+  altPrefix,
   alts,
 }: ImageGalleryProps) {
+  const { t } = useI18n();
+  const resolvedAltPrefix = altPrefix ?? t("chat.gallery.altPrefix");
   const [revealedSpoilers, setRevealedSpoilers] = useState<Record<string, boolean>>({});
   const [shownAlt, setShownAlt] = useState<string | null>(null);
 
@@ -67,7 +70,7 @@ export function ImageGallery({
             isShielded ? "filter blur-xl saturate-50 scale-105 pointer-events-none select-none" : ""
           }`}
           src={src}
-          alt={alts?.[src] || `${altPrefix} ${index + 1}`}
+          alt={alts?.[src] || `${resolvedAltPrefix} ${index + 1}`}
           loading="lazy"
         />
 
@@ -76,7 +79,7 @@ export function ImageGallery({
             <button
               type="button"
               className="image-alt-badge"
-              aria-label="Show image description"
+              aria-label={t("chat.gallery.showAlt")}
               aria-expanded={shownAlt === src}
               onClick={(event) => {
                 event.stopPropagation();
@@ -98,7 +101,7 @@ export function ImageGallery({
             className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/45 backdrop-blur-xs transition-colors hover:bg-black/55 cursor-pointer"
             role="button"
             tabIndex={0}
-            aria-label="Click to reveal spoiler image"
+            aria-label={t("chat.gallery.revealSpoiler")}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
@@ -108,7 +111,7 @@ export function ImageGallery({
           >
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/80 border border-white/25 text-white font-semibold text-xs tracking-wider shadow-xl transition-transform hover:scale-105 active:scale-95">
               <EyeOff size={13} className="text-white/80" />
-              <span>SPOILER</span>
+              <span>{t("chat.gallery.spoilerBadge")}</span>
             </div>
           </div>
         )}
@@ -117,8 +120,8 @@ export function ImageGallery({
           <button
             type="button"
             className="absolute top-2 right-2 z-10 p-1.5 rounded-md bg-black/70 hover:bg-black/90 text-white/80 hover:text-white transition-opacity opacity-0 group-hover:opacity-100 shadow-md cursor-pointer"
-            title="Hide spoiler"
-            aria-label="Hide spoiler"
+            title={t("chat.file.hideSpoiler")}
+            aria-label={t("chat.file.hideSpoiler")}
             onClick={(e) => {
               e.stopPropagation();
               setRevealedSpoilers((prev) => ({ ...prev, [src]: false }));

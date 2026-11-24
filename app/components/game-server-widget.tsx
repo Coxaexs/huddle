@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronUp, Gamepad2, Terminal } from "lucide-react";
 import { apiFetch } from "../lib/client";
+import { useI18n } from "../lib/i18n-context";
 import type { GameServerStatus } from "@/lib/game-server";
 
 interface GameServerInfo {
@@ -21,6 +22,7 @@ const POLL_MS = 45_000;
  * Server Settings → Integrations.
  */
 export function GameServerWidget({ serverId }: { serverId: string }) {
+  const { t } = useI18n();
   const [info, setInfo] = useState<GameServerInfo | null>(null);
   const [open, setOpen] = useState(false);
   const [command, setCommand] = useState("");
@@ -51,11 +53,11 @@ export function GameServerWidget({ serverId }: { serverId: string }) {
         method: "POST",
         body: JSON.stringify({ serverId, command }),
       });
-      setOutput(data.output || "Done.");
+      setOutput(data.output || t("sidebar.mc.done"));
       setCommand("");
       window.setTimeout(load, 1500);
     } catch (error) {
-      setOutput(error instanceof Error ? error.message : "RCON failed.");
+      setOutput(error instanceof Error ? error.message : t("sidebar.mc.rconFailed"));
     } finally {
       setBusy(false);
     }
@@ -70,7 +72,7 @@ export function GameServerWidget({ serverId }: { serverId: string }) {
         <Gamepad2 size={14} aria-hidden="true" />
         <span className="game-server-name">Minecraft</span>
         <span className="game-server-count">
-          {status.online ? `${status.playersOnline}/${status.maxPlayers} playing` : "offline"}
+          {status.online ? t("sidebar.mc.playing", { online: status.playersOnline, max: status.maxPlayers }) : t("sidebar.mc.offline")}
         </span>
         {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
       </button>
@@ -95,8 +97,8 @@ export function GameServerWidget({ serverId }: { serverId: string }) {
               <input
                 value={command}
                 onChange={(event) => setCommand(event.target.value)}
-                placeholder="RCON: say hi, whitelist add …"
-                aria-label="RCON command"
+                placeholder={t("sidebar.mc.rconPlaceholder")}
+                aria-label={t("sidebar.mc.rconAria")}
                 disabled={busy}
               />
             </form>

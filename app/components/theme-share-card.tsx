@@ -10,6 +10,7 @@ import {
   saveCustomTheme,
   scopeProfileCss,
 } from "@/lib/themes";
+import { useI18n } from "../lib/i18n-context";
 
 interface ThemeShareCardProps {
   theme: Theme;
@@ -17,6 +18,7 @@ interface ThemeShareCardProps {
 }
 
 export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardProps) {
+  const { t } = useI18n();
   // Someone else's message: only plain colours get painted, saved or applied.
   const theme: Theme = { ...shared, colors: safeThemeColors(shared.colors) };
   const [applied, setApplied] = useState(false);
@@ -58,7 +60,7 @@ export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardPr
             <div>
               <div className="theme-share-title">{theme.name}</div>
               <div className="theme-share-author">
-                by {theme.author?.displayName || "Hoffle User"}{" "}
+                {t("chat.themeCard.by", { name: theme.author?.displayName || t("chat.themeCard.defaultAuthor") })}{" "}
                 {theme.author?.username && (
                   <span className="theme-share-handle">@{theme.author.username}</span>
                 )}
@@ -68,13 +70,13 @@ export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardPr
           <div className="theme-share-badges">
             <span className="theme-badge-base">
               {theme.baseTheme === "light"
-                ? "☀️ Light"
+                ? t("chat.themeCard.light")
                 : theme.baseTheme === "legacy"
-                  ? "🌙 Legacy"
-                  : "✨ Cozy"}
+                  ? t("chat.themeCard.legacy")
+                  : t("chat.themeCard.cozy")}
             </span>
             {theme.customCss && (
-              <span className="theme-badge-css" title="Includes custom CSS styles">
+              <span className="theme-badge-css" title={t("chat.themeCard.cssTitle")}>
                 CSS ⚡
               </span>
             )}
@@ -87,61 +89,61 @@ export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardPr
         )}
 
         {/* Color Swatches Palette Bar */}
-        <div className="theme-share-palette" title="Theme Color Palette">
+        <div className="theme-share-palette" title={t("chat.themeCard.paletteTitle")}>
           {colors.paper && (
             <div
               className="theme-swatch"
               style={{ background: colors.paper }}
-              title={`Background: ${colors.paper}`}
+              title={t("chat.themeCard.bg", { color: colors.paper })}
             />
           )}
           {colors.panel && (
             <div
               className="theme-swatch"
               style={{ background: colors.panel }}
-              title={`Panels: ${colors.panel}`}
+              title={t("chat.themeCard.panels", { color: colors.panel })}
             />
           )}
           {colors.chatBg && (
             <div
               className="theme-swatch"
               style={{ background: colors.chatBg }}
-              title={`Chat: ${colors.chatBg}`}
+              title={t("chat.themeCard.chat", { color: colors.chatBg })}
             />
           )}
           {colors.lavender && (
             <div
               className="theme-swatch accent"
               style={{ background: colors.lavender }}
-              title={`Primary Accent: ${colors.lavender}`}
+              title={t("chat.themeCard.primaryAccent", { color: colors.lavender })}
             />
           )}
           {colors.lavenderSoft && (
             <div
               className="theme-swatch"
               style={{ background: colors.lavenderSoft }}
-              title={`Secondary Accent: ${colors.lavenderSoft}`}
+              title={t("chat.themeCard.secondaryAccent", { color: colors.lavenderSoft })}
             />
           )}
           {colors.coral && (
             <div
               className="theme-swatch"
               style={{ background: colors.coral }}
-              title={`Alert: ${colors.coral}`}
+              title={t("chat.themeCard.alert", { color: colors.coral })}
             />
           )}
           {colors.mint && (
             <div
               className="theme-swatch"
               style={{ background: colors.mint }}
-              title={`Positive: ${colors.mint}`}
+              title={t("chat.themeCard.positive", { color: colors.mint })}
             />
           )}
           {colors.ink && (
             <div
               className="theme-swatch"
               style={{ background: colors.ink }}
-              title={`Text: ${colors.ink}`}
+              title={t("chat.themeCard.text", { color: colors.ink })}
             />
           )}
         </div>
@@ -155,11 +157,11 @@ export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardPr
           >
             {applied ? (
               <>
-                <Check size={14} /> Applied Theme!
+                <Check size={14} /> {t("chat.themeCard.applied")}
               </>
             ) : (
               <>
-                <Download size={14} /> Install & Apply
+                <Download size={14} /> {t("chat.themeCard.installApply")}
               </>
             )}
           </button>
@@ -168,16 +170,16 @@ export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardPr
             className="theme-action-btn secondary"
             onClick={() => setShowPreview(true)}
           >
-            <Eye size={14} /> Preview
+            <Eye size={14} /> {t("chat.themeCard.preview")}
           </button>
           <button
             type="button"
             className="theme-action-btn secondary"
             onClick={handleCopyCode}
-            title="Copy theme share code"
+            title={t("chat.themeCard.copyTitle")}
           >
             {copied ? <Check size={14} /> : <Copy size={14} />}
-            {copied ? "Copied Code" : "Share Code"}
+            {copied ? t("chat.themeCard.copiedCode") : t("chat.themeCard.shareCode")}
           </button>
         </div>
       </div>
@@ -217,7 +219,7 @@ export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardPr
                 type="button"
                 className="profile-close"
                 onClick={() => setShowPreview(false)}
-                aria-label="Close Preview"
+                aria-label={t("chat.themeCard.closePreview")}
               >
                 <X size={16} />
               </button>
@@ -234,11 +236,11 @@ export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardPr
               {/* Mock Sidebar */}
               <div className="mock-sidebar">
                 <div className="mock-server-header">
-                  <span>Server Preview</span>
+                  <span>{t("chat.themeCard.serverPreview")}</span>
                 </div>
-                <div className="mock-channel selected"># general</div>
-                <div className="mock-channel"># announcements</div>
-                <div className="mock-channel">🔊 Voice Lounge</div>
+                <div className="mock-channel selected">{t("chat.themeCard.mockGeneral")}</div>
+                <div className="mock-channel">{t("chat.themeCard.mockAnnouncements")}</div>
+                <div className="mock-channel">{t("chat.themeCard.mockVoice")}</div>
               </div>
 
               {/* Mock Chat */}
@@ -250,7 +252,7 @@ export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardPr
                       Ada Lovelace <span className="mock-time">12:34 PM</span>
                     </div>
                     <div className="mock-msg-text">
-                      Welcome to Hoffle! Here is how messages look in <strong>{theme.name}</strong>.
+                      {t("chat.themeCard.mockMsg1", { name: theme.name })}
                     </div>
                   </div>
                 </div>
@@ -262,15 +264,15 @@ export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardPr
                       Alan Turing <span className="mock-time">12:35 PM</span>
                     </div>
                     <div className="mock-msg-text">
-                      The color scheme looks stunning! Love the accents.
+                      {t("chat.themeCard.mockMsg2")}
                     </div>
                   </div>
                 </div>
 
                 <div className="mock-composer">
-                  <span>Message #general...</span>
+                  <span>{t("chat.themeCard.mockPlaceholder")}</span>
                   <button type="button" className="mock-send-btn">
-                    Send
+                    {t("common.send")}
                   </button>
                 </div>
               </div>
@@ -278,7 +280,7 @@ export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardPr
 
             <div className="theme-preview-modal-footer">
               <span className="text-xs text-gray-400">
-                Border Radius: {theme.corners ?? 16}px · Backdrop: {theme.backdrop ?? "plain"}
+                {t("chat.themeCard.footerMeta", { corners: theme.corners ?? 16, backdrop: theme.backdrop ?? "plain" })}
               </span>
               <div className="flex gap-2">
                 <button
@@ -286,7 +288,7 @@ export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardPr
                   className="discord-btn secondary-gray"
                   onClick={() => setShowPreview(false)}
                 >
-                  Close
+                  {t("common.close")}
                 </button>
                 <button
                   type="button"
@@ -296,7 +298,7 @@ export function ThemeShareCard({ theme: shared, onApplyTheme }: ThemeShareCardPr
                     setShowPreview(false);
                   }}
                 >
-                  <Download size={14} /> Apply This Theme
+                  <Download size={14} /> {t("chat.themeCard.applyThis")}
                 </button>
               </div>
             </div>

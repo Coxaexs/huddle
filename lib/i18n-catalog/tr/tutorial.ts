@@ -42,4 +42,9 @@ export const tutorial: Record<keyof typeof en, string> = {
   "tutorial.step.of": "{page} / {total}",
   "tutorial.close": "Eğitimi kapat",
   "tutorial.resume": "Eğitime dön · {page} / {total}",
+  "tutorial.ecoToggle": "Düşük güçlü cihaz mı? Eko Modu'nu aç",
+  "tutorial.ecoOn": "Eko Modu AÇIK",
+  "tutorial.modeToggle": "Arayüz yoğunluğu: Basit (sade) / Tam (tüm düğmeler)",
+  "tutorial.modeSwitchSimple": "Basit moda geç",
+  "tutorial.modeSwitchFull": "Tam moda geç",
 };

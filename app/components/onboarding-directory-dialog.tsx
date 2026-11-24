@@ -5,8 +5,10 @@ import { Compass, Globe, Plus, Ticket, Users, X } from "lucide-react";
 import { apiFetch } from "../lib/client";
 import { membersText, SHOW_MEMBERS_FROM } from "@/lib/member-counts";
 import type { PublicServer } from "@/lib/servers";
+import { SERVER_TEMPLATES } from "@/lib/server-templates";
 import { showToast } from "./toast";
 import { useDismiss } from "../hooks/use-dismiss";
+import { useI18n } from "../lib/i18n-context";
 
 type PublicDirectoryEntry = {
   id: string;
@@ -33,6 +35,7 @@ export function OnboardingDirectoryDialog({
   /** channelId: the channel a joined invite lands you in, if it names one. */
   onSelectServer: (serverId: string, channelId?: string | null) => void;
 }) {
+  const { t } = useI18n();
   const [tab, setTab] = useState<"discover" | "invite" | "create">("discover");
   const [directory, setDirectory] = useState<PublicDirectoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -41,6 +44,7 @@ export function OnboardingDirectoryDialog({
   const [joiningInvite, setJoiningInvite] = useState(false);
   const [newServerName, setNewServerName] = useState("");
   const [newServerDescription, setNewServerDescription] = useState("");
+  const [newServerTemplateId, setNewServerTemplateId] = useState("");
   const [newServerPublic, setNewServerPublic] = useState(false);
   const [creating, setCreating] = useState(false);
   useDismiss(open, onClose);
@@ -68,10 +72,10 @@ export function OnboardingDirectoryDialog({
       );
       onServersUpdated(res.servers);
       onSelectServer(res.joinedServerId);
-      showToast("Joined server!");
+      showToast(t("onboarding.joined"));
       onClose();
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Could not join server");
+      showToast(e instanceof Error ? e.message : t("onboarding.joinError"));
     } finally {
       setJoiningId(null);
     }
@@ -93,10 +97,10 @@ export function OnboardingDirectoryDialog({
       );
       onServersUpdated(res.servers);
       if (res.serverId) onSelectServer(res.serverId, res.channelId);
-      showToast("Joined server via invite!");
+      showToast(t("onboarding.joinedInvite"));
       onClose();
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Invalid or expired invite");
+      showToast(e instanceof Error ? e.message : t("onboarding.invalidInvite"));
     } finally {
       setJoiningInvite(false);
     }
@@ -113,16 +117,17 @@ export function OnboardingDirectoryDialog({
           body: JSON.stringify({
             name: newServerName.trim(),
             description: newServerDescription.trim() || null,
+            templateId: newServerTemplateId || undefined,
             isPublic: newServerPublic,
           }),
         },
       );
       onServersUpdated(res.servers);
       onSelectServer(res.server.id);
-      showToast(`Created ${res.server.name}!`);
+      showToast(t("onboarding.created", { name: res.server.name }));
       onClose();
     } catch (e) {
-      showToast(e instanceof Error ? e.message : "Could not create server");
+      showToast(e instanceof Error ? e.message : t("onboarding.createError"));
     } finally {
       setCreating(false);
     }
@@ -138,17 +143,15 @@ export function OnboardingDirectoryDialog({
           <div className="flex items-center gap-2.5">
             <Compass size={22} className="text-[var(--lavender)]" />
             <div>
-              <h2 className="text-lg font-bold text-[var(--ink)]">Find or Create a Space</h2>
-              <p className="text-xs text-[var(--muted)]">
-                No invite code? Explore public servers, paste an invite, or start your own.
-              </p>
+              <h2 className="text-lg font-bold text-[var(--ink)]">{t("onboarding.title")}</h2>
+              <p className="text-xs text-[var(--muted)]">{t("onboarding.subtitle")}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--ink)] hover:bg-[var(--line)]"
-            aria-label="Close"
+            aria-label={t("common.close")}
           >
             <X size={18} />
           </button>
@@ -164,7 +167,7 @@ export function OnboardingDirectoryDialog({
                 : "text-[var(--muted)] hover:text-[var(--ink)]"
             }`}
           >
-            <Globe size={14} className="hidden sm:block" /> Public Servers
+            <Globe size={14} className="hidden sm:block" /> {t("onboarding.tab.discover")}
           </button>
           <button
             type="button"
@@ -175,7 +178,7 @@ export function OnboardingDirectoryDialog({
                 : "text-[var(--muted)] hover:text-[var(--ink)]"
             }`}
           >
-            <Ticket size={14} className="hidden sm:block" /> Have an Invite?
+            <Ticket size={14} className="hidden sm:block" /> {t("onboarding.tab.invite")}
           </button>
           <button
             type="button"
@@ -186,28 +189,28 @@ export function OnboardingDirectoryDialog({
                 : "text-[var(--muted)] hover:text-[var(--ink)]"
             }`}
           >
-            <Plus size={14} className="hidden sm:block" /> Create a Server
+            <Plus size={14} className="hidden sm:block" /> {t("onboarding.tab.create")}
           </button>
         </div>
 
         {tab === "discover" && (
           <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
             {loading ? (
-              <p className="text-sm text-[var(--muted)] py-6 text-center">Loading public servers…</p>
+              <p className="text-sm text-[var(--muted)] py-6 text-center">{t("onboarding.loadingPublic")}</p>
             ) : directory.length === 0 ? (
               <div className="text-center py-8 px-4 rounded-xl bg-[var(--paper)] border border-[var(--line)]">
                 <p className="text-sm font-medium text-[var(--muted)] mb-1">
-                  No public servers listed yet
+                  {t("onboarding.noPublicTitle")}
                 </p>
                 <p className="text-xs text-[var(--muted)] mb-4">
-                  Be the first to create a public community or join with an invite code!
+                  {t("onboarding.noPublicDesc")}
                 </p>
                 <button
                   type="button"
                   onClick={() => setTab("create")}
                   className="px-4 py-2 rounded-lg bg-[var(--lavender)] text-[var(--on-accent)] font-semibold text-xs"
                 >
-                  Create a Server
+                  {t("onboarding.tab.create")}
                 </button>
               </div>
             ) : (
@@ -248,7 +251,7 @@ export function OnboardingDirectoryDialog({
                       }}
                       className="px-3 py-1.5 rounded-lg bg-[var(--line)] hover:bg-[var(--lavender-soft)] text-xs font-semibold text-[var(--ink)] shrink-0"
                     >
-                      Open
+                      {t("onboarding.open")}
                     </button>
                   ) : (
                     <button
@@ -257,7 +260,7 @@ export function OnboardingDirectoryDialog({
                       onClick={() => void joinPublicServer(srv.id)}
                       className="px-3 py-1.5 rounded-lg bg-[var(--lavender)] text-[var(--on-accent)] text-xs font-semibold disabled:opacity-50 shrink-0"
                     >
-                      {srv.raidMode ? "Locked" : joiningId === srv.id ? "Joining…" : "Join"}
+                      {srv.raidMode ? t("onboarding.locked") : joiningId === srv.id ? t("chat.invite.joining") : t("common.join")}
                     </button>
                   )}
                 </div>
@@ -270,13 +273,13 @@ export function OnboardingDirectoryDialog({
           <div className="space-y-4 py-2">
             <div>
               <label className="block text-xs font-medium text-[var(--muted)] mb-1">
-                Invite Code or Link
+                {t("onboarding.inviteLabel")}
               </label>
               <input
                 type="text"
                 value={inviteInput}
                 onChange={(e) => setInviteInput(e.target.value)}
-                placeholder="e.g. aB3x9K or chat.hoffle.online/i/aB3x9K"
+                placeholder={t("onboarding.invitePlaceholder")}
                 className="w-full px-3 py-2.5 rounded-lg bg-[var(--paper)] border border-[var(--line)] text-sm text-[var(--ink)]"
               />
             </div>
@@ -286,7 +289,7 @@ export function OnboardingDirectoryDialog({
               onClick={() => void handleJoinByInvite()}
               className="w-full py-2.5 rounded-lg bg-[var(--lavender)] text-[var(--on-accent)] font-semibold text-sm disabled:opacity-50"
             >
-              {joiningInvite ? "Joining…" : "Join Server"}
+              {joiningInvite ? t("chat.invite.joining") : t("chat.invite.joinServer")}
             </button>
           </div>
         )}
@@ -294,34 +297,68 @@ export function OnboardingDirectoryDialog({
         {tab === "create" && (
           <div className="space-y-4 py-2">
             <div>
-              <label className="block text-xs font-medium text-[var(--muted)] mb-1">Server Name</label>
+              <label className="block text-xs font-medium text-[var(--muted)] mb-1">{t("onboarding.serverName")}</label>
               <input
                 type="text"
                 value={newServerName}
                 onChange={(e) => setNewServerName(e.target.value)}
                 maxLength={60}
-                placeholder="My Cozy Corner"
+                placeholder={t("onboarding.serverNamePlaceholder")}
                 className="w-full px-3 py-2 rounded-lg bg-[var(--paper)] border border-[var(--line)] text-sm text-[var(--ink)]"
               />
             </div>
             <div>
               <label className="block text-xs font-medium text-[var(--muted)] mb-1">
-                Short Description (optional)
+                {t("onboarding.shortDesc")}
               </label>
               <input
                 type="text"
                 value={newServerDescription}
                 onChange={(e) => setNewServerDescription(e.target.value)}
                 maxLength={240}
-                placeholder="What is your space about?"
+                placeholder={t("onboarding.shortDescPlaceholder")}
                 className="w-full px-3 py-2 rounded-lg bg-[var(--paper)] border border-[var(--line)] text-sm text-[var(--ink)]"
               />
             </div>
+            <div>
+              <label className="block text-xs font-medium text-[var(--muted)] mb-1">
+                {t("template.pickerLabel")}
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-40 overflow-y-auto pr-1">
+                <button
+                  type="button"
+                  onClick={() => setNewServerTemplateId("")}
+                  className={`p-2 rounded-lg border text-left text-xs transition-colors ${
+                    !newServerTemplateId
+                      ? "bg-[var(--lavender-soft)] border-[var(--lavender)] text-[var(--ink)] font-semibold"
+                      : "bg-[var(--paper)] border-[var(--line)] text-[var(--muted)] hover:text-[var(--ink)]"
+                  }`}
+                >
+                  ✨ {t("template.blank")}
+                </button>
+                {SERVER_TEMPLATES.map((tpl) => (
+                  <button
+                    key={tpl.id}
+                    type="button"
+                    onClick={() => setNewServerTemplateId(tpl.id)}
+                    className={`p-2 rounded-lg border text-left text-xs transition-colors ${
+                      newServerTemplateId === tpl.id
+                        ? "bg-[var(--lavender-soft)] border-[var(--lavender)] text-[var(--ink)] font-semibold"
+                        : "bg-[var(--paper)] border-[var(--line)] text-[var(--muted)] hover:text-[var(--ink)]"
+                    }`}
+                  >
+                    <span className="block truncate">
+                      {tpl.icon} {t(tpl.titleKey)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <label className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[var(--paper)] border border-[var(--line)] cursor-pointer">
               <div>
-                <div className="text-sm font-medium text-[var(--ink)]">Public Server</div>
+                <div className="text-sm font-medium text-[var(--ink)]">{t("onboarding.publicServer")}</div>
                 <div className="text-xs text-[var(--muted)]">
-                  Allow anyone on this instance to discover and join without an invite link.
+                  {t("onboarding.publicServerDesc")}
                 </div>
               </div>
               <input
@@ -337,7 +374,7 @@ export function OnboardingDirectoryDialog({
               onClick={() => void handleCreateServer()}
               className="w-full py-2.5 rounded-lg bg-[var(--lavender)] text-[var(--on-accent)] font-semibold text-sm disabled:opacity-50"
             >
-              {creating ? "Creating…" : "Create Server"}
+              {creating ? t("onboarding.creating") : t("onboarding.tab.create")}
             </button>
           </div>
         )}

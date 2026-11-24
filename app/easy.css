@@ -133,7 +133,7 @@ img.message-image[src*="/stickers/gang/gang-"] { width: 300px; max-width: 300px;
   :root[data-ui="simple"]:not([data-custom-theme-id^="msn"]) .composer-wrap { width: 100%; max-width: 952px; margin-inline: auto; box-sizing: border-box; }
 }
 
-:root[data-ui="simple"] .composer :is(.composer-more-mobile-btn, .gif-button, .desktop-composer-item) { display: none !important; }
+:root[data-ui="simple"] .composer :is(.gif-button, .desktop-composer-item) { display: none !important; }
 :root[data-ui="simple"] .user-footer-controls .control-btn-group { display: none; }
 :root[data-ui="simple"] .message { padding-top: 10px; padding-bottom: 10px; }
 

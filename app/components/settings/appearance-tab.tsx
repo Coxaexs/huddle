@@ -133,7 +133,7 @@ export function AppearanceTab({
             <>
               <UiModeChooser />
               <LayoutPicker />
-              <div className="appearance-choice-row vs-mode-row appearance-sections" role="tablist" aria-label="Appearance sections">
+              <div className="appearance-choice-row vs-mode-row appearance-sections" role="tablist" aria-label={tx("settings.appearance.sectionsAria")}>
                 {([
                   ["installed", tx("appearance.tab.installed")],
                   ["community", tx("appearance.tab.community")],
@@ -224,7 +224,7 @@ export function AppearanceTab({
                           <div className="relative">
                             <button
                               type="button"
-                              title="Share Theme"
+                              title={tx("settings.appearance.shareThemeTitle")}
                               className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
                               onClick={() => setThemeShareMenuId(isShareOpen ? null : th.id)}
                             >
@@ -293,15 +293,15 @@ export function AppearanceTab({
                                   type="button"
                                   className="text-[11px] text-gray-400 hover:text-white flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-white/5"
                                   onClick={() => handleOpenCreateTheme(th)}
-                                  title="Edit Theme"
+                                  title={tx("settings.appearance.editThemeTitle")}
                                 >
-                                  <Edit3 size={11} /> Edit
+                                  <Edit3 size={11} /> {tx("settings.appearance.edit")}
                                 </button>
                                 <button
                                   type="button"
                                   className="text-[11px] text-red-400 hover:text-red-300 flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-red-950/30"
                                   onClick={() => handleDeleteCustomTheme(th.id)}
-                                  title="Delete Theme"
+                                  title={tx("settings.appearance.deleteThemeTitle")}
                                 >
                                   <Trash2 size={11} />
                                 </button>
@@ -314,7 +314,7 @@ export function AppearanceTab({
                             className={`text-xs px-2.5 py-1 rounded font-medium transition-all ${isActive ? "bg-purple-600 text-white shadow" : "bg-white/10 hover:bg-white/20 text-gray-200"}`}
                             onClick={() => handleSelectTheme(th)}
                           >
-                            {isActive ? "✓ Active" : "Apply"}
+                            {isActive ? tx("settings.appearance.activeBadge") : tx("settings.deco.apply")}
                           </button>
                         </div>
                       </div>
@@ -329,7 +329,7 @@ export function AppearanceTab({
                     <input
                       type="text"
                       className="discord-text-input text-xs flex-1"
-                      placeholder="Search community themes..."
+                      placeholder={tx("settings.appearance.searchThemesPlaceholder")}
                       value={themeSearchQuery}
                       onChange={(e) => setThemeSearchQuery(e.target.value)}
                     />
@@ -338,15 +338,15 @@ export function AppearanceTab({
                       className="discord-btn secondary-gray text-xs whitespace-nowrap"
                       onClick={() => void loadCommunityThemes(themeSearchQuery)}
                     >
-                      Search
+                      {tx("settings.appearance.searchBtn")}
                     </button>
                   </div>
 
                   {communityLoading ? (
-                    <div className="text-center py-6 text-xs text-gray-400">Loading community themes…</div>
+                    <div className="text-center py-6 text-xs text-gray-400">{tx("settings.appearance.loadingCommunity")}</div>
                   ) : communityThemes.length === 0 ? (
                     <div className="text-center py-6 text-xs text-gray-400 bg-black/20 rounded-lg border border-white/5">
-                      No community themes found yet. Be the first to share one!
+                      {tx("settings.appearance.emptyCommunity")}
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
@@ -413,14 +413,14 @@ export function AppearanceTab({
 
               {appearanceSubtab === "look" && (
                 <>
-              <span className="field-label">Accent colour</span>
+              <span className="field-label">{tx("settings.appearance.accentColour")}</span>
               <div className="accent-picker-row">
                 {["#9d8cf5", "#e0a56a", "#68a8ff", "#49c99a", "#ff8b72", "#f3bd5d", "#e57bd8"].map(
                   (option) => (
                     <button
                       type="button"
                       key={option}
-                      aria-label={`Use accent ${option}`}
+                      aria-label={tx("settings.appearance.useAccentAria").replace("{option}", option)}
                       className={accent === option ? "active" : ""}
                       style={{ background: option }}
                       onClick={() => setAccent(option)}
@@ -430,18 +430,18 @@ export function AppearanceTab({
                 <input
                   type="color"
                   value={accent}
-                  aria-label="Custom accent colour"
+                  aria-label={tx("settings.appearance.customAccentAria")}
                   onChange={(event) => setAccent(event.target.value)}
                 />
               </div>
 
-              <span className="field-label">Pride palette</span>
+              <span className="field-label">{tx("settings.appearance.pridePalette")}</span>
               <div className="pride-theme-row">
                 {([
-                  ["off", "Classic"],
-                  ["trans", "Trans"],
-                  ["pride", "Pride"],
-                  ["nonbinary", "Nonbinary"],
+                  ["off", tx("settings.appearance.pride.off")],
+                  ["trans", tx("settings.appearance.pride.trans")],
+                  ["pride", tx("settings.appearance.pride.pride")],
+                  ["nonbinary", tx("settings.appearance.pride.nonbinary")],
                 ] as const).map(([option, label]) => (
                   <button
                     type="button"
@@ -455,7 +455,7 @@ export function AppearanceTab({
                 ))}
               </div>
 
-              <span className="field-label">Message spacing</span>
+              <span className="field-label">{tx("settings.appearance.messageSpacing")}</span>
               <div className="appearance-choice-row vs-mode-row">
                 {(["compact", "cozy", "roomy"] as const).map((option) => (
                   <button
@@ -464,12 +464,12 @@ export function AppearanceTab({
                     key={option}
                     onClick={() => setDensity(option)}
                   >
-                    {option}
+                    {tx(`settings.appearance.density.${option}`)}
                   </button>
                 ))}
               </div>
 
-              <span className="field-label">Chat backdrop</span>
+              <span className="field-label">{tx("settings.appearance.chatBackdrop")}</span>
               <div className="appearance-choice-row vs-mode-row">
                 {(["plain", "aurora", "dots"] as const).map((option) => (
                   <button
@@ -478,13 +478,13 @@ export function AppearanceTab({
                     key={option}
                     onClick={() => setBackdrop(option)}
                   >
-                    {option === "aurora" ? "Purple + green" : option}
+                    {tx(`settings.appearance.backdrop.${option}`)}
                   </button>
                 ))}
               </div>
 
               <label className="appearance-range">
-                <span>Corner roundness <b>{corners}px</b></span>
+                <span>{tx("settings.appearance.cornerRoundness")} <b>{corners}px</b></span>
                 <input
                   type="range"
                   min={4}
@@ -494,7 +494,7 @@ export function AppearanceTab({
                 />
               </label>
 
-              <p className="modal-hint">Animation and motion settings are under Accessibility.</p>
+              <p className="modal-hint">{tx("settings.appearance.motionHint")}</p>
                 </>
               )}
 
@@ -502,8 +502,8 @@ export function AppearanceTab({
                 <>
               <label className="appearance-switch cute-appearance-switch">
                 <span>
-                  <strong className="inline-flex items-center gap-1.5">Cozy Hoffle <Sparkles size={14} /></strong>
-                  <small>Room pet, sparkles, tiny charms, and celebrations</small>
+                  <strong className="inline-flex items-center gap-1.5">{tx("settings.appearance.cozyTitle")} <Sparkles size={14} /></strong>
+                  <small>{tx("settings.appearance.cozyDesc")}</small>
                 </span>
                 <input
                   type="checkbox"
@@ -514,8 +514,8 @@ export function AppearanceTab({
 
               <label className="appearance-switch blahaj-appearance-switch">
                 <span>
-                  <strong className="inline-flex items-center gap-1.5">Desktop buddy <Fish size={14} /></strong>
-                  <small>A little companion that matches your theme, with desk tools and break timers</small>
+                  <strong className="inline-flex items-center gap-1.5">{tx("settings.appearance.buddyTitle")} <Fish size={14} /></strong>
+                  <small>{tx("settings.appearance.buddyDesc")}</small>
                 </span>
                 <input
                   type="checkbox"
@@ -526,8 +526,8 @@ export function AppearanceTab({
 
               <label className="appearance-switch">
                 <span>
-                  <strong className="inline-flex items-center gap-1.5">Button click particles <Sparkles size={14} /></strong>
-                  <small>Themed sparks when you click buttons</small>
+                  <strong className="inline-flex items-center gap-1.5">{tx("settings.appearance.clickParticlesTitle")} <Sparkles size={14} /></strong>
+                  <small>{tx("settings.appearance.clickParticlesDesc")}</small>
                 </span>
                 <input
                   type="checkbox"
@@ -542,8 +542,8 @@ export function AppearanceTab({
 
               <label className="appearance-switch">
                 <span>
-                  <strong className="inline-flex items-center gap-1.5">Profile &amp; background particles <Sparkles size={14} /></strong>
-                  <small>Animated scenes on profile cards and backgrounds</small>
+                  <strong className="inline-flex items-center gap-1.5">{tx("settings.appearance.ambientParticlesTitle")} <Sparkles size={14} /></strong>
+                  <small>{tx("settings.appearance.ambientParticlesDesc")}</small>
                 </span>
                 <input
                   type="checkbox"
@@ -558,8 +558,8 @@ export function AppearanceTab({
 
               <label className="appearance-switch">
                 <span>
-                  <strong>Retro 2000s sound effects</strong>
-                  <small>Y2K-style chimes, nudges and old Windows sounds</small>
+                  <strong>{tx("settings.appearance.retroSoundsTitle")}</strong>
+                  <small>{tx("settings.appearance.retroSoundsDesc")}</small>
                 </span>
                 <input
                   type="checkbox"

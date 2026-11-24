@@ -1,7 +1,7 @@
 "use client";
 
 import type { WidgetArea, WidgetSize } from "@/lib/layout-prefs";
-import { DiceWidget, InitiativeWidget, LookupWidget, MyCharacterWidget, PartyWidget, RollsWidget, SlotsWidget } from "./dnd-widgets";
+import { DiceWidget, InitiativeWidget, LookupWidget, MyCharacterWidget, PartyStashWidget, PartyWidget, RollsWidget, SlotsWidget } from "./dnd-widgets";
 import { MusicWidget } from "./music-widget";
 import {
   MusicControlsWidget,
@@ -38,6 +38,7 @@ export function BuiltinWidgetBody({ id, size, area }: { id: string; size: Widget
     case "dnd-condition": return <LookupWidget kind="condition" size={size} />;
     case "dnd-feat": return <LookupWidget kind="feat" size={size} />;
     case "dnd-class": return <LookupWidget kind="class" size={size} />;
+    case "dnd-stash": return <PartyStashWidget size={size} />;
     default: return null;
   }
 }

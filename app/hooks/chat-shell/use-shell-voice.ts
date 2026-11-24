@@ -617,6 +617,12 @@ export function useShellVoice(s: ReturnType<typeof useShellRealtime>) {
     if (!user) return;
     let note: FirstRun | null = null;
     try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("welcome") === "1") {
+        note = { invite: false, joined: null };
+        url.searchParams.delete("welcome");
+        window.history.replaceState(null, "", url.toString());
+      }
       const raw = window.localStorage.getItem(FIRST_RUN_KEY);
       window.localStorage.removeItem(FIRST_RUN_KEY);
       if (raw) note = JSON.parse(raw) as FirstRun;

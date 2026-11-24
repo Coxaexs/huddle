@@ -9,6 +9,7 @@ import {
   type MusicSettings,
 } from "../music-cards";
 import type { Message } from "../../lib/chat/types";
+import { useI18n } from "../../lib/i18n-context";
 
 /** Message kinds the music bot answers with a card. */
 export const MUSIC_CARD_KINDS: ReadonlySet<string> = new Set([
@@ -107,6 +108,7 @@ export function MessageEditor({
   onCancel: () => void;
   onSave: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="message-edit">
       <textarea
@@ -133,7 +135,7 @@ export function MessageEditor({
         }}
       />
       <div className="message-edit-hint">
-        Enter to save · Esc to cancel
+        {t("chat.edit.hint")}
       </div>
     </div>
   );

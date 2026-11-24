@@ -1,20 +1,24 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import {
   clampPoint,
+  maskMapForPlayer,
+  normalizeHpVisibility,
   publicBattlemap,
   type Battlemap,
   type BattlemapRow,
+  type BattlemapSceneSummary,
+  type HpVisibility,
+  type MapArea,
   type MapFog,
   type MapToken,
 } from "@/lib/battlemap";
 import { dndBotToken } from "@/lib/bot-auth";
-import { getDndSettings } from "@/lib/dnd-rules";
+import { getDndSettings, isServerDm, serverDmUserIds } from "@/lib/dnd-rules";
 import { notifyDndTable, tableFromMap, type CompanionPawn } from "@/lib/dnd-table";
 import { dndBaseUrl } from "@/lib/dnd-url";
 import { dndTable, playerCommand, publishMessageEvent } from "@/lib/hub-client";
 import type { PawnKind, TableFog } from "@/lib/lounge-shared";
 import { resolveTracks } from "@/lib/music";
-import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 
@@ -53,13 +57,14 @@ function pawnFromMapToken(token: MapToken, map: Battlemap, maxY: number, fallbac
 }
 
 function fogFromMap(map: Battlemap, maxY: number): TableFog | null {
-  if (!map.fog.length) return null;
+  const coverRects = map.fog.filter((f) => f.mode !== "reveal");
+  if (!coverRects.length) return null;
   const g = Math.max(1, map.grid);
   const h = Math.max(1, maxY);
   const round2 = (n: number) => Math.round(n * 100) / 100;
   return {
     enabled: true,
-    rects: map.fog.slice(0, 80).map((f) => ({
+    rects: coverRects.slice(0, 80).map((f) => ({
       id: `bmf-${f.id.replace(/-/g, "").slice(0, 16)}`,
       x: round2(Math.max(0, Math.min(100, (f.x / g) * 100))),
       y: round2(Math.max(0, Math.min(100, (f.y / h) * 100))),
@@ -82,9 +87,13 @@ async function syncBattlemapToTable(
       value.map = map.imageUrl && map.imageUrl.startsWith("/hangout/api/uploads/") ? { url: map.imageUrl, turns: 0, zoom: 1 } : null;
     }
     if (opts.token) {
-      value.pawn = pawnFromMapToken(opts.token, map, maxY, userId);
+      if (opts.token.hidden) {
+        value.removePawnId = `bm-${opts.token.id.replace(/-/g, "").slice(0, 16)}`;
+      } else {
+        value.pawn = pawnFromMapToken(opts.token, map, maxY, userId);
+      }
     } else if (opts.syncTokens) {
-      value.pawns = map.tokens.map((t) => pawnFromMapToken(t, map, maxY, userId));
+      value.pawns = map.tokens.filter((t) => !t.hidden).map((t) => pawnFromMapToken(t, map, maxY, userId));
     }
     if (opts.removeTokenId) {
       value.removePawnId = `bm-${opts.removeTokenId.replace(/-/g, "").slice(0, 16)}`;
@@ -102,7 +111,140 @@ async function syncBattlemapToTable(
   }
 }
 
-/** Anyone who can manage channels here runs the table. */
+async function channelServerId(db: D1Database, channelId: string): Promise<string | null> {
+  const row = await db
+    .prepare("SELECT server_id FROM channels WHERE id = ?")
+    .bind(channelId)
+    .first<{ server_id: string }>()
+    .catch(() => null);
+  return row?.server_id ?? null;
+}
+
+async function audienceSplit(db: D1Database, channelId: string): Promise<{ dmIds: string[]; playerIds: string[] } | null> {
+  const serverId = await channelServerId(db, channelId);
+  if (!serverId) return null;
+  const [dmIds, memberRows] = await Promise.all([
+    serverDmUserIds(db, serverId),
+    db.prepare("SELECT user_id FROM server_members WHERE server_id = ?").bind(serverId).all<{ user_id: string }>().catch(() => null),
+  ]);
+  if (!dmIds.length) return null;
+  const dmSet = new Set(dmIds);
+  const playerIds = (memberRows?.results || []).map((r) => r.user_id).filter((id) => id && !dmSet.has(id));
+  return { dmIds, playerIds };
+}
+
+async function broadcastMapOpen(db: D1Database, channelId: string, map: Battlemap): Promise<void> {
+  const hasHidden = map.tokens.some((t) => t.hidden) || normalizeHpVisibility(map.hpVisibility) !== "exact";
+  if (!hasHidden) {
+    await publishMessageEvent(channelId, { t: "battlemap", action: "open", map });
+    return;
+  }
+  const split = await audienceSplit(db, channelId);
+  if (!split) {
+    await publishMessageEvent(channelId, { t: "battlemap", action: "open", map: maskMapForPlayer(map, "") });
+    return;
+  }
+  await publishMessageEvent(channelId, { t: "battlemap", action: "open", map }, split.dmIds);
+  if (split.playerIds.length) {
+    await publishMessageEvent(
+      channelId,
+      { t: "battlemap", action: "open", map: maskMapForPlayer(map, "") },
+      split.playerIds,
+    );
+  }
+}
+
+async function broadcastMapTokens(db: D1Database, channelId: string, map: Battlemap): Promise<void> {
+  const hasHidden = map.tokens.some((t) => t.hidden) || normalizeHpVisibility(map.hpVisibility) !== "exact";
+  if (!hasHidden) {
+    await publishMessageEvent(channelId, { t: "battlemap", action: "tokens", tokens: map.tokens });
+    return;
+  }
+  const split = await audienceSplit(db, channelId);
+  if (!split) {
+    await publishMessageEvent(channelId, { t: "battlemap", action: "tokens", tokens: maskMapForPlayer(map, "").tokens });
+    return;
+  }
+  await publishMessageEvent(channelId, { t: "battlemap", action: "tokens", tokens: map.tokens }, split.dmIds);
+  if (split.playerIds.length) {
+    await publishMessageEvent(
+      channelId,
+      { t: "battlemap", action: "tokens", tokens: maskMapForPlayer(map, "").tokens },
+      split.playerIds,
+    );
+  }
+}
+
+async function broadcastSingleToken(
+  db: D1Database,
+  channelId: string,
+  map: Battlemap,
+  token: MapToken,
+  wasHidden = false,
+): Promise<void> {
+  const vis = normalizeHpVisibility(map.hpVisibility);
+  const needsSplit = Boolean(token.hidden || wasHidden || (!token.ownerId && vis !== "exact"));
+  if (!needsSplit) {
+    await publishMessageEvent(channelId, { t: "battlemap", action: "token", token });
+    return;
+  }
+  const split = await audienceSplit(db, channelId);
+  if (!split) {
+    if (token.hidden) {
+      await publishMessageEvent(channelId, { t: "battlemap", action: "token-removed", tokenId: token.id });
+    } else {
+      const masked = maskMapForPlayer(map, "").tokens.find((t) => t.id === token.id) ?? token;
+      await publishMessageEvent(channelId, { t: "battlemap", action: "token", token: masked });
+    }
+    return;
+  }
+  await publishMessageEvent(channelId, { t: "battlemap", action: "token", token }, split.dmIds);
+  if (split.playerIds.length) {
+    if (token.hidden) {
+      await publishMessageEvent(
+        channelId,
+        { t: "battlemap", action: "token-removed", tokenId: token.id },
+        split.playerIds,
+      );
+    } else {
+      const masked = maskMapForPlayer(map, "").tokens.find((t) => t.id === token.id) ?? token;
+      await publishMessageEvent(channelId, { t: "battlemap", action: "token", token: masked }, split.playerIds);
+    }
+  }
+}
+
+async function listScenes(db: D1Database, channelId: string): Promise<BattlemapSceneSummary[]> {
+  const res = await db
+    .prepare(
+      `SELECT id, name, image_key, tokens, active, created_at
+         FROM battlemaps
+        WHERE channel_id = ?
+        ORDER BY created_at DESC
+        LIMIT 30`,
+    )
+    .bind(channelId)
+    .all<{ id: string; name: string; image_key: string | null; tokens: string; active: number; created_at: string }>()
+    .catch(() => null);
+  return (res?.results || []).map((row) => {
+    let tokenCount = 0;
+    try {
+      const parsed = JSON.parse(row.tokens || "[]");
+      if (Array.isArray(parsed)) tokenCount = parsed.length;
+    } catch {
+      tokenCount = 0;
+    }
+    return {
+      id: row.id,
+      name: row.name,
+      imageUrl: row.image_key ? `/hangout/api/uploads/${encodeURIComponent(row.image_key)}` : null,
+      active: Boolean(row.active),
+      tokenCount,
+      createdAt: row.created_at,
+    };
+  });
+}
+
+/** Game Masters (configured GM role, or anyone who can manage channels) run the table. */
 async function isGm(
   db: D1Database,
   userId: string,
@@ -113,7 +255,7 @@ async function isGm(
     .bind(channelId)
     .first<{ server_id: string }>();
   if (!channel) return false;
-  return can(db, userId, channel.server_id, Permission.MANAGE_CHANNELS);
+  return isServerDm(db, userId, channel.server_id);
 }
 
 async function activeMap(
@@ -122,7 +264,7 @@ async function activeMap(
 ): Promise<BattlemapRow | null> {
   return db
     .prepare(
-      `SELECT id, channel_id, name, image_key, grid, rows, tokens, strokes, fog, encounter, active
+      `SELECT id, channel_id, name, image_key, grid, rows, tokens, strokes, fog, areas, encounter, hp_visibility, active, created_at
          FROM battlemaps WHERE channel_id = ? AND active = 1
         ORDER BY created_at DESC LIMIT 1`,
     )
@@ -133,16 +275,20 @@ async function activeMap(
 /** The map currently open in a voice channel, if any. */
 export async function GET(request: Request) {
   const db = bindings().DB;
-  if (!db) return Response.json({ map: null });
+  if (!db) return Response.json({ map: null, scenes: [] });
   const user = await currentUser(request);
   if (!user) return unauthorized();
   await ensureSchema(db);
 
   const channelId = new URL(request.url).searchParams.get("channelId") || "";
-  const row = await activeMap(db, channelId);
+  const [row, gm] = await Promise.all([activeMap(db, channelId), isGm(db, user.id, channelId)]);
+  const rawMap = row ? publicBattlemap(row) : null;
+  const map = rawMap && !gm ? maskMapForPlayer(rawMap, user.id) : rawMap;
+  const scenes = gm ? await listScenes(db, channelId) : [];
   return Response.json({
-    map: row ? publicBattlemap(row) : null,
-    gm: await isGm(db, user.id, channelId),
+    map,
+    gm,
+    scenes,
   });
 }
 
@@ -165,12 +311,16 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     channelId?: string;
     action?: string;
+    mapId?: string;
+    activate?: boolean;
+    hpVisibility?: HpVisibility;
     name?: string;
     imageKey?: string | null;
     grid?: number;
     rows?: number | null;
     token?: Partial<MapToken>;
     tokenId?: string;
+    delta?: number;
     label?: string;
     x?: number;
     y?: number;
@@ -178,6 +328,10 @@ export async function POST(request: Request) {
     stroke?: { color?: string; width?: number; points?: number[] };
     fog?: Partial<MapFog>;
     fogId?: string;
+    area?: Partial<MapArea>;
+    areaId?: string;
+    color?: string;
+    pullView?: boolean;
     what?: string;
     state?: string;
   };
@@ -194,20 +348,23 @@ export async function POST(request: Request) {
   const forbidden = () =>
     Response.json({ error: "Only the GM can do that." }, { status: 403 });
 
-  // ---- open a new map -----------------------------------------------------
+  // ---- open / prep a new map ----------------------------------------------
   if (body.action === "open") {
     if (!(await gm())) return forbidden();
     const id = crypto.randomUUID();
     const grid = Math.max(5, Math.min(60, Number(body.grid) || 20));
     const rows = body.rows ? Math.max(1, Math.min(200, Math.round(Number(body.rows)))) : null;
-    await db.batch([
-      db
-        .prepare("UPDATE battlemaps SET active = 0 WHERE channel_id = ?")
-        .bind(channelId),
+    const activate = body.activate !== false;
+    const hpVis = normalizeHpVisibility(body.hpVisibility);
+    const statements: D1PreparedStatement[] = [];
+    if (activate) {
+      statements.push(db.prepare("UPDATE battlemaps SET active = 0 WHERE channel_id = ?").bind(channelId));
+    }
+    statements.push(
       db
         .prepare(
-          `INSERT INTO battlemaps (id, channel_id, name, image_key, grid, rows, tokens, strokes, active, created_by, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, '[]', '[]', 1, ?, ?)`,
+          `INSERT INTO battlemaps (id, channel_id, name, image_key, grid, rows, tokens, strokes, areas, hp_visibility, active, saved, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, '[]', '[]', '[]', ?, ?, 1, ?, ?)`,
         )
         .bind(
           id,
@@ -216,17 +373,64 @@ export async function POST(request: Request) {
           body.imageKey?.slice(0, 240) || null,
           grid,
           rows,
+          hpVis,
+          activate ? 1 : 0,
           user.id,
           new Date().toISOString(),
         ),
+    );
+    await db.batch(statements);
+    const scenes = await listScenes(db, channelId);
+    if (!activate) {
+      return Response.json({ scenes }, { status: 201 });
+    }
+    const row = await activeMap(db, channelId);
+    const map = row ? publicBattlemap(row) : null;
+    if (map) {
+      await broadcastMapOpen(db, channelId, map);
+      await syncBattlemapToTable(channelId, user.id, map, { maxY: map.rows || Math.round(grid * 0.6) || grid, syncMap: true, syncTokens: true, syncFog: true });
+    }
+    return Response.json({ map, scenes }, { status: 201 });
+  }
+
+  // ---- switch saved scene (GM) --------------------------------------------
+  if (body.action === "switch-scene") {
+    if (!(await gm())) return forbidden();
+    const mapId = body.mapId?.slice(0, 64) || "";
+    const target = await db
+      .prepare("SELECT id FROM battlemaps WHERE id = ? AND channel_id = ?")
+      .bind(mapId, channelId)
+      .first<{ id: string }>();
+    if (!target) return Response.json({ error: "Scene not found." }, { status: 404 });
+    await db.batch([
+      db.prepare("UPDATE battlemaps SET active = 0 WHERE channel_id = ?").bind(channelId),
+      db.prepare("UPDATE battlemaps SET active = 1 WHERE id = ? AND channel_id = ?").bind(mapId, channelId),
     ]);
     const row = await activeMap(db, channelId);
     const map = row ? publicBattlemap(row) : null;
-    await publishMessageEvent(channelId, { t: "battlemap", action: "open", map });
+    const scenes = await listScenes(db, channelId);
     if (map) {
-      await syncBattlemapToTable(channelId, user.id, map, { maxY: map.rows || Math.round(grid * 0.6) || grid, syncMap: true, syncTokens: true, syncFog: true });
+      await broadcastMapOpen(db, channelId, map);
+      await syncBattlemapToTable(channelId, user.id, map, { maxY: map.rows || Math.round(map.grid * 0.6) || map.grid, syncMap: true, syncTokens: true, syncFog: true });
     }
-    return Response.json({ map }, { status: 201 });
+    return Response.json({ map, scenes });
+  }
+
+  // ---- delete saved scene (GM) --------------------------------------------
+  if (body.action === "delete-scene") {
+    if (!(await gm())) return forbidden();
+    const mapId = body.mapId?.slice(0, 64) || "";
+    const target = await db
+      .prepare("SELECT id, active FROM battlemaps WHERE id = ? AND channel_id = ?")
+      .bind(mapId, channelId)
+      .first<{ id: string; active: number }>();
+    if (!target) return Response.json({ error: "Scene not found." }, { status: 404 });
+    await db.prepare("DELETE FROM battlemaps WHERE id = ? AND channel_id = ?").bind(mapId, channelId).run();
+    if (target.active) {
+      await publishMessageEvent(channelId, { t: "battlemap", action: "close" });
+    }
+    const scenes = await listScenes(db, channelId);
+    return Response.json({ ok: true, scenes });
   }
 
   const row = await activeMap(db, channelId);
@@ -289,8 +493,23 @@ export async function POST(request: Request) {
 
   // ---- add / remove tokens (GM) -------------------------------------------
   const maxY = map.rows || Math.max(60, map.grid * 3);
+  const sanitizeConditionDurations = (raw: unknown): Record<string, number> | undefined => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+    const entries: [string, number][] = [];
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      const key = String(k).trim().slice(0, 32);
+      const rounds = Math.round(Number(v));
+      if (key && Number.isFinite(rounds) && rounds > 0) {
+        entries.push([key, Math.min(999, rounds)]);
+        if (entries.length >= 10) break;
+      }
+    }
+    return entries.length ? Object.fromEntries(entries) : undefined;
+  };
+
   if (body.action === "add-token") {
     if (!(await gm())) return forbidden();
+    const durations = sanitizeConditionDurations(body.token?.conditionDurations);
     const token: MapToken = {
       id: crypto.randomUUID(),
       label: (body.token?.label || "Token").slice(0, 40),
@@ -307,26 +526,24 @@ export async function POST(request: Request) {
       conditions: Array.isArray(body.token?.conditions)
         ? body.token.conditions.map(String).slice(0, 10)
         : [],
+      ...(durations ? { conditionDurations: durations } : {}),
       initiative:
         typeof body.token?.initiative === "number"
           ? body.token.initiative
           : null,
+      ...(body.token?.hidden ? { hidden: true } : {}),
     };
     const tokens = [...map.tokens, token].slice(0, 60);
     await db
       .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
       .bind(JSON.stringify(tokens), row.id)
       .run();
-    await publishMessageEvent(channelId, {
-      t: "battlemap",
-      action: "tokens",
-      tokens,
-    });
+    await broadcastMapTokens(db, channelId, { ...map, tokens });
     await syncBattlemapToTable(channelId, user.id, { ...map, tokens }, { maxY, token });
     return Response.json({ tokens });
   }
 
-  // ---- update token conditions, initiative, or hp -------------------------
+  // ---- update token conditions, initiative, hidden layer, or hp -----------
   if (body.action === "update-token") {
     const token = map.tokens.find((entry) => entry.id === body.tokenId);
     if (!token) {
@@ -338,8 +555,27 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     }
+    const wasHidden = Boolean(token.hidden);
+    if (body.token?.hidden !== undefined) {
+      if (!(await gm())) return forbidden();
+      if (body.token.hidden) token.hidden = true;
+      else delete token.hidden;
+    }
     if (Array.isArray(body.token?.conditions)) {
       token.conditions = body.token.conditions.map(String).slice(0, 10);
+      if (token.conditionDurations) {
+        const activeSet = new Set(token.conditions);
+        const pruned = Object.fromEntries(
+          Object.entries(token.conditionDurations).filter(([k]) => activeSet.has(k)),
+        );
+        if (Object.keys(pruned).length) token.conditionDurations = pruned;
+        else delete token.conditionDurations;
+      }
+    }
+    if (body.token?.conditionDurations !== undefined) {
+      const durations = sanitizeConditionDurations(body.token.conditionDurations);
+      if (durations) token.conditionDurations = durations;
+      else delete token.conditionDurations;
     }
     if (body.token?.initiative !== undefined) {
       token.initiative =
@@ -359,13 +595,67 @@ export async function POST(request: Request) {
       .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
       .bind(JSON.stringify(map.tokens), row.id)
       .run();
-    await publishMessageEvent(channelId, {
-      t: "battlemap",
-      action: "token",
-      token,
-    });
+    await broadcastSingleToken(db, channelId, map, token, wasHidden);
     await syncBattlemapToTable(channelId, user.id, map, { maxY, token });
     return Response.json({ token });
+  }
+
+  // ---- apply damage or healing (+ concentration check prompt) -------------
+  if (body.action === "apply-damage") {
+    const token = map.tokens.find((entry) => entry.id === body.tokenId);
+    if (!token) {
+      return Response.json({ error: "No such token." }, { status: 404 });
+    }
+    if (token.ownerId !== user.id && !(await gm())) {
+      return Response.json(
+        { error: "Only the GM or token owner can apply damage." },
+        { status: 403 },
+      );
+    }
+    const delta = Math.round(Number(body.delta) || 0);
+    if (delta === 0) {
+      return Response.json({ token, concentrationCheck: null });
+    }
+    const baseHp = token.hp ?? token.maxHp ?? 0;
+    const rawNext = Math.max(0, baseHp + delta);
+    const nextHp =
+      delta > 0 && token.maxHp != null ? Math.min(Math.max(baseHp, token.maxHp), rawNext) : rawNext;
+    token.hp = nextHp;
+    const damageTaken = delta < 0 ? Math.abs(delta) : 0;
+    const isConcentrating = damageTaken > 0 && (token.conditions || []).includes("concentrating");
+    const concentrationCheck = isConcentrating
+      ? {
+          tokenId: token.id,
+          label: token.label,
+          damage: damageTaken,
+          dc: Math.max(10, Math.floor(damageTaken / 2)),
+        }
+      : null;
+    await db
+      .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
+      .bind(JSON.stringify(map.tokens), row.id)
+      .run();
+    await broadcastSingleToken(db, channelId, map, token);
+    await syncBattlemapToTable(channelId, user.id, map, { maxY, token });
+    return Response.json({ token, concentrationCheck });
+  }
+
+  // ---- monster HP visibility mode (GM) ------------------------------------
+  if (body.action === "set-hp-visibility") {
+    if (!(await gm())) return forbidden();
+    const hpVisibility = normalizeHpVisibility(body.hpVisibility);
+    await db
+      .prepare("UPDATE battlemaps SET hp_visibility = ? WHERE id = ?")
+      .bind(hpVisibility, row.id)
+      .run();
+    const nextMap = { ...map, hpVisibility };
+    await publishMessageEvent(channelId, {
+      t: "battlemap",
+      action: "hp-visibility",
+      hpVisibility,
+    });
+    await broadcastMapTokens(db, channelId, nextMap);
+    return Response.json({ hpVisibility });
   }
 
   // ---- clear initiatives across tokens (GM) ------------------------------
@@ -378,11 +668,7 @@ export async function POST(request: Request) {
       .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
       .bind(JSON.stringify(map.tokens), row.id)
       .run();
-    await publishMessageEvent(channelId, {
-      t: "battlemap",
-      action: "tokens",
-      tokens: map.tokens,
-    });
+    await broadcastMapTokens(db, channelId, map);
     return Response.json({ tokens: map.tokens });
   }
 
@@ -393,11 +679,7 @@ export async function POST(request: Request) {
       .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
       .bind(JSON.stringify(tokens), row.id)
       .run();
-    await publishMessageEvent(channelId, {
-      t: "battlemap",
-      action: "tokens",
-      tokens,
-    });
+    await broadcastMapTokens(db, channelId, { ...map, tokens });
     if (body.tokenId) {
       await syncBattlemapToTable(channelId, user.id, { ...map, tokens }, { maxY, removeTokenId: body.tokenId });
     }
@@ -424,11 +706,7 @@ export async function POST(request: Request) {
       .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
       .bind(JSON.stringify(map.tokens), row.id)
       .run();
-    await publishMessageEvent(channelId, {
-      t: "battlemap",
-      action: "token",
-      token,
-    });
+    await broadcastSingleToken(db, channelId, map, token);
     await syncBattlemapToTable(channelId, user.id, map, { maxY, token });
     return Response.json({ token });
   }
@@ -454,11 +732,7 @@ export async function POST(request: Request) {
       .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
       .bind(JSON.stringify(map.tokens), row.id)
       .run();
-    await publishMessageEvent(channelId, {
-      t: "battlemap",
-      action: "token",
-      token,
-    });
+    await broadcastSingleToken(db, channelId, map, token);
     await syncBattlemapToTable(channelId, user.id, map, { maxY, token });
     return Response.json({ token });
   }
@@ -480,26 +754,41 @@ export async function POST(request: Request) {
       .prepare("UPDATE battlemaps SET tokens = ? WHERE id = ?")
       .bind(JSON.stringify(map.tokens), row.id)
       .run();
-    await publishMessageEvent(channelId, {
-      t: "battlemap",
-      action: "token",
-      token,
-    });
+    await broadcastSingleToken(db, channelId, map, token);
     await syncBattlemapToTable(channelId, user.id, map, { maxY, token });
     return Response.json({ token });
   }
 
-  // ---- fog: GMs add/remove rectangles hiding parts of the map -------------
+  // ---- fog: GMs add/remove/cutout rectangles over the map ----------------
   if (body.action === "add-fog") {
     if (!(await gm())) return forbidden();
     const fog: MapFog = {
       id: crypto.randomUUID(),
       x: clampPoint(Number(body.fog?.x) || 0, map.grid),
-      y: clampPoint(Number(body.fog?.y) || 0, map.grid),
+      y: clampPoint(Number(body.fog?.y) || 0, maxY),
       w: Math.max(0.5, Number(body.fog?.w) || 1),
       h: Math.max(0.5, Number(body.fog?.h) || 1),
+      mode: body.fog?.mode === "reveal" ? "reveal" : "cover",
     };
-    const fogList = [...map.fog, fog].slice(0, 200);
+    const fogList = [...map.fog, fog].slice(-200);
+    await db
+      .prepare("UPDATE battlemaps SET fog = ? WHERE id = ?")
+      .bind(JSON.stringify(fogList), row.id)
+      .run();
+    await publishMessageEvent(channelId, {
+      t: "battlemap",
+      action: "fog",
+      fog: fogList,
+    });
+    await syncBattlemapToTable(channelId, user.id, { ...map, fog: fogList }, { maxY, syncFog: true });
+    return Response.json({ fog: fogList });
+  }
+
+  if (body.action === "cover-all-fog") {
+    if (!(await gm())) return forbidden();
+    const fogList: MapFog[] = [
+      { id: crypto.randomUUID(), x: 0, y: 0, w: map.grid, h: maxY, mode: "cover" },
+    ];
     await db
       .prepare("UPDATE battlemaps SET fog = ? WHERE id = ?")
       .bind(JSON.stringify(fogList), row.id)
@@ -542,6 +831,97 @@ export async function POST(request: Request) {
     });
     await syncBattlemapToTable(channelId, user.id, { ...map, fog: [] }, { maxY, syncFog: true });
     return Response.json({ fog: [] });
+  }
+
+  // ---- persistent AoE spell templates -------------------------------------
+  if (body.action === "add-area") {
+    const rawShape = body.area?.shape;
+    const shape: MapArea["shape"] =
+      rawShape === "cone" || rawShape === "cube" || rawShape === "line" ? rawShape : "sphere";
+    const area: MapArea = {
+      id: crypto.randomUUID(),
+      shape,
+      x: clampPoint(Number(body.area?.x) || 0, map.grid),
+      y: clampPoint(Number(body.area?.y) || 0, maxY),
+      tx: clampPoint(Number(body.area?.tx ?? body.area?.x) || 0, map.grid),
+      ty: clampPoint(Number(body.area?.ty ?? body.area?.y) || 0, maxY),
+      sizeFt: Math.max(5, Math.min(300, Math.round(Number(body.area?.sizeFt) || 20))),
+      color: /^#[0-9a-fA-F]{6}$/.test(body.area?.color || "")
+        ? body.area!.color!
+        : "#f97316",
+      ...(body.area?.label?.trim() ? { label: body.area.label.trim().slice(0, 40) } : {}),
+      ownerId: user.id,
+    };
+    const areas = [...(map.areas || []), area].slice(-30);
+    await db
+      .prepare("UPDATE battlemaps SET areas = ? WHERE id = ?")
+      .bind(JSON.stringify(areas), row.id)
+      .run();
+    await publishMessageEvent(channelId, {
+      t: "battlemap",
+      action: "areas",
+      areas,
+    });
+    return Response.json({ areas });
+  }
+
+  if (body.action === "remove-area") {
+    const existing = map.areas || [];
+    const target = existing.find((entry) => entry.id === body.areaId);
+    if (!target) {
+      return Response.json({ areas: existing });
+    }
+    if (target.ownerId && target.ownerId !== user.id && !(await gm())) {
+      return forbidden();
+    }
+    const areas = existing.filter((entry) => entry.id !== body.areaId);
+    await db
+      .prepare("UPDATE battlemaps SET areas = ? WHERE id = ?")
+      .bind(JSON.stringify(areas), row.id)
+      .run();
+    await publishMessageEvent(channelId, {
+      t: "battlemap",
+      action: "areas",
+      areas,
+    });
+    return Response.json({ areas });
+  }
+
+  if (body.action === "clear-areas") {
+    const canClearAll = await gm();
+    const areas = canClearAll ? [] : (map.areas || []).filter((entry) => entry.ownerId !== user.id);
+    await db
+      .prepare("UPDATE battlemaps SET areas = ? WHERE id = ?")
+      .bind(JSON.stringify(areas), row.id)
+      .run();
+    await publishMessageEvent(channelId, {
+      t: "battlemap",
+      action: "areas",
+      areas,
+    });
+    return Response.json({ areas });
+  }
+
+  // ---- ephemeral map ping (+ optional GM viewport pull) -------------------
+  if (body.action === "ping") {
+    const pullView = Boolean(body.pullView) && (await gm());
+    const ping = {
+      id: crypto.randomUUID(),
+      x: clampPoint(Number(body.x) || 0, map.grid),
+      y: clampPoint(Number(body.y) || 0, maxY),
+      color: /^#[0-9a-fA-F]{6}$/.test(body.color || "")
+        ? body.color!
+        : "#38bdf8",
+      byName: user.display_name,
+      ...(pullView ? { pullView: true } : {}),
+      at: Date.now(),
+    };
+    await publishMessageEvent(channelId, {
+      t: "battlemap",
+      action: "ping",
+      ping,
+    });
+    return Response.json({ ping });
   }
 
   // ---- paint --------------------------------------------------------------

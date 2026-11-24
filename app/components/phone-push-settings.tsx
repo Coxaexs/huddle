@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/client";
+import { useI18n } from "../lib/i18n-context";
 
 /**
  * Phone notifications through ntfy (https://ntfy.sh, or your own ntfy server).
@@ -10,6 +11,7 @@ import { apiFetch } from "../lib/client";
  * Apple/Google push keys involved on the Hoffle side.
  */
 export function PhonePushSettings() {
+  const { t } = useI18n();
   const [endpoint, setEndpoint] = useState("");
   const [token, setToken] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
@@ -40,7 +42,7 @@ export function PhonePushSettings() {
         body: JSON.stringify({ endpoint, token }),
       });
       setSaved(data.endpoint);
-      setStatus("Sent a test notification — check your phone.");
+      setStatus(t("settings.ntfy.testSent"));
     } catch (error) {
       setStatus((error as Error).message);
     } finally {
@@ -55,7 +57,7 @@ export function PhonePushSettings() {
       setSaved(null);
       setEndpoint("");
       setToken("");
-      setStatus("Phone notifications turned off.");
+      setStatus(t("settings.ntfy.turnedOff"));
     } catch (error) {
       setStatus((error as Error).message);
     } finally {
@@ -66,12 +68,8 @@ export function PhonePushSettings() {
   return (
     <div className="appearance-switch" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
       <span>
-        <strong>Phone notifications (ntfy / UnifiedPush)</strong>
-        <small>
-          Mentions, DMs and incoming calls, even when the app is closed. Install
-          the ntfy app, subscribe to a secret topic, and paste its URL here.
-          Works with ntfy.sh or your own ntfy server.
-        </small>
+        <strong>{t("settings.ntfy.title")}</strong>
+        <small>{t("settings.ntfy.desc")}</small>
       </span>
       <input
         type="url"
@@ -82,23 +80,23 @@ export function PhonePushSettings() {
       />
       <input
         type="password"
-        placeholder="Access token (only for protected topics)"
+        placeholder={t("settings.ntfy.tokenPlaceholder")}
         value={token}
         autoComplete="off"
         onChange={(event) => setToken(event.target.value)}
       />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button type="button" className="primary" disabled={busy || !endpoint} onClick={save}>
-          {saved ? "Update & test" : "Save & test"}
+          {saved ? t("settings.ntfy.updateTest") : t("settings.ntfy.saveTest")}
         </button>
         {!endpoint && (
           <button type="button" className="secondary" onClick={suggest}>
-            Make me a topic
+            {t("settings.ntfy.makeTopic")}
           </button>
         )}
         {saved && (
           <button type="button" className="secondary" disabled={busy} onClick={remove}>
-            Turn off
+            {t("settings.ntfy.turnOff")}
           </button>
         )}
       </div>

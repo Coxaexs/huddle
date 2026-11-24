@@ -7,6 +7,7 @@ import { normalizeProfileImage } from "@/lib/profile-media";
 import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
 import { deleteServerData, listServers, serverColor } from "@/lib/servers";
 import { bindings } from "@/lib/storage";
+import { isDiscoverCategory } from "@/lib/server-templates";
 import { clampVerificationLevel } from "@/lib/verification-level";
 import { normalizeVanityCode, setVanityCode } from "@/lib/vanity";
 
@@ -48,6 +49,7 @@ export async function PATCH(
     verificationLevel?: number;
     vanityCode?: string | null;
     webPublic?: boolean;
+    discoverCategory?: string;
   };
 
   const server = await db
@@ -66,6 +68,7 @@ export async function PATCH(
       raid_mode?: number;
       verification_level?: number;
       vanity_code?: string | null;
+      discover_category?: string | null;
     }>();
   if (!server) {
     return Response.json({ error: "That server is gone." }, { status: 404 });
@@ -89,6 +92,9 @@ export async function PATCH(
 
   const isPublic = body.isPublic !== undefined ? (body.isPublic ? 1 : 0) : (server.is_public ?? 0);
   const description = body.description !== undefined ? String(body.description || "").trim().slice(0, 240) : (server.description || "");
+  const discoverCategory = body.discoverCategory !== undefined && isDiscoverCategory(body.discoverCategory)
+    ? body.discoverCategory
+    : (server.discover_category || "community");
   const disabledModules = body.disabledModules !== undefined
     ? JSON.stringify(normalizeDisabledModules(body.disabledModules))
     : (server.disabled_modules || "[]");
@@ -116,7 +122,7 @@ export async function PATCH(
 
   await db
     .prepare(
-      "UPDATE servers SET name = ?, icon = ?, color = ?, icon_url = ?, banner_url = ?, is_public = ?, description = ?, disabled_modules = ?, raid_mode = ?, verification_level = ? WHERE id = ?",
+      "UPDATE servers SET name = ?, icon = ?, color = ?, icon_url = ?, banner_url = ?, is_public = ?, description = ?, disabled_modules = ?, raid_mode = ?, verification_level = ?, discover_category = ? WHERE id = ?",
     )
     .bind(
       body.name?.trim().slice(0, 50) || server.name,
@@ -129,6 +135,7 @@ export async function PATCH(
       disabledModules,
       raidMode,
       verificationLevel,
+      discoverCategory,
       id,
     )
     .run();

@@ -29,6 +29,7 @@ import {
 import { STUDY_ARTIST, STUDY_RAIN_FILE } from "@/lib/study-hall-tracks";
 import { basePath } from "../lib/client";
 import { TIMER_WORKER_SOURCE } from "../lib/worker-timers";
+import { tNow } from "../lib/i18n-context";
 
 /* ------------------------------------------------------------------ */
 /* Sound                                                               */
@@ -568,13 +569,13 @@ export function StudyHallActivity({
         <div className="study-hall-playing">
           <span className="study-hall-vinyl" aria-hidden="true" />
           <div className="study-hall-track">
-            <strong>{musicOn ? playing.track.title : "Rain on the window"}</strong>
-            <small>{musicOn ? `${STUDY_ARTIST} · next: ${upNext.title}` : "The music is off for the room"}</small>
+            <strong>{musicOn ? playing.track.title : tNow("study.rainOnWindow")}</strong>
+            <small>{musicOn ? `${STUDY_ARTIST} · ${tNow("study.nextPrefix", { title: upNext.title })}` : tNow("study.musicOff")}</small>
             {musicOn && (
               <div
                 className="study-hall-progress"
                 role="progressbar"
-                aria-label="This track"
+                aria-label={tNow("study.thisTrackAria")}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={Math.round(progress * 100)}
@@ -588,14 +589,14 @@ export function StudyHallActivity({
         {!listening && (
           <div className="study-hall-invite">
             <button type="button" className="study-hall-listen" onClick={() => void toggle()}>
-              <Headphones size={18} /> Listen in
+              <Headphones size={18} /> {tNow("study.listenIn")}
             </button>
             <small>
               {blocked
-                ? "Your browser didn’t let the sound start. Press Listen in again."
+                ? tNow("study.blockedHint")
                 : musicOn
-                  ? "The room’s music is playing. Press to hear it."
-                  : "The room is listening to rain. Press to hear it."}
+                  ? tNow("study.musicPlayingHint")
+                  : tNow("study.rainPlayingHint")}
             </small>
           </div>
         )}
@@ -604,46 +605,46 @@ export function StudyHallActivity({
           {timer.phase === "running" ? (
             <>
               <span className="study-hall-timer-label">
-                <Timer size={14} aria-hidden="true" /> {state.timerKind === "break" ? "Break" : "Focus"}
+                <Timer size={14} aria-hidden="true" /> {state.timerKind === "break" ? tNow("study.timer.break") : tNow("study.timer.focus")}
               </span>
               <strong role="timer" aria-live="off">{clockLabel(timer.leftMs)}</strong>
-              <button type="button" onClick={() => share(stopAmbientTimer(state))} title="Stop the timer for everyone">
-                <X size={14} /> Stop
+              <button type="button" onClick={() => share(stopAmbientTimer(state))} title={tNow("study.timer.stopTitle")}>
+                <X size={14} /> {tNow("study.timer.stop")}
               </button>
             </>
           ) : timer.phase === "done" ? (
             <>
               <span className="study-hall-timer-label" role="status">
                 <Timer size={14} aria-hidden="true" />{" "}
-                {state.timerKind === "break" ? "Break’s over. Back to it?" : "Time’s up. Take a break?"}
+                {state.timerKind === "break" ? tNow("study.timer.breakOver") : tNow("study.timer.timesUp")}
               </span>
               <div className="study-hall-timer-picks">
                 {state.timerKind === "break" ? (
                   <button type="button" className="primary" onClick={() => startTimer("focus", state.timerMinutes >= 10 ? state.timerMinutes : 25)}>
-                    Focus again
+                    {tNow("study.timer.focusAgain")}
                   </button>
                 ) : (
                   <button type="button" className="primary" onClick={() => startTimer("break", 5)}>
-                    Break · 5 min
+                    {tNow("study.timer.break5")}
                   </button>
                 )}
-                <button type="button" onClick={() => share(stopAmbientTimer(state))}>Not now</button>
+                <button type="button" onClick={() => share(stopAmbientTimer(state))}>{tNow("study.timer.notNow")}</button>
               </div>
             </>
           ) : (
             <>
               <span className="study-hall-timer-label">
-                <Timer size={14} aria-hidden="true" /> Focus together
+                <Timer size={14} aria-hidden="true" /> {tNow("study.timer.focusTogether")}
               </span>
               <div className="study-hall-timer-picks">
-                <button type="button" onClick={() => startTimer("focus", 25)} title="A 25 minute timer everyone here sees">
-                  25 min
+                <button type="button" onClick={() => startTimer("focus", 25)} title={tNow("study.timer.25mTitle")}>
+                  {tNow("study.timer.25m")}
                 </button>
-                <button type="button" onClick={() => startTimer("focus", 50)} title="A 50 minute timer everyone here sees">
-                  50 min
+                <button type="button" onClick={() => startTimer("focus", 50)} title={tNow("study.timer.50mTitle")}>
+                  {tNow("study.timer.50m")}
                 </button>
-                <button type="button" onClick={() => startTimer("break", 5)} title="A 5 minute break for the room">
-                  Break · 5
+                <button type="button" onClick={() => startTimer("break", 5)} title={tNow("study.timer.break5Title")}>
+                  {tNow("study.timer.break5Short")}
                 </button>
               </div>
             </>
@@ -652,7 +653,7 @@ export function StudyHallActivity({
       </div>
 
       <div className="study-hall-controls">
-        <div className="study-hall-moods" role="group" aria-label="Mood">
+        <div className="study-hall-moods" role="group" aria-label={tNow("study.moodAria")}>
           {MOODS.map((choice) => (
             <button
               type="button"
@@ -672,23 +673,23 @@ export function StudyHallActivity({
             <button
               type="button"
               onClick={() => share(skipAmbientTrack(state, clockRef.current()))}
-              title="Everyone moves on to the next track"
+              title={tNow("study.nextTrackTitle")}
             >
-              <SkipForward size={14} /> Next track
+              <SkipForward size={14} /> {tNow("study.nextTrack")}
             </button>
             <button
               type="button"
               onClick={() => share(reshuffleAmbient(state, clockRef.current()))}
-              title="A new order of tracks for the room"
+              title={tNow("study.shuffleTitle")}
             >
-              <Shuffle size={14} /> Shuffle
+              <Shuffle size={14} /> {tNow("study.shuffle")}
             </button>
           </>
         )}
         <span className="study-hall-spacer" />
         {listening && (
           <>
-            <label className="study-hall-knob study-hall-volume" title="Your volume: only you hear this change">
+            <label className="study-hall-knob study-hall-volume" title={tNow("study.volumeTitle")}>
               <Volume2 size={14} aria-hidden="true" />
               <input
                 type="range"
@@ -696,19 +697,19 @@ export function StudyHallActivity({
                 max={1}
                 step={0.01}
                 value={volume}
-                aria-label="Your volume"
+                aria-label={tNow("study.volumeAria")}
                 onChange={(event) => changeVolume(Number(event.target.value))}
               />
             </label>
-            <button type="button" className="study-hall-stop" onClick={() => void toggle()} title="Stop the music for you only">
-              <Square size={13} /> Stop listening
+            <button type="button" className="study-hall-stop" onClick={() => void toggle()} title={tNow("study.stopListeningTitle")}>
+              <Square size={13} /> {tNow("study.stopListening")}
             </button>
           </>
         )}
       </div>
 
       <p className="study-hall-hint">
-        The mood, the track and the timer change for the whole room. Listening and volume are yours alone.
+        {tNow("study.hint")}
       </p>
     </div>
   );

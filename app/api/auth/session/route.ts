@@ -1,4 +1,5 @@
 import { currentUser, publicUser } from "@/lib/auth";
+import { configuredOAuthProviders } from "@/lib/oauth";
 import { ensureSchema } from "@/lib/schema";
 import { getSignupSettings, turnstileSiteKey } from "@/lib/signup";
 import { bindings } from "@/lib/storage";
@@ -29,6 +30,7 @@ export async function GET(request: Request) {
     // With no accounts yet, the first signup claims the place and skips the
     // invite requirement.
     bootstrap: (count?.count ?? 0) === 0,
+    oauth: configuredOAuthProviders(),
     // Only the signed-out sign-in screen needs these.
     ...(signup
       ? { openSignup: signup.open, turnstileSiteKey: signup.open ? turnstileSiteKey() : null }

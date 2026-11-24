@@ -6,6 +6,7 @@ import type { RelayStatus } from "../../hooks/use-voice";
 import { headTrackingHint } from "../table-audio-menu";
 import { saveDevice, type DeviceLists } from "../../lib/devices";
 import { type MicSettings, type MicTelemetry } from "../../lib/mic-chain";
+import { useI18n } from "../../lib/i18n-context";
 import { VoiceInput } from "./voice-input";
 import { VoiceSounds } from "./voice-sounds";
 import { ComboButton } from "./roles-tab";
@@ -104,6 +105,7 @@ export function VoiceTab({
   onDeafenKey: ((combo: string) => void) | undefined;
   onMicTestHold?: (active: boolean) => void;
 }) {
+  const { t } = useI18n();
   const [capturingWhisper, setCapturingWhisper] = useState(false);
   return (
     <>
@@ -133,9 +135,9 @@ export function VoiceTab({
             onMicTestHold={onMicTestHold}
           />
 
-          <section className="vs-section vs-section-video" data-settings-anchor="video" data-settings-label="Video">
-            <h3 className="field-label">Video</h3>
-            <label htmlFor="settings-camera">Camera</label>
+          <section className="vs-section vs-section-video" data-settings-anchor="video" data-settings-label={t("settings.voice.video")}>
+            <h3 className="field-label">{t("settings.voice.video")}</h3>
+            <label htmlFor="settings-camera">{t("settings.voice.camera")}</label>
             <select
               id="settings-camera"
               value={cameraId}
@@ -144,7 +146,7 @@ export function VoiceTab({
                 saveDevice("camera", event.target.value);
               }}
             >
-              <option value="">System default</option>
+              <option value="">{t("settings.voice.systemDefault")}</option>
               {devices.cameras.map((device) => (
                 <option key={device.deviceId} value={device.deviceId}>
                   {device.label}
@@ -153,8 +155,8 @@ export function VoiceTab({
             </select>
             <label className="appearance-switch">
               <span>
-                <strong>Share audio with my screen</strong>
-                <small>Sends the sound of the tab, app or system along with a screen share</small>
+                <strong>{t("settings.voice.shareAudio")}</strong>
+                <small>{t("settings.voice.shareAudioDesc")}</small>
               </span>
               <input
                 type="checkbox"
@@ -166,27 +168,24 @@ export function VoiceTab({
 
           <VoiceSounds />
 
-          <details className="vs-more" data-settings-anchor="keybinds" data-settings-label="Keybinds">
-            <summary>Keybinds</summary>
+          <details className="vs-more" data-settings-anchor="keybinds" data-settings-label={t("settings.voice.keybinds")}>
+            <summary>{t("settings.voice.keybinds")}</summary>
             <div className="vs-more-body">
-              <p className="modal-hint">
-                Work while you are in a voice room, and are ignored while you are
-                typing. Hold modifiers and press a key to rebind.
-              </p>
+              <p className="modal-hint">{t("settings.voice.keybindsDesc")}</p>
               <ComboButton
-                label="Toggle mute"
+                label={t("settings.voice.toggleMute")}
                 combo={muteKey}
                 onChange={(combo) => onMuteKey?.(combo)}
               />
               <ComboButton
-                label="Toggle deafen"
+                label={t("settings.voice.toggleDeafen")}
                 combo={deafenKey}
                 onChange={(combo) => onDeafenKey?.(combo)}
               />
               <button
                 type="button"
                 className="ptt-key-button"
-                title="Hold this key to whisper to the person you last picked in the call"
+                title={t("settings.voice.whisperTitle")}
                 onClick={() => setCapturingWhisper(true)}
                 onKeyDown={(event) => {
                   if (!capturingWhisper) return;
@@ -196,33 +195,33 @@ export function VoiceTab({
                 }}
               >
                 {capturingWhisper
-                  ? "Press a key… (Esc clears)"
+                  ? t("settings.voice.pressKeyClear")
                   : whisperKey
-                    ? `Whisper key: ${whisperKey.replace(/^Key/, "")}`
-                    : "Set a whisper key"}
+                    ? t("settings.voice.whisperKey", { key: whisperKey.replace(/^Key/, "") })
+                    : t("settings.voice.setWhisperKey")}
               </button>
             </div>
           </details>
 
           {onTableMode && (
-            <details className="vs-more" data-settings-anchor="spatial" data-settings-label="Spatial audio">
-              <summary>Spatial audio</summary>
+            <details className="vs-more" data-settings-anchor="spatial" data-settings-label={t("settings.voice.spatialAudio")}>
+              <summary>{t("settings.voice.spatialAudio")}</summary>
               <div className="vs-more-body">
                 <label className="appearance-switch">
                   <span>
-                    <strong>Table Mode</strong>
-                    <small>Places voices around you. Only changes what you hear.</small>
+                    <strong>{t("settings.voice.tableMode")}</strong>
+                    <small>{t("settings.voice.tableModeDesc")}</small>
                   </span>
                   <input type="checkbox" checked={tableMode}
                     onChange={(event) => onTableMode(event.target.checked)} />
                 </label>
                 {tableMode && setSpatialOutput && (
                   <>
-                    <label htmlFor="spatial-output">Listening on</label>
+                    <label htmlFor="spatial-output">{t("settings.voice.listeningOn")}</label>
                     <select id="spatial-output" value={spatialOutput}
                       onChange={(event) => setSpatialOutput(event.target.value === "speakers" ? "speakers" : "headphones")}>
-                      <option value="headphones">Headphones · 3D sound</option>
-                      <option value="speakers">Speakers · stereo</option>
+                      <option value="headphones">{t("settings.voice.headphones3d")}</option>
+                      <option value="speakers">{t("settings.voice.speakersStereo")}</option>
                     </select>
                   </>
                 )}
@@ -230,29 +229,29 @@ export function VoiceTab({
                   <>
                     <label className="appearance-switch">
                       <span>
-                        <strong>Follow my head</strong>
+                        <strong>{t("settings.voice.followHead")}</strong>
                         <small>{headTrackingHint({ headTracking, headTrackingStatus, headTrackingSource, airpodsOffered })}</small>
                       </span>
                       <input type="checkbox" checked={headTracking}
                         onChange={(event) => setHeadTracking(event.target.checked)} />
                     </label>
                     {setHeadTrackingSource && (
-                      <select aria-label="Head tracking source" value={headTrackingSource}
+                      <select aria-label={t("settings.voice.headTrackingSource")} value={headTrackingSource}
                         onChange={(event) => setHeadTrackingSource(event.target.value === "webcam" ? "webcam" : "airpods")}>
-                        <option value="airpods">AirPods (no camera)</option>
-                        <option value="webcam">Webcam</option>
+                        <option value="airpods">{t("settings.voice.airpods")}</option>
+                        <option value="webcam">{t("settings.voice.webcam")}</option>
                       </select>
                     )}
                     {headTracking && headTrackingStatus.live && (
-                      <button type="button" onClick={recenterHead}>Face forward</button>
+                      <button type="button" onClick={recenterHead}>{t("settings.voice.faceForward")}</button>
                     )}
                   </>
                 )}
                 {tableMode && inCall && (
                   <>
-                    <label htmlFor="table-host">Dungeon Master</label>
+                    <label htmlFor="table-host">{t("settings.voice.dungeonMaster")}</label>
                     <select id="table-host" value={tableParticipants.some((p) => p.connectionId === tableHostId) ? tableHostId : ""} onChange={(event) => onTableHostId?.(event.target.value)}>
-                      <option value="">Automatic seats by join order</option>
+                      <option value="">{t("settings.voice.autoSeats")}</option>
                       {tableParticipants.map((person) => (
                         <option key={person.connectionId} value={person.connectionId}>{person.displayName}</option>
                       ))}
@@ -264,8 +263,8 @@ export function VoiceTab({
           )}
 
           {relay && (
-            <details className="vs-more" data-settings-anchor="connection" data-settings-label="Connection">
-              <summary>Connection</summary>
+            <details className="vs-more" data-settings-anchor="connection" data-settings-label={t("settings.voice.connection")}>
+              <summary>{t("settings.voice.connection")}</summary>
               <div className="vs-more-body">
                 <p className="modal-hint" role="status">{relay.detail}</p>
                 {onCheckRelay && (
@@ -274,16 +273,14 @@ export function VoiceTab({
                     onClick={onCheckRelay}
                     disabled={relay.state === "checking"}
                   >
-                    {relay.state === "checking" ? "Checking…" : "Check again"}
+                    {relay.state === "checking" ? t("settings.voice.checking") : t("settings.voice.checkAgain")}
                   </button>
                 )}
               </div>
             </details>
           )}
 
-          <p className="modal-hint vs-footnote">
-            Saved on this device. Switching the microphone in a call doesn&apos;t drop the call.
-          </p>
+          <p className="modal-hint vs-footnote">{t("settings.voice.footnote")}</p>
         </>
       )}
     </>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { isParticlesEnabled } from "../lib/theme-fx";
+import { useEcoMode } from "../lib/eco-mode";
 
 /** Katakana, digits and a few code symbols, as on the film's screens. */
 const GLYPHS =
@@ -33,7 +34,9 @@ function useMatrixTheme(): boolean {
  * asked for reduced motion. Renders nothing under any other theme.
  */
 export function MatrixRain() {
-  const on = useMatrixTheme();
+  const eco = useEcoMode();
+  const themeOn = useMatrixTheme();
+  const on = themeOn && !eco;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {

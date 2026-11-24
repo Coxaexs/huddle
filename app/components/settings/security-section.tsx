@@ -32,6 +32,11 @@ interface SecurityState {
   passkeys: Array<{ id: string; name: string; createdAt: string; lastUsedAt: string | null }>;
 }
 
+interface OAuthState {
+  accounts: Array<{ provider: "google" | "discord"; email: string | null; displayName: string | null; createdAt: number }>;
+  available: { google: boolean; discord: boolean };
+}
+
 function when(iso: string | null): string {
   if (!iso) return tNow("security.when.never");
   const date = new Date(iso);
@@ -70,6 +75,7 @@ export function SecuritySection() {
   const { t } = useI18n();
   const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
   const [state, setState] = useState<SecurityState | null>(null);
+  const [oauthState, setOauthState] = useState<OAuthState | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -89,16 +95,18 @@ export function SecuritySection() {
 
   const load = useCallback(async () => {
     try {
-      const [sessionData, securityData] = await Promise.all([
+      const [sessionData, securityData, oauthData] = await Promise.all([
         apiFetch<{ sessions: SessionInfo[] }>("/api/settings/sessions"),
         apiFetch<SecurityState>("/api/settings/two-factor"),
+        apiFetch<OAuthState>("/api/auth/oauth/accounts").catch(() => null),
       ]);
       setSessions(sessionData.sessions);
       setState(securityData);
+      if (oauthData) setOauthState(oauthData);
     } catch (failure) {
       setError(errorText(failure, t("security.loadFailed")));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -470,6 +478,64 @@ export function SecuritySection() {
           <button type="button" className="primary" onClick={() => setAskPasswordFor("passkey")}>
             {t("security.passkeys.add")}
           </button>
+        )}
+      </section>
+
+      <section className="profile-studio-section security-section">
+        <h3 className="profile-studio-section-title">
+          <KeyRound size={16} aria-hidden /> {t("security.oauth.title")}
+        </h3>
+        <p className="modal-hint">{t("security.oauth.about")}</p>
+        {oauthState && !oauthState.available.google && !oauthState.available.discord && oauthState.accounts.length === 0 ? (
+          <p className="modal-hint">{t("security.oauth.noneConfigured")}</p>
+        ) : (
+          <ul className="security-list">
+            {(["google", "discord"] as const).map((provider) => {
+              const linked = oauthState?.accounts.find((a) => a.provider === provider);
+              const available = oauthState?.available[provider] ?? false;
+              if (!linked && !available) return null;
+              const label = provider === "google" ? "Google" : "Discord";
+              return (
+                <li key={provider}>
+                  <span className="security-list-main">
+                    <strong>{label}</strong>
+                    <span>
+                      {linked
+                        ? t("security.oauth.linkedAs", { name: linked.displayName || linked.email || label })
+                        : t("security.oauth.notLinked")}
+                    </span>
+                  </span>
+                  {linked ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setBusy(true);
+                        setError("");
+                        void apiFetch(`/api/auth/oauth/accounts?provider=${provider}`, { method: "DELETE" })
+                          .then(() => {
+                            setNotice(t("security.oauth.unlinked", { provider: label }));
+                            return load();
+                          })
+                          .catch((failure) => setError(errorText(failure)))
+                          .finally(() => setBusy(false));
+                      }}
+                    >
+                      {t("security.oauth.unlink")}
+                    </button>
+                  ) : (
+                    <a
+                      className="security-download"
+                      style={{ marginTop: 0, textDecoration: "none" }}
+                      href={apiUrl(`/api/auth/oauth/${provider}?mode=link`)}
+                    >
+                      {t("security.oauth.link", { provider: label })}
+                    </a>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         )}
       </section>
 

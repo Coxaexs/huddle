@@ -86,6 +86,13 @@ export interface HuddleBindings {
   TURNSTILE_SECRET_KEY?: string;
   /** Salt for the signup address hash; falls back to BOT_TOKEN. */
   IP_HASH_SALT?: string;
+  /** OAuth 2.0 providers for Google and Discord sign-in / linking (lib/oauth.ts). */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  DISCORD_OAUTH_CLIENT_ID?: string;
+  DISCORD_OAUTH_CLIENT_SECRET?: string;
+  DISCORD_CLIENT_ID?: string;
+  DISCORD_CLIENT_SECRET?: string;
 }
 
 let testBindings: HuddleBindings | null = null;

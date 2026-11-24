@@ -11,6 +11,7 @@ import {
   type AudioDevice,
 } from "../lib/devices";
 import { showToast } from "./toast";
+import { useI18n } from "../lib/i18n-context";
 
 /** A newly plugged-in microphone and/or speaker, offered as a switch. */
 interface Offer {
@@ -62,10 +63,11 @@ export function DeviceSwitchPrompt({
   activeMicrophone: () => { deviceId: string; ended: boolean } | null;
   onMicrophoneChange: () => void;
 }) {
+  const { t } = useI18n();
   const [offer, setOffer] = useState<Offer | null>(null);
   // devicechange outlives any one render, so it reads the latest props here.
-  const latest = useRef({ inCall, activeMicrophone, onMicrophoneChange });
-  latest.current = { inCall, activeMicrophone, onMicrophoneChange };
+  const latest = useRef({ inCall, activeMicrophone, onMicrophoneChange, t });
+  latest.current = { inCall, activeMicrophone, onMicrophoneChange, t };
 
   useEffect(() => {
     const media = typeof navigator === "undefined" ? undefined : navigator.mediaDevices;
@@ -74,7 +76,7 @@ export function DeviceSwitchPrompt({
     let cancelled = false;
 
     const unplugged = (removed: AudioDevice[]) => {
-      const { inCall, activeMicrophone, onMicrophoneChange } = latest.current;
+      const { inCall, activeMicrophone, onMicrophoneChange, t: tr } = latest.current;
       for (const device of removed) {
         const name = deviceName(device.label);
         if (device.kind === "microphone") {
@@ -84,10 +86,10 @@ export function DeviceSwitchPrompt({
           if (wasChosen) saveDevice("microphone", "");
           if (!wasLive && !wasChosen) continue;
           if (inCall) onMicrophoneChange();
-          showToast(`${name} disconnected. Using the system default microphone.`, "warning");
+          showToast(tr("voice.devicePrompt.micDisconnected", { name }), "warning");
         } else if (device.deviceId === savedDevice("speaker")) {
           saveDevice("speaker", "");
-          showToast(`${name} disconnected. Playing through the system default.`, "warning");
+          showToast(tr("voice.devicePrompt.speakerDisconnected", { name }), "warning");
         }
       }
       // An offer for something that is gone again is no offer at all.
@@ -145,10 +147,10 @@ export function DeviceSwitchPrompt({
     : [microphone && deviceName(microphone.label), speaker && deviceName(speaker.label)].filter(Boolean).join(" · ");
   const question =
     microphone && speaker
-      ? "Use it for your microphone and speaker?"
+      ? t("voice.devicePrompt.useBoth")
       : microphone
-        ? "Switch your microphone to it?"
-        : "Switch your speaker to it?";
+        ? t("voice.devicePrompt.useMic")
+        : t("voice.devicePrompt.useSpeaker");
 
   const accept = () => {
     if (microphone) {
@@ -157,24 +159,24 @@ export function DeviceSwitchPrompt({
     }
     if (speaker) saveDevice("speaker", speaker.deviceId);
     setOffer(null);
-    showToast(`Switched to ${title}`, "success");
+    showToast(t("voice.devicePrompt.switched", { name: title }), "success");
   };
 
   return (
-    <div className="device-prompt" role="alertdialog" aria-label="New audio device">
+    <div className="device-prompt" role="alertdialog" aria-label={t("voice.devicePrompt.title")}>
       <span className="device-prompt-icon">
         {headset ? <Headphones size={20} /> : microphone ? <Mic size={20} /> : <Volume2 size={20} />}
       </span>
       <div className="device-prompt-body">
-        <strong>New audio device</strong>
+        <strong>{t("voice.devicePrompt.title")}</strong>
         <span className="device-prompt-name">{title}</span>
         <span>{question}</span>
         <div className="device-prompt-actions">
           <button type="button" className="discord-btn primary-indigo" onClick={accept}>
-            Switch
+            {t("voice.devicePrompt.switch")}
           </button>
           <button type="button" className="discord-btn secondary-gray" onClick={() => setOffer(null)}>
-            Not now
+            {t("voice.devicePrompt.notNow")}
           </button>
         </div>
       </div>

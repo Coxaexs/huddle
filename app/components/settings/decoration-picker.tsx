@@ -4,6 +4,8 @@ import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Ban, Check, ImagePlus, X } from "lucide-react";
 import { apiFetch } from "../../lib/client";
+import { tNow, useI18n } from "../../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 import { Avatar } from "../avatar";
 import { AvatarDecoration, NameplateArt, ProfileEffect, ProfileFrameArt, customEffectUrl, nameplateClass } from "../cosmetics";
 import { AVATAR_FRAMES, NAMEPLATES, PROFILE_EFFECTS, PROFILE_FRAMES, type CosmeticItem } from "./constants";
@@ -18,26 +20,24 @@ const FIELD: Record<DecorationKind, keyof Cosmetics> = {
   pframe: "profileFrame",
 };
 
-const KINDS: Record<DecorationKind, { title: string; items: CosmeticItem[] }> = {
-  nameplate: { title: "Change Nameplate", items: NAMEPLATES },
-  frame: { title: "Change Avatar Decoration", items: AVATAR_FRAMES },
-  pframe: { title: "Change Profile Frame", items: PROFILE_FRAMES },
-  effect: { title: "Change Profile Effect", items: PROFILE_EFFECTS },
+const KINDS: Record<DecorationKind, { titleKey: MessageKey; items: CosmeticItem[] }> = {
+  nameplate: { titleKey: "settings.deco.title.nameplate", items: NAMEPLATES },
+  frame: { titleKey: "settings.deco.title.frame", items: AVATAR_FRAMES },
+  pframe: { titleKey: "settings.deco.title.pframe", items: PROFILE_FRAMES },
+  effect: { titleKey: "settings.deco.title.effect", items: PROFILE_EFFECTS },
 };
 
-const CUSTOM_EFFECT: CosmeticItem = { id: "custom", name: "Your GIF", desc: "Your own animated GIF, WebP or PNG over the whole card" };
-
 export function cosmeticName(kind: DecorationKind, id: string) {
-  if (kind === "effect" && customEffectUrl(id)) return CUSTOM_EFFECT.name;
-  return KINDS[kind].items.find((item) => item.id === id)?.name ?? "None";
+  if (kind === "effect" && customEffectUrl(id)) return tNow("settings.deco.yourGif");
+  return KINDS[kind].items.find((item) => item.id === id)?.name ?? tNow("settings.deco.none");
 }
 
 /** Items on their shelves, in catalog order. */
-function shelves(items: CosmeticItem[]) {
+function shelves(items: CosmeticItem[], moreLabel: string) {
   const groups: { name: string; items: CosmeticItem[] }[] = [];
   for (const item of items) {
     if (item.id === "none") continue;
-    const name = item.group || "More";
+    const name = item.group || moreLabel;
     let group = groups.find((g) => g.name === name);
     if (!group) groups.push((group = { name, items: [] }));
     group.items.push(item);
@@ -58,12 +58,16 @@ export function DecorationPicker({
   onApply: (id: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
+  const customEffect: CosmeticItem = { id: "custom", name: t("settings.deco.yourGif"), desc: t("settings.deco.yourGifDesc") };
   const spec = KINDS[kind];
+  const specTitle = t(spec.titleKey);
   const field = FIELD[kind];
   const current = cosmetics[field] || "none";
   const [draft, setDraft] = useState(current);
-  const groups = useMemo(() => shelves(spec.items), [spec.items]);
-  const chosen = customEffectUrl(draft) ? CUSTOM_EFFECT : spec.items.find((item) => item.id === draft) ?? spec.items[0];
+  const moreGroup = t("settings.deco.moreGroup");
+  const groups = useMemo(() => shelves(spec.items, moreGroup), [spec.items, moreGroup]);
+  const chosen = customEffectUrl(draft) ? customEffect : spec.items.find((item) => item.id === draft) ?? spec.items[0];
   // A custom effect is an uploaded GIF; "gifx:" blends it so a black background disappears.
   const [customKey, setCustomKey] = useState(() => /^gifx?:(.+)$/.exec(current)?.[1] ?? "");
   const [screenBlend, setScreenBlend] = useState(current.startsWith("gifx:"));
@@ -83,7 +87,7 @@ export function DecorationPicker({
       setCustomKey(upload.key);
       setDraft(customId(upload.key, screenBlend));
     } catch (failure) {
-      setUploadError(failure instanceof Error ? failure.message : "That file did not upload.");
+      setUploadError(failure instanceof Error ? failure.message : t("settings.deco.uploadError"));
     } finally {
       setUploading(false);
     }
@@ -119,7 +123,7 @@ export function DecorationPicker({
       {item.id === "none" ? (
         <span className="dp-none">
           <Ban size={kind === "nameplate" ? 20 : 28} strokeWidth={1.6} />
-          <span>None</span>
+          <span>{t("settings.deco.none")}</span>
         </span>
       ) : (
         <DecorationSwatch kind={kind} id={item.id} profile={profile} />
@@ -134,10 +138,10 @@ export function DecorationPicker({
 
   return createPortal(
     <div className="dp-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className={`dp-modal dp-modal-${kind}`} role="dialog" aria-modal="true" aria-label={spec.title}>
+      <div className={`dp-modal dp-modal-${kind}`} role="dialog" aria-modal="true" aria-label={specTitle}>
         <header className="dp-head">
-          <h3>{spec.title}</h3>
-          <button type="button" className="dp-close" aria-label="Close" onClick={onClose}>
+          <h3>{specTitle}</h3>
+          <button type="button" className="dp-close" aria-label={t("common.close")} onClick={onClose}>
             <X size={22} />
           </button>
         </header>
@@ -150,7 +154,7 @@ export function DecorationPicker({
                   type="button"
                   className={`dp-tile dp-tile-upload${customEffectUrl(draft) ? " chosen" : ""}`}
                   onClick={() => (customKey ? setDraft(customId(customKey, screenBlend)) : gifInput.current?.click())}
-                  aria-label="Use your own GIF"
+                  aria-label={t("settings.deco.useOwnGifAria")}
                 >
                   {customKey ? (
                     <span className="dp-swatch">
@@ -164,7 +168,7 @@ export function DecorationPicker({
                   ) : (
                     <span className="dp-none">
                       <ImagePlus size={26} strokeWidth={1.6} />
-                      <span>{uploading ? "Uploading…" : "Your GIF"}</span>
+                      <span>{uploading ? t("settings.deco.uploading") : t("settings.deco.yourGif")}</span>
                     </span>
                   )}
                   {customEffectUrl(draft) && (
@@ -188,7 +192,7 @@ export function DecorationPicker({
                   }}
                 />
                 <button type="button" className="dp-link" onClick={() => gifInput.current?.click()} disabled={uploading}>
-                  {customKey ? "Upload a different GIF" : "Upload a GIF, WebP or APNG"}
+                  {customKey ? t("settings.deco.uploadDifferentGif") : t("settings.deco.uploadGifHint")}
                 </button>
                 <label className="dp-toggle">
                   <input
@@ -199,7 +203,7 @@ export function DecorationPicker({
                       if (customKey && customEffectUrl(draft)) setDraft(customId(customKey, event.target.checked));
                     }}
                   />
-                  Make a black background see-through
+                  {t("settings.deco.blackBgTransparent")}
                 </label>
                 {uploadError && <span className="dp-error">{uploadError}</span>}
               </div>
@@ -215,13 +219,13 @@ export function DecorationPicker({
             <PickerPreview kind={kind} profile={profile} cosmetics={previewCosmetics} />
             <div className="dp-info">
               <strong>{chosen.name}</strong>
-              <span>{chosen.id === "none" ? "Nothing equipped" : chosen.desc}</span>
+              <span>{chosen.id === "none" ? t("settings.deco.nothingEquipped") : chosen.desc}</span>
             </div>
           </div>
         </div>
         <footer className="dp-foot">
           <button type="button" className="dp-btn dp-btn-ghost" onClick={onClose}>
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -232,7 +236,7 @@ export function DecorationPicker({
               onClose();
             }}
           >
-            Apply
+            {t("settings.deco.apply")}
           </button>
         </footer>
       </div>

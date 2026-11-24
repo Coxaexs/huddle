@@ -1,5 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { publishMessageEvent } from "@/lib/hub-client";
+import { hasConfiguredGmRole } from "@/lib/dnd-rules";
 import { can, Permission } from "@/lib/permissions";
 import {
   appendRecordingEvent,
@@ -163,12 +164,9 @@ export async function POST(request: Request) {
     )
     .bind(recording.id, user.id)
     .first<{ decision: string }>();
-  const controls = await can(
-    db,
-    user.id,
-    recording.server_id,
-    Permission.RECORD_SESSIONS,
-  );
+  const controls =
+    (await can(db, user.id, recording.server_id, Permission.RECORD_SESSIONS)) ||
+    (await hasConfiguredGmRole(db, user.id, recording.server_id));
 
   if (body.action === "save") {
     if (!participant || !recording.campaign_id) {

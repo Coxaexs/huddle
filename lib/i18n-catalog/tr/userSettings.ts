@@ -195,5 +195,7 @@ export const userSettings: Record<keyof typeof en, string> = {
   "accessibilitySettings.animateNameEffectsDesc": "Sohbette ve üye listesinde stilli isimlerin ne zaman hareket edeceğini belirle. Kartlar ve ses kutuları her zaman hareketlidir.",
   "accessibilitySettings.interfaceMotion": "Arayüz hareketi",
   "accessibilitySettings.interfaceMotionDesc": "Akıcı kaydırma ve arayüz mikro animasyonları.",
+  "accessibilitySettings.ecoMode": "Eko Modu (Düşük güç / Performans)",
+  "accessibilitySettings.ecoModeDesc": "Pil ve işlemciden tasarruf etmek için bulanıklığı, parlama gölgelerini, hareketli arka planları ve 3D zarları kapatır.",
 };
 

@@ -5,6 +5,7 @@ import { SmilePlus } from "lucide-react";
 import { OutlineEmoji } from "../outline-emoji";
 import { reactionTooltip } from "../../lib/chat/reactions";
 import type { ReactionList } from "../../lib/chat/types";
+import { useI18n } from "../../lib/i18n-context";
 
 /**
  * The reaction pills under a message, plus the "add reaction" button.
@@ -31,6 +32,7 @@ export function MessageReactions({
   onOpenViewer: (event: MouseEvent, emoji: string) => void;
   onOpenPicker: (event: MouseEvent, mode: "react" | "addToQuickReactions") => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="reactions">
       {reactions.map((reaction) => (
@@ -57,7 +59,7 @@ export function MessageReactions({
       <button
         type="button"
         className={`reaction add-reaction-btn ${pickerOpen ? "mine" : ""}`}
-        title="Add reaction · Shift-click to add to quick reactions"
+        title={t("chat.reactions.addQuickHint")}
         onClick={(e) => {
           if (e.shiftKey) {
             e.preventDefault();

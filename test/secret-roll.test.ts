@@ -6,14 +6,21 @@ import { maskRoll } from "@/lib/secret-roll";
 // the stored card) must not carry the faces or the total.
 
 const state = vi.hoisted(() => ({
-  events: [] as Array<{ channelId: string; event: { t: string; roll?: DiceRollEvent } }>,
+  userId: "dm",
+  userName: "Dungeon Master",
+  dmIds: ["dm"] as string[],
+  events: [] as Array<{ channelId: string; event: { t: string; roll?: DiceRollEvent; seed?: string; card?: { total?: number } }; audience?: string[] }>,
   inserted: [] as unknown[][],
 }));
 
 vi.mock("cloudflare:workers", () => ({ env: {} }));
 vi.mock("@/lib/auth", () => ({
-  currentUser: async () => ({ id: "dm", display_name: "Dungeon Master", username: "dm" }),
+  currentUser: async () => ({ id: state.userId, display_name: state.userName, username: state.userId }),
   unauthorized: () => Response.json({ error: "Sign in" }, { status: 401 }),
+}));
+vi.mock("@/lib/dnd-rules", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/dnd-rules")>()),
+  serverDmUserIds: async () => state.dmIds,
 }));
 vi.mock("@/lib/schema", () => ({ ensureSchema: async () => {} }));
 vi.mock("@/lib/access", () => ({
@@ -34,8 +41,12 @@ vi.mock("@/lib/servers", () => ({
   isServerMember: async () => true,
 }));
 vi.mock("@/lib/hub-client", () => ({
-  publishMessageEvent: async (channelId: string, event: { t: string; roll?: DiceRollEvent }) => {
-    state.events.push({ channelId, event });
+  publishMessageEvent: async (
+    channelId: string,
+    event: { t: string; roll?: DiceRollEvent; seed?: string; card?: { total?: number } },
+    audience?: string[],
+  ) => {
+    state.events.push({ channelId, event, ...(audience ? { audience } : {}) });
   },
   publishMessage: async () => {},
 }));
@@ -70,6 +81,9 @@ function roll(command: string) {
 }
 
 beforeEach(() => {
+  state.userId = "dm";
+  state.userName = "Dungeon Master";
+  state.dmIds = ["dm"];
   state.events = [];
   state.inserted = [];
 });
@@ -130,5 +144,30 @@ describe("/gmroll", () => {
     const data = (await response.json()) as { roll: DiceRollEvent; secretCard?: unknown };
     expect(data.secretCard).toBeUndefined();
     expect(state.events.every(({ event }) => event.roll?.total === data.roll.total)).toBe(true);
+  });
+
+  it("hides /blindroll results from a non-DM roller and pushes blind-roll strictly to server DMs", async () => {
+    state.userId = "player-alice";
+    state.userName = "Alice";
+    state.dmIds = ["dm", "gm-role-holder"];
+
+    const response = await roll("/blindroll 1d20+3 stealth");
+    const data = (await response.json()) as {
+      roll: DiceRollEvent;
+      payload: Record<string, unknown>;
+      secretCard?: unknown;
+    };
+
+    // Non-DM roller receives masked dice and NO secretCard in the HTTP reply.
+    expect(data.roll.masked).toBe(true);
+    expect(data.roll.total).toBe(0);
+    expect(data.secretCard).toBeUndefined();
+    expect(data.payload).toMatchObject({ type: "roll", secret: true, blind: true });
+    expect(data.payload).not.toHaveProperty("total");
+
+    const blindEvt = state.events.find((entry) => entry.event.t === "blind-roll");
+    expect(blindEvt).toBeDefined();
+    expect(blindEvt?.audience).toEqual(["dm", "gm-role-holder"]);
+    expect(typeof blindEvt?.event.card?.total).toBe("number");
   });
 });

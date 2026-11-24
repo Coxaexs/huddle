@@ -268,3 +268,128 @@ export async function fetchDiscordGuild(guildId: string, botToken: string): Prom
   const { layout, skipped } = layoutFromDiscord(roles, channels, guildId);
   return { ok: true, name: (guild?.name || "Imported server").slice(0, 50), description: (guild?.description || "").slice(0, 240), layout, skipped };
 }
+
+export interface DiscordExpressionAsset {
+  id: string;
+  name: string;
+  url: string;
+  animated: boolean;
+  ext: string;
+}
+
+export interface DiscordExpressionsResult {
+  emojis: DiscordExpressionAsset[];
+  stickers: DiscordExpressionAsset[];
+  skippedLottie: number;
+}
+
+/** Strictly allow only Discord CDN hosts to prevent SSRF during asset import. */
+export function isAllowedDiscordAssetUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") return false;
+    return parsed.hostname === "cdn.discordapp.com" || parsed.hostname === "media.discordapp.net";
+  } catch {
+    return false;
+  }
+}
+
+export function sanitizeExpressionName(raw: string, fallbackPrefix = "asset"): string {
+  const cleaned = (raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 32);
+  return cleaned.length >= 2 ? cleaned : `${fallbackPrefix}_item`;
+}
+
+/**
+ * Fetch custom emojis and raster stickers (PNG/APNG/GIF/WEBP) from a Discord guild
+ * using a bot token. Lottie stickers (format_type === 3) are counted in `skippedLottie`.
+ */
+export async function fetchDiscordExpressions(
+  guildId: string,
+  botToken: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<
+  | ({ ok: true } & DiscordExpressionsResult)
+  | { ok: false; status: number; error: string }
+> {
+  if (!/^\d{15,22}$/.test(guildId) || !botToken) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Provide a valid Discord Bot Token and numeric Discord Server (Guild) ID.",
+    };
+  }
+
+  const headers = { Authorization: `Bot ${botToken}`, "User-Agent": UA };
+  const [emojiRes, stickerRes] = await Promise.all([
+    fetchImpl(`https://discord.com/api/v10/guilds/${guildId}/emojis`, { headers }).catch(() => null),
+    fetchImpl(`https://discord.com/api/v10/guilds/${guildId}/stickers`, { headers }).catch(() => null),
+  ]);
+
+  if (!emojiRes || (!emojiRes.ok && !stickerRes?.ok)) {
+    return {
+      ok: false,
+      status: emojiRes?.status === 429 || stickerRes?.status === 429 ? 429 : 400,
+      error: `Could not fetch Discord guild expressions (HTTP ${emojiRes?.status || "network error"}). Check bot permissions.`,
+    };
+  }
+
+  const rawEmojis = emojiRes.ok
+    ? ((await emojiRes.json().catch(() => [])) as Array<{
+        id?: string;
+        name?: string;
+        animated?: boolean;
+      }>)
+    : [];
+  const rawStickers = stickerRes?.ok
+    ? ((await stickerRes.json().catch(() => [])) as Array<{
+        id?: string;
+        name?: string;
+        format_type?: number;
+      }>)
+    : [];
+
+  const emojis: DiscordExpressionAsset[] = [];
+  for (const item of Array.isArray(rawEmojis) ? rawEmojis : []) {
+    if (!item?.id || !/^\d+$/.test(item.id)) continue;
+    const animated = Boolean(item.animated);
+    const ext = animated ? "gif" : "png";
+    const url = `https://cdn.discordapp.com/emojis/${item.id}.${ext}?size=128`;
+    if (!isAllowedDiscordAssetUrl(url)) continue;
+    emojis.push({
+      id: item.id,
+      name: sanitizeExpressionName(item.name || item.id, "emoji"),
+      url,
+      animated,
+      ext,
+    });
+  }
+
+  const stickers: DiscordExpressionAsset[] = [];
+  let skippedLottie = 0;
+  for (const item of Array.isArray(rawStickers) ? rawStickers : []) {
+    if (!item?.id || !/^\d+$/.test(item.id)) continue;
+    // Discord format_type: 1 = PNG, 2 = APNG, 3 = LOTTIE, 4 = GIF
+    if (item.format_type === 3) {
+      skippedLottie += 1;
+      continue;
+    }
+    const ext = item.format_type === 4 ? "gif" : "png";
+    const cdnHost = item.format_type === 4 ? "media.discordapp.net" : "cdn.discordapp.com";
+    const url = `https://${cdnHost}/stickers/${item.id}.${ext}?size=320`;
+    if (!isAllowedDiscordAssetUrl(url)) continue;
+    stickers.push({
+      id: item.id,
+      name: sanitizeExpressionName(item.name || item.id, "sticker"),
+      url,
+      animated: item.format_type === 2 || item.format_type === 4,
+      ext,
+    });
+  }
+
+  return { ok: true, emojis, stickers, skippedLottie };
+}

@@ -1,6 +1,6 @@
 import { canSeeServer } from "@/lib/access";
 import { currentUser, unauthorized } from "@/lib/auth";
-import { getDndSettings, getGameSystem, mergeHomebrew, saveDndSettings, type DndSettings } from "@/lib/dnd-rules";
+import { getDndSettings, getGameSystem, isServerDm, mergeHomebrew, saveDndSettings, type DndSettings } from "@/lib/dnd-rules";
 import { can, Permission } from "@/lib/permissions";
 import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
@@ -22,7 +22,11 @@ export async function GET(request: Request) {
   if (new URL(request.url).searchParams.get("only") === "system") {
     return Response.json({ system: await getGameSystem(db, serverId) });
   }
-  return Response.json(await getDndSettings(db, serverId));
+  const [settings, isDm] = await Promise.all([
+    getDndSettings(db, serverId),
+    isServerDm(db, user.id, serverId),
+  ]);
+  return Response.json({ ...settings, isDm });
 }
 
 /**
@@ -30,6 +34,7 @@ export async function GET(request: Request) {
  *   { serverId, system: "dnd5e" | "vtm5" }    the game the tabletop plays
  *   { serverId, edition: "2014" | "2024" }
  *   { serverId, combatMusic, exploreMusic }   a playlist link or a search; "" clears
+ *   { serverId, gmRoleId }                    optional role ID granting DM powers; ""/null clears
  *   { serverId, homebrew: [...] }             adds entries (same kind and name replaces)
  *   { serverId, clearHomebrew: true }
  */
@@ -45,6 +50,7 @@ export async function POST(request: Request) {
     edition?: unknown;
     combatMusic?: unknown;
     exploreMusic?: unknown;
+    gmRoleId?: unknown;
     homebrew?: unknown;
     clearHomebrew?: boolean;
   };
@@ -61,6 +67,21 @@ export async function POST(request: Request) {
   if (body.edition === "2014" || body.edition === "2024") settings.edition = body.edition;
   if (typeof body.combatMusic === "string") settings.combatMusic = body.combatMusic.trim().slice(0, 300);
   if (typeof body.exploreMusic === "string") settings.exploreMusic = body.exploreMusic.trim().slice(0, 300);
+  if (body.gmRoleId !== undefined) {
+    const rawRoleId = typeof body.gmRoleId === "string" ? body.gmRoleId.trim().slice(0, 64) : "";
+    if (!rawRoleId) {
+      settings.gmRoleId = null;
+    } else {
+      const roleRow = await db
+        .prepare("SELECT id FROM roles WHERE id = ? AND server_id = ?")
+        .bind(rawRoleId, serverId)
+        .first<{ id: string }>();
+      if (!roleRow) {
+        return Response.json({ error: "That role does not exist in this server." }, { status: 400 });
+      }
+      settings.gmRoleId = roleRow.id;
+    }
+  }
   if (body.clearHomebrew) settings.homebrew = [];
   let imported: { added: number; skipped: number } | undefined;
   if (body.homebrew !== undefined) {

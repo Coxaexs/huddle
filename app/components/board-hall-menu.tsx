@@ -14,6 +14,8 @@ import {
   type BoardGameState, type BridgeCommand, type BridgeControl, type BridgeDialog, type BridgeItem, type BridgeState,
 } from "../lib/board-game";
 import type { BridgeToast } from "../hooks/use-deeppixel-bridge";
+import { useI18n } from "../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 
 interface Props {
   game: BoardGameState | null;
@@ -29,14 +31,14 @@ interface Props {
   onCloseTile: () => void;
 }
 
-const CONTROL_LOOK: Record<BridgeControl["key"], { label: string; icon: typeof Dices }> = {
-  roll: { label: "Roll", icon: Dices },
-  end: { label: "End turn", icon: ChevronDown },
-  joker: { label: "Joker cards", icon: Sparkles },
-  manage: { label: "Build & mortgage", icon: Home },
-  credit: { label: "Credit", icon: Banknote },
-  team: { label: "Team", icon: Users },
-  trades: { label: "Trades", icon: ArrowRightLeft },
+const CONTROL_LOOK: Record<BridgeControl["key"], { labelKey: MessageKey; icon: typeof Dices }> = {
+  roll: { labelKey: "boardHall.ctrl.roll", icon: Dices },
+  end: { labelKey: "boardHall.ctrl.end", icon: ChevronDown },
+  joker: { labelKey: "boardHall.ctrl.joker", icon: Sparkles },
+  manage: { labelKey: "boardHall.ctrl.manage", icon: Home },
+  credit: { labelKey: "boardHall.ctrl.credit", icon: Banknote },
+  team: { labelKey: "boardHall.ctrl.team", icon: Users },
+  trades: { labelKey: "boardHall.ctrl.trades", icon: ArrowRightLeft },
 };
 
 function Item({ item, send }: { item: BridgeItem; send: Props["send"] }) {
@@ -103,11 +105,12 @@ function Items({ items, send }: { items: BridgeItem[]; send: Props["send"] }) {
 }
 
 function Dialog({ dialog, send }: { dialog: BridgeDialog; send: Props["send"] }) {
+  const { t } = useI18n();
   return (
-    <section className={`bh-dialog bh-dialog-${dialog.key}`} role="dialog" aria-label={dialog.title || "Game"}>
+    <section className={`bh-dialog bh-dialog-${dialog.key}`} role="dialog" aria-label={dialog.title || t("boardHall.gameAria")}>
       <header>
         <strong>{dialog.title || "DeepPixel"}</strong>
-        {dialog.dismissable && <button type="button" onClick={() => send({ type: "open", what: "close" })} aria-label="Close"><X size={14} /></button>}
+        {dialog.dismissable && <button type="button" onClick={() => send({ type: "open", what: "close" })} aria-label={t("common.close")}><X size={14} /></button>}
       </header>
       <div className="bh-dialog-body"><Items items={dialog.items} send={send} /></div>
     </section>
@@ -115,6 +118,7 @@ function Dialog({ dialog, send }: { dialog: BridgeDialog; send: Props["send"] })
 }
 
 export function BoardHallMenu({ game, gameId, bridge, toasts, send, userId, onPlay, tile, onCloseTile }: Props) {
+  const { t } = useI18n();
   const [open, setOpen] = useState<"none" | "props" | "players">("none");
   const board = boardOf(game);
   const myId = userId ? deepPixelPlayerId(userId) : null;
@@ -132,12 +136,12 @@ export function BoardHallMenu({ game, gameId, bridge, toasts, send, userId, onPl
   const dialogs = bridge?.dialogs ?? [];
   const pendingTrades = (bridge?.trades ?? []).some((item) => item.kind === "button");
 
-  const status = !gameId ? "No game here yet."
-    : !game ? "Opening the game…"
-      : game.state === "lobby" ? `In the lobby · ${players.length} joined`
-        : !bridge ? "Connecting you to your seat…"
-          : myTurn ? (controls.get("roll") && !controls.get("roll")!.disabled ? "Your turn: roll the dice." : "Your turn.")
-            : turn ? `${turn.name}'s turn.` : bridge.turnInfo;
+  const status = !gameId ? t("boardHall.noGame")
+    : !game ? t("boardHall.openingGame")
+      : game.state === "lobby" ? t("boardHall.inLobby", { count: players.length })
+        : !bridge ? t("boardHall.connectingSeat")
+          : myTurn ? (controls.get("roll") && !controls.get("roll")!.disabled ? t("boardHall.yourTurnRoll") : t("boardHall.yourTurn"))
+            : turn ? t("boardHall.playersTurn", { name: turn.name }) : bridge.turnInfo;
 
   const tileSpace = tile !== null ? board[tile] : null;
   const tileState = tile !== null ? game?.properties?.find((property) => property.spaceIndex === tile) ?? game?.properties?.[tile] : null;
@@ -159,16 +163,16 @@ export function BoardHallMenu({ game, gameId, bridge, toasts, send, userId, onPl
             <section className="bh-dialog bh-tile">
               <header>
                 <strong>{spaceGlyph(tileSpace)} {tileSpace.name}</strong>
-                <button type="button" onClick={onCloseTile} aria-label="Close"><X size={14} /></button>
+                <button type="button" onClick={onCloseTile} aria-label={t("common.close")}><X size={14} /></button>
               </header>
               <div className="bh-dialog-body">
                 {tileSpace.color && <i className="bh-band" style={{ background: tileSpace.color }} />}
-                {tileSpace.price ? <p className="bh-text">Price ${tileSpace.price}</p> : null}
+                {tileSpace.price ? <p className="bh-text">{t("boardHall.price", { price: tileSpace.price })}</p> : null}
                 <p className="bh-text">
-                  {tileOwner ? <>Owned by <b style={{ color: tileOwner.color }}>{tileOwner.id === myId ? "you" : tileOwner.name}</b>{tileState?.houses ? ` · ${tileState.houses >= 5 ? "hotel" : `${tileState.houses} house${tileState.houses > 1 ? "s" : ""}`}` : ""}{tileState?.mortgaged ? " · mortgaged" : ""}</>
-                    : tileSpace.price ? "Nobody owns it yet." : ""}
+                  {tileOwner ? <>{t("boardHall.ownedBy")}<b style={{ color: tileOwner.color }}>{tileOwner.id === myId ? t("boardHall.you") : tileOwner.name}</b>{tileState?.houses ? ` · ${tileState.houses >= 5 ? t("boardHall.hotel") : t("boardHall.houses", { count: tileState.houses, unit: tileState.houses > 1 ? t("boardHall.housePlural") : t("boardHall.houseSingle") })}` : ""}{tileState?.mortgaged ? t("boardHall.mortgagedSuffix") : ""}</>
+                    : tileSpace.price ? t("boardHall.nobodyOwns") : ""}
                 </p>
-                {bridge && <div className="bh-row"><button type="button" className="bh-btn" onClick={() => { send({ type: "open", what: "tile", index: tile! }); onCloseTile(); }}>Details & rent</button></div>}
+                {bridge && <div className="bh-row"><button type="button" className="bh-btn" onClick={() => { send({ type: "open", what: "tile", index: tile! }); onCloseTile(); }}>{t("boardHall.detailsRent")}</button></div>}
               </div>
             </section>
           )}
@@ -184,7 +188,7 @@ export function BoardHallMenu({ game, gameId, bridge, toasts, send, userId, onPl
 
         {(!gameId || !game || game.state === "lobby" || !bridge || !me) && (
           <button type="button" className="bh-btn primary wide" onClick={onPlay} disabled={!onPlay}>
-            <Gamepad2 size={15} /> {!gameId ? "Start a game" : game?.state === "lobby" ? "Open the lobby" : !me && game ? "Join the game" : "Open the game"}
+            <Gamepad2 size={15} /> {!gameId ? t("boardHall.startGame") : game?.state === "lobby" ? t("boardHall.openLobby") : !me && game ? t("boardHall.joinGame") : t("boardHall.openGame")}
           </button>
         )}
 
@@ -192,15 +196,16 @@ export function BoardHallMenu({ game, gameId, bridge, toasts, send, userId, onPl
           <>
             <div className="bh-actions">
               <button type="button" className={`bh-roll${myTurn && !controls.get("roll")?.disabled ? " ready" : ""}`} disabled={!controls.get("roll") || controls.get("roll")!.disabled} onClick={() => press("roll")}>
-                <Dices size={18} /> Roll
+                <Dices size={18} /> {t("boardHall.ctrl.roll")}
               </button>
-              <button type="button" className="bh-btn" disabled={!controls.get("end") || controls.get("end")!.disabled} onClick={() => press("end")}>End turn</button>
+              <button type="button" className="bh-btn" disabled={!controls.get("end") || controls.get("end")!.disabled} onClick={() => press("end")}>{t("boardHall.ctrl.end")}</button>
             </div>
             <div className="bh-chips">
               {(["joker", "manage", "credit", "team", "trades"] as const).map((key) => {
                 const control = controls.get(key);
                 if (!control || control.hidden) return null;
-                const { label, icon: Icon } = CONTROL_LOOK[key];
+                const { labelKey, icon: Icon } = CONTROL_LOOK[key];
+                const label = t(labelKey);
                 return (
                   <button key={key} type="button" className={key === "trades" && pendingTrades ? "alert" : ""} disabled={control.disabled} onClick={() => press(key)} title={control.label || label}>
                     <Icon size={13} /> {label}
@@ -217,16 +222,16 @@ export function BoardHallMenu({ game, gameId, bridge, toasts, send, userId, onPl
         {playing && (
           <div className="bh-sections">
             <button type="button" onClick={() => setOpen(open === "props" ? "none" : "props")} aria-expanded={open === "props"}>
-              My properties ({mine.length}) {open === "props" ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              {t("boardHall.myProperties", { count: mine.length })} {open === "props" ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
             <button type="button" onClick={() => setOpen(open === "players" ? "none" : "players")} aria-expanded={open === "players"}>
-              Players ({players.filter((p) => !p.isBankrupt).length}) {open === "players" ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              {t("boardHall.playersCount", { count: players.filter((p) => !p.isBankrupt).length })} {open === "players" ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
           </div>
         )}
         {playing && open === "props" && (
           <ul className="bh-list">
-            {mine.length === 0 && <li className="bh-empty">Nothing yet. Land on a street and buy it.</li>}
+            {mine.length === 0 && <li className="bh-empty">{t("boardHall.noProps")}</li>}
             {mine.map((property) => {
               const space = board[property.spaceIndex];
               if (!space) return null;
@@ -235,7 +240,7 @@ export function BoardHallMenu({ game, gameId, bridge, toasts, send, userId, onPl
                   <button type="button" onClick={() => send({ type: "open", what: "tile", index: property.spaceIndex })} disabled={!bridge}>
                     <i style={{ background: space.color || "#8b8f98" }} />
                     <span>{space.name}</span>
-                    <small>{property.mortgaged ? "mortgaged" : property.houses ? (property.houses >= 5 ? "🏨" : "🏠".repeat(property.houses)) : `$${space.price ?? ""}`}</small>
+                    <small>{property.mortgaged ? t("boardHall.mortgaged") : property.houses ? (property.houses >= 5 ? "🏨" : "🏠".repeat(property.houses)) : `$${space.price ?? ""}`}</small>
                   </button>
                 </li>
               );
@@ -248,11 +253,11 @@ export function BoardHallMenu({ game, gameId, bridge, toasts, send, userId, onPl
               <li key={player.id} className={`${player.id === turn?.id ? "turn" : ""}${player.isBankrupt ? " out" : ""}`}>
                 <button type="button" onClick={() => send({ type: "open", what: "player", id: player.id })} disabled={!bridge}>
                   <i style={{ background: player.color || "#ffd166" }} />
-                  <span>{player.name}{player.id === myId ? " (you)" : ""}{player.inJail ? " ⛓" : ""}</span>
+                  <span>{player.name}{player.id === myId ? t("boardHall.youSuffix") : ""}{player.inJail ? " ⛓" : ""}</span>
                   <small>${Math.round(player.money ?? 0).toLocaleString()} · {board[((player.position ?? 0) % board.length + board.length) % board.length]?.name}</small>
                 </button>
                 {bridge && me && player.id !== myId && !player.isBankrupt && (
-                  <button type="button" className="bh-mini" onClick={() => send({ type: "open", what: "trade", id: player.id })} title={`Trade with ${player.name}`}><ArrowRightLeft size={12} /></button>
+                  <button type="button" className="bh-mini" onClick={() => send({ type: "open", what: "trade", id: player.id })} title={t("boardHall.tradeWith", { name: player.name })}><ArrowRightLeft size={12} /></button>
                 )}
               </li>
             ))}

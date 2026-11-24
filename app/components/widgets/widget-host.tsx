@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useMemo } from "react";
+import type { MapToken } from "@/lib/battlemap";
 import type { MessageKey } from "@/lib/i18n";
 import type { Initiative, TableCharacter } from "@/lib/lounge-shared";
 import type { PlayerState } from "@/lib/protocol";
@@ -28,6 +29,23 @@ export interface WidgetHostValue {
   playerBot: boolean;
   /** Who is signed in. */
   userId: string;
+  /** Whether the signed-in user has DM authority on this server. */
+  isDm?: boolean;
+  /** Opens the server's Party Loot & Quest Board panel. */
+  openPartyStash?: () => void;
+  /** Active battlemap controls for inline DM actions (e.g. 1-click roll card damage). */
+  battlemap?: {
+    tokens: MapToken[];
+    gm: boolean;
+    selectedTokenId: string | null;
+    applyDamage: (
+      tokenId: string,
+      delta: number,
+    ) => Promise<{
+      token: MapToken;
+      concentrationCheck: { tokenId: string; label: string; damage: number; dc: number } | null;
+    } | null>;
+  };
   /** Runs a slash command as if typed in the open channel. */
   runCommand: (raw: string) => Promise<void>;
   /** The D&D table of the voice room you are in. */
@@ -111,6 +129,7 @@ export const BUILTIN_WIDGETS: readonly BuiltinEntry[] = [
   dnd("dnd-condition", "💫", "widget.dndCondition", "widget.dndCondition.desc"),
   dnd("dnd-feat", "🏅", "widget.dndFeat", "widget.dndFeat.desc"),
   dnd("dnd-class", "📜", "widget.dndClass", "widget.dndClass.desc"),
+  dnd("dnd-stash", "🪙", "widget.dndStash", "widget.dndStash.desc"),
 ];
 
 export function builtinWidget(id: string): BuiltinEntry | undefined {

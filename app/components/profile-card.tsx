@@ -10,6 +10,7 @@ import { scopeProfileCss } from "@/lib/themes";
 import { StyledText } from "./message-body";
 import { AvatarDecoration, ProfileEffect, ProfileFrameArt } from "./cosmetics-lite";
 import { cardLook, useCardPointer } from "../lib/profile-look";
+import { useI18n } from "../lib/i18n-context";
 import { CardBackdrop, CardChrome, StyledName } from "./profile-style-parts";
 
 interface ProfileCardProps {
@@ -22,11 +23,11 @@ interface ProfileCardProps {
   onClose: () => void;
 }
 
-function memberSince(iso: string | undefined): string {
+function memberSince(iso: string | undefined, locale: string): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString(locale, {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -42,6 +43,7 @@ export function ProfileCard({
   onMessage,
   onClose,
 }: ProfileCardProps) {
+  const { t, locale } = useI18n();
   const cosmeticsOn = useModuleOn("cosmetics");
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -52,7 +54,7 @@ export function ProfileCard({
   }, [onClose]);
 
   const nameColor = roles[0]?.color;
-  const since = memberSince(member.createdAt);
+  const since = memberSince(member.createdAt, locale);
   const safeScopeId = member.id.replace(/[^a-zA-Z0-9_-]/g, "_");
   const hostRef = useRef<HTMLDivElement>(null);
   const look = cardLook(member.profileStyle, member.color);
@@ -91,7 +93,7 @@ export function ProfileCard({
           type="button"
           className="profile-close"
           onClick={onClose}
-          aria-label="Close profile"
+          aria-label={t("chat.profileCard.closeAria")}
         >
           ×
         </button>
@@ -111,10 +113,10 @@ export function ProfileCard({
             <strong style={{ color: nameColor || undefined }}>
               <StyledName name={member.displayName} style={member.profileStyle} live />
             </strong>
-            {member.isAdmin && <span className="profile-badge owner">OWNER</span>}
+            {member.isAdmin && <span className="profile-badge owner">{t("chat.profileCard.owner")}</span>}
             <PrideBadges badges={member.prideBadges} compact />
             <span className={`profile-status ${online ? "online" : ""}`}>
-              {online ? "Online" : "Offline"}
+              {online ? t("chat.profileCard.online") : t("chat.profileCard.offline")}
             </span>
           </div>
           <div className="profile-handle">@{member.username}</div>
@@ -129,7 +131,7 @@ export function ProfileCard({
 
           {roles.length > 0 && (
             <div className="profile-section">
-              <span className="profile-label">Roles</span>
+              <span className="profile-label">{t("chat.profileCard.roles")}</span>
               <div className="profile-roles">
                 {roles.map((role) => (
                   <span
@@ -153,13 +155,13 @@ export function ProfileCard({
 
           {since && (
             <div className="profile-section">
-              <span className="profile-label">Member since</span>
+              <span className="profile-label">{t("chat.profileCard.memberSince")}</span>
               <div>{since}</div>
             </div>
           )}
 
           <button type="button" className="profile-message" onClick={onMessage}>
-            {isSelf ? "Note to Self" : "Message"}
+            {isSelf ? t("chat.profileCard.noteToSelf") : t("chat.profileCard.message")}
           </button>
         </div>
       </div>

@@ -18,6 +18,7 @@ import { apiFetch } from "../../lib/client";
 import { membersText, shownCounts } from "@/lib/member-counts";
 import type { useShellState } from "./use-shell-state";
 import { adoptUiMode, installUiMode } from "@/app/lib/ui-mode";
+import { installEcoMode } from "@/app/lib/eco-mode";
 import { adoptLayout, installLayout } from "@/app/lib/layout-store";
 import { avatarForShownName } from "@/lib/avatar-initial";
 import { adoptNotifyPrefs } from "../../lib/notify-prefs-store";
@@ -32,7 +33,7 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
     setChannelPrefs, setDms, setDraftState, setEditingId, setEmojis, setFeatures, setFriendUserIds,
     setIncomingFriendUserIds, setMembers, setNotice, setOpenSignup, setOutgoingFriendUserIds,
     setPendingFiles, setPendingFriendCount, setProfileCardTarget, setReady, setReplyTarget,
-    setResolvedInvites, setServerFolders, setServers, setTurnstileSiteKey, setUnread, setUser,
+    setResolvedInvites, setServerFolders, setServers, setTurnstileSiteKey, setOauth, setUnread, setUser,
     setUserMenu, setVoicePrefs, showCustomConfirm, threadMessages, threadRoot, unread, unreadRef,
     user,
   } = s;
@@ -278,12 +279,14 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
       bootstrap: boolean;
       openSignup?: boolean;
       turnstileSiteKey?: string | null;
+      oauth?: { google: boolean; discord: boolean };
     }>("/api/auth/session")
       .then((data) => {
         setUser(data.user);
         setBootstrap(data.bootstrap);
         setOpenSignup(Boolean(data.openSignup));
         setTurnstileSiteKey(data.turnstileSiteKey ?? null);
+        if (data.oauth) setOauth(data.oauth);
       })
       .catch(() => undefined)
       .finally(() => setReady(true));
@@ -293,6 +296,7 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
   const accountUiMode = user?.uiMode;
   useEffect(() => {
     installUiMode();
+    installEcoMode();
     adoptUiMode(accountUiMode);
   }, [accountUiMode]);
 
@@ -661,14 +665,49 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
     return mask;
   }, [user, activeServer, membersById]);
 
+  const [serverDndSettings, setServerDndSettings] = useState<{ serverId: string; gmRoleId: string | null; isDm: boolean } | null>(null);
+  useEffect(() => {
+    const serverId = activeServer?.id;
+    const dndDisabled = activeServer?.disabledModules?.includes("dnd");
+    if (!user || !serverId || serverId === DM_HOME || dndDisabled) {
+      setServerDndSettings(null);
+      return;
+    }
+    let cancelled = false;
+    void apiFetch<{ gmRoleId?: string | null; isDm?: boolean }>(`/api/integrations/dnd/settings?serverId=${encodeURIComponent(serverId)}`)
+      .then((data) => {
+        if (cancelled) return;
+        setServerDndSettings({
+          serverId,
+          gmRoleId: typeof data.gmRoleId === "string" && data.gmRoleId ? data.gmRoleId : null,
+          isDm: Boolean(data.isDm),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setServerDndSettings(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, activeServer?.id, activeServer?.disabledModules]);
+
+  const hasConfiguredDmRole = Boolean(
+    user &&
+      activeServer &&
+      serverDndSettings?.serverId === activeServer.id &&
+      serverDndSettings.gmRoleId &&
+      membersById.get(user.id)?.roleIds?.[activeServer.id]?.includes(serverDndSettings.gmRoleId),
+  );
   const canManageChannels = hasPermission(myPermissions, Permission.MANAGE_CHANNELS);
+  const isServerDm =
+    canManageChannels ||
+    hasConfiguredDmRole ||
+    Boolean(activeServer && serverDndSettings?.serverId === activeServer.id && serverDndSettings.isDm);
   const canManageServer = hasPermission(myPermissions, Permission.MANAGE_SERVER);
   const canManageRoles = hasPermission(myPermissions, Permission.MANAGE_ROLES);
   const canManageEmojis = hasPermission(myPermissions, Permission.MANAGE_EMOJIS);
-  const canRecordSessions = hasPermission(
-    myPermissions,
-    Permission.RECORD_SESSIONS,
-  );
+  const canRecordSessions =
+    hasPermission(myPermissions, Permission.RECORD_SESSIONS) || hasConfiguredDmRole;
   const canModerate = hasPermission(myPermissions, Permission.MODERATE);
   const canKickMembers = hasPermission(myPermissions, Permission.KICK_MEMBERS);
   const canBanMembers = hasPermission(myPermissions, Permission.BAN_MEMBERS);
@@ -877,7 +916,7 @@ export function useShellSession(s: ReturnType<typeof useShellState>) {
     jumpToMessageRef, linkedMessageHandledRef, joinServerDirectRef, activeServer, textChannels,
     voiceChannels, serverEvents, reloadEvents, nextEvent, membersById, timeoutTick, setTimeoutTick,
     myTimeoutUntil, myPermissions, canManageChannels, canManageServer, canManageRoles,
-    canManageEmojis, canRecordSessions, canModerate, canKickMembers, canBanMembers,
+    canManageEmojis, canRecordSessions, isServerDm, canModerate, canKickMembers, canBanMembers,
     canViewAuditLog, canPostAnnouncements, canPin, canManageNicknames, canMentionEveryone,
     canCreateServerInvites, canOpenServerSettings, rolesForMember, openProfile,
     openProfileByHandle, roleColorFor, channelLayout, emojiMap, dmUnread, dmUnreadTotal,

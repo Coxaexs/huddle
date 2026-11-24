@@ -5,7 +5,7 @@ import {
   hashPassword,
   normalizeEmail,
   publicUser,
-  sessionCookie,
+  sessionResponseHeaders,
   validatePassword,
   validateUsername,
   type User,
@@ -301,9 +301,10 @@ export async function POST(request: Request) {
   }
 
   const token = await createSession(db, user.id, request);
+  const headers = await sessionResponseHeaders(db, request, user.id, token);
   return Response.json(
     // `joined`: the everyone server, so the app can say how to leave it.
     { user: publicUser(user), defaultTheme, pendingEmail, joined },
-    { status: 201, headers: { "Set-Cookie": sessionCookie(request, token) } },
+    { status: 201, headers },
   );
 }

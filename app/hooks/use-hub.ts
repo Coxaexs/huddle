@@ -20,6 +20,7 @@ import { ROSTER_GRACE_MS, withRosterGrace } from "../lib/roster-grace";
 import { shardEventAllowed, shardRetryMs } from "../lib/room-shard";
 import { receiveBotWidget } from "../lib/widget-store";
 import { relayToOverlay } from "../lib/desktop-overlay";
+import { rememberSecretRoll } from "@/lib/secret-roll";
 
 export interface HubState {
   connected: boolean;
@@ -102,9 +103,14 @@ interface HubHandlers {
       map?: unknown;
       token?: unknown;
       tokens?: unknown;
+      tokenId?: string;
       stroke?: unknown;
       strokes?: unknown;
       fog?: unknown;
+      areas?: unknown;
+      ping?: unknown;
+      scenes?: unknown;
+      hpVisibility?: "exact" | "tier" | "hidden";
       encounter?: "combat" | "exploration";
     },
   ) => void;
@@ -566,19 +572,41 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
               (payload as { voterLists?: Array<Array<{ id: string; name: string }>> }).voterLists,
             );
             break;
-          case "battlemap":
-            handlersRef.current.onBattlemap?.(payload.channelId, {
-              action: payload.action,
-              map: payload.map,
-              token: payload.token,
-              tokens: payload.tokens,
-              stroke: payload.stroke,
-              strokes: payload.strokes,
-              encounter: payload.encounter,
+          case "battlemap": {
+            const bmPayload = payload as {
+              channelId: string;
+              action: string;
+              map?: unknown;
+              token?: unknown;
+              tokens?: unknown;
+              tokenId?: string;
+              stroke?: unknown;
+              strokes?: unknown;
+              fog?: unknown;
+              areas?: unknown;
+              ping?: unknown;
+              scenes?: unknown;
+              hpVisibility?: "exact" | "tier" | "hidden";
+              encounter?: "combat" | "exploration";
+            };
+            handlersRef.current.onBattlemap?.(bmPayload.channelId, {
+              action: bmPayload.action,
+              map: bmPayload.map,
+              token: bmPayload.token,
+              tokens: bmPayload.tokens,
+              tokenId: bmPayload.tokenId,
+              stroke: bmPayload.stroke,
+              strokes: bmPayload.strokes,
+              encounter: bmPayload.encounter,
               // Without this, every fog edit cleared every player's fog.
-              fog: (payload as { fog?: unknown }).fog,
+              fog: bmPayload.fog,
+              areas: bmPayload.areas,
+              ping: bmPayload.ping,
+              scenes: bmPayload.scenes,
+              hpVisibility: bmPayload.hpVisibility,
             });
             break;
+          }
           case "activity":
             handlersRef.current.onActivity?.(payload.channelId, {
               action: payload.action,
@@ -611,6 +639,12 @@ export function useHub(enabled: boolean, handlers: HubHandlers) {
             break;
           case "dm-call":
             handlersRef.current.onDmCall?.(payload);
+            break;
+          case "blind-roll":
+            rememberSecretRoll(payload.seed, payload.card as Record<string, unknown>);
+            break;
+          case "dnd-stash":
+            window.dispatchEvent(new CustomEvent("hoffle:dnd-stash", { detail: payload }));
             break;
           default:
             break;

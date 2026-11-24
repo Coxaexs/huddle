@@ -62,6 +62,10 @@ export function useShellState() {
   const [bootstrap, setBootstrap] = useState(false);
   const [openSignup, setOpenSignup] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
+  const [oauth, setOauth] = useState<{ google: boolean; discord: boolean }>({
+    google: false,
+    discord: false,
+  });
   const [ready, setReady] = useState(false);
   /** Per-host feature flags; defaults to everything on until loaded. */
   const [features, setFeatures] = useState<{ recordSessions: boolean }>({
@@ -1255,6 +1259,8 @@ export function useShellState() {
 
   /** The "Streaming Now" card for a streaming member or a room's watch party. */
   const [streamHover, setStreamHover] = useState<(StreamHoverInfo & { anchorRect: DOMRect }) | null>(null);
+  const [icModeByChannel, setIcModeByChannel] = useState<Record<string, boolean>>({});
+  const [partyStashOpen, setPartyStashOpen] = useState(false);
   const streamHoverTimer = useRef<number | null>(null);
 
   /** Shows the card after a short hover (now, for a tap), or hides it shortly after leaving. */
@@ -1314,8 +1320,17 @@ export function useShellState() {
     battlemap,
     gm: battlemapGm,
     hidden: battlemapHidden,
+    scenes: battlemapScenes,
+    lastPing: battlemapPing,
+    selectedTokenId: selectedBattlemapTokenId,
+    setSelectedTokenId: setSelectedBattlemapTokenId,
     onSocket: onBattlemapSocket,
     open: openBattlemap,
+    prepScene: prepBattlemapScene,
+    switchScene: switchBattlemapScene,
+    deleteScene: deleteBattlemapScene,
+    setHpVisibility: setBattlemapHpVisibility,
+    applyDamage: applyBattlemapDamage,
     addMyToken,
     localToken: onLocalToken,
     localStroke: onLocalStroke,
@@ -1391,7 +1406,7 @@ export function useShellState() {
 
   return {
     user, setUser, bootstrap, setBootstrap, openSignup, setOpenSignup, turnstileSiteKey,
-    setTurnstileSiteKey, ready, setReady, features, setFeatures, servers, setServers, members,
+    setTurnstileSiteKey, oauth, setOauth, ready, setReady, features, setFeatures, servers, setServers, members,
     setMembers, memberFilterQuery, setMemberFilterQuery, dms, setDms, groupDialog, setGroupDialog,
     inviteDialog, setInviteDialog, activeServerId, setActiveServerId, activeChannelId, setActiveChannelId, stageChannelId,
     setStageChannelId, voiceChatOpen, setVoiceChatOpenState, setVoiceChatOpen, voiceChatSinksRef,
@@ -1447,7 +1462,9 @@ export function useShellState() {
     showCustomConfirm, msnContacts, whatsNewPeople, whatsNew, personalEmoticons,
     createContactGroup, renameContactGroup, deleteContactGroup, hoverCard, setHoverCard,
     hoverTimer, queueHoverCard, pictureOpen, setPictureOpen, placeContact, toggleSignInAlert,
-    battlemapApi, battlemap, battlemapGm, battlemapHidden, onBattlemapSocket, openBattlemap,
+    battlemapApi, battlemap, battlemapGm, battlemapHidden, battlemapScenes, battlemapPing,
+    selectedBattlemapTokenId, setSelectedBattlemapTokenId, onBattlemapSocket, openBattlemap,
+    prepBattlemapScene, switchBattlemapScene, deleteBattlemapScene, setBattlemapHpVisibility, applyBattlemapDamage,
     addMyToken, onLocalToken, onLocalStroke, toggleBattlemap, closeBattlemap, fileRef, composerRef,
     messageEndRef, messagesScrollRef, nearBottomRef, showJumpLatest, setShowJumpLatest,
     unseenCount, setUnseenCount, unreadMarker, setUnreadMarker, unreadBarVisible,
@@ -1456,5 +1473,6 @@ export function useShellState() {
     welcomeChecked, setWelcomeChecked, markWelcomeChecked, touchInput, setTouchInput, dragging,
     setDragging, profileCardTarget, setProfileCardTarget, streamHover, setStreamHover, queueStreamHover,
     keepStreamHover, stageFocusRequest, setStageFocusRequest,
+    icModeByChannel, setIcModeByChannel, partyStashOpen, setPartyStashOpen,
   };
 }

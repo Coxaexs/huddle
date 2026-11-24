@@ -9,6 +9,7 @@ import { attachWatchSource } from "../../lib/watch-source";
 import { createRoomFollower, roomMoment } from "../../lib/watch-sync";
 import { partyPlayerOn } from "../../lib/tune-in";
 import { SubtitleOverlay } from "../watch-subtitles";
+import { useI18n } from "../../lib/i18n-context";
 
 export function hasLiveVideo(stream: MediaStream): boolean {
   return stream.getVideoTracks().some((track) => track.readyState === "live");
@@ -175,6 +176,7 @@ export function WatchSurface({
   audible,
   onEnded,
 }: { url: string } & WatchPlayback) {
+  const { t } = useI18n();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const live = useRef({ state, hubNow, volume, audible, onEnded });
   live.current = { state, hubNow, volume, audible, onEnded };
@@ -259,11 +261,11 @@ export function WatchSurface({
             void videoRef.current?.play().then(() => setBlocked(false)).catch(() => undefined);
           }}
         >
-          <Play size={18} /> Click to play
+          <Play size={18} /> {t("voice.tiles.clickToPlay")}
         </button>
       )}
       <SubtitleOverlay url={url} time={() => { const video = videoRef.current; return video && video.readyState >= 2 ? video.currentTime : null; }} />
-      {buffering && !problem && !blocked && <div className="watch-surface-note">Loading the film…</div>}
+      {buffering && !problem && !blocked && <div className="watch-surface-note">{t("voice.tiles.loadingFilm")}</div>}
       {problem && <div className="watch-surface-problem">{problem}</div>}
     </div>
   );

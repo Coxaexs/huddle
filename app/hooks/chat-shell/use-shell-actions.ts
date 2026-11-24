@@ -19,7 +19,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
     replyTarget, replyMention, setActiveChannelId, setActiveServerId, setBannedIds, setDms, setDraft, setMembers,
     setMessages, setMobileNav, setNotice, setNudgeCooling, setReplyTarget, setStageChannelId,
     setTheme, setVoicePrefs, showCustomConfirm, showCustomPrompt, user, visibleDms, voice,
-    voiceChannels, forumDraftTags, setForumDraftTags,
+    voiceChannels, forumDraftTags, setForumDraftTags, livingRoom, icModeByChannel,
   } = s;
 
   // ------------------------------------------------------------- actions
@@ -694,11 +694,23 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
     });
   }
 
-  async function sendText(text: string, attachmentKeys?: string | string[], payload?: { imageAlts?: Record<string, string> }) {
+  async function sendText(
+    text: string,
+    attachmentKeys?: string | string[],
+    payload?: { imageAlts?: Record<string, string> },
+    asCharacterOverride?: { name: string; portraitUrl?: string | null; color?: string | null } | null,
+  ) {
     if (!activeChannelId) return;
     // A new forum post takes the tags picked on the board.
     const forumTags = forumDraftTags?.channelId === activeChannelId ? forumDraftTags.tags : [];
     const isDm = dmChannelIdsRef.current.has(activeChannelId) || inDmHome;
+    const mySheet = user ? livingRoom.shared.characters[user.id] : null;
+    const icChar =
+      asCharacterOverride !== undefined
+        ? asCharacterOverride
+        : !isDm && icModeByChannel[activeChannelId] && mySheet?.name
+          ? { name: mySheet.name, portraitUrl: mySheet.portraitUrl ?? null, color: user?.color ?? null }
+          : null;
     if (isDm) {
       const now = new Date().toISOString();
       setDms((current) =>
@@ -739,6 +751,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
         createdAt: now.toISOString(),
         replyTo,
         replyPreview: replyTarget && replyTo ? { author: replyTarget.author, text: replyTarget.text } : undefined,
+        ...(icChar ? { payload: { ic: icChar } } : {}),
       };
       setMessages((current) => [...current, pending]);
     }
@@ -761,6 +774,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
           replyTo,
           replyMention: shouldMentionReply,
           payload: forumTags.length ? { ...(payload || {}), forumTags } : payload,
+          ...(icChar ? { asCharacter: icChar } : {}),
         }),
       });
       if (forumTags.length) setForumDraftTags(null);

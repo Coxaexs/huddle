@@ -55,6 +55,8 @@ function navFor(lang: LandingLang) {
   return [
     { href: sectionHref(lang, "features"), label: nav.features },
     { href: sectionHref(lang, "themes"), label: nav.themes },
+    { href: lang === "tr" ? "/tr/dnd" : "/dnd", label: "D&D" },
+    { href: lang === "tr" ? "/tr/discover" : "/discover", label: lang === "tr" ? "Keşfet" : "Discover" },
     { href: sectionHref(lang, "staying"), label: nav.staying },
     { href: sectionHref(lang, "download"), label: nav.download },
     { href: "/docs", label: nav.docs },
@@ -109,10 +111,15 @@ const SITE_THEME_KEY = "hoffle-site-theme";
 const THEME_SCRIPT = `(function(){var d=document.documentElement,m=window.matchMedia("(prefers-color-scheme: dark)");function saved(){try{var s=localStorage.getItem("${SITE_THEME_KEY}");return s==="light"||s==="dark"?s:null}catch(e){return null}}function apply(){d.dataset.lpTheme=saved()||(m.matches?"dark":"light")}apply();m.addEventListener&&m.addEventListener("change",function(){if(!saved()){apply();window.dispatchEvent(new Event("lp-theme-change"))}})})();`;
 
 /** GitHub, Ko-fi, Sponsors and the Open Hoffle button, on the right of the header. */
-function HeaderLinks({ label }: { label: string }) {
+function HeaderLinks({ label, lang }: { label: string; lang: LandingLang }) {
+  const tr = lang === "tr";
   return (
     <>
-      <a href={REPO} className="hidden h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink) sm:grid" aria-label="Hoffle on GitHub">
+      <a
+        href={REPO}
+        className="hidden h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink) sm:grid"
+        aria-label={tr ? "GitHub'da Hoffle" : "Hoffle on GitHub"}
+      >
         <GithubMark className="h-5 w-5" />
       </a>
       {KOFI_URL && (
@@ -121,8 +128,8 @@ function HeaderLinks({ label }: { label: string }) {
           target="_blank"
           rel="noopener noreferrer"
           className="hidden h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink) sm:grid"
-          aria-label="Support Hoffle on Ko-fi"
-          title="Support Hoffle on Ko-fi"
+          aria-label={tr ? "Ko-fi'da Hoffle'ı destekle" : "Support Hoffle on Ko-fi"}
+          title={tr ? "Ko-fi'da Hoffle'ı destekle" : "Support Hoffle on Ko-fi"}
         >
           <Coffee className="h-5 w-5" />
         </a>
@@ -133,8 +140,8 @@ function HeaderLinks({ label }: { label: string }) {
           target="_blank"
           rel="noopener noreferrer"
           className="hidden h-10 w-10 place-items-center rounded-full text-(--ink-2) hover:bg-(--paper-2) hover:text-(--ink) sm:grid"
-          aria-label="Sponsor Hoffle on GitHub"
-          title="Sponsor Hoffle on GitHub"
+          aria-label={tr ? "GitHub'da Hoffle'a sponsor ol" : "Sponsor Hoffle on GitHub"}
+          title={tr ? "GitHub'da Hoffle'a sponsor ol" : "Sponsor Hoffle on GitHub"}
         >
           <Heart className="h-5 w-5" />
         </a>
@@ -219,7 +226,7 @@ export function SiteShell({
               </a>
             )}
             <SiteThemeToggle labels={THEME_TOGGLE_LABELS[lang]} />
-            {!bare && <HeaderLinks label={copy.nav.open} />}
+            {!bare && <HeaderLinks label={copy.nav.open} lang={lang} />}
           </div>
         </div>
       </header>
@@ -243,6 +250,10 @@ export function SiteShell({
               <a href={APP_URL} className="hover:text-(--ink)">{copy.footer.webApp}</a>
               <a href={sectionHref(lang, "download")} className="hover:text-(--ink)">{copy.footer.download}</a>
               <a href="/docs" className="hover:text-(--ink)">{copy.footer.docs}</a>
+              <a href={lang === "tr" ? "/tr/dnd" : "/dnd"} className="hover:text-(--ink)">D&amp;D</a>
+              <a href={lang === "tr" ? "/tr/discover" : "/discover"} className="hover:text-(--ink)">
+                {lang === "tr" ? "Keşfet" : "Discover"}
+              </a>
               <a href="/docs/self-hosting" className="hover:text-(--ink)">{copy.footer.selfHost}</a>
               <a href={sectionHref(lang, "faq")} className="hover:text-(--ink)">{copy.footer.faq}</a>
               <a href={STATUS_URL} className="hover:text-(--ink)">{copy.footer.status}</a>

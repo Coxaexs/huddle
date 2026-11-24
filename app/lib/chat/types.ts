@@ -82,6 +82,8 @@ export interface Message {
     followedFrom?: { serverId: string; serverName: string; channelId: string; channelName: string; messageId: string };
     /** Voice messages: length, a precomputed waveform (0–100 bars), and the transcript once someone asked for it. */
     voice?: { durationMs?: number; waveform?: number[]; transcript?: string };
+    /** In-character identity overlay while keeping real user attribution intact. */
+    ic?: { name: string; portraitUrl?: string | null; color?: string | null };
     /** Theme share cards */
     themeShare?: Theme;
     /** A Messenger-style nudge: shakes the recipient's window. */
@@ -108,6 +110,8 @@ export interface Message {
     autoReply?: boolean;
     /** Poll cards. */
     pollId?: string;
+    pollKind?: "standard" | "when2meet";
+    grid?: { days: string[]; slots: string[]; timezone?: string };
     /** /ask answers: the web results the answer cites. */
     sources?: Array<{ title: string; url: string }>;
     question?: string;

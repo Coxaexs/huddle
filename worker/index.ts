@@ -404,6 +404,10 @@ async function handleRequest(
           url.pathname === "/tr" ||
           url.pathname === "/vs-discord" ||
           url.pathname === "/tr/vs-discord" ||
+          url.pathname === "/dnd" ||
+          url.pathname === "/tr/dnd" ||
+          url.pathname === "/discover" ||
+          url.pathname === "/tr/discover" ||
           url.pathname === "/docs" ||
           url.pathname.startsWith("/docs/") ||
           url.pathname === "/help" ||

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Captions, Loader2, Mic, Pause, Play, Send, Trash2 } from "lucide-react";
 import { apiFetch } from "../lib/client";
+import { useI18n } from "../lib/i18n-context";
 
 /** Longest voice message; recording stops and sends itself at this point. */
 export const MAX_VOICE_MS = 5 * 60 * 1000;
@@ -290,14 +291,15 @@ export function VoiceRecordButton({
   recorder: VoiceRecorder;
   disabled?: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <button
       type="button"
       className="send-button voice-record-button"
       onClick={recorder.start}
       disabled={disabled}
-      aria-label="Record a voice message"
-      title="Record a voice message"
+      aria-label={t("chat.voiceMsg.record")}
+      title={t("chat.voiceMsg.record")}
     >
       <Mic size={16} />
     </button>
@@ -327,6 +329,7 @@ export function VoiceMessagePlayer({
   messageId?: string;
   transcript?: string;
 }) {
+  const { t } = useI18n();
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
@@ -393,7 +396,7 @@ export function VoiceMessagePlayer({
       setTranscript(data.text);
       setShowTranscript(true);
     } catch (error) {
-      setTranscribeError(error instanceof Error ? error.message : "Could not transcribe that.");
+      setTranscribeError(error instanceof Error ? error.message : t("chat.voiceMsg.transcribeError"));
     } finally {
       setTranscribing(false);
     }
@@ -424,7 +427,7 @@ export function VoiceMessagePlayer({
         type="button"
         className="voice-message-toggle"
         onClick={toggle}
-        aria-label={playing ? "Pause voice message" : "Play voice message"}
+        aria-label={playing ? t("chat.voiceMsg.pause") : t("chat.voiceMsg.play")}
       >
         {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
       </button>
@@ -432,7 +435,7 @@ export function VoiceMessagePlayer({
         className="voice-message-wave"
         onPointerDown={seek}
         role="slider"
-        aria-label="Seek"
+        aria-label={t("chat.voiceMsg.seek")}
         aria-valuemin={0}
         aria-valuemax={Math.round(total)}
         aria-valuenow={Math.round(position)}
@@ -459,7 +462,7 @@ export function VoiceMessagePlayer({
         type="button"
         className="voice-message-speed"
         onClick={cycleSpeed}
-        aria-label={`Playback speed ${speed}x`}
+        aria-label={t("chat.voiceMsg.speed", { speed })}
       >
         {speed}×
       </button>
@@ -470,8 +473,8 @@ export function VoiceMessagePlayer({
           onClick={() => void toggleTranscript()}
           disabled={transcribing}
           aria-pressed={showTranscript}
-          aria-label={transcript === null ? "Transcribe voice message" : showTranscript ? "Hide transcript" : "Show transcript"}
-          title={transcript === null ? "Transcribe" : showTranscript ? "Hide transcript" : "Show transcript"}
+          aria-label={transcript === null ? t("chat.voiceMsg.transcribeAria") : showTranscript ? t("chat.voiceMsg.hideTranscript") : t("chat.voiceMsg.showTranscript")}
+          title={transcript === null ? t("chat.voiceMsg.transcribe") : showTranscript ? t("chat.voiceMsg.hideTranscript") : t("chat.voiceMsg.showTranscript")}
         >
           {transcribing ? <Loader2 size={13} className="animate-spin" /> : <Captions size={13} />}
         </button>
@@ -486,7 +489,7 @@ export function VoiceMessagePlayer({
       {transcribeError ? (
         <p className="voice-message-transcript error" role="status">{transcribeError}</p>
       ) : (
-        <p className="voice-message-transcript">{transcript || "No speech in this clip."}</p>
+        <p className="voice-message-transcript">{transcript || t("chat.voiceMsg.noSpeech")}</p>
       )}
     </div>
   );

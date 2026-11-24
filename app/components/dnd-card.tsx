@@ -4,6 +4,7 @@ import { BookOpen, Dices, EyeOff, Pin, Plus, Search, Sparkles, Swords } from "lu
 import { onSecretRoll, recallSecretRoll } from "@/lib/secret-roll";
 import type { RouseCard, V5Card } from "@/lib/v5-roll";
 import { tokenImageUrl } from "@/lib/battlemap-tokens";
+import { apiFetch } from "../lib/client";
 import { useOptionalWidgetHost } from "./widgets/widget-host";
 import { RouseCheckCard, V5RollCard } from "./v5-card";
 import { createTranslator, type MessageKey } from "@/lib/i18n";
@@ -43,6 +44,8 @@ export interface DndCardProps {
   roller?: string;
   /** /gmroll: the card everyone gets holds no result, only the roll's seed. */
   secret?: boolean;
+  /** /blindroll: true blind roll, hidden even from non-DM roller; pushed to server DMs. */
+  blind?: boolean;
   rollSeed?: string;
   /** "gmroll" for a secret card's Roll again. */
   rollCommand?: string;
@@ -77,7 +80,7 @@ const context = ({ messageId, viewerId, voiceChannelId, rollCommand, onCommand }
 });
 
 /** Card chrome in the app's language; the 5e entries themselves stay English. */
-const tx = (key: MessageKey) => createTranslator(currentLocale())(key);
+const tx = (key: MessageKey, vars?: Record<string, string | number>) => createTranslator(currentLocale())(key, vars);
 
 export function DndCard(props: DndCardProps) {
   if (props.type === "v5") return <V5RollCard {...(props as unknown as V5Card)} {...context(props)} />;
@@ -136,7 +139,7 @@ function EntryCard({
           {KIND_ICON[type || ""] || <BookOpen size={20} />}
         </span>
         <div className="dnd-card-title">
-          <span className="dnd-card-kicker">{type || "Compendium"}</span>
+          <span className="dnd-card-kicker">{type || tx("dndCard.compendium")}</span>
           <strong>{name}</strong>
           {subtitle && <small>{subtitle}</small>}
         </div>
@@ -154,13 +157,13 @@ function EntryCard({
       )}
 
       {abilities.length > 0 && (
-        <div className="dnd-abilities" role="table" aria-label="Ability scores">
+        <div className="dnd-abilities" role="table" aria-label={tx("dndCard.abilityScoresAria")}>
           {abilities.map((ability) => (
             <button
               type="button"
               key={ability.label}
               role="cell"
-              title={`Roll a ${ability.label} check (d20${ability.mod})`}
+              title={tx("dndCard.rollAbilityTitle", { label: ability.label, mod: ability.mod })}
               onClick={() => onCommand?.(`/roll d20${ability.mod} ${name} ${ability.label} check`)}
               disabled={!onCommand}
             >
@@ -199,7 +202,7 @@ function EntryCard({
           {expanded
             ? tx("dndExtra.showLess")
             : hiddenTitles.length
-              ? `Show ${hiddenTitles.join(", ").toLowerCase()}`
+              ? tx("dndCard.showTitles", { titles: hiddenTitles.join(", ").toLowerCase() })
               : tx("dndExtra.showFull")}
         </button>
       )}
@@ -220,7 +223,7 @@ function EntryCard({
                 })
               }
             >
-              <Pin size={12} /> Pin to 3D Table
+              <Pin size={12} /> {tx("dndCard.pinToTable")}
             </button>
           )}
           {type === "monster" && spawnFn && (
@@ -236,7 +239,7 @@ function EntryCard({
                 spawnFn({ name, hp, size, portraitUrl: image || tokenImageUrl(name) });
               }}
             >
-              <Plus size={12} /> Spawn on Table
+              <Plus size={12} /> {tx("dndCard.spawnOnTable")}
             </button>
           )}
           {type === "monster" && initFn && (
@@ -251,7 +254,7 @@ function EntryCard({
                 initFn({ name, value: val });
               }}
             >
-              <Swords size={12} /> + Initiative
+              <Swords size={12} /> {tx("dndCard.addInitiative")}
             </button>
           )}
         </div>
@@ -262,11 +265,11 @@ function EntryCard({
           {source && (
             <span>
               {source}
-              {page ? `, p. ${page}` : ""}
+              {page ? tx("dndCard.page", { page }) : ""}
             </span>
           )}
           {otherVersions.length > 0 && (
-            <span>Also in {otherVersions.join(", ")}</span>
+            <span>{tx("dndCard.alsoIn", { sources: otherVersions.join(", ") })}</span>
           )}
         </footer>
       )}
@@ -282,7 +285,7 @@ function SuggestCard({ name, subtitle, lookupKind, suggestions = [], onCommand }
           <Search size={20} />
         </span>
         <div className="dnd-card-title">
-          <span className="dnd-card-kicker">Compendium</span>
+          <span className="dnd-card-kicker">{tx("dndCard.compendium")}</span>
           <strong>{name}</strong>
           {subtitle && <small>{subtitle}</small>}
         </div>
@@ -309,20 +312,85 @@ function SuggestCard({ name, subtitle, lookupKind, suggestions = [], onCommand }
  * A /gmroll. The roller's browser was sent the real card and kept it (see
  * lib/secret-roll.ts); everyone else only ever has this face-down one.
  */
-function SecretRollCard({ rollSeed, label, roller, onCommand }: DndCardProps) {
+function SecretRollCard({ rollSeed, label, roller, blind, onCommand }: DndCardProps) {
+  const host = useOptionalWidgetHost();
+  const isDm = Boolean(host?.isDm || host?.battlemap?.gm);
   const [mine, setMine] = useState<DndCardProps | null>(() => recallSecretRoll(rollSeed) as DndCardProps | null);
+  const [revealing, setRevealing] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+
   // The card can arrive over the socket before the roller's own reply does.
   useEffect(() => {
     if (mine || !rollSeed) return;
     return onSecretRoll(rollSeed, (card) => setMine(card as DndCardProps));
   }, [mine, rollSeed]);
 
+  // For blind rolls viewed from channel history, authorized DMs fetch the card from the server.
+  useEffect(() => {
+    if (!blind || mine || !rollSeed || !isDm) return;
+    let cancelled = false;
+    apiFetch<{ card?: DndCardProps }>(
+      `/api/integrations/dnd/blind-roll?seed=${encodeURIComponent(rollSeed)}`,
+    )
+      .then((res) => {
+        if (!cancelled && res.card) setMine(res.card);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [blind, mine, rollSeed, isDm]);
+
+  async function revealToTable() {
+    if (!rollSeed || revealing || revealed) return;
+    setRevealing(true);
+    try {
+      await apiFetch("/api/integrations/dnd/blind-roll", {
+        method: "POST",
+        body: JSON.stringify({ action: "reveal", seed: rollSeed }),
+      });
+      setRevealed(true);
+    } finally {
+      setRevealing(false);
+    }
+  }
+
   // A /gmv: the roller's own V5 card. Willpower is for open rolls (this one isn't in the channel).
   if (mine?.type === "v5") {
-    return <V5RollCard {...(mine as unknown as V5Card)} roller="only you can see this" label={label} rollCommand="gmv" onCommand={onCommand} />;
+    return (
+      <V5RollCard
+        {...(mine as unknown as V5Card)}
+        roller={blind ? tx("dndCard.blindBadge") : tx("dndCard.onlyYou")}
+        label={label}
+        rollCommand={blind ? "blindroll" : "gmv"}
+        onCommand={onCommand}
+      />
+    );
   }
   if (mine) {
-    return <RollCard {...mine} label={label} roller="only you can see this" rollCommand="gmroll" onCommand={onCommand} />;
+    return (
+      <div className={blind ? "dnd-blind-wrap" : undefined}>
+        <RollCard
+          {...mine}
+          label={label}
+          roller={blind ? tx("dndCard.blindBadge") : tx("dndCard.onlyYou")}
+          rollCommand={blind ? "blindroll" : "gmroll"}
+          onCommand={onCommand}
+        />
+        {blind && isDm && rollSeed && (
+          <div className="dnd-dmg-bar">
+            <span className="dnd-roll-badge">{tx("dndCard.blindBadge")}</span>
+            <button
+              type="button"
+              disabled={revealing || revealed}
+              onClick={() => void revealToTable()}
+            >
+              {revealed ? tx("dndCard.revealed") : tx("dndCard.revealToTable")}
+            </button>
+          </div>
+        )}
+      </div>
+    );
   }
   return (
     <section className="dnd-card dnd-roll-card is-secret">
@@ -335,7 +403,9 @@ function SecretRollCard({ rollSeed, label, roller, onCommand }: DndCardProps) {
           {label || tx("dndExtra.secretRoll")}
           {roller ? ` · ${roller}` : ""}
         </span>
-        <span className="dnd-roll-expression">Rolled behind the DM screen</span>
+        <span className="dnd-roll-expression">
+          {blind ? tx("dndCard.blindWaiting") : tx("dndCard.behindScreen")}
+        </span>
       </div>
     </section>
   );
@@ -354,12 +424,43 @@ function RollCard({
   rollCommand = "roll",
   onCommand,
 }: DndCardProps) {
+  const host = useOptionalWidgetHost();
+  const bm = host?.battlemap;
+  const targets = bm?.gm ? bm.tokens : [];
+  const defaultTarget =
+    (bm?.selectedTokenId && targets.some((t) => t.id === bm.selectedTokenId)
+      ? bm.selectedTokenId
+      : targets.find((t) => !t.ownerId)?.id || targets[0]?.id) || "";
+  const [targetId, setTargetId] = useState("");
+  const [dmgFeedback, setDmgFeedback] = useState<string | null>(null);
+  const [applyingDmg, setApplyingDmg] = useState(false);
+  const resolvedTargetId =
+    targetId && targets.some((t) => t.id === targetId) ? targetId : defaultTarget;
+
   // A d20 whose kept face is 20 or 1 is what the table cares about.
   const keptD20 = dice
     .filter((die) => die.sides === 20)
     .flatMap((die) => die.rolls.filter((roll) => roll.kept).map((roll) => roll.value));
   const nat20 = keptD20.includes(20);
   const nat1 = !nat20 && keptD20.includes(1);
+  const amt = typeof total === "number" ? Math.max(0, Math.round(total)) : 0;
+
+  async function applyDelta(delta: number) {
+    if (!bm || !resolvedTargetId || applyingDmg) return;
+    setApplyingDmg(true);
+    try {
+      const res = await bm.applyDamage(resolvedTargetId, delta);
+      if (res) {
+        setDmgFeedback(
+          res.concentrationCheck
+            ? `${res.token.label}: ${res.token.hp ?? 0} HP · ${tx("dndCard.concPromptInline", { dc: res.concentrationCheck.dc })}`
+            : tx("dndCard.dmgApplied", { name: res.token.label, hp: res.token.hp ?? 0 }),
+        );
+      }
+    } finally {
+      setApplyingDmg(false);
+    }
+  }
 
   return (
     <section
@@ -379,7 +480,7 @@ function RollCard({
           {mode ? ` · ${mode}` : ""}
         </span>
         {(nat20 || nat1) && (
-          <span className="dnd-roll-badge">{nat20 ? "Natural 20" : "Natural 1"}</span>
+          <span className="dnd-roll-badge">{nat20 ? tx("dndCard.nat20") : tx("dndCard.nat1")}</span>
         )}
         {dice.length > 0 ? (
           <div className="dnd-roll-dice">
@@ -393,7 +494,7 @@ function RollCard({
                     die.sides === 20 && roll.kept && roll.value === 20 ? "max" : "",
                     die.sides === 20 && roll.kept && roll.value === 1 ? "min" : "",
                   ].join(" ")}
-                  title={`d${die.sides}${roll.kept ? "" : " (dropped)"}`}
+                  title={`d${die.sides}${roll.kept ? "" : tx("dndCard.droppedSuffix")}`}
                 >
                   {die.sign === -1 ? "−" : ""}
                   {roll.value}
@@ -412,6 +513,38 @@ function RollCard({
             {details.map((detail, index) => (
               <code key={`${detail}-${index}`}>{detail}</code>
             ))}
+          </div>
+        )}
+        {bm?.gm && targets.length > 0 && amt > 0 && (
+          <div className="dnd-dmg-bar">
+            <select
+              value={resolvedTargetId}
+              aria-label={tx("dndCard.applyDmgTarget")}
+              onChange={(e) => setTargetId(e.target.value)}
+            >
+              {targets.map((tok) => (
+                <option key={tok.id} value={tok.id}>
+                  {tok.label}{typeof tok.hp === "number" ? ` (${tok.hp} HP)` : ""}
+                </option>
+              ))}
+            </select>
+            <button type="button" disabled={applyingDmg} onClick={() => void applyDelta(-amt)}>
+              {tx("dndCard.dmgFull", { amount: amt })}
+            </button>
+            <button
+              type="button"
+              disabled={applyingDmg}
+              onClick={() => void applyDelta(-Math.max(1, Math.floor(amt / 2)))}
+            >
+              {tx("dndCard.dmgHalf", { amount: Math.max(1, Math.floor(amt / 2)) })}
+            </button>
+            <button type="button" disabled={applyingDmg} onClick={() => void applyDelta(-(amt * 2))}>
+              {tx("dndCard.dmgDouble", { amount: amt * 2 })}
+            </button>
+            <button type="button" className="is-heal" disabled={applyingDmg} onClick={() => void applyDelta(amt)}>
+              {tx("dndCard.heal", { amount: amt })}
+            </button>
+            {dmgFeedback && <span className="dnd-dmg-note">{dmgFeedback}</span>}
           </div>
         )}
       </div>
@@ -531,7 +664,7 @@ function inline(
             key={key}
             type="button"
             className="dnd-roll-chip"
-            title={`Roll d20${bonus} to hit`}
+            title={tx("dndCard.rollToHitTitle", { bonus })}
             onClick={() => onCommand(`/roll d20${bonus} ${label ? `${label} attack` : "attack"}`)}
           >
             {token}
@@ -548,7 +681,7 @@ function inline(
             key={key}
             type="button"
             className="dnd-roll-chip"
-            title={`Roll ${expr}`}
+            title={tx("dndCard.rollExprTitle", { expr })}
             onClick={() => onCommand(`/roll ${expr} ${label ? `${label} damage` : ""}`.trim())}
           >
             {token}

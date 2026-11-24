@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Globe, MessageSquare, Send, Sparkles } from "lucide-react";
 import { aiFetch } from "../lib/ai-fetch";
 import { apiFetch } from "../lib/client";
+import { useI18n } from "../lib/i18n-context";
 import { MessageBody } from "./message-body";
 
 export interface AiSource {
@@ -73,6 +74,7 @@ export function AiAnswerCard({
   onOpenThread: () => void;
   onError: (message: string) => void;
 }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [thread, setThread] = useState<ThreadMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -121,7 +123,7 @@ export function AiAnswerCard({
       });
     } catch (error) {
       setDraft(question);
-      onError(error instanceof Error ? error.message : "The AI did not answer.");
+      onError(error instanceof Error ? error.message : t("chat.ai.error"));
     } finally {
       setBusy(false);
     }
@@ -131,18 +133,18 @@ export function AiAnswerCard({
     <div className="ai-card">
       <div className="ai-card-head">
         <Sparkles size={14} aria-hidden="true" />
-        <span>{question ? question : "Hoffle AI"}</span>
+        <span>{question ? question : t("chat.ai.title")}</span>
       </div>
       <div className="ai-card-body">{children}</div>
       <AiSources sources={sources} />
       <div className="ai-card-actions">
         <button type="button" onClick={() => setOpen((value) => !value)}>
           <MessageSquare size={13} aria-hidden="true" />
-          {open ? "Hide chat" : threadCount > 0 ? `Continue chat (${threadCount})` : "Ask a follow-up"}
+          {open ? t("chat.ai.hideChat") : threadCount > 0 ? t("chat.ai.continueChat", { count: threadCount }) : t("chat.ai.askFollowUp")}
         </button>
         {threadCount > 0 && (
           <button type="button" onClick={onOpenThread}>
-            Open in thread
+            {t("chat.ai.openInThread")}
           </button>
         )}
       </div>
@@ -155,13 +157,13 @@ export function AiAnswerCard({
                   key={item.id}
                   className={`ai-chat-line ${item.kind === "ai" ? "is-ai" : ""}`}
                 >
-                  <strong>{item.kind === "ai" ? "✦ AI" : item.author}</strong>
+                  <strong>{item.kind === "ai" ? t("chat.ai.aiLabel") : item.author}</strong>
                   <MessageBody text={item.text} />
                 </div>
               ))}
               {busy && (
                 <div className="ai-chat-line is-ai ai-thinking">
-                  <strong>✦ AI</strong> <span>thinking…</span>
+                  <strong>{t("chat.ai.aiLabel")}</strong> <span>{t("chat.ai.thinking")}</span>
                 </div>
               )}
             </div>
@@ -176,12 +178,12 @@ export function AiAnswerCard({
             <input
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder="Ask a follow-up…"
+              placeholder={t("chat.ai.placeholder")}
               maxLength={1000}
               disabled={busy}
-              aria-label="Ask the AI a follow-up"
+              aria-label={t("chat.ai.ariaFollowUp")}
             />
-            <button type="submit" disabled={busy || !draft.trim()} aria-label="Send">
+            <button type="submit" disabled={busy || !draft.trim()} aria-label={t("common.send")}>
               <Send size={14} />
             </button>
           </form>

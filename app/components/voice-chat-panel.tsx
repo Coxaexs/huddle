@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { MessageCircle, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { apiFetch } from "../lib/client";
+import { useI18n } from "../lib/i18n-context";
 import type { Message } from "../lib/chat/types";
 import type { Member } from "@/lib/users";
 import { Avatar } from "./avatar";
@@ -77,6 +78,7 @@ export function VoiceChatPanel({
   const [loaded, setLoaded] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const { t } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -296,7 +298,7 @@ export function VoiceChatPanel({
             message.text && (
               <div className="voice-chat-text">
                 <MessageBody text={message.text} selfHandle={selfHandle} emojis={emojis} onImage={onImage} />
-                {message.editedAt && <span className="voice-chat-edited">(edited)</span>}
+                {message.editedAt && <span className="voice-chat-edited">{t("voice.chat.edited")}</span>}
               </div>
             )
           )}
@@ -325,8 +327,8 @@ export function VoiceChatPanel({
           <button
             type="button"
             className="voice-chat-delete"
-            title="Delete message"
-            aria-label="Delete message"
+            title={t("voice.chat.deleteTitle")}
+            aria-label={t("voice.chat.deleteTitle")}
             onClick={() => void remove(message)}
           >
             <Trash2 size={14} />
@@ -339,11 +341,11 @@ export function VoiceChatPanel({
   }
 
   return (
-    <aside className="voice-chat-panel" aria-label={`${channelName} chat`}>
+    <aside className="voice-chat-panel" aria-label={t("voice.chat.aria", { channel: channelName })}>
       <header className="voice-chat-header">
         <MessageCircle size={18} aria-hidden="true" />
         <strong className="truncate">{channelName}</strong>
-        <button type="button" className="voice-chat-close" onClick={onClose} title="Close chat" aria-label="Close chat">
+        <button type="button" className="voice-chat-close" onClick={onClose} title={t("voice.chat.close")} aria-label={t("voice.chat.close")}>
           <X size={18} />
         </button>
       </header>
@@ -358,8 +360,8 @@ export function VoiceChatPanel({
         {loaded && !messages.length ? (
           <div className="voice-chat-empty">
             <MessageCircle size={32} aria-hidden="true" />
-            <strong>Welcome to the chat of {channelName}</strong>
-            <span>Messages here stay with the voice channel, so anyone who joins later can read them.</span>
+            <strong>{t("voice.chat.welcome", { channel: channelName })}</strong>
+            <span>{t("voice.chat.welcomeHint")}</span>
           </div>
         ) : (
           rows
@@ -375,8 +377,8 @@ export function VoiceChatPanel({
         <button
           type="button"
           className="voice-chat-attach"
-          title="Upload a file"
-          aria-label="Upload a file"
+          title={t("voice.chat.uploadFile")}
+          aria-label={t("voice.chat.uploadFile")}
           onClick={() => fileRef.current?.click()}
         >
           <Plus size={20} />
@@ -387,7 +389,7 @@ export function VoiceChatPanel({
           rows={1}
           value={draft}
           maxLength={4000}
-          placeholder={`Message ${channelName}`}
+          placeholder={t("voice.chat.placeholder", { channel: channelName })}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
           onPaste={(event) => {

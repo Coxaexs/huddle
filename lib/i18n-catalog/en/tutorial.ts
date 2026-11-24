@@ -41,4 +41,9 @@ export const tutorial = {
   "tutorial.step.of": "{page} of {total}",
   "tutorial.close": "Close the tutorial",
   "tutorial.resume": "Back to the tutorial · {page} of {total}",
+  "tutorial.ecoToggle": "Low-power device? Turn on Eco Mode",
+  "tutorial.ecoOn": "Eco Mode is ON",
+  "tutorial.modeToggle": "Interface density: Simple (clean) vs Full (all buttons)",
+  "tutorial.modeSwitchSimple": "Switch to Simple",
+  "tutorial.modeSwitchFull": "Switch to Full",
 } as const;

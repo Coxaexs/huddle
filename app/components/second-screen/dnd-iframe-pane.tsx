@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, RefreshCw, Sparkles } from "lucide-react";
 import { apiFetch, basePath } from "../../lib/client";
 import type { DndCompanionRoute } from "@/lib/second-screen";
+import { useI18n } from "../../lib/i18n-context";
 
 const COMPANION_TABS: Array<{ id: DndCompanionRoute; label: string }> = [
   { id: "sheet", label: "Character" },
@@ -26,6 +27,7 @@ export function DndIframePane({
   pairedReadOnly: boolean;
   onChangeRoute?: (route: DndCompanionRoute) => void;
 }) {
+  const { t } = useI18n();
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -67,12 +69,12 @@ export function DndIframePane({
     return (
       <div className="s2-pane">
         <div className="s2-pane-head">
-          <strong style={{ fontSize: 13 }}>D&amp;D Companion</strong>
+          <strong style={{ fontSize: 13 }}>{t("s2.dnd.companion")}</strong>
         </div>
         <div className="s2-empty">
           <Sparkles size={28} style={{ opacity: 0.7 }} />
           <p style={{ margin: 0, maxWidth: 340 }}>
-            Personal character sheets require signing in on this device. You can view the shared Player Display right away, or sign in to Hoffle.
+            {t("s2.dnd.pairedNote")}
           </p>
           <a
             href={`${basePath}/screen`}
@@ -86,7 +88,7 @@ export function DndIframePane({
               fontWeight: 600,
             }}
           >
-            Sign in on this screen
+            {t("s2.dnd.signInScreen")}
           </a>
         </div>
       </div>
@@ -98,7 +100,7 @@ export function DndIframePane({
       <div className="s2-pane-head">
         <div className="s2-bar-group">
           <strong style={{ fontSize: 13 }}>
-            {kind === "dnd-display" ? "D&D Player Display" : "D&D Companion"}
+            {kind === "dnd-display" ? t("s2.dnd.playerDisplay") : t("s2.dnd.companion")}
           </strong>
           {kind === "dnd-companion" && onChangeRoute && (
             <div className="s2-bar-group" style={{ marginLeft: 6 }}>
@@ -122,7 +124,7 @@ export function DndIframePane({
             className="s2-pill-btn"
             style={{ height: 24, padding: "0 8px" }}
             onClick={() => void loadUrl()}
-            title="Reload frame"
+            title={t("s2.dnd.reloadFrame")}
           >
             <RefreshCw size={12} />
           </button>
@@ -133,7 +135,7 @@ export function DndIframePane({
               rel="noopener noreferrer"
               className="s2-pill-btn"
               style={{ height: 24, padding: "0 8px", textDecoration: "none" }}
-              title="Open in full tab"
+              title={t("s2.dnd.openFullTab")}
             >
               <ExternalLink size={12} />
             </a>
@@ -145,18 +147,18 @@ export function DndIframePane({
           <div className="s2-empty">
             <p style={{ margin: 0, color: "#fca5a5" }}>{error}</p>
             <button type="button" className="s2-pill-btn active" onClick={() => void loadUrl()}>
-              <RefreshCw size={13} /> Retry
+              <RefreshCw size={13} /> {t("s2.dnd.retry")}
             </button>
           </div>
         ) : loading || !url ? (
           <div className="s2-empty">
-            <p style={{ margin: 0 }}>Connecting to D&amp;D Companion…</p>
+            <p style={{ margin: 0 }}>{t("s2.dnd.connecting")}</p>
           </div>
         ) : (
           <iframe
             key={url}
             src={url}
-            title={kind === "dnd-display" ? "D&D Player Display" : "D&D Companion"}
+            title={kind === "dnd-display" ? t("s2.dnd.playerDisplay") : t("s2.dnd.companion")}
             className="s2-iframe"
             allow="autoplay; fullscreen; clipboard-write"
           />

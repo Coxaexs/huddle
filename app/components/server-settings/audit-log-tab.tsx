@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { PublicServer } from "@/lib/servers";
+import { useI18n } from "../../lib/i18n-context";
 import { AuditEntry, Tab } from "./types";
 import { AUDIT_LABELS } from "./constants";
 
@@ -50,6 +51,7 @@ export function ServerAuditLogTab({
   loadingAudit: boolean;
   audit: AuditEntry[];
 }) {
+  const { t, locale } = useI18n();
   const [category, setCategory] = useState<AuditCategory>("all");
   const [query, setQuery] = useState("");
 
@@ -75,9 +77,9 @@ export function ServerAuditLogTab({
     <div className="tab-pane audit-pane">
       <div className="bans-search-row">
         <div>
-          <h1 className="pane-title">Audit Log</h1>
+          <h1 className="pane-title">{t("serverSettings.audit.title")}</h1>
           <p className="pane-subtitle">
-            Who did what in {server.name}, newest first.
+            {t("serverSettings.audit.subtitle", { server: server.name })}
           </p>
         </div>
         <button
@@ -85,18 +87,18 @@ export function ServerAuditLogTab({
           className="discord-btn primary-indigo"
           onClick={() => void loadAudit()}
         >
-          Refresh
+          {t("serverSettings.audit.refresh")}
         </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 my-3">
         {(
           [
-            ["all", "All Actions"],
-            ["moderation", "Moderation"],
-            ["structure", "Channels & Roles"],
-            ["members", "Members & Invites"],
-            ["integrations", "Webhooks & Bots"],
+            ["all", t("serverSettings.audit.cat.all")],
+            ["moderation", t("serverSettings.audit.cat.moderation")],
+            ["structure", t("serverSettings.audit.cat.structure")],
+            ["members", t("serverSettings.audit.cat.members")],
+            ["integrations", t("serverSettings.audit.cat.integrations")],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -116,16 +118,16 @@ export function ServerAuditLogTab({
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filter by moderator, target, or action…"
+          placeholder={t("serverSettings.audit.filterPlaceholder")}
           className="discord-input text-xs py-1.5 px-3 ml-auto min-w-[220px]"
         />
       </div>
 
       {loadingAudit ? (
-        <p className="pane-subtitle">Loading the audit log…</p>
+        <p className="pane-subtitle">{t("serverSettings.audit.loading")}</p>
       ) : !filtered.length ? (
         <div className="empty-illustration-box">
-          <p>{audit.length ? "No audit entries match your filter." : "Nothing has happened here yet."}</p>
+          <p>{audit.length ? t("serverSettings.audit.noMatch") : t("serverSettings.audit.empty")}</p>
         </div>
       ) : (
         <ul className="audit-list">
@@ -148,7 +150,7 @@ export function ServerAuditLogTab({
                 ) : null}
               </span>
               <time className="audit-time">
-                {new Date(entry.createdAt).toLocaleString()}
+                {new Date(entry.createdAt).toLocaleString(locale)}
               </time>
             </li>
           ))}

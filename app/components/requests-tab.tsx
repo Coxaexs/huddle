@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import { apiFetch } from "../lib/client";
 import { Avatar } from "./avatar";
+import { useI18n } from "../lib/i18n-context";
+import type { MessageKey } from "@/lib/i18n";
 import type { RequestCategory, RequestStatus, UserRequest } from "@/lib/requests";
 
 interface RequestsTabProps {
@@ -44,68 +46,69 @@ const FLO_USER_ID = "ac9e8e27-6cd9-4df1-af7a-afd85a59caa0";
 
 const CATEGORIES: Array<{
   id: RequestCategory;
-  label: string;
+  labelKey: MessageKey;
   icon: typeof Lightbulb;
-  description: string;
+  descKey: MessageKey;
   color: string;
 }> = [
   {
     id: "feature",
-    label: "Feature Request",
+    labelKey: "settings.requests.cat.feature",
     icon: Lightbulb,
-    description: "Suggest a brand new idea or feature",
+    descKey: "settings.requests.cat.featureDesc",
     color: "#38bdf8",
   },
   {
     id: "bug",
-    label: "Bug Report",
+    labelKey: "settings.requests.cat.bug",
     icon: Bug,
-    description: "Report an issue, glitch, or unexpected behavior",
+    descKey: "settings.requests.cat.bugDesc",
     color: "#f87171",
   },
   {
     id: "improvement",
-    label: "Improvement",
+    labelKey: "settings.requests.cat.improvement",
     icon: Zap,
-    description: "Enhance or polish an existing part of Hoffle",
+    descKey: "settings.requests.cat.improvementDesc",
     color: "#fbbf24",
   },
   {
     id: "other",
-    label: "General Request",
+    labelKey: "settings.requests.cat.otherKind",
     icon: MessageSquare,
-    description: "Feedback, questions, or general suggestions",
+    descKey: "settings.requests.cat.otherDesc",
     color: "#a78bfa",
   },
 ];
 
 const STATUS_CONFIG: Record<
   RequestStatus,
-  { label: string; icon: typeof Clock; badgeClass: string }
+  { labelKey: MessageKey; icon: typeof Clock; badgeClass: string }
 > = {
   pending: {
-    label: "Pending",
+    labelKey: "settings.requests.status.pending",
     icon: Clock,
     badgeClass: "bg-amber-500/15 text-amber-300 border border-amber-500/30",
   },
   in_progress: {
-    label: "In Progress",
+    labelKey: "settings.requests.status.in_progress",
     icon: Zap,
     badgeClass: "bg-sky-500/15 text-sky-300 border border-sky-500/30",
   },
   completed: {
-    label: "Completed",
+    labelKey: "settings.requests.status.completed",
     icon: CheckCircle2,
     badgeClass: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
   },
   declined: {
-    label: "Declined",
+    labelKey: "settings.requests.status.declined",
     icon: XCircle,
     badgeClass: "bg-rose-500/15 text-rose-300 border border-rose-500/30",
   },
 };
 
 export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProps) {
+  const { t } = useI18n();
   const [subtab, setSubtab] = useState<"submit" | "mine" | "inbox">("submit");
   const [requests, setRequests] = useState<UserRequest[]>([]);
   const [isHandler, setIsHandler] = useState(false);
@@ -153,11 +156,11 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      setSubmitError("Please provide a title for your request.");
+      setSubmitError(t("settings.requests.errTitle"));
       return;
     }
     if (!details.trim()) {
-      setSubmitError("Please include some details describing your request.");
+      setSubmitError(t("settings.requests.errDetails"));
       return;
     }
 
@@ -176,11 +179,11 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
 
       const recipientText =
         data.deliveredTo && data.deliveredTo.length > 0
-          ? `Delivered directly to ${data.deliveredTo.join(" and ")} via DM!`
-          : "Delivered to kiwi and flo via DM!";
+          ? t("settings.requests.deliveredTo", { names: data.deliveredTo.join(" & ") })
+          : t("settings.requests.deliveredFallback");
 
       setSubmitSuccess(
-        `Your request was sent successfully! ${recipientText}`,
+        t("settings.requests.sentSuccess", { recipient: recipientText }),
       );
       setTitle("");
       setDetails("");
@@ -188,7 +191,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
       void loadRequests(subtab === "inbox");
     } catch (err) {
       setSubmitError(
-        err instanceof Error ? err.message : "Failed to send request.",
+        err instanceof Error ? err.message : t("settings.requests.sendFailed"),
       );
     } finally {
       setSubmitting(false);
@@ -238,7 +241,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
   };
 
   const handleDeleteRequest = async (requestId: string) => {
-    if (!window.confirm("Are you sure you want to delete this request?")) return;
+    if (!window.confirm(t("settings.requests.deleteConfirm"))) return;
     try {
       await apiFetch(`/api/requests/${requestId}`, { method: "DELETE" });
       setRequests((prev) => prev.filter((r) => r.id !== requestId));
@@ -305,15 +308,13 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                 <Sparkles size={18} />
               </span>
               <h3 className="text-xl font-bold tracking-tight text-white">
-                Make a Request
+                {t("settings.requests.heroTitle")}
               </h3>
             </div>
             <p className="mt-1.5 text-xs text-gray-300 max-w-xl leading-relaxed">
-              Have an idea, found a bug, or want a feature added? Submit it here.
-              Every request is automatically delivered straight to{" "}
-              <strong className="text-emerald-400">kiwi</strong> and{" "}
-              <strong className="text-purple-400">flo</strong> (@..) in their direct
-              messages!
+              {t("settings.requests.heroBodyPrefix")}{" "}
+              <strong className="text-emerald-400">kiwi</strong> {t("settings.requests.heroBodyAnd")}{" "}
+              <strong className="text-purple-400">flo</strong> {t("settings.requests.heroBodySuffix")}
             </p>
           </div>
 
@@ -322,16 +323,16 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
               type="button"
               onClick={() => openDmWith(KIWI_USER_ID)}
               className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-gray-200 transition-colors flex items-center gap-1.5"
-              title="Open direct message with kiwi"
+              title={t("settings.requests.dmKiwiTitle")}
             >
               <span>🥝</span>
-              <span>DM Kiwi</span>
+              <span>{t("settings.requests.dmKiwi")}</span>
             </button>
             <button
               type="button"
               onClick={() => openDmWith(FLO_USER_ID)}
               className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-gray-200 transition-colors flex items-center gap-1.5"
-              title="Open direct message with flo"
+              title={t("settings.requests.dmFloTitle")}
             >
               <span>Flo (@..)</span>
               <MessageCircle size={13} className="text-purple-400" />
@@ -352,7 +353,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
           }`}
         >
           <Send size={14} />
-          <span>New Request</span>
+          <span>{t("settings.requests.tabSubmit")}</span>
         </button>
 
         <button
@@ -365,7 +366,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
           }`}
         >
           <Clock size={14} />
-          <span>My Requests</span>
+          <span>{t("settings.requests.tabMine")}</span>
         </button>
 
         {isHandler && (
@@ -379,7 +380,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
             }`}
           >
             <Inbox size={14} />
-            <span>Staff Inbox</span>
+            <span>{t("settings.requests.tabInbox")}</span>
             {pendingCount > 0 && (
               <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-black">
                 {pendingCount}
@@ -403,7 +404,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                     onClick={() => setSubtab("mine")}
                     className="underline hover:text-white"
                   >
-                    View in My Requests →
+                    {t("settings.requests.viewInMine")}
                   </button>
                 </div>
               </div>
@@ -420,7 +421,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
           {/* Category Cards */}
           <div>
             <label className="block text-xs font-semibold text-gray-300 mb-2">
-              Request Type
+              {t("settings.requests.requestType")}
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               {CATEGORIES.map((cat) => {
@@ -447,10 +448,10 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                       <Icon size={16} />
                     </span>
                     <span className="text-xs font-semibold text-white">
-                      {cat.label}
+                      {t(cat.labelKey)}
                     </span>
                     <span className="text-[10px] text-gray-400 mt-0.5 line-clamp-1">
-                      {cat.description}
+                      {t(cat.descKey)}
                     </span>
                   </button>
                 );
@@ -462,7 +463,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
           <div>
             <div className="flex justify-between items-center mb-1">
               <label htmlFor="req-title" className="text-xs font-semibold text-gray-300">
-                Title / Summary
+                {t("settings.requests.titleLabel")}
               </label>
               <span className="text-[10px] text-gray-500">{title.length}/150</span>
             </div>
@@ -472,7 +473,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
               value={title}
               maxLength={150}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Add custom soundboard, Discord server sync, Fix mic gate..."
+              placeholder={t("settings.requests.titlePlaceholder")}
               className="w-full px-3.5 py-2.5 rounded-lg bg-black/30 border border-white/15 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500/80 transition-colors"
             />
           </div>
@@ -481,7 +482,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
           <div>
             <div className="flex justify-between items-center mb-1">
               <label htmlFor="req-details" className="text-xs font-semibold text-gray-300">
-                Description & Details
+                {t("settings.requests.detailsLabel")}
               </label>
               <span className="text-[10px] text-gray-500">{details.length}/4000</span>
             </div>
@@ -491,7 +492,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
               value={details}
               maxLength={4000}
               onChange={(e) => setDetails(e.target.value)}
-              placeholder="Explain your idea, what you'd like it to do, or any helpful context. The more details you share, the better!"
+              placeholder={t("settings.requests.detailsPlaceholder")}
               className="w-full px-3.5 py-2.5 rounded-lg bg-black/30 border border-white/15 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500/80 transition-colors resize-y min-h-[120px]"
             />
           </div>
@@ -499,7 +500,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
           {/* Submit Action */}
           <div className="flex items-center justify-between pt-1">
             <span className="text-[11px] text-gray-400">
-              Directly notified: <strong>kiwi</strong> & <strong>flo</strong>
+              {t("settings.requests.directlyNotified")} <strong>kiwi</strong> & <strong>flo</strong>
             </span>
             <button
               type="submit"
@@ -507,7 +508,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
               className="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-xs text-white shadow-md transition-all flex items-center gap-2"
             >
               <Send size={14} className={submitting ? "animate-pulse" : ""} />
-              <span>{submitting ? "Sending..." : "Submit Request"}</span>
+              <span>{submitting ? t("settings.requests.sending") : t("settings.requests.submitBtn")}</span>
             </button>
           </div>
         </form>
@@ -518,24 +519,23 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
         <div className="flex flex-col gap-3">
           {loading ? (
             <div className="py-12 text-center text-xs text-gray-400">
-              Loading requests...
+              {t("settings.requests.loading")}
             </div>
           ) : requests.length === 0 ? (
             <div className="py-12 px-4 text-center rounded-xl border border-dashed border-white/10 bg-white/[0.02]">
               <Lightbulb size={32} className="mx-auto text-gray-500 mb-2" />
               <p className="text-sm font-semibold text-gray-300">
-                No requests submitted yet
+                {t("settings.requests.emptyTitle")}
               </p>
               <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
-                Got a suggestion or found an issue? Use the New Request tab to
-                send a direct note to kiwi and flo.
+                {t("settings.requests.emptySub")}
               </p>
               <button
                 type="button"
                 onClick={() => setSubtab("submit")}
                 className="mt-4 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white"
               >
-                Create Request
+                {t("settings.requests.createBtn")}
               </button>
             </div>
           ) : (
@@ -562,14 +562,14 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                         }}
                       >
                         <CatIcon size={12} />
-                        <span>{catInfo.label}</span>
+                        <span>{t(catInfo.labelKey)}</span>
                       </span>
 
                       <span
                         className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${statusInfo.badgeClass}`}
                       >
                         <StatusIcon size={12} />
-                        <span>{statusInfo.label}</span>
+                        <span>{t(statusInfo.labelKey)}</span>
                       </span>
 
                       <span className="text-[11px] text-gray-500">
@@ -582,7 +582,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                         type="button"
                         onClick={() => handleDeleteRequest(req.id)}
                         className="text-gray-500 hover:text-rose-400 transition-colors p-1"
-                        title="Delete this request"
+                        title={t("settings.requests.deleteTitle")}
                       >
                         <Trash2 size={13} />
                       </button>
@@ -600,7 +600,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                     <div className="p-3 rounded-lg bg-purple-950/40 border border-purple-500/30 text-xs text-purple-200">
                       <div className="flex items-center gap-1.5 font-semibold text-purple-300 mb-1">
                         <MessageSquare size={12} />
-                        <span>Note from Kiwi & Flo:</span>
+                        <span>{t("settings.requests.noteFromStaff")}</span>
                       </div>
                       <p className="whitespace-pre-wrap">{req.responseNote}</p>
                     </div>
@@ -624,7 +624,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
               />
               <input
                 type="text"
-                placeholder="Search requests by title, text, or author..."
+                placeholder={t("settings.requests.searchPlaceholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 rounded-lg bg-black/30 border border-white/10 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
@@ -634,12 +634,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
             <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
               {(["all", "pending", "in_progress", "completed", "declined"] as const).map(
                 (st) => {
-                  const label =
-                    st === "all"
-                      ? "All"
-                      : st === "in_progress"
-                      ? "In Progress"
-                      : st.charAt(0).toUpperCase() + st.slice(1);
+                  const label = t(`settings.requests.status.${st}`);
                   const isCurrent = inboxStatusFilter === st;
                   return (
                     <button
@@ -663,11 +658,11 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
           {/* Request Cards */}
           {loading ? (
             <div className="py-12 text-center text-xs text-gray-400">
-              Loading requests...
+              {t("settings.requests.loading")}
             </div>
           ) : filteredInboxRequests.length === 0 ? (
             <div className="py-12 text-center text-xs text-gray-500 rounded-xl border border-dashed border-white/10">
-              No matching requests found.
+              {t("settings.requests.noMatch")}
             </div>
           ) : (
             <div className="flex flex-col gap-3">
@@ -705,7 +700,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-bold text-white">
-                              {author?.displayName || author?.username || "Unknown"}
+                              {author?.displayName || author?.username || t("settings.requests.unknownUser")}
                             </span>
                             {author?.username && (
                               <span className="text-[11px] text-gray-400">
@@ -725,17 +720,17 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                             type="button"
                             onClick={() => openDmWith(author.id)}
                             className="px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/15 text-xs text-gray-200 transition-colors flex items-center gap-1.5"
-                            title="Chat with user in DM"
+                            title={t("settings.requests.dmAuthorTitle")}
                           >
                             <MessageCircle size={12} />
-                            <span>DM Author</span>
+                            <span>{t("settings.requests.dmAuthor")}</span>
                           </button>
                         )}
                         <button
                           type="button"
                           onClick={() => handleDeleteRequest(req.id)}
                           className="text-gray-500 hover:text-rose-400 p-1"
-                          title="Delete request"
+                          title={t("settings.requests.deleteShortTitle")}
                         >
                           <Trash2 size={13} />
                         </button>
@@ -753,14 +748,14 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                         }}
                       >
                         <CatIcon size={12} />
-                        <span>{catInfo.label}</span>
+                        <span>{t(catInfo.labelKey)}</span>
                       </span>
 
                       <span
                         className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${statusInfo.badgeClass}`}
                       >
                         <StatusIcon size={12} />
-                        <span>{statusInfo.label}</span>
+                        <span>{t(statusInfo.labelKey)}</span>
                       </span>
                     </div>
 
@@ -775,7 +770,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                     <div className="pt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-2.5">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[11px] text-gray-400 mr-1 font-medium">
-                          Set status:
+                          {t("settings.requests.setStatus")}
                         </span>
                         {(
                           [
@@ -798,7 +793,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                                   : "text-gray-400 hover:text-white bg-white/5"
                               }`}
                             >
-                              {STATUS_CONFIG[st].label}
+                              {t(STATUS_CONFIG[st].labelKey)}
                             </button>
                           );
                         })}
@@ -816,7 +811,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                         }}
                         className="text-xs text-purple-300 hover:text-purple-200 underline"
                       >
-                        {req.responseNote ? "Edit Note" : "+ Add Note for Author"}
+                        {req.responseNote ? t("settings.requests.editNote") : t("settings.requests.addNote")}
                       </button>
                     </div>
 
@@ -824,13 +819,13 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                     {isEditingThisNote ? (
                       <div className="p-3 rounded-lg bg-black/40 border border-purple-500/40 flex flex-col gap-2">
                         <label className="text-[11px] font-semibold text-purple-300">
-                          Response Note (sent to author via DM when updated):
+                          {t("settings.requests.responseNoteLabel")}
                         </label>
                         <textarea
                           rows={2}
                           value={noteDraft}
                           onChange={(e) => setNoteDraft(e.target.value)}
-                          placeholder="e.g. Added in current release! / Working on this right now."
+                          placeholder={t("settings.requests.responseNotePlaceholder")}
                           className="w-full px-3 py-1.5 rounded bg-black/50 border border-white/10 text-xs text-white focus:outline-none focus:border-purple-500"
                         />
                         <div className="flex justify-end gap-2">
@@ -839,7 +834,7 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                             onClick={() => setEditingNoteId(null)}
                             className="px-2.5 py-1 rounded text-xs text-gray-400 hover:text-white"
                           >
-                            Cancel
+                            {t("common.cancel")}
                           </button>
                           <button
                             type="button"
@@ -847,14 +842,14 @@ export function RequestsTab({ user, onOpenDm, onCloseSettings }: RequestsTabProp
                             onClick={() => handleSaveNote(req.id)}
                             className="px-3 py-1 rounded text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white"
                           >
-                            Save Note
+                            {t("settings.requests.saveNote")}
                           </button>
                         </div>
                       </div>
                     ) : (
                       req.responseNote && (
                         <div className="p-2.5 rounded-lg bg-purple-950/30 border border-purple-500/20 text-xs text-purple-200">
-                          <span className="font-semibold text-purple-300">Note: </span>
+                          <span className="font-semibold text-purple-300">{t("settings.requests.notePrefix")}</span>
                           <span>{req.responseNote}</span>
                         </div>
                       )

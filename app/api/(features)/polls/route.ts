@@ -9,6 +9,11 @@ import { blockIfTimedOut } from "@/lib/timeouts";
 import { ensureSchema } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { publicMessage } from "@/app/api/messages/route";
+import {
+  normalizeWhen2MeetGrid,
+  when2MeetCellLabels,
+  type When2MeetGrid,
+} from "@/lib/when2meet";
 
 export const dynamic = "force-dynamic";
 
@@ -34,15 +39,30 @@ export async function POST(request: Request) {
     options?: string[];
     multi?: boolean;
     isPrivate?: boolean;
+    kind?: "standard" | "when2meet";
+    grid?: When2MeetGrid;
   };
   const channelId = body.channelId?.slice(0, 64);
   const question = body.question?.trim().slice(0, 200);
-  const options = (Array.isArray(body.options) ? body.options : [])
-    .map((option) => String(option).trim().slice(0, 80))
-    .filter(Boolean)
-    .slice(0, 10);
+  const pollKind: "standard" | "when2meet" = body.kind === "when2meet" ? "when2meet" : "standard";
+  const normalizedGrid = pollKind === "when2meet" ? normalizeWhen2MeetGrid(body.grid) : null;
 
-  if (!channelId || !question || options.length < 2) {
+  if (pollKind === "when2meet" && !normalizedGrid) {
+    return Response.json(
+      { error: "Pick at least one day and one time slot (up to 96 slots total)." },
+      { status: 400 },
+    );
+  }
+
+  const options =
+    pollKind === "when2meet" && normalizedGrid
+      ? when2MeetCellLabels(normalizedGrid)
+      : (Array.isArray(body.options) ? body.options : [])
+          .map((option) => String(option).trim().slice(0, 80))
+          .filter(Boolean)
+          .slice(0, 10);
+
+  if (!channelId || !question || (pollKind === "standard" && options.length < 2)) {
     return Response.json(
       { error: "A poll needs a question and at least two options." },
       { status: 400 },
@@ -92,11 +112,12 @@ export async function POST(request: Request) {
   const messageId = crypto.randomUUID();
   const now = new Date().toISOString();
   const isPrivate = Boolean(body.isPrivate);
+  const isMulti = pollKind === "when2meet" ? true : Boolean(body.multi);
 
   await db
     .prepare(
-      `INSERT INTO polls (id, message_id, channel_id, question, options, multi, is_private, created_by, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO polls (id, message_id, channel_id, question, options, multi, is_private, kind, grid_json, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       pollId,
@@ -104,8 +125,10 @@ export async function POST(request: Request) {
       channelId,
       question,
       JSON.stringify(options),
-      body.multi ? 1 : 0,
+      isMulti ? 1 : 0,
       isPrivate ? 1 : 0,
+      pollKind,
+      normalizedGrid ? JSON.stringify(normalizedGrid) : null,
       user.id,
       now,
     )
@@ -128,8 +151,10 @@ export async function POST(request: Request) {
       pollId,
       question,
       options,
-      multi: Boolean(body.multi),
+      multi: isMulti,
       isPrivate,
+      pollKind,
+      ...(normalizedGrid ? { grid: normalizedGrid } : {}),
     }),
   };
 
@@ -176,15 +201,30 @@ export async function GET(request: Request) {
 
   const pollId = new URL(request.url).searchParams.get("pollId") || "";
   const poll = await db
-    .prepare("SELECT options, is_private, channel_id FROM polls WHERE id = ?")
+    .prepare("SELECT options, is_private, channel_id, kind, grid_json FROM polls WHERE id = ?")
     .bind(pollId)
-    .first<{ options: string; is_private?: number; channel_id: string }>();
+    .first<{
+      options: string;
+      is_private?: number;
+      channel_id: string;
+      kind?: string | null;
+      grid_json?: string | null;
+    }>();
   if (!poll) return Response.json({ error: "No such poll." }, { status: 404 });
   const access = await channelAccess(db, poll.channel_id, user);
   if (!access.ok) return access.response;
 
   const size = (JSON.parse(poll.options) as string[]).length;
   const isPrivate = Boolean(poll.is_private);
+  const pollKind = poll.kind === "when2meet" ? "when2meet" : "standard";
+  let grid: When2MeetGrid | null = null;
+  if (poll.grid_json) {
+    try {
+      grid = normalizeWhen2MeetGrid(JSON.parse(poll.grid_json));
+    } catch {
+      grid = null;
+    }
+  }
 
   const rows = await db
     .prepare(
@@ -220,5 +260,5 @@ export async function GET(request: Request) {
     }
     if (row.user_id === user.id) mine.push(row.choice);
   }
-  return Response.json({ counts, mine, isPrivate, voters });
+  return Response.json({ counts, mine, isPrivate, voters, pollKind, ...(grid ? { grid } : {}) });
 }

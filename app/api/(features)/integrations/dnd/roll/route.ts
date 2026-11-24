@@ -18,7 +18,7 @@ import { DICE_STYLE_WORDS, resolveDiceStyle } from "@/lib/dice-styles";
 import { randomDie, randomSeed } from "@/lib/fair-dice";
 import { parseRouse, parseV5 } from "@/lib/v5-dice";
 import { rollRouse, rollV5 } from "@/lib/v5-roll";
-import { getGameSystem, rollBot } from "@/lib/dnd-rules";
+import { getGameSystem, rollBot, serverDmUserIds } from "@/lib/dnd-rules";
 import { notifyDndTable, rollFaces } from "@/lib/dnd-table";
 
 export const dynamic = "force-dynamic";
@@ -213,7 +213,9 @@ export async function POST(request: Request) {
     texture?: string;
   };
   const commandWord = (body.command || "").match(/^\/([a-z]+)/i)?.[1]?.toLowerCase() || "roll";
-  const isSecret = ["gmroll", "blindroll", "gmv"].includes(commandWord);
+  const isBlind = commandWord === "blindroll";
+  const isSelfSecret = ["gmroll", "gmv"].includes(commandWord);
+  const isSecret = isBlind || isSelfSecret;
   // Vampire: The Masquerade 5th edition: a d10 pool with Hunger dice, or a Rouse check.
   const isV5 = ["v", "vroll", "vtm", "gmv"].includes(commandWord);
   const isRouse = commandWord === "rouse";
@@ -405,11 +407,20 @@ export async function POST(request: Request) {
   const textChannelId = body.textChannelId?.slice(0, 64) || "";
   // V5 dice always answer as the Storyteller; at a Vampire table every roll does.
   let storyteller = isV5 || isRouse;
+  let blindDmIds: string[] = [];
   if (db) {
     await ensureSchema(db);
-    if (!storyteller && (textChannelId || voiceChannelId)) {
-      const serverId = (await findChannel(db, textChannelId || voiceChannelId))?.server_id;
-      if (serverId) storyteller = (await getGameSystem(db, serverId)) === "vtm5";
+    const lookupChannelId = textChannelId || voiceChannelId;
+    const serverId = lookupChannelId ? (await findChannel(db, lookupChannelId))?.server_id ?? null : null;
+    if (!storyteller && serverId) {
+      storyteller = (await getGameSystem(db, serverId)) === "vtm5";
+    }
+    if (isBlind && serverId) {
+      try {
+        blindDmIds = await serverDmUserIds(db, serverId);
+      } catch {
+        blindDmIds = [];
+      }
     }
 
     // Publish to the voice room (if you're in one), so people on the stage
@@ -474,6 +485,38 @@ export async function POST(request: Request) {
         await publishMessageEvent(textChannelId, { t: "dice-roll", roll: shared });
       }
     }
+
+    if (isBlind && !body.preview) {
+      const blindCard = { ...fullCard, blind: true, verified: true };
+      const targetChannel = textChannelId || voiceChannelId;
+      if (serverId && targetChannel) {
+        try {
+          await db
+            .prepare(
+              `INSERT OR REPLACE INTO blind_rolls (seed, server_id, channel_id, roller_id, card_json, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+            )
+            .bind(
+              roll.animationSeed,
+              serverId,
+              targetChannel,
+              user.id,
+              JSON.stringify(blindCard),
+              Date.now(),
+            )
+            .run();
+        } catch {
+          // Ignore on partial DB test mocks.
+        }
+      }
+      if (blindDmIds.length > 0 && targetChannel) {
+        await publishMessageEvent(
+          targetChannel,
+          { t: "blind-roll", channelId: targetChannel, seed: roll.animationSeed, card: blindCard },
+          blindDmIds,
+        );
+      }
+    }
   }
 
   // The D&D companion logs it on the roller's sheet, its Discord log and the bard.
@@ -490,21 +533,31 @@ export async function POST(request: Request) {
     });
   }
 
-  if (isSecret) text = `${label ? `${label}: ` : ""}rolled in secret, behind the ${storyteller ? "Storyteller's" : "DM"} screen.`;
+  if (isSecret) {
+    text = isBlind
+      ? `${label ? `${label}: ` : ""}rolled blindly — only the ${storyteller ? "Storyteller" : "DM"} sees the result.`
+      : `${label ? `${label}: ` : ""}rolled in secret, behind the ${storyteller ? "Storyteller's" : "DM"} screen.`;
+  }
   const payload = isSecret
     ? {
         type: "roll",
-        name: "Secret roll",
+        name: isBlind ? "Blind roll" : "Secret roll",
         label: label || undefined,
         roller: user.display_name,
         rollerId: user.id,
         secret: true,
-        // Lets the roller's own browser find the result it was sent below.
+        ...(isBlind ? { blind: true } : {}),
+        // Lets the roller's own browser (or DMs for /blindroll) find the result.
         rollSeed: roll.animationSeed,
       }
     : fullCard;
-  // Only the roller gets this; their browser keeps it to show them their card.
-  const secretCard = isSecret ? { ...fullCard, verified: true } : undefined;
+  const rollerIsDm = isBlind ? blindDmIds.includes(user.id) : true;
+  // For /gmroll only the roller gets secretCard; for /blindroll ONLY a DM gets it.
+  const secretCard =
+    isSecret && (!isBlind || rollerIsDm)
+      ? { ...fullCard, ...(isBlind ? { blind: true } : {}), verified: true }
+      : undefined;
+  const replyRoll = isBlind && !rollerIsDm ? shared : roll;
 
   // The card is written here, by the server that rolled, and marked verified.
   // A browser can still post a lookalike through /api/messages, but it can
@@ -517,12 +570,12 @@ export async function POST(request: Request) {
       ...rollBot(storyteller),
     });
     if (posted instanceof Response) return posted;
-    return Response.json({ text, kind: "dnd", payload: { ...payload, verified: true }, roll, secretCard, posted: true, message: posted, ...(resolvedInitiative ? { isInitiative: true } : {}) });
+    return Response.json({ text, kind: "dnd", payload: { ...payload, verified: true }, roll: replyRoll, secretCard, posted: true, message: posted, ...(resolvedInitiative ? { isInitiative: true } : {}) });
   }
 
   // Who answers, for the browser that posts this card itself.
   const { author, avatar } = rollBot(storyteller);
-  return Response.json({ text, kind: "dnd", payload, roll, secretCard, bot: { author, avatar }, ...(resolvedInitiative ? { isInitiative: true } : {}) });
+  return Response.json({ text, kind: "dnd", payload, roll: replyRoll, secretCard, bot: { author, avatar }, ...(resolvedInitiative ? { isInitiative: true } : {}) });
 }
 
 

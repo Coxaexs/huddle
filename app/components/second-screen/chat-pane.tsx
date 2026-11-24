@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { Hash, Send } from "lucide-react";
 import { apiFetch, basePath } from "../../lib/client";
 import { MessageBody } from "../message-body";
+import { useI18n } from "../../lib/i18n-context";
 
 /** The time in the viewer's own zone; the server formats `time` in UTC. */
 function localTime(m: { createdAt?: string; time: string }): string {
@@ -49,6 +50,7 @@ export function ChatPane({
   pairedReadOnly: boolean;
   liveSignal: ChatPaneLiveSignal | null;
 }) {
+  const { t } = useI18n();
   const [messages, setMessages] = useState<SimpleChatMessage[]>([]);
   const [resolvedName, setResolvedName] = useState<string | null>(channelName);
   const [loading, setLoading] = useState(false);
@@ -162,7 +164,7 @@ export function ChatPane({
         <div className="s2-bar-group">
           <Hash size={14} style={{ color: "var(--lavender, #8b5cf6)" }} />
           <strong style={{ fontSize: 13 }}>
-            {resolvedName || (channelId ? "Live Chat" : "Select a channel")}
+            {resolvedName || (channelId ? t("s2.chat.liveChat") : t("s2.chat.selectChannel"))}
           </strong>
         </div>
         {pairedReadOnly && (
@@ -170,7 +172,7 @@ export function ChatPane({
             href={`${basePath}/screen`}
             style={{ fontSize: 11, color: "var(--lavender, #8b5cf6)", textDecoration: "none" }}
           >
-            Sign in to reply
+            {t("s2.chat.signInToReply")}
           </a>
         )}
       </div>
@@ -178,12 +180,12 @@ export function ChatPane({
         {!channelId ? (
           <div className="s2-empty">
             <Hash size={28} style={{ opacity: 0.5 }} />
-            <p style={{ margin: 0 }}>Pick a channel in the top bar or from your main Hoffle window.</p>
+            <p style={{ margin: 0 }}>{t("s2.chat.pickChannelHint")}</p>
           </div>
         ) : loading && messages.length === 0 ? (
-          <div className="s2-empty">Loading channel messages…</div>
+          <div className="s2-empty">{t("s2.chat.loadingMsgs")}</div>
         ) : messages.length === 0 ? (
-          <div className="s2-empty">No messages in #{resolvedName || "channel"} yet.</div>
+          <div className="s2-empty">{t("s2.chat.emptyMsgs", { channel: resolvedName || t("s2.chat.channelFallback") })}</div>
         ) : (
           <div className="s2-chat-list" ref={listRef} onScroll={handleScroll}>
             {messages.map((m) => (
@@ -200,7 +202,7 @@ export function ChatPane({
                     <strong style={{ fontSize: 13 }}>{m.author}</strong>
                     <span style={{ fontSize: 11, opacity: 0.55 }}>{localTime(m)}</span>
                     {m.editedAt && (
-                      <span style={{ fontSize: 10, opacity: 0.45 }}>(edited)</span>
+                      <span style={{ fontSize: 10, opacity: 0.45 }}>{t("s2.chat.edited")}</span>
                     )}
                   </div>
                   {m.text && (
@@ -216,7 +218,7 @@ export function ChatPane({
                     </div>
                   )}
                   {m.image && (
-                    <img src={m.image} alt="Attachment" className="s2-chat-img" />
+                    <img src={m.image} alt={t("s2.chat.attachmentAlt")} className="s2-chat-img" />
                   )}
                 </div>
               </div>
@@ -229,7 +231,7 @@ export function ChatPane({
             <input
               type="text"
               className="s2-chat-input"
-              placeholder={`Message #${resolvedName || "channel"}…`}
+              placeholder={t("s2.chat.messagePlaceholder", { channel: resolvedName || t("s2.chat.channelFallback") })}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
             />
@@ -238,7 +240,7 @@ export function ChatPane({
               className="s2-pill-btn active"
               style={{ height: 38, padding: "0 14px", borderRadius: 10 }}
               disabled={!draft.trim() || sending}
-              aria-label="Send message"
+              aria-label={t("s2.chat.sendAria")}
             >
               <Send size={14} />
             </button>
