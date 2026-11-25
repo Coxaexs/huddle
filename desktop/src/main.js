@@ -12,6 +12,7 @@ const {
   Tray,
   Notification,
   nativeImage,
+  systemPreferences,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
@@ -680,6 +681,9 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
+    // macOS: hear Spotify's own play/pause/track announcements instead of
+    // polling it through osascript (see spotify-mac.js).
+    if (process.platform === "darwin") require("./spotify-mac").start(systemPreferences);
     configureSession();
     buildMenu();
     ipcMain.on("splash:skip", () => finishSplash({ skipped: true }));

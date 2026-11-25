@@ -126,27 +126,32 @@ async function spotifyFromMpris() {
   };
 }
 
-async function spotifyFromMac() {
+// The one osascript query for Spotify's state, used once when Hoffle starts
+// (spotify-mac.js has the reason). Playing or paused: what spotify-mac.js keeps.
+async function spotifySeedMac() {
   const script =
-    'if application "Spotify" is running then tell application "Spotify" to if player state is playing then ' +
-    'return (artist of current track) & (character id 1) & (name of current track) & (character id 1) & (artwork url of current track)' +
+    'if application "Spotify" is running then tell application "Spotify" to return (player state as text)' +
+    ' & (character id 1) & (artist of current track) & (character id 1) & (name of current track) & (character id 1) & (artwork url of current track)' +
     ' & (character id 1) & (id of current track) & (character id 1) & (player position as text) & (character id 1) & (duration of current track as text)';
   const out = (await run("osascript", ["-e", script])).trim();
   if (!out) return null;
-  const [artist, title, art, id, position, duration] = out.split("\u0001");
-  if (!title) return null;
+  const [state, artist, title, art, id, position, duration] = out.split("\u0001");
+  if (state !== "playing" && state !== "paused") return null;
   // Spotify reports the position in seconds and the duration in milliseconds,
   // whatever its dictionary says; take either.
   const durationNumber = Number(String(duration || "").replace(",", "."));
   return {
-    song: title,
-    artist: artist || "Spotify",
+    playing: state === "playing",
+    song: title || "",
+    artist: artist || "",
     albumArt: /^https:\/\//.test(art || "") ? art : "",
     trackId: trackIdOf(id),
     positionMs: msOrUndefined(Number(String(position || "").replace(",", ".")) * 1000),
     durationMs: msOrUndefined(durationNumber > 10_000 ? durationNumber : durationNumber * 1000),
   };
 }
+
+const spotifyFromMac = () => require("./spotify-mac").nowPlaying(spotifySeedMac);
 
 async function spotifyFromWindows() {
   // Spotify titles its window "Artist - Song" while playing, "Spotify" when idle.
@@ -252,21 +257,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** What Spotify is doing here, playing or paused: { trackId, positionMs, playing } or null. */
 async function spotifyState() {
-  if (process.platform === "darwin") {
-    const out = (
-      await run("osascript", [
-        "-e",
-        'if application "Spotify" is running then tell application "Spotify" to return (player state as text) & (character id 1) & (id of current track) & (character id 1) & (player position as text)',
-      ])
-    ).trim();
-    if (!out) return null;
-    const [state, id, position] = out.split("\u0001");
-    return {
-      trackId: trackIdOf(id) || null,
-      positionMs: msOrUndefined(Number(String(position || "").replace(",", ".")) * 1000) ?? null,
-      playing: state === "playing",
-    };
-  }
+  if (process.platform === "darwin") return require("./spotify-mac").state(spotifySeedMac);
   if (process.platform === "linux") {
     const out = (
       await run("playerctl", ["-p", "spotify", "metadata", "--format", "{{status}}\u0001{{mpris:trackid}}\u0001{{position}}"])
@@ -299,7 +290,9 @@ async function spotifyControl(command, openExternal) {
     } else if (action === "pause") {
       await run("osascript", ["-e", 'tell application "Spotify" to pause']);
     } else return null;
-    return spotifyState();
+    const mac = require("./spotify-mac");
+    mac.applied(action, id, position);
+    return mac.state();
   }
   if (process.platform === "linux") {
     if (action === "play") {
