@@ -57,17 +57,15 @@ export function sectionHref(lang: LandingLang, hash: string): string {
 
 function navFor(lang: LandingLang) {
   const nav = LANDING_COPY[lang].nav;
+  // Features and "Will it last?" are sections of the landing page itself, so
+  // the bar gives their room to the pages you can't scroll to: Help first.
   return [
-    { href: sectionHref(lang, "features"), label: nav.features },
     { href: sectionHref(lang, "themes"), label: nav.themes },
     { href: lang === "tr" ? "/tr/dnd" : "/dnd", label: "D&D" },
     { href: lang === "tr" ? "/tr/discover" : "/discover", label: lang === "tr" ? "Keşfet" : "Discover" },
-    { href: sectionHref(lang, "staying"), label: nav.staying, wideOnly: true },
     { href: sectionHref(lang, "download"), label: nav.download },
     { href: helpPath(lang), label: nav.help },
-    // wideOnly: hidden below 1280px, where the bar has no room for all of them.
-    // Both are in the footer too.
-    { href: "/docs", label: nav.docs, wideOnly: true },
+    { href: "/docs", label: nav.docs },
   ];
 }
 
@@ -217,7 +215,7 @@ export function SiteShell({
           {!bare && (
             <nav aria-label="Main" className="hidden items-center gap-5 whitespace-nowrap text-[15px] font-medium text-(--ink-2) lg:flex xl:gap-6">
               {navFor(lang).map((item) => (
-                <a key={item.href} href={item.href} className={`hover:text-(--ink) ${"wideOnly" in item ? "hidden xl:inline" : ""}`}>
+                <a key={item.href} href={item.href} className="hover:text-(--ink)">
                   {item.label}
                 </a>
               ))}

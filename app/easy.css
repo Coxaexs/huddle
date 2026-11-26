@@ -229,3 +229,10 @@ button.simple-tile:hover { border-color: color-mix(in srgb, var(--lavender) 55%,
 @media (max-width: 760px) {
   .header-help-simple { display: none; }
 }
+.header-help { display: contents; }
+/* The desktop app's title bar has its own Help button at the top right; one is enough. */
+@media (min-width: 761px) {
+  :root[data-desktop-titlebar]:not([data-custom-theme-id="winamp"], [data-custom-theme-id="teamspeak"], [data-custom-theme-id^="msn"]) :is(.chat-header .header-help, .header-help-simple) {
+    display: none;
+  }
+}

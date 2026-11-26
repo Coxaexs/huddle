@@ -75,8 +75,9 @@ export const WIDGET_SIZES: WidgetSize[] = ["small", "medium", "large"];
  */
 export const TOOLBARS: Record<ToolbarId, { items: readonly string[]; hidden: readonly string[]; locked: readonly string[] }> = {
   header: {
-    items: ["invite", "secondScreen", "search", "mentions", "pins", "saved", "achievements", "members"],
-    hidden: [],
+    // Invite starts in the overflow menu: the server name menu and the sidebar already invite.
+    items: ["invite", "secondScreen", "search", "mentions", "pins", "saved", "achievements", "members", "help"],
+    hidden: ["invite"],
     locked: [],
   },
   composer: {

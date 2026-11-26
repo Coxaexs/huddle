@@ -146,7 +146,7 @@ export function ChatHeader({
   const simpleTools = simpleUi && !inDmHome;
   // Customize → Buttons: their order, and the ones moved into "More".
   const tb = useToolbar("header");
-  const anyHidden = ["invite", "secondScreen", "search", "mentions", "pins", "saved", ...(achievementsOn ? ["achievements"] : []), "members"].some(tb.hidden);
+  const anyHidden = [...(onInvite && !inDmHome ? ["invite"] : []), "secondScreen", "search", "mentions", "pins", "saved", ...(achievementsOn ? ["achievements"] : []), "members", "help"].some(tb.hidden);
   // Phones keep only the essentials in the header; the rest sit behind "More".
   const [moreOpen, setMoreOpen] = useState(false);
   /** The Follow dialog of an announcement channel. */
@@ -459,13 +459,9 @@ export function ChatHeader({
               {simpleHeader && (
                 <HeaderFaces online={onlineFaces} onFaces={() => setMembersOpen((open) => !open)} onInvite={onInvite} />
               )}
-              {!inDmHome && !simpleHeader && (
+              {!inDmHome && !simpleHeader && onInvite && (
                 <span className="header-extra">
-                  <Icon
-                    label={t("header.findUsers")}
-                    onClick={() => setGlobalSearchOpen(true)}
-                    tb={tb.item("invite")}
-                  >
+                  <Icon label={t("simple.invite")} onClick={onInvite} tb={tb.item("invite")}>
                     <UserPlus size={18} />
                   </Icon>
                 </span>
@@ -527,9 +523,11 @@ export function ChatHeader({
                     <Award size={18} />
                   </Icon>
                 )}
-                <Icon label={t("help.title")} onClick={requestHelp}>
-                  <CircleHelp size={18} />
-                </Icon>
+                <span className="header-help">
+                  <Icon label={t("help.title")} onClick={requestHelp} tb={tb.item("help")}>
+                    <CircleHelp size={18} />
+                  </Icon>
+                </span>
               </span>
               {/* Settings already lives in the user footer; MSN shows it as "Options". */}
               {msnTheme && (
@@ -626,9 +624,9 @@ export function ChatHeader({
                         <Users size={18} /> {t("header.toggleMemberList")}
                       </button>
                     )}
-                    {!inDmHome && (
-                      <button type="button" role="menuitem" className={tb.hidden("invite") ? "tb-moved" : "tb-in-bar"} onClick={pick(() => setGlobalSearchOpen(true))}>
-                        <UserPlus size={18} /> {t("header.findPeople")}
+                    {!inDmHome && onInvite && (
+                      <button type="button" role="menuitem" className={tb.hidden("invite") ? "tb-moved" : "tb-in-bar"} onClick={pick(onInvite)}>
+                        <UserPlus size={18} /> {t("simple.invite")}
                       </button>
                     )}
                     <button type="button" role="menuitem" className={tb.hidden("secondScreen") ? "tb-moved" : "tb-in-bar"} onClick={pick(() => secondScreenRef.current?.open())}>
@@ -645,7 +643,7 @@ export function ChatHeader({
                       <Award size={18} /> {t("header.achievements")}
                     </button>
 )}
-                    <button type="button" role="menuitem" className={simpleTools ? "" : "tb-in-bar"} onClick={pick(requestHelp)}>
+                    <button type="button" role="menuitem" className={simpleTools ? "" : tb.hidden("help") ? "tb-moved" : "tb-in-bar"} onClick={pick(requestHelp)}>
                       <CircleHelp size={18} /> {t("help.title")}
                     </button>
                     <button type="button" role="menuitem" className="tb-in-bar" onClick={pick(() => setSettingsOpen(true))}>

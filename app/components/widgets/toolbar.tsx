@@ -2,7 +2,7 @@
 
 import { useMemo, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import {
-  Armchair, AtSign, Award, Bookmark, Crown, ExternalLink, Film, Gamepad2, Headphones, LayoutGrid, Maximize2,
+  Armchair, AtSign, Award, Bookmark, CircleHelp, Crown, ExternalLink, Film, Gamepad2, Headphones, LayoutGrid, Maximize2,
   Megaphone, MessageCircleQuestionMark, Mic, Monitor, MoreHorizontal, PhoneOff, Pin, Search,
   SlidersHorizontal, Smile, Sparkles, Type, UserPlus, Users, Video, Vote,
 } from "lucide-react";
@@ -163,6 +163,7 @@ const ICONS: Record<string, ReactNode> = {
   "header:saved": <Bookmark size={15} />,
   "header:achievements": <Award size={15} />,
   "header:members": <Users size={15} />,
+  "header:help": <CircleHelp size={15} />,
   "composer:emoji": <Smile size={15} />,
   "composer:gif": <Film size={15} />,
   "composer:format": <Type size={15} />,

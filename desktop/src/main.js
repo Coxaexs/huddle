@@ -642,6 +642,21 @@ function buildMenu() {
       ],
     },
     { role: "windowMenu" },
+    {
+      role: "help",
+      submenu: [
+        {
+          label: "Hoffle Help…",
+          accelerator: "F1",
+          click: () => {
+            mainWindow?.show();
+            mainWindow?.webContents.send("hotkey", "open-help");
+          },
+        },
+        { label: "User Guide", click: () => shell.openExternal("https://hoffle.online/en/help") },
+        { label: "Kullanım Kılavuzu (Türkçe)", click: () => shell.openExternal("https://hoffle.online/help") },
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }

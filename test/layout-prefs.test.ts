@@ -201,8 +201,9 @@ describe("toolbars", () => {
     });
     const order = toolbarState(layout, "header").order;
     expect(order).toHaveLength(TOOLBARS.header.items.length);
-    // Kept items keep their order; "invite" and "secondScreen" ship first, "mentions" right after "search".
-    expect(order).toEqual(["invite", "secondScreen", "members", "search", "mentions", "pins", "saved", "achievements"]);
+    // Kept items keep their order; "invite" and "secondScreen" ship first, "mentions" right after "search",
+    // and "help" (last in the spec) right after its neighbour "members".
+    expect(order).toEqual(["invite", "secondScreen", "members", "help", "search", "mentions", "pins", "saved", "achievements"]);
     expect([...toolbarState(layout, "header").hidden]).toEqual(["pins"]);
   });
 

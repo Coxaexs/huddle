@@ -59,13 +59,14 @@ export function TabletopDock({
     <div className="relative inline-flex items-center" ref={wrapRef}>
       <button
         type="button"
-        className={`voice-stage-topbar-btn ${open ? "active" : ""}`}
+        // The header's own icon style; the voice stage's one has a filled background that read as stuck on hover.
+        className={`icon-button ${open ? "active" : ""}`}
         aria-label={t("dock.buttonAria")}
         aria-expanded={open}
         title={t("dock.title")}
         onClick={() => setOpen((v) => !v)}
       >
-        <Dices size={16} />
+        <Dices size={18} />
       </button>
 
       {open && (
