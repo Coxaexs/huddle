@@ -412,6 +412,8 @@ async function handleRequest(
           url.pathname.startsWith("/docs/") ||
           url.pathname === "/help" ||
           url.pathname.startsWith("/help/") ||
+          url.pathname === "/en/help" ||
+          url.pathname.startsWith("/en/help/") ||
           url.pathname === "/terms" ||
           url.pathname === "/privacy")
       ) {

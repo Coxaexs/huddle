@@ -79,7 +79,7 @@ export const userSettings = {
   "userSettings.tab.accessibility": "Accessibility",
   "userSettings.tab.roles": "Roles",
   "userSettings.tab.requests": "Ideas & Bug Reports",
-  "userSettings.tab.tutorial": "Tutorial",
+  "userSettings.tab.tutorial": "Help & tour",
   "userSettings.tab.language": "Language",
   "userSettings.tab.licenses": "Open Source Licenses",
   "userSettings.logOut": "Log Out",

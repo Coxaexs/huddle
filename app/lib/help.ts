@@ -404,7 +404,7 @@ export interface HelpSection {
 }
 
 /** Anchor ids matching GitHub-style heading slugs for the given language. */
-function makeSlugger(lang: HelpLang = "tr") {
+export function makeSlugger(lang: HelpLang = "tr") {
   const seen = new Map<string, number>();
   return (text: string) => {
     const base = text

@@ -52,6 +52,7 @@ import { CustomCssTab } from "./settings/custom-css-tab";
 import { AccessibilityTab, type NameMotion } from "./settings/accessibility-tab";
 import { setUiMode, uiMode, useUiMode } from "../lib/ui-mode";
 import { SimpleSettingsHome } from "./settings/simple-home";
+import { requestHelp } from "../lib/help-request";
 import { useSettingsSections } from "./settings/use-settings-sections";
 import { DICE_STYLE_IDS } from "@/lib/dice-styles";
 
@@ -1343,6 +1344,10 @@ export function SettingsDialog({
               onEditProfile={() => setProfileEditor(true)}
               onShowEverything={() => setUiMode("full")}
               onSignOut={onSignOut}
+              onHelp={() => {
+                onClose();
+                requestHelp();
+              }}
             />
           )}
           {tab === "tts" && <TtsSettings />}
@@ -1559,13 +1564,20 @@ export function SettingsDialog({
           {tab === "language" && <LanguageTab />}
           {tab === "tutorial" && (
             <div className="space-y-4">
-              <p className="text-sm leading-relaxed text-gray-300">
-                The tutorial walks you through picking a theme, getting around, voice and screen sharing, chat and game
-                night, with buttons that try each thing for real. It opened when you signed up, and you can open it again
-                from here any time.
-              </p>
+              <p className="text-sm leading-relaxed text-gray-300">{t("help.tutorialLead")}</p>
               <button type="button" className="discord-btn primary-indigo" onClick={() => onOpenTutorial?.()}>
-                Open the tutorial
+                {t("help.openTutorial")}
+              </button>
+              <p className="pt-2 text-sm leading-relaxed text-gray-300">{t("help.guideLead")}</p>
+              <button
+                type="button"
+                className="discord-btn"
+                onClick={() => {
+                  onClose();
+                  requestHelp();
+                }}
+              >
+                {t("help.title")}
               </button>
             </div>
           )}

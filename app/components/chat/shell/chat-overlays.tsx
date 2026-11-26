@@ -8,6 +8,7 @@ import { QuickSwitcher, type QuickSwitcherTarget } from "../../quick-switcher";
 import { GroupDmDialog } from "../../group-dm-dialog";
 import { InviteDialog } from "../../invite-dialog";
 import { KeyboardShortcutsDialog } from "../../keyboard-shortcuts-dialog";
+import { HelpDialogHost } from "../../help-dialog-host";
 import { practiceRoll, TutorialPill, WelcomeTutorial } from "../../welcome-tutorial";
 import { ToastContainer } from "../../toast";
 import { AchievementLayer, BuddyLayer } from "../../optional-layers";
@@ -628,6 +629,13 @@ export function renderChatOverlays(v: ShellRenderState) {
       <KeyboardShortcutsDialog
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
+      />
+      <HelpDialogHost
+        onOpenShortcuts={() => setShortcutsOpen(true)}
+        onOpenTutorial={() => {
+          setSettingsOpen(false);
+          setTutorial({ page: 0, folded: false });
+        }}
       />
 
       <PollDialog

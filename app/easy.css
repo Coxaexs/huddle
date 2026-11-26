@@ -223,3 +223,9 @@ button.simple-tile:hover { border-color: color-mix(in srgb, var(--lavender) 55%,
 :where(.settings-modal.is-simple .settings-content-scroll) > * { max-width: 772px; margin-inline: auto; }
 /* Every page sits in the middle, including the ones that set their own left margin. */
 .settings-modal.is-simple .settings-content-scroll > * { margin-inline: auto; }
+
+/* Help in the simple header: desktop only, phones find it under More. */
+.header-help-simple { display: contents; }
+@media (max-width: 760px) {
+  .header-help-simple { display: none; }
+}

@@ -85,4 +85,17 @@ describe("checkAiQuota", () => {
     await third.refund?.();
     expect((await checkAiQuota(db, "u", { ...LIMITS, now: t + 3 })).allowed).toBe(true);
   });
+
+  it("keeps the help assistant daily budget apart from the /ask one", async () => {
+    const db = realDb();
+    const t = 1_000_000_000;
+    const day = { perMinute: 100, perHour: 100, perDay: 2 };
+    expect((await checkAiQuota(db, "u1", { ...day, now: t })).allowed).toBe(true);
+    expect((await checkAiQuota(db, "u2", { ...day, now: t + 1 })).allowed).toBe(true);
+    // /ask is full for today, the help pool is untouched.
+    expect((await checkAiQuota(db, "u3", { ...day, now: t + 2 })).allowed).toBe(false);
+    expect((await checkAiQuota(db, "help:a", { ...day, now: t + 3, pool: "help" })).allowed).toBe(true);
+    expect((await checkAiQuota(db, "help:b", { ...day, now: t + 4, pool: "help" })).allowed).toBe(true);
+    expect((await checkAiQuota(db, "help:c", { ...day, now: t + 5, pool: "help" })).allowed).toBe(false);
+  });
 });

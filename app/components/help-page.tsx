@@ -9,6 +9,10 @@ import {
   type HelpLang,
 } from "../lib/help";
 import { APP_URL, SITE, SiteShell } from "./site-chrome";
+import { HelpAsk, HelpAskFloating } from "./help-ask";
+
+/** On hoffle.online the worker forwards /api/* to the app. */
+const ASK_ENDPOINT = "/api/ai/help";
 
 /** hoffle.online/help (Turkish) and hoffle.online/en/help (English): the user manual. */
 
@@ -203,6 +207,9 @@ export function HelpIndexPage({ lang = "tr" }: { lang?: HelpLang }) {
             <a href={APP_URL} className="font-semibold text-(--violet) underline underline-offset-2">chat.hoffle.online</a>
             {copy.introAfterLink}
           </p>
+          <section id="ask" className="mt-8 scroll-mt-6 rounded-2xl border border-(--line) bg-(--card) p-5 sm:p-6">
+            <HelpAsk lang={lang} endpoint={ASK_ENDPOINT} />
+          </section>
           <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2">
             {chapters.map((chapter) => (
               <section key={chapter.slug} className="rounded-2xl border border-(--line) bg-(--card) p-5">
@@ -307,6 +314,7 @@ export function HelpChapterPage({ chapter, lang = "tr" }: { chapter: HelpChapter
           </aside>
         )}
       </div>
+      <HelpAskFloating lang={lang} endpoint={ASK_ENDPOINT} />
     </SiteShell>
   );
 }

@@ -4,7 +4,8 @@ import { useModuleOn } from "@/app/lib/modules";
 import { WidgetArea } from "../../widgets/widget-area";
 import type { VoiceApi } from "../../../hooks/use-voice";
 import type { PublicChannel } from "@/lib/servers";
-import { ArrowUpToLine, Search, Pin, Bookmark, Settings, Users, Menu, MoreHorizontal, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut, MessageCircle, Award, Megaphone, X } from "lucide-react";
+import { ArrowUpToLine, Search, Pin, Bookmark, Settings, Users, Menu, MoreHorizontal, Pencil, StickyNote, Volume1, Volume2, VolumeX, PhoneCall, Video, UserPlus, AtSign, Monitor, Maximize2, ExternalLink, LogOut, MessageCircle, Award, Megaphone, X, CircleHelp } from "lucide-react";
+import { requestHelp } from "@/app/lib/help-request";
 import { Avatar } from "../../avatar";
 import { FollowChannelDialog } from "../../follow-channel-dialog";
 import { type DmSummary } from "../../../lib/chat/types";
@@ -526,6 +527,9 @@ export function ChatHeader({
                     <Award size={18} />
                   </Icon>
                 )}
+                <Icon label={t("help.title")} onClick={requestHelp}>
+                  <CircleHelp size={18} />
+                </Icon>
               </span>
               {/* Settings already lives in the user footer; MSN shows it as "Options". */}
               {msnTheme && (
@@ -592,6 +596,14 @@ export function ChatHeader({
                   )}
                 </div>
               )}
+              {/* Simple mode hides the icon row, but new people need Help most; phones keep it in More. */}
+              {simpleTools && (
+                <span className="header-help-simple">
+                  <Icon label={t("help.title")} onClick={requestHelp}>
+                    <CircleHelp size={18} />
+                  </Icon>
+                </span>
+              )}
               <div className={`header-more ${anyHidden ? "has-hidden" : ""}`} ref={moreRef}>
                 <Icon label={t("header.more")} active={moreOpen} onClick={() => setMoreOpen((open) => !open)}>
                   <MoreHorizontal size={18} />
@@ -633,6 +645,9 @@ export function ChatHeader({
                       <Award size={18} /> {t("header.achievements")}
                     </button>
 )}
+                    <button type="button" role="menuitem" className={simpleTools ? "" : "tb-in-bar"} onClick={pick(requestHelp)}>
+                      <CircleHelp size={18} /> {t("help.title")}
+                    </button>
                     <button type="button" role="menuitem" className="tb-in-bar" onClick={pick(() => setSettingsOpen(true))}>
                       <Settings size={18} /> {t("common.settings")}
                     </button>

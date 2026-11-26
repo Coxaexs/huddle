@@ -17,6 +17,7 @@ import {
   STATUS_URL,
   COMMUNITY_INVITE,
   COMMUNITY_URL,
+  helpPath,
   sectionHref,
 } from "./site-chrome";
 import { loadInvitePreview, type InvitePreview } from "@/lib/invite-preview";
@@ -781,6 +782,13 @@ export async function LandingPage({ lang = "en" }: { lang?: LandingLang }) {
                   <p className="max-w-[62ch] pb-5 leading-relaxed text-(--ink-2)">{item.a}</p>
                 </details>
               ))}
+              <p className="py-5 leading-relaxed text-(--ink-2)">
+                {copy.faq.moreBefore}
+                <a href={helpPath(lang)} className="font-semibold text-(--violet) underline underline-offset-2">
+                  {copy.faq.moreLink}
+                </a>
+                {copy.faq.moreAfter}
+              </p>
             </div>
           </div>
         </section>

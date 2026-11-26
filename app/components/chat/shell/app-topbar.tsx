@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import type { PublicServer } from "@/lib/servers";
 import { DM_HOME } from "../../../lib/chat/constants";
 import { useI18n } from "../../../lib/i18n-context";
+import { requestHelp } from "../../../lib/help-request";
 
 interface NavEntry {
   serverId: string | null;
@@ -253,9 +254,9 @@ export function AppTopbar({
         <button
           type="button"
           className="app-topbar-btn"
-          aria-label="Help & Shortcuts"
-          title="Help & Shortcuts"
-          onClick={() => setShortcutsOpen(true)}
+          aria-label={t("help.title")}
+          title={t("help.title")}
+          onClick={requestHelp}
         >
           <CircleHelp size={16} />
         </button>

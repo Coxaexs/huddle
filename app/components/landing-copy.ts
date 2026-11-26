@@ -13,8 +13,8 @@ export const LANDING_PATH: Record<LandingLang, string> = { en: "/", tr: "/tr" };
 
 export interface LandingCopy {
   meta: { title: string; description: string; ogLocale: string };
-  nav: { features: string; themes: string; download: string; staying: string; docs: string; open: string; otherLang: string; otherLangShort: string; otherLangLabel: string };
-  footer: { madeBy: string; notDiscord: string; webApp: string; download: string; docs: string; selfHost: string; faq: string; status: string; terms: string; privacy: string };
+  nav: { features: string; themes: string; download: string; staying: string; help: string; docs: string; open: string; otherLang: string; otherLangShort: string; otherLangLabel: string };
+  footer: { madeBy: string; notDiscord: string; webApp: string; download: string; help: string; docs: string; selfHost: string; faq: string; status: string; terms: string; privacy: string };
   hero: { title: string; body: string; perks: string[]; open: string; downloadFor: (os: string) => string; downloadGeneric: string; onPhone: string };
   live: {
     lead: string;
@@ -66,7 +66,7 @@ export interface LandingCopy {
   };
   voice: { title: string; lead: string; points: { title: string; body: string }[] };
   selfHost: { title: string; body: string; points: string[]; guide: string; after: string; copy: string; copied: string };
-  faq: { title: string; items: { q: string; a: string }[] };
+  faq: { title: string; items: { q: string; a: string }[]; moreBefore: string; moreLink: string; moreAfter: string };
   /** The last call to action, above the note about who makes Hoffle. */
   closing: { title: string; body: string };
   about: { body: string; github: string; kofi: string; sponsors: string };
@@ -84,6 +84,7 @@ const en: LandingCopy = {
     themes: "Themes",
     download: "Download",
     staying: "Will it last?",
+    help: "Help",
     docs: "Docs",
     open: "Open Hoffle",
     otherLang: "Türkçe",
@@ -95,6 +96,7 @@ const en: LandingCopy = {
     notDiscord: "Hoffle is not affiliated with or endorsed by Discord Inc. Discord is a trademark of Discord Inc.",
     webApp: "Web app",
     download: "Download",
+    help: "User guide",
     docs: "Docs",
     selfHost: "Self-hosting guide",
     faq: "FAQ",
@@ -419,6 +421,9 @@ const en: LandingCopy = {
   },
   faq: {
     title: "Questions",
+    moreBefore: "Something else? The ",
+    moreLink: "user guide",
+    moreAfter: " explains every feature step by step, and you can ask it a question in your own words.",
     items: [
       { q: "Is it free?", a: "Yes. There's no paid tier and nothing is locked. The code is AGPL-3.0, so it stays open." },
       {
@@ -475,6 +480,7 @@ const tr: LandingCopy = {
     themes: "Temalar",
     download: "İndir",
     staying: "Kalıcı mı?",
+    help: "Yardım",
     docs: "Belgeler",
     open: "Hoffle'ı aç",
     otherLang: "English",
@@ -486,6 +492,7 @@ const tr: LandingCopy = {
     notDiscord: "Hoffle'ın Discord Inc. ile bir bağı yoktur. Discord, Discord Inc.'in ticari markasıdır.",
     webApp: "Web uygulaması",
     download: "İndir",
+    help: "Kullanım kılavuzu",
     docs: "Belgeler",
     selfHost: "Kendi sunucunda kur",
     faq: "SSS",
@@ -809,6 +816,9 @@ const tr: LandingCopy = {
   },
   faq: {
     title: "Sorular",
+    moreBefore: "Başka bir sorun mu var? ",
+    moreLink: "Kullanım kılavuzu",
+    moreAfter: " her özelliği adım adım anlatıyor; ona kendi kelimelerinle soru da sorabilirsin.",
     items: [
       { q: "Ücretsiz mi?", a: "Evet. Ücretli bir plan yok, kilitli hiçbir şey yok. Kod AGPL-3.0 lisanslı, yani açık kalacak." },
       {

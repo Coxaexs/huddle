@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Eye, GraduationCap, Languages, Layers, Lock, LogOut, Mic, Palette, ShieldCheck, type LucideIcon } from "lucide-react";
+import { Bell, CircleHelp, Eye, GraduationCap, Languages, Layers, Lock, LogOut, Mic, Palette, ShieldCheck, type LucideIcon } from "lucide-react";
 import { BUILTIN_THEMES, type Theme } from "@/lib/themes";
 import type { PublicUser } from "@/lib/users";
 import { useI18n } from "../../lib/i18n-context";
@@ -28,6 +28,7 @@ export function SimpleSettingsHome({
   onEditProfile,
   onShowEverything,
   onSignOut,
+  onHelp,
 }: {
   user: PublicUser;
   avatar: string;
@@ -40,6 +41,8 @@ export function SimpleSettingsHome({
   onEditProfile: () => void;
   onShowEverything: () => void;
   onSignOut: () => void;
+  /** Opens the Help dialog (ask the manual, browse its chapters). */
+  onHelp: () => void;
 }) {
   const { t } = useI18n();
   const looks = QUICK_LOOKS.map((id) => BUILTIN_THEMES.find((theme) => theme.id === id)).filter((theme): theme is Theme => Boolean(theme));
@@ -102,6 +105,11 @@ export function SimpleSettingsHome({
             <small>{hint}</small>
           </button>
         ))}
+        <button type="button" className="simple-tile" onClick={onHelp}>
+          <span className="simple-tile-art tone-blue"><CircleHelp size={26} aria-hidden="true" /></span>
+          <strong>{t("help.title")}</strong>
+          <small>{t("help.tileHint")}</small>
+        </button>
       </div>
 
       <div className="simple-settings-foot">

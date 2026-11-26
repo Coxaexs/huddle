@@ -18,4 +18,16 @@ export const shortcuts: Record<keyof typeof en, string> = {
   "shortcuts.editLast": "Son gönderdiğin mesajı düzenle",
   "shortcuts.newLine": "Yeni satır ekle",
   "shortcuts.skipConfirm": "Silme onayını atla",
+  // Help dialog (help-dialog.tsx) and the ways to it.
+  "help.title": "Yardım",
+  "help.ask": "Soru sor",
+  "help.chapters": "Kılavuz bölümleri",
+  "help.openGuide": "Kılavuzun tamamını aç",
+  "help.tour": "Turu tekrar izle",
+  "help.shortcuts": "Klavye kısayolları",
+  "help.tileHint": "Soru sor ya da kılavuzu oku",
+  "help.tourTry": "Yardım ve kullanım kılavuzu",
+  "help.tutorialLead": "Tur sana tema seçmeyi, ekranda gezinmeyi, sesli sohbeti ve ekran paylaşımını, sohbeti ve oyun gecesini gösterir; her şeyi gerçekten deneyebileceğin düğmelerle. Kaydolduğunda açılmıştı, buradan istediğin zaman tekrar açabilirsin.",
+  "help.openTutorial": "Turu aç",
+  "help.guideLead": "Bir yerde mi takıldın? Kullanım kılavuzu her özelliği adım adım anlatıyor; ona kendi kelimelerinle soru da sorabilirsin.",
 };

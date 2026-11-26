@@ -17,4 +17,16 @@ export const shortcuts = {
   "shortcuts.editLast": "Edit your last sent message",
   "shortcuts.newLine": "Insert a new line",
   "shortcuts.skipConfirm": "Bypass delete confirmation",
+  // Help dialog (help-dialog.tsx) and the ways to it.
+  "help.title": "Help",
+  "help.ask": "Ask a question",
+  "help.chapters": "Guide chapters",
+  "help.openGuide": "Open the full guide",
+  "help.tour": "Replay the tour",
+  "help.shortcuts": "Keyboard shortcuts",
+  "help.tileHint": "Ask a question or read the guide",
+  "help.tourTry": "Help and user guide",
+  "help.tutorialLead": "The tour walks you through picking a theme, getting around, voice and screen sharing, chat and game night, with buttons that try each thing for real. It opened when you signed up, and you can open it again from here any time.",
+  "help.openTutorial": "Open the tour",
+  "help.guideLead": "Stuck on something? The user guide explains every feature step by step, and you can ask it a question in your own words.",
 } as const;

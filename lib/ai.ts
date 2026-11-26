@@ -397,8 +397,19 @@ function waitText(seconds: number): string {
 export async function checkAiQuota(
   db: D1Database,
   userId: string,
-  options: { perMinute: number; perHour: number; perDay: number; now?: number },
+  options: {
+    perMinute: number;
+    perHour: number;
+    perDay: number;
+    now?: number;
+    /**
+     * Which daily budget the ask comes out of. The help assistant's anonymous
+     * visitors (ids starting `help:`) get their own, so they can't use up /ask's.
+     */
+    pool?: "chat" | "help";
+  },
 ): Promise<AiQuotaResult> {
+  const helpPool = options.pool === "help" ? 1 : 0;
   const now = options.now ?? Date.now();
   const minuteAgo = now - 60_000;
   const hourAgo = now - 3_600_000;
@@ -414,10 +425,10 @@ export async function checkAiQuota(
          (SELECT MIN(at) FROM ai_usage WHERE user_id = ?1 AND at > ?2) AS minute_oldest,
          (SELECT COUNT(*) FROM ai_usage WHERE user_id = ?1 AND at > ?3) AS hour,
          (SELECT MIN(at) FROM ai_usage WHERE user_id = ?1 AND at > ?3) AS hour_oldest,
-         (SELECT COUNT(*) FROM ai_usage WHERE at > ?4) AS day,
-         (SELECT MIN(at) FROM ai_usage WHERE at > ?4) AS day_oldest`,
+         (SELECT COUNT(*) FROM ai_usage WHERE at > ?4 AND (substr(user_id, 1, 5) = 'help:') = ?5) AS day,
+         (SELECT MIN(at) FROM ai_usage WHERE at > ?4 AND (substr(user_id, 1, 5) = 'help:') = ?5) AS day_oldest`,
     )
-    .bind(userId, minuteAgo, hourAgo, dayAgo)
+    .bind(userId, minuteAgo, hourAgo, dayAgo, helpPool)
     .first<{
       minute: number;
       minute_oldest: number | null;

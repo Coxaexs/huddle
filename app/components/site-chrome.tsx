@@ -30,7 +30,7 @@ export function GithubMark({ className = "" }: { className?: string }) {
 }
 
 /** The app icon and name, as in the browser tab and on the desktop. */
-function Wordmark({ className = "" }: { className?: string }) {
+function Wordmark({ className = "", nameClassName = "" }: { className?: string; nameClassName?: string }) {
   return (
     <span className={`inline-flex items-center gap-2.5 font-semibold tracking-tight ${className}`}>
       {/* The app's mark: an italic serif h, as in the chat rail and sign-in card. */}
@@ -40,9 +40,14 @@ function Wordmark({ className = "" }: { className?: string }) {
       >
         h
       </span>
-      <span className="lp-display text-(--violet)">Hoffle</span>
+      <span className={`lp-display text-(--violet) ${nameClassName}`}>Hoffle</span>
     </span>
   );
+}
+
+/** The user manual in `lang`: Turkish at /help, English at /en/help. */
+export function helpPath(lang: LandingLang): string {
+  return lang === "tr" ? "/help" : "/en/help";
 }
 
 /** A section of the landing page in `lang`: /#download or /tr#download. */
@@ -57,9 +62,12 @@ function navFor(lang: LandingLang) {
     { href: sectionHref(lang, "themes"), label: nav.themes },
     { href: lang === "tr" ? "/tr/dnd" : "/dnd", label: "D&D" },
     { href: lang === "tr" ? "/tr/discover" : "/discover", label: lang === "tr" ? "Keşfet" : "Discover" },
-    { href: sectionHref(lang, "staying"), label: nav.staying },
+    { href: sectionHref(lang, "staying"), label: nav.staying, wideOnly: true },
     { href: sectionHref(lang, "download"), label: nav.download },
-    { href: "/docs", label: nav.docs },
+    { href: helpPath(lang), label: nav.help },
+    // wideOnly: hidden below 1280px, where the bar has no room for all of them.
+    // Both are in the footer too.
+    { href: "/docs", label: nav.docs, wideOnly: true },
   ];
 }
 
@@ -203,16 +211,34 @@ export function SiteShell({
       <header className="border-b border-(--line)">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
           <a href={LANDING_PATH[lang]} aria-label="Hoffle" className="shrink-0">
-            <Wordmark className="text-[22px]" />
+            {/* The smallest phones get the mark alone, so the buttons on the right fit. */}
+            <Wordmark className="text-[22px]" nameClassName="max-[399px]:hidden" />
           </a>
           {!bare && (
-            <nav aria-label="Main" className="hidden items-center gap-6 text-[15px] font-medium text-(--ink-2) lg:flex">
+            <nav aria-label="Main" className="hidden items-center gap-5 whitespace-nowrap text-[15px] font-medium text-(--ink-2) lg:flex xl:gap-6">
               {navFor(lang).map((item) => (
-                <a key={item.href} href={item.href} className="hover:text-(--ink)">{item.label}</a>
+                <a key={item.href} href={item.href} className={`hover:text-(--ink) ${"wideOnly" in item ? "hidden xl:inline" : ""}`}>
+                  {item.label}
+                </a>
               ))}
             </nav>
           )}
           <div className="flex items-center gap-1.5">
+            {!bare && (
+              <a
+                href={helpPath(lang)}
+                aria-label={copy.nav.help}
+                title={copy.nav.help}
+                className="grid h-10 place-items-center rounded-full px-1.5 text-sm font-medium text-(--ink-2) hover:text-(--ink) sm:px-2 lg:hidden"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="h-5 w-5 sm:hidden">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" />
+                  <path d="M12 17h.01" />
+                </svg>
+                <span className="hidden sm:inline">{copy.nav.help}</span>
+              </a>
+            )}
             {alternate && (
               <a
                 href={alternate.href}
@@ -249,6 +275,7 @@ export function SiteShell({
             <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2 font-semibold">
               <a href={APP_URL} className="hover:text-(--ink)">{copy.footer.webApp}</a>
               <a href={sectionHref(lang, "download")} className="hover:text-(--ink)">{copy.footer.download}</a>
+              <a href={helpPath(lang)} className="hover:text-(--ink)">{copy.footer.help}</a>
               <a href="/docs" className="hover:text-(--ink)">{copy.footer.docs}</a>
               <a href={lang === "tr" ? "/tr/dnd" : "/dnd"} className="hover:text-(--ink)">D&amp;D</a>
               <a href={lang === "tr" ? "/tr/discover" : "/discover"} className="hover:text-(--ink)">

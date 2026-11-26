@@ -6,6 +6,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  CircleHelp,
   Command,
   Compass,
   Dices,
@@ -20,6 +21,7 @@ import {
   Vote,
   X,
 } from "lucide-react";
+import { requestHelp } from "../lib/help-request";
 import type { DiceRollEvent } from "@/lib/protocol";
 import type { TranslateFn } from "@/lib/i18n";
 import { tRich, useI18n } from "../lib/i18n-context";
@@ -285,6 +287,7 @@ function pages(
       tries: [
         { label: t("tutorial.yours.tryProfile"), icon: <UserRound size={16} />, run: actions.openProfile },
         { label: t("tutorial.yours.tryShortcuts"), icon: <Keyboard size={16} />, run: actions.openShortcuts },
+        { label: t("help.tourTry"), icon: <CircleHelp size={16} />, run: requestHelp },
       ],
     },
   ];
