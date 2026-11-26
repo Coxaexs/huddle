@@ -58,6 +58,14 @@ import { nextBigUploadAlarm, sweepBigUploads } from "./big-uploads";
 import { deliverDueScheduled, nextScheduledAlarm } from "./scheduled";
 import { clearExpiredStatuses, nextStatusExpiryAlarm } from "./status-expiry";
 import { deliverDueRecaps, nextRecapAlarm } from "./recap";
+import { deliverDueTimers } from "./community-bot/timers";
+import { endDueGiveaways } from "./community-bot/giveaways";
+import { deliverDueBirthdays } from "./community-bot/birthdays";
+import { syncAllServerStats } from "./community-bot/server-stats";
+import {
+  maybeCreateTempVoiceChannel,
+  maybeDeleteEmptyTempVoiceChannel,
+} from "./community-bot/temp-voice";
 import { nextFeedAlarm, pollDueFeeds } from "./feeds";
 import {
   NOTES_CHUNK,
@@ -1513,6 +1521,31 @@ export class HuddleHub extends DurableObject {
         // The D&D companion seats their hero at the table (and its game master behind the screen).
         if (!attachment.bot && previous !== event.channelId && typeof this.ctx?.waitUntil === "function") {
           this.ctx.waitUntil(notifyDndTable(attachment.userId, { type: "seated", room: event.channelId }));
+          if (this.db) {
+            const db = this.db;
+            const chId = event.channelId;
+            const uid = attachment.userId;
+            const uname = attachment.displayName || attachment.username;
+            this.ctx.waitUntil(
+              maybeCreateTempVoiceChannel(db, chId, uid, uname)
+                .then((created) => {
+                  if (created) {
+                    try {
+                      socket.send(
+                        JSON.stringify({
+                          t: "voice-move",
+                          channelId: created.channelId,
+                          serverNow: Date.now(),
+                        } satisfies ServerEvent),
+                      );
+                    } catch {
+                      // Socket may have closed before move.
+                    }
+                  }
+                })
+                .catch(() => undefined),
+            );
+          }
         }
         return;
       }
@@ -1533,7 +1566,13 @@ export class HuddleHub extends DurableObject {
         this.streamPreviews.delete(attachment.connectionId);
         this.watchingBy.delete(attachment.connectionId);
         this.saveAttachment(socket, attachment);
-        if (previous) this.broadcastVoice(previous);
+        if (previous) {
+          this.broadcastVoice(previous);
+          if (this.db && this.participantsIn(previous).length === 0 && typeof this.ctx?.waitUntil === "function") {
+            const db = this.db;
+            this.ctx.waitUntil(maybeDeleteEmptyTempVoiceChannel(db, previous).catch(() => false));
+          }
+        }
         // Persist lifetime voice time so achievements can reward it. A missed
         // leave event just under-counts; it never over-counts.
         if (this.db && joinedAt && previous) {
@@ -3298,6 +3337,11 @@ export class HuddleHub extends DurableObject {
       publish: (channelId, message, audience) =>
         this.publishChannelMessage(channelId, message, audience),
     }).catch(() => undefined);
+    // Community Bot recurring timers, timed giveaways, birthdays, and server stats.
+    await deliverDueTimers(this.db).catch(() => 0);
+    await endDueGiveaways(this.db).catch(() => 0);
+    await deliverDueBirthdays(this.db).catch(() => 0);
+    await syncAllServerStats(this.db, new Set(this.onlineUserIds())).catch(() => 0);
     // Followed feeds (RSS, YouTube, Reddit…) post what is new into their channel.
     const feedsOff = (await allDisabledFeatures(this.bindingsEnv as { FEATURES_DISABLED?: string; DB?: D1Database })).includes("feeds");
     if (!feedsOff) {

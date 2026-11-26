@@ -277,6 +277,46 @@ export function useShellCommands(s: ReturnType<typeof useShellActions>) {
       return;
     }
 
+    if (
+      name === "rank" ||
+      name === "levels" ||
+      name === "warn" ||
+      name === "infractions" ||
+      name === "clear-warns" ||
+      name === "clear" ||
+      name === "balance" ||
+      name === "daily" ||
+      name === "work" ||
+      name === "pay" ||
+      name === "shop" ||
+      name === "buy" ||
+      name === "richest" ||
+      name === "birthday" ||
+      name === "birthdays"
+    ) {
+      pendingCommandRef.current = null;
+      if (!activeChannelId) return;
+      try {
+        const data = await apiFetch<{ notice?: string; error?: string }>(
+          "/api/community-bot/command",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              channelId: activeChannelId,
+              command: name,
+              args: value,
+            }),
+          },
+        );
+        if (data.notice) setNotice(data.notice);
+      } catch (error) {
+        setNotice(
+          error instanceof Error ? error.message : `/${name} could not run.`,
+        );
+      }
+      return;
+    }
+
     if (name === "recap" && /^(start|stop|end)\b/i.test(value.trim())) {
       pendingCommandRef.current = null;
       const start = /^start\b/i.test(value.trim());

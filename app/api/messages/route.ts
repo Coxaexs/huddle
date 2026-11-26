@@ -1,6 +1,8 @@
 import { isExternalReactorId, reactorUsers } from "@/lib/reactors";
 import { currentUser, unauthorized, type User } from "@/lib/auth";
 import { enforceAutomod } from "@/lib/automod";
+import { maybeRunCustomCommand } from "@/lib/community-bot/custom-commands";
+import { awardMessageXp } from "@/lib/community-bot/levels";
 import { canSeeServer, channelAccess, messageAccess } from "@/lib/access";
 import { channelAudience, isDmMember, reopenDmForAll } from "@/lib/dms";
 import { channelKindInfo, postableChannelKindsSql } from "@/lib/channel-kinds";
@@ -19,7 +21,7 @@ import { can, canAny, hasPermission, Permission } from "@/lib/permissions";
 import { CHANNEL_DEFAULTS, channelOverwritePermissions, channelViewers, mayView } from "@/lib/channel-permissions";
 import { checkMemoryRateLimit, WRITE_RATE_LIMITS } from "@/lib/rate-limit";
 import { evaluateAndAward, tzFromRequest } from "@/lib/achievements";
-import { ensureSchema, DEFAULT_SERVER_ID } from "@/lib/schema";
+import { ensureSchema, DEFAULT_SERVER_ID, DM_SERVER_ID } from "@/lib/schema";
 import { bindings, type StoredMessage } from "@/lib/storage";
 import { blockIfTimedOut } from "@/lib/timeouts";
 import { blockIfUnverified } from "@/lib/verification-level";
@@ -1057,6 +1059,28 @@ export async function postMessageAs(
   // Connected Discord bots see the same message. This runs after the hub
   // publish so a slow or absent gateway never delays the sender's own tabs.
   afterResponse(dispatchMessage("MESSAGE_CREATE", stored, { origin: options.origin }));
+  // Built-in Community Bot XP & leveling + custom commands (human messages in server channels only).
+  if (!body.asBot && serverId && serverId !== DM_SERVER_ID && channelId) {
+    afterResponse(
+      awardMessageXp(db, {
+        serverId,
+        channelId,
+        userId: user.id,
+        displayName: user.display_name,
+        username: user.username,
+      }).catch(() => null),
+    );
+    afterResponse(
+      maybeRunCustomCommand(db, {
+        serverId,
+        channelId,
+        userId: user.id,
+        username: user.username,
+        displayName: user.display_name,
+        content: stored.content,
+      }).catch(() => false),
+    );
+  }
   // A post in an announcement channel goes out to every channel following it.
   if (postedKind === "announcement" && channelId && !threadId) {
     afterResponse(deliverToFollowers(db, channelId, stored).catch(() => 0));

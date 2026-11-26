@@ -18,7 +18,7 @@ export const DEFAULT_SERVER_ID = "hangout";
  * reports which version its schema matches. All statements in `migrate()` stay
  * idempotent, so applying an older version to a newer DB is a no-op.
  */
-export const SCHEMA_VERSION = 32;
+export const SCHEMA_VERSION = 35;
 
 /**
  * DM conversations live in the channels table so messages, pins and deletes all
@@ -1682,6 +1682,192 @@ async function migrate(db: D1Database): Promise<void> {
       expires_at INTEGER NOT NULL
     )`),
     db.prepare("CREATE INDEX IF NOT EXISTS oauth_states_expiry_idx ON oauth_states(expires_at)"),
+    // Built-in MEE6-style Community Bot (config, XP/levels, warnings, reaction role panels).
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_bot_config (
+      server_id TEXT PRIMARY KEY,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      bot_name TEXT NOT NULL DEFAULT 'HoffBot',
+      bot_avatar TEXT NOT NULL DEFAULT '🤖',
+      bot_color TEXT NOT NULL DEFAULT '#6366f1',
+      plugins_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_xp (
+      server_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      xp INTEGER NOT NULL DEFAULT 0,
+      level INTEGER NOT NULL DEFAULT 0,
+      messages INTEGER NOT NULL DEFAULT 0,
+      voice_minutes INTEGER NOT NULL DEFAULT 0,
+      last_xp_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (server_id, user_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS community_xp_rank_idx ON community_xp(server_id, xp DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_warnings (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      moderator_id TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS community_warnings_user_idx ON community_warnings(server_id, user_id, created_at DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_reaction_panels (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      message_id TEXT,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      color TEXT NOT NULL DEFAULT '#6366f1',
+      mode TEXT NOT NULL DEFAULT 'normal',
+      style TEXT NOT NULL DEFAULT 'buttons',
+      items_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS community_reaction_panels_server_idx ON community_reaction_panels(server_id)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS community_reaction_panels_msg_idx ON community_reaction_panels(message_id)"),
+    // Community Bot Phase 2: Custom Commands, Embeds, Timers, Giveaways, Starboard, Ticketing.
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_custom_commands (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      trigger TEXT NOT NULL,
+      response TEXT NOT NULL,
+      use_embed INTEGER NOT NULL DEFAULT 0,
+      embed_title TEXT,
+      embed_color TEXT NOT NULL DEFAULT '#6366f1',
+      grant_role_id TEXT,
+      remove_role_id TEXT,
+      cooldown_sec INTEGER NOT NULL DEFAULT 5,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      uses INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS community_custom_commands_trigger_idx ON community_custom_commands(server_id, trigger)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_embeds (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      message_id TEXT,
+      name TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
+      embed_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS community_embeds_server_idx ON community_embeds(server_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_timers (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      message TEXT NOT NULL,
+      use_embed INTEGER NOT NULL DEFAULT 0,
+      embed_color TEXT NOT NULL DEFAULT '#6366f1',
+      interval_min INTEGER NOT NULL DEFAULT 60,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      next_run_at INTEGER NOT NULL,
+      last_run_at INTEGER,
+      created_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS community_timers_due_idx ON community_timers(enabled, next_run_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_giveaways (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      message_id TEXT,
+      prize TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      winner_count INTEGER NOT NULL DEFAULT 1,
+      required_role_id TEXT,
+      host_id TEXT NOT NULL,
+      ends_at INTEGER NOT NULL,
+      ended INTEGER NOT NULL DEFAULT 0,
+      winner_ids_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS community_giveaways_due_idx ON community_giveaways(ended, ends_at)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_giveaway_entries (
+      giveaway_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (giveaway_id, user_id)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_starboard_posts (
+      server_id TEXT NOT NULL,
+      source_message_id TEXT NOT NULL,
+      starboard_message_id TEXT NOT NULL,
+      star_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (server_id, source_message_id)
+    )`),
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_ticket_panels (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      message_id TEXT,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      button_label TEXT NOT NULL DEFAULT 'Open Ticket',
+      button_emoji TEXT NOT NULL DEFAULT '🎫',
+      color TEXT NOT NULL DEFAULT '#6366f1',
+      welcome_message TEXT NOT NULL,
+      support_role_id TEXT,
+      created_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS community_ticket_panels_server_idx ON community_ticket_panels(server_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_tickets (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      panel_id TEXT,
+      channel_id TEXT NOT NULL,
+      thread_id TEXT,
+      opener_id TEXT NOT NULL,
+      claimer_id TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      subject TEXT NOT NULL DEFAULT 'Support Ticket',
+      created_at TEXT NOT NULL,
+      closed_at TEXT
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS community_tickets_server_idx ON community_tickets(server_id, status)"),
+    // Community Bot Phase 3: Economy, Role Shop, Birthdays, Temp Voice Channels.
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_economy (
+      server_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      balance INTEGER NOT NULL DEFAULT 0,
+      last_daily_at INTEGER NOT NULL DEFAULT 0,
+      last_work_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (server_id, user_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS community_economy_bal_idx ON community_economy(server_id, balance DESC)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_shop_items (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      emoji TEXT NOT NULL DEFAULT '🎁',
+      price INTEGER NOT NULL DEFAULT 100,
+      role_id TEXT,
+      created_at TEXT NOT NULL
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS community_shop_server_idx ON community_shop_items(server_id)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_birthdays (
+      server_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      month INTEGER NOT NULL,
+      day INTEGER NOT NULL,
+      last_wished_year INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (server_id, user_id)
+    )`),
+    db.prepare("CREATE INDEX IF NOT EXISTS community_birthdays_md_idx ON community_birthdays(month, day)"),
+    db.prepare(`CREATE TABLE IF NOT EXISTS community_temp_voice (
+      channel_id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`),
   ]);
 
   await seedDefaultServer(db);

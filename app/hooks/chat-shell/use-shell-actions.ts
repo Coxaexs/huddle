@@ -590,7 +590,7 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
     const channelId = message.channelId || activeChannelId;
     if (!channelId) return;
     try {
-      const result = await apiFetch<{ ok: boolean; reason: string | null }>(
+      const result = await apiFetch<{ ok: boolean; reason: string | null; notice?: string }>(
         "/api/commands/component",
         {
           method: "POST",
@@ -603,7 +603,9 @@ export function useShellActions(s: ReturnType<typeof useShellHistory>) {
           }),
         },
       );
-      if (!result.ok) {
+      if (result.notice) {
+        setNotice(result.notice);
+      } else if (!result.ok) {
         setNotice(
           result.reason === "offline"
             ? "That bot is not connected right now."

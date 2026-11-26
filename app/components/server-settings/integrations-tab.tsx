@@ -64,6 +64,13 @@ export function ServerIntegrationsTab({
     added?: boolean;
     onClick: () => void;
   }> = [
+    {
+      icon: "✨",
+      name: "Community Bot (MEE6-Style)",
+      blurb: "Levels & XP, leaderboard, welcome cards, auto-roles, reaction roles, and warning escalation.",
+      action: "Open Dashboard",
+      onClick: () => window.open(`${basePath}/dashboard/${encodeURIComponent(server.id)}`, "_blank", "noopener"),
+    },
     { icon: "📰", name: tk("intg.app.feeds"), blurb: tk("intg.app.feeds.blurb"), action: tk("intg.app.feeds.action"), onClick: () => goTo("integration-feeds") },
     { icon: "🪝", name: tk("intg.app.hooks"), blurb: tk("intg.app.hooks.blurb"), action: tk("intg.app.hooks.action"), onClick: () => goTo("integration-webhooks") },
     { icon: "⚔️", name: tk("intg.app.dnd"), blurb: tk("intg.app.dnd.blurb"), action: tk("intg.app.add"), added: has("dnd"), onClick: () => void addBot("D&D Companion", "dnd", "⚔️", "5e compendium and dice roller") },

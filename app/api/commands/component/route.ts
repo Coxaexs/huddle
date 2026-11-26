@@ -1,5 +1,8 @@
 import { channelAccess } from "@/lib/access";
 import { currentUser, unauthorized } from "@/lib/auth";
+import { handleGiveawayEnterButton } from "@/lib/community-bot/giveaways";
+import { handleReactionRoleButton } from "@/lib/community-bot/reaction-roles";
+import { handleTicketButton } from "@/lib/community-bot/ticketing";
 import {
   payloadHasComponent,
   payloadOwner,
@@ -57,6 +60,18 @@ export async function POST(request: Request) {
   if (stored) {
     if (!payloadHasComponent(stored.payload, customId)) {
       return Response.json({ ok: false, reason: "unknown" });
+    }
+    if (customId.startsWith("cb:rr:") && channel.serverId) {
+      const rr = await handleReactionRoleButton(db, channel.serverId, user.id, customId);
+      return Response.json({ ok: rr.ok, reason: rr.ok ? null : "disabled", notice: rr.notice });
+    }
+    if (customId.startsWith("cb:gw:") && channel.serverId) {
+      const gw = await handleGiveawayEnterButton(db, channel.serverId, user.id, customId);
+      return Response.json({ ok: gw.ok, reason: gw.ok ? null : "ended", notice: gw.notice });
+    }
+    if (customId.startsWith("cb:tk:") && channel.serverId) {
+      const tk = await handleTicketButton(db, channel.serverId, user.id, customId);
+      return Response.json({ ok: tk.ok, reason: tk.ok ? null : "disabled", notice: tk.notice });
     }
     botId = payloadOwner(stored.payload);
   } else {

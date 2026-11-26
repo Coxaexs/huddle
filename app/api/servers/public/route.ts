@@ -1,5 +1,7 @@
+import { afterResponse } from "@/lib/after-response";
 import { currentUser, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { handleMemberJoin } from "@/lib/community-bot/welcome";
 import { publishStructureChange } from "@/lib/hub-client";
 import { ensureSchema, DM_SERVER_ID } from "@/lib/schema";
 import { addServerMember, isServerMember, listServers } from "@/lib/servers";
@@ -119,6 +121,13 @@ export async function POST(request: Request) {
     detail: "via public server directory",
   });
   await publishStructureChange(server.id);
+  afterResponse(
+    handleMemberJoin(db, server.id, {
+      id: user.id,
+      username: user.username,
+      displayName: user.display_name,
+    }).catch(() => {}),
+  );
   return Response.json({
     serverId: server.id,
     servers: await listServers(db, user.id),
