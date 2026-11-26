@@ -1,6 +1,8 @@
 import { awardAndNotify } from "@/lib/achievements";
+import { afterResponse } from "@/lib/after-response";
 import { currentUser, unauthorized } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
+import { handleMemberJoin, handleMemberLeave } from "@/lib/community-bot/welcome";
 import { publishStructureChange } from "@/lib/hub-client";
 import { ensureSchema } from "@/lib/schema";
 import {
@@ -131,6 +133,13 @@ export async function POST(request: Request) {
     });
     await publishStructureChange(server.id);
     await awardAndNotify(db, user.id, { sources: ["people"] });
+    afterResponse(
+      handleMemberJoin(db, server.id, {
+        id: user.id,
+        username: user.username,
+        displayName: user.display_name,
+      }).catch(() => {}),
+    );
     return Response.json({
       serverId: server.id,
       channelId: invite.channel_id,
@@ -167,6 +176,13 @@ export async function POST(request: Request) {
       targetName: user.display_name,
     });
     await publishStructureChange(serverId);
+    afterResponse(
+      handleMemberLeave(db, serverId, {
+        id: user.id,
+        username: user.username,
+        displayName: user.display_name,
+      }).catch(() => {}),
+    );
     return Response.json({ servers: await listServers(db, user.id) });
   }
 

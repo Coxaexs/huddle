@@ -1,5 +1,6 @@
 import { currentUser, unauthorized } from "@/lib/auth";
 import { enforceAutomod } from "@/lib/automod";
+import { emitServerLog } from "@/lib/community-bot/logs";
 import {
   dispatchMessageById,
   dispatchMessageDelete,
@@ -30,6 +31,8 @@ interface MessageRow {
   attachment_key: string | null;
   attachments: string | null;
   audio_url: string | null;
+  author: string;
+  content: string;
 }
 
 async function loadMessage(
@@ -38,7 +41,7 @@ async function loadMessage(
 ): Promise<MessageRow | null> {
   return db
     .prepare(
-      `SELECT id, channel_id, user_id, is_bot, pinned_at, sender_id, attachment_key, attachments, audio_url
+      `SELECT id, channel_id, user_id, is_bot, pinned_at, sender_id, attachment_key, attachments, audio_url, author, content
          FROM messages WHERE id = ? AND deleted_at IS NULL`,
     )
     .bind(id)
@@ -138,6 +141,26 @@ export async function DELETE(
       await channelAudience(db, message.channel_id),
     );
     afterResponse(dispatchMessageDelete(id, message.channel_id));
+    if (!message.is_bot) {
+      const chId = message.channel_id;
+      afterResponse(
+        (async () => {
+          const ch = await db
+            .prepare("SELECT server_id, name, kind FROM channels WHERE id = ?")
+            .bind(chId)
+            .first<{ server_id: string | null; name: string; kind: string }>();
+          if (ch?.server_id && ch.kind !== "dm") {
+            await emitServerLog(db, ch.server_id, {
+              kind: "message_delete",
+              channelName: ch.name,
+              author: message.author,
+              content: message.content,
+              deletedBy: user.display_name,
+            });
+          }
+        })().catch(() => {}),
+      );
+    }
   }
   return Response.json({ ok: true });
 }
@@ -258,6 +281,26 @@ export async function PATCH(
           origin: new URL(request.url).origin,
         }),
       );
+      if (!message.is_bot && message.content !== content) {
+        const chId = message.channel_id;
+        afterResponse(
+          (async () => {
+            const ch = await db
+              .prepare("SELECT server_id, name, kind FROM channels WHERE id = ?")
+              .bind(chId)
+              .first<{ server_id: string | null; name: string; kind: string }>();
+            if (ch?.server_id && ch.kind !== "dm") {
+              await emitServerLog(db, ch.server_id, {
+                kind: "message_edit",
+                channelName: ch.name,
+                author: message.author,
+                before: message.content,
+                after: content,
+              });
+            }
+          })().catch(() => {}),
+        );
+      }
     }
     return Response.json({ ok: true, content, editedAt });
   }

@@ -8,6 +8,8 @@ import { ensureSchema } from "@/lib/schema";
 import { bindings } from "@/lib/storage";
 import { blockIfTimedOut } from "@/lib/timeouts";
 import { afterResponse } from "@/lib/after-response";
+import { handleReactionRoleEmoji } from "@/lib/community-bot/reaction-roles";
+import { handleStarboardReaction } from "@/lib/community-bot/starboard";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +86,22 @@ export async function POST(
         added ? "MESSAGE_REACTION_ADD" : "MESSAGE_REACTION_REMOVE",
         { messageId: id, channelId: message.channel_id, userId: user.id, emoji },
       ),
+    );
+    afterResponse(
+      handleReactionRoleEmoji(db, {
+        messageId: id,
+        userId: user.id,
+        emoji,
+        added,
+      }).catch(() => {}),
+    );
+    afterResponse(
+      handleStarboardReaction(db, {
+        messageId: id,
+        channelId: message.channel_id,
+        reactorUserId: user.id,
+        emoji,
+      }).catch(() => {}),
     );
   }
   if (added) {
